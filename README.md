@@ -24,7 +24,7 @@
 | مجلد مصدر بأي لغة | `vulnscan ./my-app` | يمر على كل الملفات النصية ويطبّق 65+ قاعدة |
 | ملف واحد | `vulnscan server.py` | يفحص الملف وحده |
 | أرشيف / حزمة | `vulnscan app.apk` أو `.jar` `.zip` `.whl` `.tar.gz` | يفكّه في مجلد مؤقت ويفحص محتواه |
-| عنوان ويب (سلبي) | `vulnscan https://my-site.example --authorized [--deep]` | ترويسات الأمان، الكوكيز، CSP، TLS والشهادة، وتحليل الصفحة؛ ومع `--deep` فحص مسارات مكشوفة شائعة |
+| عنوان ويب (سلبي) | `vulnscan https://my-site.example --authorized [--deep] [--crawl]` | ترويسات الأمان، الكوكيز، CSP، TLS، تحليل الصفحة وبصمة المنصّة؛ `--deep` للمسارات المكشوفة و`--crawl` لزحف الصفحات |
 
 القواعد المدمجة تغطي: Python، JavaScript/TypeScript، Dart/Flutter، Java/Kotlin، Go، PHP، Ruby، C#، C/C++،
 Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS plist، وملفات الإعدادات.
@@ -53,6 +53,25 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
 
 > ⚠️ كل فحص ويب يتطلب `--authorized` (أو تفعيل الإقرار في الواجهة). افحص فقط المواقع التي تملكها أو لديك
 > تصريح كتابي بفحصها.
+
+### فحص تطبيقات الويب وصفحاتها (الزحف وبصمة المنصّات)
+
+لفحص تطبيق ويب متعدد الصفحات مثل بوابة جامعة أو نظام **Moodle** أو تطبيق **Oracle APEX**، أضِف `--crawl`:
+تتبع الأداة روابط الصفحات من **النطاق نفسه** زحفًا بالعرض (BFS) وتفحص كل صفحة بالفحوص السلبية.
+
+```bash
+vulnscan https://lms.jamiah.example --authorized --crawl --deep
+```
+
+- حدود الزحف: `--max-pages` (الافتراضي 20) و`--max-depth` (الافتراضي 2). لا تُتبع روابط الخروج/الحذف
+  (logout، delete…) ولا الروابط الخارجة عن النطاق، ولا تُرسَل أي بيانات.
+- **بصمة المنصّة**: تتعرّف الأداة تلقائيًا على Moodle وOracle APEX وWordPress وJoomla وDrupal وphpMyAdmin
+  وLaravel من الصفحة والترويسات، وتنبّه إذا كان الإصدار قديمًا، وتذكّر بتحديث الإضافات والقوالب. ومع `--deep`
+  تفحص مسارات الإدارة والدخول وملفات الإعداد الشائعة لكل منصّة (مثل `/login/index.php` و`/wp-login.php`
+  و`/administrator/`).
+
+> ⚠️ الزحف وفحص الويب يتطلبان `--authorized`. افحص فقط الأنظمة التي تملكها أو لديك تصريح كتابي بفحصها —
+> فحص بوابة جامعة أو أي نظام لا تملكه دون إذن قد يكون مخالفًا للقانون.
 
 ### فك تجميع APK / JAR / AAR / DEX (jadx)
 
@@ -176,6 +195,7 @@ vulnscan --list-rules .
 | `--no-jadx` / `--jadx-timeout SEC` / `--jadx-include-libs` | التحكم في فك التجميع عبر jadx |
 | `--authorized` | إقرار بالصلاحية (إلزامي لعناوين الويب) |
 | `--deep` | فحص ويب أعمق (تحليل الصفحة ومسارات مكشوفة شائعة) |
+| `--crawl` / `--max-pages` / `--max-depth` | زحف على صفحات الموقع وفحصها (لتطبيقات مثل Moodle وAPEX) |
 
 ### كتم إنذار مقصود
 

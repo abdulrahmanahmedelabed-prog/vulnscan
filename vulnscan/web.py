@@ -126,7 +126,10 @@ def scan_url(url: str, timeout: float = 15.0, deep: bool = False) -> tuple[list[
 
     ctype = h.get("content-type", "")
     if "text/html" in ctype and body:
-        findings.extend(_analyze_html(body.decode("utf-8", "replace"), parsed, label))
+        page = body.decode("utf-8", "replace")
+        findings.extend(_analyze_html(page, parsed, label))
+        blob = page + "\n" + "\n".join(f"{k}: {v}" for k, v in headers.items())
+        findings.extend(detect_platform(blob, label, deep, parsed, timeout))
 
     if https:
         findings.extend(_tls_checks(parsed.hostname or "", parsed.port or 443, label, timeout))
@@ -232,6 +235,142 @@ def _probe_paths(parsed, timeout: float) -> list[Finding]:
         if status == 200 and "text/html" not in ctype and (sig is None or re.search(sig, text)):
             out.append(Finding("WEB062", sev, title, title_ar, label, 0, f"{path} → HTTP 200", advice, "CWE-538", source="web"))
     return out
+
+
+# -------------------------------------------------------------- platform fingerprint
+# (name, signature regex over html+headers, version regex or None,
+#  outdated-major threshold or None, admin/login/config paths probed in deep mode)
+PLATFORMS = [
+    ("Moodle", r"""(MoodleSession|var M\s*=\s*M\b|/theme/[^\s"']+/pix|pluginfile\.php|this site is using moodle)""",
+     r"Moodle\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)", 3.9,
+     ["/login/index.php", "/admin/", "/admin/tool/", "/config-dist.php", "/install.php"]),
+    ("Oracle APEX", r"(apex_[a-z]+\.|/ords/|wwv_flow|Oracle APEX|apex\.oracle)",
+     r"(?:APEX|Application Express)[ _]?v?([0-9]+\.[0-9]+)", None,
+     ["/ords/", "/apex/", "/i/", "/pls/apex/"]),
+    ("WordPress", r"""(wp-content/|wp-includes/|/wp-json/|name=["']?generator["']?[^>]*WordPress)""",
+     r"WordPress\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)", 6.0,
+     ["/wp-login.php", "/wp-admin/", "/xmlrpc.php", "/wp-config.php.bak"]),
+    ("Joomla", r"(/media/jui/|generator[^>]*Joomla|option=com_|/administrator/)",
+     r"Joomla!?\s*([0-9]+\.[0-9]+)", 4.0,
+     ["/administrator/", "/configuration.php-dist", "/README.txt"]),
+    ("Drupal", r"(generator[^>]*Drupal|X-Generator[^\n]*Drupal|/sites/default/|Drupal\.settings)",
+     r"Drupal\s*([0-9]+)", 9,
+     ["/user/login", "/admin", "/CHANGELOG.txt", "/core/CHANGELOG.txt"]),
+    ("phpMyAdmin", r"(phpMyAdmin|pmahomme)", r"phpMyAdmin\s*([0-9]+\.[0-9]+)", None,
+     ["/phpmyadmin/", "/pma/", "/phpMyAdmin/"]),
+    ("Laravel", r"(laravel_session|/vendor/laravel|X-Powered-By[^\n]*Laravel)", None, None,
+     ["/.env", "/telescope", "/storage/logs/laravel.log"]),
+]
+# Links we never follow while crawling (state-changing or non-HTML).
+SKIP_LINK = re.compile(r"(?i)(logout|signout|sign-out|log-off|/delete|/remove|/destroy|action=delete|\.(zip|pdf|png|jpe?g|gif|svg|css|js|ico|woff2?|ttf|mp4|mp3)(\?|$))")
+
+
+def detect_platform(blob: str, label: str, deep: bool, parsed, timeout: float) -> list:
+    out = []
+    for name, sig, verre, old_major, paths in PLATFORMS:
+        if not re.search(sig, blob, re.I):
+            continue
+        ver = None
+        if verre:
+            m = re.search(verre, blob)
+            ver = m.group(1) if m else None
+        shown = f"{name} {ver}" if ver else name
+        out.append(Finding("WEB080", "info", f"Detected platform: {shown}", f"منصّة مكتشفة: {shown}",
+                           label, 0, shown, f"تأكد أن {name} محدّث لآخر إصدار مُصحَّح، وأن إضافاته وقوالبه محدّثة.",
+                           "CWE-1395", source="web", extra={"platform": name, "version": ver}))
+        if ver and old_major is not None:
+            try:
+                major = float(re.match(r"[0-9]+(?:\.[0-9]+)?", ver).group(0))
+                if major < old_major:
+                    out.append(Finding("WEB081", "medium", f"Outdated {name} ({ver})", f"إصدار {name} قديم ({ver})",
+                                       label, 0, shown, f"حدّث {name}؛ الإصدارات القديمة بها ثغرات معروفة.", "CWE-1104",
+                                       source="web", extra={"platform": name, "version": ver}))
+            except (ValueError, AttributeError):
+                pass
+        if deep:
+            base = f"{parsed.scheme}://{parsed.netloc}"
+            for path in paths:
+                status, headers, body, err = _get(base + path, timeout, read_body=True)
+                ctype = (headers.get("content-type", "") if headers else "").lower()
+                text = body.decode("utf-8", "replace") if body else ""
+                if status == 200 and path.endswith((".bak", "-dist", "-dist.php", ".log", "/.env", ".txt")) and "text/html" not in ctype:
+                    out.append(Finding("WEB082", "high", f"{name}: sensitive file exposed {path}",
+                                       f"{name}: ملف حساس مكشوف {path}", label, 0, f"{path} -> HTTP 200",
+                                       "امنع الوصول إلى هذا الملف من خادم الويب.", "CWE-538", source="web"))
+                elif status == 200 and re.search(r"(?i)(login|admin|sign in|user)", text[:4000]):
+                    out.append(Finding("WEB083", "info", f"{name}: admin/login page reachable {path}",
+                                       f"{name}: صفحة إدارة أو دخول متاحة {path}", label, 0, f"{path} -> HTTP 200",
+                                       "قيّد الوصول إلى لوحات الإدارة (شبكة داخلية أو مصادقة قوية وحدّ للمحاولات).",
+                                       "CWE-284", source="web"))
+        break
+    return out
+
+
+_HREF = re.compile(r"""<a\b[^>]*\bhref\s*=\s*['"]([^'"#]+)['"]""", re.I)
+
+
+def _same_origin_links(html: str, base_url: str, origin) -> list:
+    out, seen = [], set()
+    for m in _HREF.finditer(html):
+        href = m.group(1).strip()
+        if not href or href.lower().startswith(("mailto:", "tel:", "javascript:", "data:")):
+            continue
+        full = urllib.parse.urljoin(base_url, href)
+        pr = urllib.parse.urlparse(full)
+        if pr.scheme not in ("http", "https") or pr.netloc != origin.netloc:
+            continue
+        if SKIP_LINK.search(full):
+            continue
+        clean = pr._replace(fragment="").geturl()
+        if clean not in seen:
+            seen.add(clean)
+            out.append(clean)
+    return out
+
+
+def scan_site(url: str, timeout: float = 15.0, deep: bool = False,
+              crawl: bool = False, max_pages: int = 20, max_depth: int = 2) -> tuple:
+    """Scan a web app. Always scans the entry URL (headers, TLS, HTML, platform).
+
+    With ``crawl`` it also follows same-origin links breadth-first, up to
+    ``max_pages`` pages and ``max_depth`` deep, running the per-page HTML checks
+    on each so multi-page apps (a university portal, Moodle, APEX) are covered.
+    Still fully passive and gated on authorization by the caller.
+    """
+    findings, err = scan_url(url, timeout=timeout, deep=deep)
+    if err or not crawl:
+        return findings, err
+    origin = urllib.parse.urlparse(url)
+    seen = {origin._replace(fragment="").geturl()}
+    frontier = [(url, 0)]
+    pages = 1
+    while frontier and pages < max_pages:
+        page_url, depth = frontier.pop(0)
+        status, headers, body, e = _get(page_url, timeout, read_body=True)
+        if status is None:
+            continue
+        ctype = headers.get("content-type", "") if headers else ""
+        if "text/html" not in ctype:
+            continue
+        html = body.decode("utf-8", "replace")
+        if depth > 0:
+            pages += 1
+            label = urllib.parse.urlparse(page_url).path or "/"
+            for f in _analyze_html(html, urllib.parse.urlparse(page_url), label):
+                f.extra["page"] = page_url
+                findings.append(f)
+        if depth < max_depth:
+            for link in _same_origin_links(html, page_url, origin):
+                if link not in seen:
+                    seen.add(link)
+                    frontier.append((link, depth + 1))
+    uniq, keys = [], set()
+    for f in findings:
+        k = (f.rule_id, f.file, f.snippet)
+        if k not in keys:
+            keys.add(k)
+            uniq.append(f)
+    return uniq, None
 
 
 def _tls_checks(host: str, port: int, label: str, timeout: float) -> list[Finding]:

@@ -11,7 +11,7 @@ const I18N = {
     'scan.tabPath': 'مسار على الجهاز', 'scan.tabUpload': 'رفع ملفات / أرشيف', 'scan.tabUrl': 'عنوان ويب', 'scan.pathLabel': 'مسار المجلد أو الملف أو الأرشيف', 'scan.start': 'ابدأ الفحص',
     'scan.pathHint': 'يُفحص المجلد بكل محتوياته (تُتجاهل node_modules و .git و build تلقائيًا).', 'scan.drop': 'اسحب وأفلت هنا برنامجًا مضغوطًا (zip / apk / jar / tar.gz / whl) أو أي ملفات',
     'scan.chooseFiles': 'اختر ملفات', 'scan.chooseFolder': 'اختر مجلدًا كاملًا', 'scan.uploadStart': 'ارفع وافحص', 'scan.urlLabel': 'عنوان الموقع (فحص سلبي: طلب واحد فقط)',
-    'scan.authorize': 'أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه', 'scan.deep': 'فحص أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)', 'scan.legal': 'فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.', 'scan.viewResults': 'عرض النتائج',
+    'scan.authorize': 'أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه', 'scan.deep': 'فحص أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)', 'scan.crawl': 'زحف على صفحات الموقع وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)', 'scan.legal': 'فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.', 'scan.viewResults': 'عرض النتائج',
     'scan.running': 'جارٍ الفحص…', 'scan.done': 'اكتمل الفحص', 'scan.failed': 'فشل الفحص', 'scan.needAuth': 'يجب تأكيد الصلاحية أولًا', 'scan.selected': 'ملف محدد', 'scan.uploading': 'جارٍ الرفع…',
     'find.title': 'النتائج', 'find.sub': 'مرتبة من الأعلى خطورة إلى الأقل. اضغط على أي نتيجة لعرض التفاصيل وطريقة الإصلاح.', 'find.search': 'ابحث في الملف أو القاعدة أو النص…', 'find.allSources': 'كل المصادر',
     'find.none': 'لا نتائج مطابقة.', 'find.files': 'ملفًا مفحوصًا', 'find.advice': 'طريقة الإصلاح', 'find.snippet': 'المقتطف', 'find.ref': 'المرجع',
@@ -32,7 +32,7 @@ const I18N = {
     'scan.tabPath': 'Local path', 'scan.tabUpload': 'Upload files / archive', 'scan.tabUrl': 'Web URL', 'scan.pathLabel': 'Folder, file or archive path', 'scan.start': 'Start scan',
     'scan.pathHint': 'The whole folder is scanned (node_modules, .git and build are skipped).', 'scan.drop': 'Drop an archive (zip / apk / jar / tar.gz / whl) or any files here',
     'scan.chooseFiles': 'Choose files', 'scan.chooseFolder': 'Choose a folder', 'scan.uploadStart': 'Upload & scan', 'scan.urlLabel': 'Site URL (passive: one request only)',
-    'scan.authorize': 'I own this site or have written permission to test it', 'scan.deep': 'Deeper scan: analyze the page and probe common exposed paths (a few extra requests)', 'scan.legal': 'Testing systems without permission may be illegal.', 'scan.viewResults': 'View findings',
+    'scan.authorize': 'I own this site or have written permission to test it', 'scan.deep': 'Deeper scan: analyze the page and probe common exposed paths (a few extra requests)', 'scan.crawl': 'Crawl the site pages and scan them (for apps like Moodle and university portals)', 'scan.legal': 'Testing systems without permission may be illegal.', 'scan.viewResults': 'View findings',
     'scan.running': 'Scanning…', 'scan.done': 'Scan complete', 'scan.failed': 'Scan failed', 'scan.needAuth': 'Please confirm authorization first', 'scan.selected': 'file(s) selected', 'scan.uploading': 'Uploading…',
     'find.title': 'Findings', 'find.sub': 'Ordered from highest to lowest severity. Click a finding for details and remediation.', 'find.search': 'Search file, rule or text…', 'find.allSources': 'All sources',
     'find.none': 'No matching findings.', 'find.files': 'files scanned', 'find.advice': 'Remediation', 'find.snippet': 'Snippet', 'find.ref': 'Reference',
@@ -163,7 +163,7 @@ $('#path-input').onkeydown = (e) => { if (e.key === 'Enter') $('#path-btn').clic
 $('#url-btn').onclick = () => {
   const v = $('#url-input').value.trim(); if (!v) return;
   if (!$('#url-auth').checked) return toast(t('scan.needAuth'));
-  startScan({target: v, authorized: true, deep: $('#url-deep').checked});
+  startScan({target: v, authorized: true, deep: $('#url-deep').checked, crawl: $('#url-crawl').checked});
 };
 let pending = [];
 const dz = $('#dropzone');

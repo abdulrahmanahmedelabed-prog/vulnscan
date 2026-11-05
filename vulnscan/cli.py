@@ -13,7 +13,7 @@ from .model import SEVERITIES, SEVERITY_RANK, Finding, sort_findings
 from .report import render_console, render_html, render_json, render_markdown, summary_counts
 from .rules import RULES
 from .scanner import scan_path
-from .web import scan_url
+from .web import scan_site
 
 AUTHORIZATION_NOTICE = (
     "افحص فقط ما تملكه أو ما لديك تصريح كتابي بفحصه. "
@@ -41,6 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-deps", action="store_true", help="لا تستعلم OSV.dev عن ثغرات الاعتماديات (دون إنترنت)")
     p.add_argument("--no-external", action="store_true", help="لا تشغّل bandit/semgrep/gitleaks/npm حتى لو كانت مثبّتة")
     p.add_argument("--deep", action="store_true", help="فحص ويب أعمق: تحليل HTML وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)")
+    p.add_argument("--crawl", action="store_true", help="زحف على صفحات الموقع من نفس النطاق وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)")
+    p.add_argument("--max-pages", type=int, default=20, metavar="N", help="أقصى عدد صفحات عند الزحف (الافتراضي 20)")
+    p.add_argument("--max-depth", type=int, default=2, metavar="N", help="أقصى عمق للزحف (الافتراضي 2)")
     p.add_argument("--no-jadx", action="store_true", help="لا تفكّ تجميع APK/JAR/AAR/DEX حتى لو كان jadx مثبّتًا")
     p.add_argument("--jadx-timeout", type=int, default=600, metavar="SEC", help="مهلة jadx بالثواني (الافتراضي 600)")
     p.add_argument("--jadx-include-libs", action="store_true", help="افحص أيضًا مكتبات الطرف الثالث داخل الكود المفكوك")
@@ -74,11 +77,15 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
     if target.startswith(("http://", "https://")):
         if not args.authorized:
             raise SystemExit("فحص عنوان ويب يتطلب --authorized (تأكيد أنك مخوَّل بفحص هذا الهدف).")
-        findings, err = scan_url(target, deep=args.deep)
+        findings, err = scan_site(target, deep=args.deep, crawl=args.crawl,
+                                  max_pages=args.max_pages, max_depth=args.max_depth)
         if err:
             notes.append(err)
-        notes.append("فحص ويب سلبي أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة، بلا اختبار نشط."
-                     if args.deep else "فحص ويب سلبي: طلب واحد فقط، بلا أي اختبار نشط.")
+        if args.crawl:
+            notes.append("فحص ويب سلبي مع زحف على صفحات النطاق نفسه، بلا اختبار نشط.")
+        else:
+            notes.append("فحص ويب سلبي أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة، بلا اختبار نشط."
+                         if args.deep else "فحص ويب سلبي: طلب واحد فقط، بلا أي اختبار نشط.")
         return findings, target, 1, notes
 
     path = pathlib.Path(target)

@@ -93,3 +93,72 @@ def test_deep_scan_probes_exposed_paths(site):
     assert ".env" in snippets and ".git/HEAD" in snippets
     assert any(f.severity == "critical" for f in exposed)   # .env is critical
     assert any(f.rule_id == "WEB060" for f in findings)     # no security.txt
+
+
+MOODLE_HOME = b"""<!doctype html><html><head>
+<meta name="keywords" content="moodle, course">
+<title>Jamiah LMS</title></head><body>
+<p>This site is using Moodle 3.5.2</p>
+<a href="/course/view.php?id=1">Course</a>
+<a href="/login/index.php">Login</a>
+<a href="https://other.example/x">external</a>
+<a href="/logout.php">Logout</a>
+<img src="http://insecure.example/l.png">
+</body></html>"""
+
+MOODLE_COURSE = b"""<!doctype html><html><head><title>Course</title></head><body>
+<form action="http://insecure.example/enrol" method="post"><input name=q></form>
+</body></html>"""
+
+
+class Moodle(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Set-Cookie", "MoodleSession=abc; Path=/")
+        self.end_headers()
+        if self.path.startswith("/course"):
+            self.wfile.write(MOODLE_COURSE)
+        else:
+            self.wfile.write(MOODLE_HOME)
+
+
+@pytest.fixture
+def moodle():
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Moodle)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}/"
+    httpd.shutdown()
+
+
+def test_platform_detection(moodle):
+    from vulnscan.web import scan_url
+    findings, err = scan_url(moodle, deep=False)
+    assert err is None
+    plat = [f for f in findings if f.rule_id == "WEB080"]
+    assert plat and plat[0].extra["platform"] == "Moodle"
+    assert any(f.rule_id == "WEB081" for f in findings)   # 3.5 < 3.9 -> outdated
+
+
+def test_crawl_reaches_other_pages(moodle):
+    from vulnscan.web import scan_site
+    single, _ = scan_site(moodle, crawl=False)
+    crawled, _ = scan_site(moodle, crawl=True, max_pages=10, max_depth=2)
+    # The insecure form only exists on /course, so only the crawl finds it.
+    assert not any(f.rule_id == "WEB051" for f in single)
+    assert any(f.rule_id == "WEB051" for f in crawled)
+    # A crawled finding records which page it came from.
+    assert any(f.extra.get("page") for f in crawled)
+
+
+def test_crawl_skips_external_and_logout(moodle):
+    from vulnscan.web import _same_origin_links
+    import urllib.parse
+    origin = urllib.parse.urlparse(moodle)
+    links = _same_origin_links(MOODLE_HOME.decode(), moodle, origin)
+    assert any("/course" in l for l in links)
+    assert not any("other.example" in l for l in links)   # external skipped
+    assert not any("logout" in l for l in links)          # logout skipped

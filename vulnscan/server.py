@@ -23,7 +23,7 @@ from .report import render_html, render_json, render_markdown, summary_counts
 from .rules import RULES
 from .scanner import ARCHIVE_EXTS, JADX_EXTS, jadx_available, scan_path
 from .store import Store
-from .web import scan_url
+from .web import scan_site
 
 # When frozen by PyInstaller the UI files are unpacked under sys._MEIPASS.
 if getattr(sys, "frozen", False):
@@ -49,9 +49,13 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
             if not authorized:
                 raise PermissionError("فحص عنوان ويب يتطلب تأكيد الصلاحية.")
             deep = bool(scan.get("deep"))
-            findings, err = scan_url(target, deep=deep)
+            crawl = bool(scan.get("crawl"))
+            findings, err = scan_site(target, deep=deep, crawl=crawl)
             files = 1
-            notes.append(err or ("فحص ويب سلبي أعمق: تحليل الصفحة ومسارات مكشوفة شائعة." if deep else "فحص ويب سلبي: طلب واحد فقط."))
+            if crawl:
+                notes.append(err or "فحص ويب سلبي مع زحف على صفحات النطاق نفسه.")
+            else:
+                notes.append(err or ("فحص ويب سلبي أعمق: تحليل الصفحة ومسارات مكشوفة شائعة." if deep else "فحص ويب سلبي: طلب واحد فقط."))
         else:
             path = pathlib.Path(target)
             if not path.exists():
@@ -237,6 +241,9 @@ class Handler(BaseHTTPRequestHandler):
         scan = self.store.new_scan(target, body.get("kind") or ("url" if target.startswith("http") else "path"))
         if body.get("deep"):
             scan["deep"] = True
+        if body.get("crawl"):
+            scan["crawl"] = True
+        if body.get("deep") or body.get("crawl"):
             self.store.save_scan(scan)
         threading.Thread(target=run_scan, args=(self.store, scan, settings, authorized), daemon=True).start()
         return self._json(scan, 202)
