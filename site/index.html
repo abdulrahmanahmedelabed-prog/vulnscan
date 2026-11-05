@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vulnscan — فاحص ثغرات لأي برنامج</title>
+<meta name="description" content="أداة مفتوحة المصدر تفحص أي برنامج (كود، أرشيف، APK، أو موقع) وتُخرج تقريرًا مرتبًا من الأعلى خطورة إلى الأقل، بواجهة رسومية محلية ونسخة exe.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2306b6d4' d='M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5z'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#0b1220;--panel:#121a2b;--panel2:#162236;--text:#e8eef6;--muted:#9fb0c3;--border:#223049;--accent:#22d3ee;--accent2:#0891b2;
+--critical:#f87171;--high:#fb923c;--medium:#fbbf24;--low:#38bdf8;--info:#a1a1aa;--radius:16px;}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,rgba(34,211,238,.14),transparent),var(--bg);color:var(--text);
+font-family:"Segoe UI",system-ui,-apple-system,Tahoma,"Noto Kufi Arabic",sans-serif;line-height:1.7}
+a{color:var(--accent);text-decoration:none}
+.wrap{max-width:1100px;margin:0 auto;padding:0 20px}
+header{position:sticky;top:0;z-index:10;backdrop-filter:blur(10px);background:rgba(11,18,32,.72);border-bottom:1px solid var(--border)}
+.nav{display:flex;align-items:center;gap:18px;padding:14px 0}
+.nav .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px}
+.nav .logo svg{width:28px;height:28px}
+.nav .sp{flex:1}
+.nav a.link{color:var(--muted);font-weight:600}
+.nav a.link:hover{color:var(--text)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:12px;font-weight:700;border:1px solid var(--border);color:var(--text);cursor:pointer}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#042027;border-color:transparent}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.ghost:hover{border-color:var(--accent)}
+.hero{text-align:center;padding:72px 0 40px}
+.hero h1{font-size:46px;line-height:1.2;margin:.2em 0}
+.hero h1 .grad{background:linear-gradient(135deg,var(--accent),#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p.lead{font-size:20px;color:var(--muted);max-width:720px;margin:0 auto 26px}
+.hero .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.badges{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:22px;color:var(--muted);font-size:14px}
+.badges span{border:1px solid var(--border);border-radius:999px;padding:5px 14px;background:var(--panel)}
+.shot{margin:34px auto 0;max-width:960px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:0 30px 80px -40px rgba(0,0,0,.8)}
+.shot img{display:block;width:100%}
+section{padding:56px 0}
+h2.title{font-size:32px;text-align:center;margin:0 0 8px}
+p.sub{text-align:center;color:var(--muted);margin:0 auto 36px;max-width:640px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:22px}
+.card .ic{font-size:28px}
+.card h3{margin:12px 0 6px;font-size:18px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;counter-reset:s}
+.step{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:22px;position:relative}
+.step::before{counter-increment:s;content:counter(s);position:absolute;top:-14px;inset-inline-start:22px;width:30px;height:30px;border-radius:50%;
+background:linear-gradient(135deg,var(--accent),var(--accent2));color:#042027;font-weight:800;display:grid;place-items:center}
+.step code{display:block;background:#0a1322;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px;direction:ltr;text-align:left;color:#9ff0ff;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;overflow:auto}
+.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:var(--radius)}
+table{border-collapse:collapse;width:100%;min-width:820px;background:var(--panel)}
+th,td{padding:12px 14px;border-bottom:1px solid var(--border);text-align:start;font-size:14px}
+thead th{position:sticky;top:0;background:var(--panel2);font-size:13px;color:var(--muted)}
+tbody tr:hover td{background:rgba(34,211,238,.04)}
+td.feat{font-weight:700}
+.yes{color:#34d399;font-weight:700}.no{color:#f87171}.part{color:var(--medium)}
+.col-us{background:rgba(34,211,238,.08)}
+th.col-us{background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(8,145,178,.18));color:var(--text)}
+.note{color:var(--muted);font-size:14px;margin-top:14px}
+.dl{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.dl .card{text-align:center}
+.dl .os{font-size:40px}
+.footer{border-top:1px solid var(--border);padding:30px 0;color:var(--muted);text-align:center}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;color:#fff}
+.pill.c{background:#991b1b}.pill.h{background:#c2410c}.pill.m{background:#b45309}.pill.l{background:#0e7490}
+.legal{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:12px;padding:14px 18px;color:#fcd34d;max-width:760px;margin:24px auto 0;text-align:center;font-size:14px}
+@media(max-width:820px){.grid,.steps,.dl{grid-template-columns:1fr}.hero h1{font-size:34px}.nav a.link{display:none}}
+</style>
+</head>
+<body>
+<header><div class="wrap nav">
+  <span class="logo"><svg viewBox="0 0 24 24"><path fill="#22d3ee" d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5z"/></svg> vulnscan</span>
+  <span class="sp"></span>
+  <a class="link" href="#features">المزايا</a>
+  <a class="link" href="#compare">المقارنة</a>
+  <a class="link" href="#download">التحميل</a>
+  <a class="btn ghost" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan" target="_blank" rel="noopener">GitHub ★</a>
+</div></header>
+
+<section class="hero wrap">
+  <h1>افحص <span class="grad">أي برنامج</span> واعرف ثغراته<br>من الأعلى خطورة إلى الأقل</h1>
+  <p class="lead">أداة مفتوحة المصدر تفحص الكود والأرشيفات وتطبيقات APK والمواقع، وتُخرج تقريرًا مرتّبًا بالخطورة مع طريقة الإصلاح — بواجهة رسومية محلية ونسخة تعمل بنقرة واحدة.</p>
+  <div class="cta">
+    <a class="btn primary" href="#download">⬇ حمّل نسخة Windows</a>
+    <a class="btn ghost" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan" target="_blank" rel="noopener">الكود المصدري</a>
+  </div>
+  <div class="badges"><span>Python خالص · بلا اعتماديات</span><span>عربي / English</span><span>يعمل دون إنترنت</span><span>رخصة MIT</span></div>
+  <div class="shot"><img src="img/dashboard.png" alt="لوحة تحكم vulnscan"></div>
+</section>
+
+<section id="features" class="wrap">
+  <h2 class="title">كل ما تحتاجه في أداة واحدة</h2>
+  <p class="sub">من الأسرار المضمّنة إلى ثغرات الاعتماديات وأمان المواقع.</p>
+  <div class="grid">
+    <div class="card"><div class="ic">🧬</div><h3>فحص متعدد اللغات</h3><p>أكثر من 65 قاعدة تغطي Python وJavaScript وDart وJava/Kotlin وGo وPHP وC وملفات Docker وCI والموبايل.</p></div>
+    <div class="card"><div class="ic">📦</div><h3>أرشيفات و APK</h3><p>ارفع zip أو apk أو jar أو tar.gz، ومع jadx يُفكّ تجميع كود APK/JAR ويُفحص.</p></div>
+    <div class="card"><div class="ic">🌐</div><h3>فحص المواقع</h3><p>ترويسات الأمان، CSP، الكوكيز، TLS والشهادة، ومع الوضع العميق المسارات المكشوفة الشائعة.</p></div>
+    <div class="card"><div class="ic">🧩</div><h3>ثغرات الاعتماديات</h3><p>استعلام OSV.dev عن ثغرات CVE المعروفة في requirements وpackage-lock وpubspec وgo.mod وغيرها.</p></div>
+    <div class="card"><div class="ic">📊</div><h3>لوحة تحكم وتقارير</h3><p>بطاقات الخطورة، مخططات، مقارنة فحصين لمعرفة ما أُصلح وما استجد، وتنزيل Markdown/JSON/HTML.</p></div>
+    <div class="card"><div class="ic">🔌</div><h3>يدمج أدواتك</h3><p>إن وُجدت، يدمج نتائج Semgrep وBandit وgitleaks وnpm audit في لوحة واحدة فوقها.</p></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2 class="title">ثلاث خطوات</h2>
+  <p class="sub">بلا تثبيت معقّد. نزّل النسخة الجاهزة أو شغّلها من المصدر.</p>
+  <div class="steps">
+    <div class="step"><h3>حمّل وشغّل</h3><p>نزّل <b>vulnscan-windows.exe</b> وانقر مرّتين — أو من المصدر:</p><code>python -m vulnscan ui</code></div>
+    <div class="step"><h3>اختر الهدف</h3><p>مجلد مشروع، أو اسحب برنامجًا مضغوطًا أو APK، أو أدخل عنوان موقع تملكه.</p><code>drag &amp; drop · /path · https://…</code></div>
+    <div class="step"><h3>اقرأ التقرير</h3><p>نتائج مرتبة بالخطورة مع المقتطف وطريقة الإصلاح، وتصدير بصيغ متعددة.</p><code>critical → high → … → info</code></div>
+  </div>
+  <div class="shot" style="margin-top:28px"><img src="img/findings.png" alt="نتائج vulnscan"></div>
+</section>
+
+<section id="compare" class="wrap">
+  <h2 class="title">مقارنة مع البرامج العالمية</h2>
+  <p class="sub">أين يقف vulnscan بين أشهر أدوات فحص الأمان.</p>
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>الميزة</th><th class="col-us">vulnscan</th><th>Semgrep</th><th>SonarQube</th><th>Snyk Code</th><th>CodeQL</th><th>Bandit</th><th>Trivy</th>
+    </tr></thead>
+    <tbody>
+      <tr><td class="feat">عدد اللغات</td><td class="col-us">15+</td><td>30+</td><td>30+</td><td>15+</td><td>10+</td><td>Python</td><td>—</td></tr>
+      <tr><td class="feat">كشف الأسرار</td><td class="col-us yes">✓</td><td class="part">محدود</td><td class="part">مدفوع</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="yes">✓</td></tr>
+      <tr><td class="feat">ثغرات الاعتماديات (CVE)</td><td class="col-us yes">✓ OSV</td><td class="yes">✓</td><td class="part">محدود</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="yes">✓</td></tr>
+      <tr><td class="feat">فحص أرشيف / APK / JAR</td><td class="col-us yes">✓ + jadx</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="part">صور</td></tr>
+      <tr><td class="feat">فحص ويب (ترويسات/CSP/TLS/مسارات)</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="part">SaaS</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
+      <tr><td class="feat">واجهة رسومية محلية</td><td class="col-us yes">✓ بلا خادم</td><td class="no">SaaS</td><td class="part">خادم+DB</td><td class="no">SaaS</td><td class="part">GitHub</td><td class="no">✗</td><td class="no">✗</td></tr>
+      <tr><td class="feat">نسخة exe بنقرة واحدة</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="part">ثنائي</td></tr>
+      <tr><td class="feat">مقارنة فحصين</td><td class="col-us yes">✓</td><td class="part">SaaS</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+      <tr><td class="feat">يعمل دون إنترنت</td><td class="col-us yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td class="feat">تحليل تدفق البيانات</td><td class="col-us no">✗ أنماط</td><td class="yes">✓ Pro</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓ قوي</td><td class="part">AST</td><td class="no">✗</td></tr>
+      <tr><td class="feat">واجهة ونتائج بالعربية</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
+      <tr><td class="feat">الاعتماديات للتشغيل</td><td class="col-us yes">صفر</td><td class="part">ثنائي</td><td class="part">Java+DB</td><td class="part">حساب</td><td class="part">CLI</td><td class="yes">pip</td><td class="part">Go</td></tr>
+      <tr><td class="feat">السعر</td><td class="col-us yes">مجاني MIT</td><td class="part">مجاني/مدفوع</td><td class="part">مجاني/مدفوع</td><td class="part">محدود/مدفوع</td><td class="part">للمفتوح</td><td class="yes">مجاني</td><td class="yes">مجاني</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">الصدق المهني: أدوات مثل CodeQL وSemgrep Pro وSonarQube وSnyk تُجري <b>تحليل تدفق بيانات</b> حقيقيًا يكشف ثغرات لا تظهر بالأنماط ويقلّل الإنذارات الكاذبة، ولديها آلاف القواعد وتكاملات IDE وPR. الأفضل عمليًا: شغّل vulnscan كطبقة أولى سريعة وخفيفة ومحلية، وثبّت semgrep بجانبه ليدمج نتائجه عند الحاجة إلى عمق أكبر.</p>
+</section>
+
+<section id="download" class="wrap">
+  <h2 class="title">حمّل الآن</h2>
+  <p class="sub">نسخ جاهزة لكل نظام، تُبنى آليًا من المصدر عبر GitHub Actions.</p>
+  <div class="dl">
+    <div class="card"><div class="os">🪟</div><h3>Windows</h3><p>vulnscan-windows.exe</p><p style="margin-top:12px"><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest" target="_blank" rel="noopener">تحميل exe</a></p></div>
+    <div class="card"><div class="os">🍎</div><h3>macOS</h3><p>vulnscan-macos</p><p style="margin-top:12px"><a class="btn ghost" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest" target="_blank" rel="noopener">تحميل</a></p></div>
+    <div class="card"><div class="os">🐧</div><h3>Linux</h3><p>vulnscan-linux</p><p style="margin-top:12px"><a class="btn ghost" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest" target="_blank" rel="noopener">تحميل</a></p></div>
+  </div>
+  <p class="note" style="text-align:center">أو من المصدر: <code style="direction:ltr;unicode-bidi:embed">pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan</code> ثم <code style="direction:ltr;unicode-bidi:embed">vulnscan ui</code></p>
+  <div class="legal">⚠️ افحص فقط ما تملكه أو ما لديك تصريح كتابي بفحصه. فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.</div>
+</section>
+
+<div class="footer wrap">
+  <p>vulnscan — مفتوح المصدر برخصة MIT · <a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan" target="_blank" rel="noopener">GitHub</a></p>
+</div>
+</body>
+</html>

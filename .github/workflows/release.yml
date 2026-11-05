@@ -1,0 +1,52 @@
+name: Build executables
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: vulnscan-windows.exe
+            built: dist/vulnscan.exe
+          - os: macos-latest
+            artifact: vulnscan-macos
+            built: dist/vulnscan
+          - os: ubuntu-latest
+            artifact: vulnscan-linux
+            built: dist/vulnscan
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyinstaller
+      - run: pyinstaller --clean --noconfirm vulnscan.spec
+      - name: Smoke test (the binary starts, serves the UI, then stops)
+        shell: bash
+        run: |
+          "${{ matrix.built }}" ui --no-browser --port 8799 &
+          PID=$!
+          sleep 8
+          curl -fsS http://127.0.0.1:8799/ | grep -q "<title>vulnscan</title>"
+          curl -fsS http://127.0.0.1:8799/styles.css > /dev/null
+          kill $PID
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.built }}
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.built }}
+          fail_on_unmatched_files: true

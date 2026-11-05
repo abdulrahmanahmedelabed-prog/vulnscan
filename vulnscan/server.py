@@ -8,6 +8,7 @@ import pathlib
 import re
 import shutil
 import tempfile
+import sys
 import threading
 import time
 import urllib.parse
@@ -24,7 +25,11 @@ from .scanner import ARCHIVE_EXTS, JADX_EXTS, jadx_available, scan_path
 from .store import Store
 from .web import scan_url
 
-UI_DIR = pathlib.Path(__file__).parent / "ui"
+# When frozen by PyInstaller the UI files are unpacked under sys._MEIPASS.
+if getattr(sys, "frozen", False):
+    UI_DIR = pathlib.Path(getattr(sys, "_MEIPASS", pathlib.Path(sys.executable).parent)) / "vulnscan" / "ui"
+else:
+    UI_DIR = pathlib.Path(__file__).parent / "ui"
 MAX_UPLOAD = 512 * 1024 * 1024
 
 

@@ -6,3 +6,6 @@ build/
 dist/
 *.egg-info/
 vulnscan-report.*
+build/
+dist/
+*.egg-info/

@@ -85,6 +85,21 @@ cd vulnscan
 python -m vulnscan /path/to/project
 ```
 
+## نسخة exe جاهزة (بلا تثبيت Python)
+
+نزّل الملف المناسب من [صفحة الإصدارات](https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest):
+
+| النظام | الملف |
+|---|---|
+| ويندوز | `vulnscan-windows.exe` — انقر مرّتين لفتح الواجهة |
+| macOS | `vulnscan-macos` |
+| لينكس | `vulnscan-linux` |
+
+النسخ تُبنى آليًا عبر GitHub Actions بواسطة PyInstaller من ملف `vulnscan.spec`، وتتضمن الواجهة كاملة.
+لبنائها محليًا: `pip install pyinstaller` ثم `pyinstaller --clean --noconfirm vulnscan.spec` (الناتج في `dist/`).
+
+**صفحة الهبوط**: موقع تعريفي في `site/` يُنشر على GitHub Pages ويتضمن المقارنة مع الأدوات العالمية.
+
 ## التشغيل بنقرة واحدة
 
 بعد تنزيل المشروع وفكّ ضغطه، وتثبيت [Python 3](https://www.python.org/downloads/) (على ويندوز فعّل خيار **Add Python to PATH**):
