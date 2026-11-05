@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "انشر النسخ في إصدار بهذا الوسم (اتركه فارغًا لبناء دون نشر)"
+        type: string
+        default: "v0.1.0"
 
 permissions:
   contents: write
@@ -44,9 +49,14 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.built }}
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish to release
+        # On a tag push, or on a manual run when a tag name is given, create/update
+        # the release and attach this platform's binary. softprops/action-gh-release
+        # creates the tag from the current commit when it does not yet exist.
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           files: ${{ matrix.built }}
           fail_on_unmatched_files: true
