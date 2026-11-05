@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vulnscan</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2306b6d4' d='M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">🛡</span><div><b>vulnscan</b><small id="version"></small></div></div>
+    <nav>
+      <a href="#dashboard" data-nav="dashboard"><span>📊</span><span data-i18n="nav.dashboard">لوحة التحكم</span></a>
+      <a href="#scan" data-nav="scan"><span>🔍</span><span data-i18n="nav.scan">فحص جديد</span></a>
+      <a href="#findings" data-nav="findings"><span>🧾</span><span data-i18n="nav.findings">النتائج</span></a>
+      <a href="#reports" data-nav="reports"><span>📁</span><span data-i18n="nav.reports">التقارير</span></a>
+      <a href="#rules" data-nav="rules"><span>📜</span><span data-i18n="nav.rules">القواعد</span></a>
+      <a href="#settings" data-nav="settings"><span>⚙️</span><span data-i18n="nav.settings">الإعدادات</span></a>
+    </nav>
+    <div class="side-foot">
+      <button id="theme-btn" class="icon-btn" title="Theme">🌗</button>
+      <button id="lang-btn" class="icon-btn" title="Language">EN</button>
+    </div>
+  </aside>
+
+  <main class="content">
+    <!-- ======================== DASHBOARD ======================== -->
+    <section id="page-dashboard" class="page">
+      <header class="page-head">
+        <h1 data-i18n="dash.title">لوحة التحكم</h1>
+        <p class="muted" id="dash-sub" data-i18n="dash.sub">نظرة عامة على آخر فحص والاتجاه العام.</p>
+      </header>
+      <div id="dash-empty" class="empty hidden">
+        <div class="empty-icon">🛡</div>
+        <h2 data-i18n="dash.empty">لا توجد فحوصات بعد</h2>
+        <p data-i18n="dash.emptyHint">ابدأ بفحص مجلد مشروع أو ارفع ملفًا مضغوطًا.</p>
+        <a class="btn primary" href="#scan" data-i18n="nav.scan">فحص جديد</a>
+      </div>
+      <div id="dash-body">
+        <div class="tiles" id="tiles"></div>
+        <div class="grid-2">
+          <div class="card">
+            <h3 data-i18n="dash.donut">توزيع الخطورة (آخر فحص)</h3>
+            <div class="donut-wrap"><svg id="donut" viewBox="0 0 120 120"></svg><div id="donut-legend" class="legend"></div></div>
+          </div>
+          <div class="card">
+            <h3 data-i18n="dash.trend">اتجاه النتائج عبر الفحوصات الأخيرة</h3>
+            <svg id="trend" viewBox="0 0 600 220" preserveAspectRatio="none"></svg>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3 data-i18n="dash.topRules">أكثر الثغرات تكرارًا</h3>
+            <ul id="top-rules" class="list"></ul>
+          </div>
+          <div class="card">
+            <h3 data-i18n="dash.topFiles">أكثر الملفات تأثرًا</h3>
+            <ul id="top-files" class="list"></ul>
+          </div>
+        </div>
+        <div class="card">
+          <h3 data-i18n="dash.recent">الفحوصات الأخيرة</h3>
+          <table class="table" id="recent-table"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================== SCAN ======================== -->
+    <section id="page-scan" class="page">
+      <header class="page-head">
+        <h1 data-i18n="scan.title">فحص جديد</h1>
+        <p class="muted" data-i18n="scan.sub">افحص مجلدًا على هذا الجهاز، أو ارفع برنامجًا مضغوطًا أو ملفات، أو افحص عنوان ويب تملكه.</p>
+      </header>
+      <div class="tabs" id="scan-tabs">
+        <button class="tab active" data-tab="path" data-i18n="scan.tabPath">مسار على الجهاز</button>
+        <button class="tab" data-tab="upload" data-i18n="scan.tabUpload">رفع ملفات / أرشيف</button>
+        <button class="tab" data-tab="url" data-i18n="scan.tabUrl">عنوان ويب</button>
+      </div>
+      <div class="card tab-pane" data-pane="path">
+        <label data-i18n="scan.pathLabel">مسار المجلد أو الملف أو الأرشيف</label>
+        <div class="row">
+          <input id="path-input" class="input mono" placeholder="/home/me/my-project  أو  C:\Users\me\app.apk" dir="ltr">
+          <button id="path-btn" class="btn primary" data-i18n="scan.start">ابدأ الفحص</button>
+        </div>
+        <p class="hint" data-i18n="scan.pathHint">يُفحص المجلد بكل محتوياته (تُتجاهل node_modules و .git و build تلقائيًا).</p>
+      </div>
+      <div class="card tab-pane hidden" data-pane="upload">
+        <div id="dropzone" class="dropzone">
+          <div class="dz-icon">📦</div>
+          <p data-i18n="scan.drop">اسحب وأفلت هنا برنامجًا مضغوطًا (zip / apk / jar / tar.gz / whl) أو أي ملفات</p>
+          <div class="row center">
+            <label class="btn"><span data-i18n="scan.chooseFiles">اختر ملفات</span><input id="file-input" type="file" multiple hidden></label>
+            <label class="btn"><span data-i18n="scan.chooseFolder">اختر مجلدًا كاملًا</span><input id="folder-input" type="file" webkitdirectory multiple hidden></label>
+          </div>
+          <p class="hint" id="upload-list"></p>
+          <button id="upload-btn" class="btn primary hidden" data-i18n="scan.uploadStart">ارفع وافحص</button>
+          <div id="upload-progress" class="progress hidden"><div></div></div>
+        </div>
+      </div>
+      <div class="card tab-pane hidden" data-pane="url">
+        <label data-i18n="scan.urlLabel">عنوان الموقع (فحص سلبي: طلب واحد فقط)</label>
+        <div class="row">
+          <input id="url-input" class="input mono" placeholder="https://example.com" dir="ltr">
+          <button id="url-btn" class="btn primary" data-i18n="scan.start">ابدأ الفحص</button>
+        </div>
+        <label class="check"><input id="url-auth" type="checkbox"> <span data-i18n="scan.authorize">أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه</span></label>
+        <p class="hint warn" data-i18n="scan.legal">فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.</p>
+      </div>
+      <div id="scan-status" class="card hidden">
+        <div class="row between">
+          <div><b id="scan-status-title"></b><div class="muted mono" id="scan-status-target" dir="ltr"></div></div>
+          <div class="spinner" id="scan-spinner"></div>
+        </div>
+        <div id="scan-status-result" class="hidden">
+          <div class="tiles small" id="scan-status-tiles"></div>
+          <div class="row"><a id="scan-status-open" class="btn primary" href="#findings" data-i18n="scan.viewResults">عرض النتائج</a></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================== FINDINGS ======================== -->
+    <section id="page-findings" class="page">
+      <header class="page-head row between wrap">
+        <div><h1 data-i18n="find.title">النتائج</h1><p class="muted" data-i18n="find.sub">مرتبة من الأعلى خطورة إلى الأقل. اضغط على أي نتيجة لعرض التفاصيل وطريقة الإصلاح.</p></div>
+        <select id="findings-scan" class="input"></select>
+      </header>
+      <div class="card filters">
+        <div class="sev-filter" id="sev-filter"></div>
+        <input id="findings-search" class="input" data-i18n-ph="find.search" placeholder="ابحث في الملف أو القاعدة أو النص…">
+        <select id="source-filter" class="input"><option value="">كل المصادر</option></select>
+        <div class="row gap">
+          <a id="dl-md" class="btn" download>Markdown</a><a id="dl-json" class="btn" download>JSON</a><a id="dl-html" class="btn" download>HTML</a>
+        </div>
+      </div>
+      <div id="findings-notes" class="notes"></div>
+      <div id="findings-list" class="findings"></div>
+    </section>
+
+    <!-- ======================== REPORTS ======================== -->
+    <section id="page-reports" class="page">
+      <header class="page-head">
+        <h1 data-i18n="rep.title">التقارير</h1>
+        <p class="muted" data-i18n="rep.sub">سجل كل الفحوصات، تنزيل التقارير، ومقارنة فحصين لمعرفة ما أُصلح وما استجد.</p>
+      </header>
+      <div class="card">
+        <h3 data-i18n="rep.compare">مقارنة فحصين</h3>
+        <div class="row wrap">
+          <select id="cmp-a" class="input"></select><span>⇄</span><select id="cmp-b" class="input"></select>
+          <button id="cmp-btn" class="btn primary" data-i18n="rep.compareBtn">قارن</button>
+        </div>
+        <div id="cmp-result" class="hidden">
+          <div class="tiles small" id="cmp-tiles"></div>
+          <div class="grid-2">
+            <div><h4 data-i18n="rep.fixed">✅ أُصلحت (اختفت)</h4><ul id="cmp-fixed" class="list"></ul></div>
+            <div><h4 data-i18n="rep.new">🆕 جديدة (ظهرت)</h4><ul id="cmp-new" class="list"></ul></div>
+          </div>
+        </div>
+      </div>
+      <div class="card"><table class="table" id="reports-table"></table></div>
+    </section>
+
+    <!-- ======================== RULES ======================== -->
+    <section id="page-rules" class="page">
+      <header class="page-head"><h1 data-i18n="rules.title">القواعد المدمجة</h1><p class="muted" id="rules-count"></p></header>
+      <div class="card filters"><input id="rules-search" class="input" data-i18n-ph="rules.search" placeholder="ابحث في القواعد…"></div>
+      <div class="card"><table class="table" id="rules-table"></table></div>
+    </section>
+
+    <!-- ======================== SETTINGS ======================== -->
+    <section id="page-settings" class="page">
+      <header class="page-head"><h1 data-i18n="set.title">الإعدادات</h1><p class="muted" data-i18n="set.sub">تُحفظ على هذا الجهاز وتُطبَّق على كل الفحوصات القادمة.</p></header>
+      <form id="settings-form" class="card form">
+        <div class="field"><label data-i18n="set.minSev">أدنى خطورة تُعرض</label>
+          <select name="min_severity" class="input"><option value="info">info</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="critical">critical</option></select></div>
+        <div class="field"><label data-i18n="set.failOn">إفشال CI عند خطورة</label>
+          <select name="fail_on" class="input"><option value="critical">critical</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option></select></div>
+        <div class="field"><label data-i18n="set.exclude">مسارات مستثناة (سطر لكل نمط)</label><textarea name="exclude" class="input mono" rows="4" dir="ltr"></textarea></div>
+        <div class="field"><label data-i18n="set.ignore">قواعد متجاهَلة (معرّف لكل سطر)</label><textarea name="ignore_rules" class="input mono" rows="3" dir="ltr"></textarea></div>
+        <div class="field"><label data-i18n="set.authTargets">عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)</label><textarea name="authorized_targets" class="input mono" rows="3" dir="ltr"></textarea></div>
+        <label class="check"><input type="checkbox" name="use_osv"> <span data-i18n="set.osv">الاستعلام من OSV.dev عن ثغرات الاعتماديات (يحتاج إنترنت)</span></label>
+        <label class="check"><input type="checkbox" name="use_external"> <span data-i18n="set.external">دمج نتائج الأدوات الخارجية المثبّتة</span> <small id="ext-tools" class="muted"></small></label>
+        <div class="field"><label data-i18n="set.keep">عدد الفحوصات المحفوظة</label><input type="number" name="keep_scans" class="input" min="1" max="500"></div>
+        <div class="row"><button class="btn primary" type="submit" data-i18n="set.save">حفظ</button><span id="settings-saved" class="muted"></span></div>
+        <p class="hint" id="settings-home"></p>
+      </form>
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
                     + AUTHORIZATION_NOTICE,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("target", help="مسار مجلد/ملف/أرشيف، أو عنوان http(s):// للفحص السلبي")
+    p.add_argument("target", help="مسار مجلد/ملف/أرشيف، أو عنوان http(s):// للفحص السلبي، أو «ui» لتشغيل الواجهة الرسومية")
     p.add_argument("--authorized", action="store_true",
                    help="أقرّ بأنني مخوَّل بفحص هذا الهدف (إلزامي لفحص عناوين الويب)")
     p.add_argument("-f", "--format", choices=("console", "markdown", "json", "html"), default="console")
@@ -44,6 +44,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--list-rules", action="store_true", help="اعرض القواعد المدمجة واخرج")
     p.add_argument("--version", action="version", version=f"vulnscan {__version__}")
     return p
+
+
+def ui_main(argv: list[str]) -> int:
+    """`vulnscan ui`: start the local web dashboard."""
+    p = argparse.ArgumentParser(prog="vulnscan ui", description="تشغيل الواجهة الرسومية المحلية (لوحة تحكم، فحص، تقارير، إعدادات).")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-browser", action="store_true", help="لا تفتح المتصفح تلقائيًا")
+    a = p.parse_args(argv)
+    from .server import serve
+    serve(a.port, open_browser=not a.no_browser)
+    return 0
 
 
 def _list_rules() -> str:
@@ -82,6 +93,9 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "ui":
+        return ui_main(argv[1:])
     args = build_parser().parse_args(argv)
     if args.list_rules:
         print(_list_rules())

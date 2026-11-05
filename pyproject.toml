@@ -19,3 +19,6 @@ vulnscan = "vulnscan.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["vulnscan*"]
+
+[tool.setuptools.package-data]
+vulnscan = ["ui/*"]
