@@ -50,10 +50,13 @@ jobs:
           done
           kill $PID 2>/dev/null || true
           test "$OK" = 1
+      - name: Name the binary per platform
+        shell: bash
+        run: cp "${{ matrix.built }}" "${{ matrix.artifact }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.built }}
+          path: ${{ matrix.artifact }}
       - name: Publish to release
         # On a tag push, or on a manual run when a tag name is given, create/update
         # the release and attach this platform's binary. softprops/action-gh-release
@@ -63,5 +66,5 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          files: ${{ matrix.built }}
+          files: ${{ matrix.artifact }}
           fail_on_unmatched_files: true
