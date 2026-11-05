@@ -14,6 +14,7 @@ import zipfile
 
 from .model import Finding
 from .rules import RULES, SENSITIVE_FILES, Rule
+from . import taint
 
 SKIP_DIRS = {
     ".git", ".hg", ".svn", "node_modules", ".venv", "venv", "env", "__pycache__",
@@ -127,6 +128,10 @@ def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set
                     rule_id=rule.id, severity=rule.severity, title=rule.title, title_ar=rule.title_ar,
                     file=rel, line=lineno, snippet=line.strip()[:200], advice=rule.advice, cwe=rule.cwe,
                 ))
+    if path.suffix.lower() == ".py":
+        for f in taint.analyze(rel, text):
+            if f.rule_id not in ignore_rules:
+                findings.append(f)
     return findings
 
 

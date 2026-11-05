@@ -54,6 +54,24 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
 > ⚠️ كل فحص ويب يتطلب `--authorized` (أو تفعيل الإقرار في الواجهة). افحص فقط المواقع التي تملكها أو لديك
 > تصريح كتابي بفحصها.
 
+### تحليل تدفق البيانات (Taint) للغة Python
+
+إضافةً إلى قواعد الأنماط، تحلّل الأداة ملفات Python عبر شجرة AST وتتعقّب البيانات من **مصادر غير موثوقة**
+(مثل `request.args`/`form`/`json`، و`input()`، و`os.environ`، و`sys.argv`) عبر الإسنادات والعمليات حتى
+**نقاط الخطر**: `eval`/`exec`، و`os.system`، و`subprocess` مع `shell=True`، و`cursor.execute` (حقن SQL)،
+و`open`/`send_file` (اجتياز المسار)، و`pickle.loads`/`yaml.load`، و`render_template_string` (SSTI)، و`redirect`
+(تحويل مفتوح). يلتقط ذلك التدفقات متعددة الخطوات التي لا تكشفها الأنماط:
+
+```python
+name = request.args["q"]
+cmd  = "echo " + name
+os.system(cmd)            # ← يُبلَّغ عنه: قيمة من request.args تصل إلى os.system
+```
+
+ويتجاهل القيمة الثابتة التي تصل إلى النقطة نفسها، كما يتوقف الإبلاغ إذا مرّت القيمة عبر مُعقّم مثل
+`shlex.quote` أو `html.escape`. النتائج تظهر بمصدر `taint` وتبدأ معرّفاتها بـ `DF`. التحليل **داخل الدالة الواحدة**
+وللغة Python فقط، وهو مكمّل لقواعد الأنماط لا بديل عنها.
+
 ### فحص تطبيقات الويب وصفحاتها (الزحف وبصمة المنصّات)
 
 لفحص تطبيق ويب متعدد الصفحات مثل بوابة جامعة أو نظام **Moodle** أو تطبيق **Oracle APEX**، أضِف `--crawl`:
