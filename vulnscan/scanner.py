@@ -128,10 +128,6 @@ def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set
                     rule_id=rule.id, severity=rule.severity, title=rule.title, title_ar=rule.title_ar,
                     file=rel, line=lineno, snippet=line.strip()[:200], advice=rule.advice, cwe=rule.cwe,
                 ))
-    if path.suffix.lower() == ".py":
-        for f in taint.analyze(rel, text):
-            if f.rule_id not in ignore_rules:
-                findings.append(f)
     return findings
 
 
@@ -255,12 +251,23 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
     try:
         findings: list[Finding] = []
         count = 0
+        py_sources: dict[str, str] = {}
         if not (root.is_file() and is_jadx_bundle(root)):  # a bare .dex/.class has nothing to walk
             for p, rel in iter_files(root, excludes):
                 count += 1
                 findings.extend(scan_sensitive_names(rel, ignore_rules))
                 findings.extend(scan_file(p, rel, rules, ignore_rules))
+                if p.suffix.lower() == ".py":
+                    try:
+                        if p.stat().st_size <= MAX_FILE_BYTES:
+                            py_sources[rel] = p.read_text("utf-8", errors="replace")
+                    except OSError:
+                        pass
             findings.extend(scan_project_hygiene(root, ignore_rules))
+            if py_sources:  # whole-project cross-file data-flow (taint) analysis
+                for f in taint.analyze_project(py_sources):
+                    if f.rule_id not in ignore_rules:
+                        findings.append(f)
         if tmp is not None:
             for f in findings:
                 f.file = f"{target.name}!{f.file}"
