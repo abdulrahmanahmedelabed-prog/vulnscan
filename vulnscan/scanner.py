@@ -7,6 +7,7 @@ import os
 import pathlib
 import re
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import zipfile
@@ -30,6 +31,21 @@ SKIP_FILE_GLOBS = (
 ARCHIVE_EXTS = (".zip", ".jar", ".war", ".ear", ".apk", ".aar", ".whl", ".ipa", ".nupkg",
                 ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz")
 MAX_FILE_BYTES = 2 * 1024 * 1024
+# Binary bundles jadx can decompile (Java/Kotlin bytecode and Android packages).
+JADX_EXTS = (".apk", ".jar", ".aar", ".war", ".ear", ".dex", ".class", ".aab", ".xapk")
+# Third-party packages inside decompiled bundles: scanning them floods the
+# report with issues the user cannot fix. Disabled with jadx_include_libs.
+JADX_LIB_EXCLUDES = [
+    "sources/android/*", "sources/androidx/*", "sources/kotlin/*", "sources/kotlinx/*", "sources/java/*",
+    "sources/javax/*", "sources/com/google/*", "sources/com/android/*", "sources/okhttp3/*", "sources/okio/*",
+    "sources/io/flutter/*", "sources/org/apache/*", "sources/com/squareup/*", "sources/retrofit2/*",
+    "sources/dagger/*", "sources/io/reactivex/*", "sources/org/jetbrains/*", "sources/com/facebook/*",
+    "sources/org/intellij/*", "sources/com/fasterxml/*", "sources/org/json/*", "sources/io/sentry/*",
+    "sources/com/bumptech/*", "sources/coil/*", "sources/timber/*", "sources/org/slf4j/*", "sources/ch/qos/*",
+    "sources/org/springframework/*", "sources/io/netty/*", "sources/scala/*", "sources/org/bouncycastle/*",
+    "sources/io/grpc/*", "sources/com/unity3d/*", "sources/com/adjust/*", "sources/com/onesignal/*",
+    "resources/META-INF/*", "resources/kotlin/*",
+]
 MAX_LINE_LEN = 4000
 SUPPRESS = re.compile(r"(nosec|vulnscan:\s*ignore|noqa:\s*S\d+)", re.I)
 FILE_SUPPRESS = re.compile(r"vulnscan:\s*ignore-file", re.I)
@@ -168,13 +184,60 @@ def extract_archive(archive: pathlib.Path) -> pathlib.Path:
     return dest
 
 
+def jadx_available() -> str | None:
+    """Path to the jadx CLI if installed (needs a Java runtime)."""
+    return shutil.which("jadx")
+
+
+def decompile_with_jadx(bundle: pathlib.Path, timeout: int = 600) -> tuple[pathlib.Path | None, str]:
+    """Decompile an APK/JAR/AAR/DEX with jadx into a fresh temp dir.
+
+    Returns (output directory or None, human note). The caller removes the
+    directory when done.
+    """
+    exe = jadx_available()
+    if not exe:
+        return None, "jadx غير مثبّت؛ لم يُفكّ تجميع الكود الثنائي (فُحصت الملفات النصية فقط)."
+    out = pathlib.Path(tempfile.mkdtemp(prefix="vulnscan-jadx-"))
+    cmd = [exe, "-q", "--no-debug-info", "-d", str(out), str(bundle)]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        shutil.rmtree(out, ignore_errors=True)
+        return None, f"jadx تجاوز المهلة ({timeout} ثانية)؛ جرّب مهلة أكبر."
+    except OSError as e:
+        shutil.rmtree(out, ignore_errors=True)
+        return None, f"تعذّر تشغيل jadx: {e}"
+    n_java = sum(1 for _ in out.rglob("*.java"))
+    if n_java == 0 and not (out / "resources").exists():
+        err = (proc.stderr or proc.stdout or "").strip().splitlines()
+        shutil.rmtree(out, ignore_errors=True)
+        return None, "jadx لم يُنتج أي ملفات" + (f": {err[-1][:160]}" if err else ".")
+    note = f"jadx: فُكّ تجميع {n_java} ملف Java"
+    if proc.returncode != 0:
+        note += " (مع أخطاء جزئية في بعض الدوال)"
+    return out, note + "."
+
+
+def is_jadx_bundle(path: pathlib.Path) -> bool:
+    return path.is_file() and path.name.lower().endswith(JADX_EXTS)
+
+
 def is_archive(path: pathlib.Path) -> bool:
     return path.is_file() and path.name.lower().endswith(ARCHIVE_EXTS)
 
 
 def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
-              ignore_rules: set[str] | None = None, rules: list[Rule] | None = None) -> tuple[list[Finding], int]:
-    """Scan a directory, a single file or an archive. Returns (findings, files_scanned)."""
+              ignore_rules: set[str] | None = None, rules: list[Rule] | None = None,
+              jadx: bool = True, jadx_timeout: int = 600, jadx_include_libs: bool = False,
+              notes: list[str] | None = None) -> tuple[list[Finding], int]:
+    """Scan a directory, a single file or an archive. Returns (findings, files_scanned).
+
+    For APK/JAR/AAR/DEX bundles, when ``jadx`` is True and the jadx CLI is
+    installed, the bytecode is decompiled and the Java sources plus decoded
+    Android resources are scanned too (paths prefixed ``bundle!decompiled/``).
+    Human-readable notes about that step are appended to ``notes``.
+    """
     excludes = excludes or []
     ignore_rules = ignore_rules or set()
     rules = rules or RULES
@@ -183,17 +246,31 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
     if is_archive(target):
         tmp = extract_archive(target)
         root = tmp
+    jadx_dir = None
     try:
         findings: list[Finding] = []
         count = 0
-        for p, rel in iter_files(root, excludes):
-            count += 1
-            findings.extend(scan_sensitive_names(rel, ignore_rules))
-            findings.extend(scan_file(p, rel, rules, ignore_rules))
-        findings.extend(scan_project_hygiene(root, ignore_rules))
+        if not (root.is_file() and is_jadx_bundle(root)):  # a bare .dex/.class has nothing to walk
+            for p, rel in iter_files(root, excludes):
+                count += 1
+                findings.extend(scan_sensitive_names(rel, ignore_rules))
+                findings.extend(scan_file(p, rel, rules, ignore_rules))
+            findings.extend(scan_project_hygiene(root, ignore_rules))
         if tmp is not None:
             for f in findings:
                 f.file = f"{target.name}!{f.file}"
+        if jadx and is_jadx_bundle(target):
+            jadx_dir, note = decompile_with_jadx(target, jadx_timeout)
+            if notes is not None:
+                notes.append(note)
+            if jadx_dir is not None:
+                jadx_ex = excludes + ([] if jadx_include_libs else JADX_LIB_EXCLUDES)
+                for p, rel in iter_files(jadx_dir, jadx_ex):
+                    count += 1
+                    for f in scan_sensitive_names(rel, ignore_rules) + scan_file(p, rel, rules, ignore_rules):
+                        f.file = f"{target.name}!decompiled/{f.file}"
+                        f.extra["decompiled"] = True
+                        findings.append(f)
         seen = set()
         unique = []
         for f in findings:
@@ -204,3 +281,5 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
     finally:
         if tmp is not None:
             shutil.rmtree(tmp, ignore_errors=True)
+        if jadx_dir is not None:
+            shutil.rmtree(jadx_dir, ignore_errors=True)

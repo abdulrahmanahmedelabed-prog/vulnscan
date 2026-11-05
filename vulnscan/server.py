@@ -20,7 +20,7 @@ from .external import available, run_external
 from .model import SEVERITY_RANK, Finding, sort_findings
 from .report import render_html, render_json, render_markdown, summary_counts
 from .rules import RULES
-from .scanner import ARCHIVE_EXTS, scan_path
+from .scanner import ARCHIVE_EXTS, JADX_EXTS, jadx_available, scan_path
 from .store import Store
 from .web import scan_url
 
@@ -50,7 +50,9 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
             path = pathlib.Path(target)
             if not path.exists():
                 raise FileNotFoundError(f"الهدف غير موجود: {target}")
-            findings, files = scan_path(path, settings.get("exclude") or [], set(settings.get("ignore_rules") or []))
+            findings, files = scan_path(path, settings.get("exclude") or [], set(settings.get("ignore_rules") or []),
+                                        jadx=bool(settings.get("use_jadx", True)), jadx_timeout=int(settings.get("jadx_timeout") or 600),
+                                        jadx_include_libs=bool(settings.get("jadx_include_libs")), notes=notes)
             scan["files_scanned"] = files
             store.save_scan(scan)
             if settings.get("use_osv", True):
@@ -177,8 +179,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "cwe": r.cwe, "advice": r.advice,
                                 "langs": sorted(r.langs) if r.langs else ["*"]} for r in RULES])
         if path == "/api/meta":
-            return self._json({"version": __version__, "external_tools": available(),
-                               "archive_exts": list(ARCHIVE_EXTS), "home": str(self.store.home)})
+            return self._json({"version": __version__, "external_tools": available(), "jadx": jadx_available(),
+                               "archive_exts": list(ARCHIVE_EXTS), "jadx_exts": list(JADX_EXTS), "home": str(self.store.home)})
         if path == "/api/scans":
             return self._json(self.store.list_scans())
         if path == "/api/stats":

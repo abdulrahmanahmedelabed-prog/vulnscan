@@ -40,6 +40,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fail-on", choices=SEVERITIES, help="أعد رمز خروج 1 إذا وُجدت نتيجة بهذه الخطورة أو أعلى (لـ CI)")
     p.add_argument("--no-deps", action="store_true", help="لا تستعلم OSV.dev عن ثغرات الاعتماديات (دون إنترنت)")
     p.add_argument("--no-external", action="store_true", help="لا تشغّل bandit/semgrep/gitleaks/npm حتى لو كانت مثبّتة")
+    p.add_argument("--no-jadx", action="store_true", help="لا تفكّ تجميع APK/JAR/AAR/DEX حتى لو كان jadx مثبّتًا")
+    p.add_argument("--jadx-timeout", type=int, default=600, metavar="SEC", help="مهلة jadx بالثواني (الافتراضي 600)")
+    p.add_argument("--jadx-include-libs", action="store_true", help="افحص أيضًا مكتبات الطرف الثالث داخل الكود المفكوك")
     p.add_argument("--no-color", action="store_true")
     p.add_argument("--list-rules", action="store_true", help="اعرض القواعد المدمجة واخرج")
     p.add_argument("--version", action="version", version=f"vulnscan {__version__}")
@@ -79,7 +82,8 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
     path = pathlib.Path(target)
     if not path.exists():
         raise SystemExit(f"الهدف غير موجود: {target}")
-    findings, files = scan_path(path, args.exclude, set(args.ignore_rule))
+    findings, files = scan_path(path, args.exclude, set(args.ignore_rule), jadx=not args.no_jadx,
+                                jadx_timeout=args.jadx_timeout, jadx_include_libs=args.jadx_include_libs, notes=notes)
     if not args.no_deps:
         dep_findings, err = audit_dependencies(path)
         findings.extend(dep_findings)

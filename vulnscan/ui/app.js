@@ -20,7 +20,7 @@ const I18N = {
     'rules.title': 'القواعد المدمجة', 'rules.search': 'ابحث في القواعد…', 'rules.count': 'قاعدة', 'rules.id': 'المعرّف', 'rules.sev': 'الخطورة', 'rules.name': 'الثغرة', 'rules.langs': 'الملفات', 'rules.advice': 'الإصلاح',
     'set.title': 'الإعدادات', 'set.sub': 'تُحفظ على هذا الجهاز وتُطبَّق على كل الفحوصات القادمة.', 'set.minSev': 'أدنى خطورة تُعرض', 'set.failOn': 'إفشال CI عند خطورة', 'set.exclude': 'مسارات مستثناة (سطر لكل نمط)',
     'set.ignore': 'قواعد متجاهَلة (معرّف لكل سطر)', 'set.authTargets': 'عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)', 'set.osv': 'الاستعلام من OSV.dev عن ثغرات الاعتماديات (يحتاج إنترنت)',
-    'set.external': 'دمج نتائج الأدوات الخارجية المثبّتة', 'set.keep': 'عدد الفحوصات المحفوظة', 'set.save': 'حفظ', 'set.saved': 'تم الحفظ ✓', 'set.home': 'مجلد البيانات', 'set.none': 'لا توجد أدوات مثبّتة',
+    'set.external': 'دمج نتائج الأدوات الخارجية المثبّتة', 'set.jadx': 'فك تجميع APK / JAR / AAR / DEX بواسطة jadx وفحص الكود الناتج', 'set.jadxLibs': 'فحص مكتبات الطرف الثالث داخل الكود المفكوك أيضًا (نتائج أكثر وضجيج أكثر)', 'set.jadxTimeout': 'مهلة jadx بالثواني', 'set.jadxOn': 'jadx مثبّت ✓', 'set.jadxOff': 'jadx غير مثبّت — ثبّته من github.com/skylot/jadx ليُفكّ الكود الثنائي', 'scan.jadxOn': 'jadx مثبّت: سيُفكّ تجميع APK/JAR/AAR/DEX ويُفحص الكود الناتج أيضًا.', 'scan.jadxOff': 'jadx غير مثبّت: تُفحص الملفات النصية داخل APK/JAR فقط. ثبّت jadx (يحتاج Java) لفك تجميع الكود.', 'set.keep': 'عدد الفحوصات المحفوظة', 'set.save': 'حفظ', 'set.saved': 'تم الحفظ ✓', 'set.home': 'مجلد البيانات', 'set.none': 'لا توجد أدوات مثبّتة',
     status: {running: 'جارٍ', done: 'مكتمل', error: 'خطأ'},
   },
   en: {
@@ -41,7 +41,7 @@ const I18N = {
     'rules.title': 'Built-in rules', 'rules.search': 'Search rules…', 'rules.count': 'rules', 'rules.id': 'ID', 'rules.sev': 'Severity', 'rules.name': 'Issue', 'rules.langs': 'Files', 'rules.advice': 'Remediation',
     'set.title': 'Settings', 'set.sub': 'Saved on this machine and applied to every new scan.', 'set.minSev': 'Minimum severity shown', 'set.failOn': 'Fail CI at severity', 'set.exclude': 'Excluded paths (one glob per line)',
     'set.ignore': 'Ignored rules (one ID per line)', 'set.authTargets': 'Authorized web targets (one per line)', 'set.osv': 'Query OSV.dev for vulnerable dependencies (needs internet)',
-    'set.external': 'Merge installed external scanners', 'set.keep': 'Scans to keep', 'set.save': 'Save', 'set.saved': 'Saved ✓', 'set.home': 'Data folder', 'set.none': 'none installed',
+    'set.external': 'Merge installed external scanners', 'set.jadx': 'Decompile APK / JAR / AAR / DEX with jadx and scan the output', 'set.jadxLibs': 'Also scan third-party libraries inside decompiled code (more findings, more noise)', 'set.jadxTimeout': 'jadx timeout (seconds)', 'set.jadxOn': 'jadx installed ✓', 'set.jadxOff': 'jadx not installed — get it from github.com/skylot/jadx to decompile bytecode', 'scan.jadxOn': 'jadx installed: APK/JAR/AAR/DEX will be decompiled and the code scanned too.', 'scan.jadxOff': 'jadx not installed: only text files inside APK/JAR are scanned. Install jadx (needs Java) to decompile code.', 'set.keep': 'Scans to keep', 'set.save': 'Save', 'set.saved': 'Saved ✓', 'set.home': 'Data folder', 'set.none': 'none installed',
     status: {running: 'Running', done: 'Done', error: 'Error'},
   },
 };
@@ -230,7 +230,7 @@ function renderFindings() {
   list.forEach((f, i) => {
     if (f.severity !== last) { last = f.severity; html += `<div class="sev-head">${badge(f.severity)} <span>${list.filter((x) => x.severity === f.severity).length}</span></div>`; }
     const loc = f.line ? `${f.file}:${f.line}` : f.file;
-    html += `<div class="finding ${f.severity}" data-i="${i}"><div class="head"><code>${esc(f.rule_id)}</code><b>${esc(lang === 'ar' ? f.title_ar : f.title)}</b>${f.cwe ? `<small class="muted">${esc(f.cwe)}</small>` : ''}<small class="muted">${esc(f.source)}</small></div>
+    html += `<div class="finding ${f.severity}" data-i="${i}"><div class="head"><code>${esc(f.rule_id)}</code><b>${esc(lang === 'ar' ? f.title_ar : f.title)}</b>${f.cwe ? `<small class="muted">${esc(f.cwe)}</small>` : ''}<small class="muted">${esc(f.source)}</small>${f.extra && f.extra.decompiled ? '<small class="badge info">jadx</small>' : ''}</div>
       <div class="loc">${esc(loc)}</div>
       <div class="body"><div class="muted">${esc(lang === 'ar' ? f.title : f.title_ar)}</div>${f.snippet ? `<div><b>${t('find.snippet')}</b><pre>${esc(f.snippet)}</pre></div>` : ''}<div class="advice"><b>💡 ${t('find.advice')}:</b> ${esc(f.advice)}</div>${f.extra && f.extra.url ? `<p><b>${t('find.ref')}:</b> <a href="${esc(f.extra.url)}" target="_blank" rel="noopener">${esc(f.extra.url)}</a></p>` : ''}</div></div>`;
   });
@@ -280,6 +280,8 @@ async function loadSettings() {
   f.min_severity.value = s.min_severity; f.fail_on.value = s.fail_on; f.keep_scans.value = s.keep_scans;
   f.exclude.value = s.exclude.join('\n'); f.ignore_rules.value = s.ignore_rules.join('\n'); f.authorized_targets.value = s.authorized_targets.join('\n');
   f.use_osv.checked = !!s.use_osv; f.use_external.checked = !!s.use_external;
+  f.use_jadx.checked = !!s.use_jadx; f.jadx_include_libs.checked = !!s.jadx_include_libs; f.jadx_timeout.value = s.jadx_timeout;
+  $('#jadx-state').textContent = `(${meta.jadx ? t('set.jadxOn') : t('set.jadxOff')})`;
   $('#ext-tools').textContent = `(${meta.external_tools.length ? meta.external_tools.join(', ') : t('set.none')})`;
   $('#settings-home').textContent = `${t('set.home')}: ${meta.home}`;
   $('#version').textContent = 'v' + meta.version;
@@ -287,10 +289,11 @@ async function loadSettings() {
 $('#settings-form').onsubmit = async (e) => {
   e.preventDefault(); const f = e.target; const lines = (v) => v.split('\n').map((x) => x.trim()).filter(Boolean);
   await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
-    exclude: lines(f.exclude.value), ignore_rules: lines(f.ignore_rules.value), authorized_targets: lines(f.authorized_targets.value), use_osv: f.use_osv.checked, use_external: f.use_external.checked})});
+    exclude: lines(f.exclude.value), ignore_rules: lines(f.ignore_rules.value), authorized_targets: lines(f.authorized_targets.value), use_osv: f.use_osv.checked, use_external: f.use_external.checked,
+    use_jadx: f.use_jadx.checked, jadx_include_libs: f.jadx_include_libs.checked, jadx_timeout: +f.jadx_timeout.value})});
   $('#settings-saved').textContent = t('set.saved'); setTimeout(() => $('#settings-saved').textContent = '', 2000);
 };
 
 /* --------------------------------------------------------------------- boot */
-api('/api/meta').then((m) => { $('#version').textContent = 'v' + m.version; });
+api('/api/meta').then((m) => { $('#version').textContent = 'v' + m.version; $('#jadx-hint').textContent = m.jadx ? t('scan.jadxOn') : t('scan.jadxOff'); });
 applyLang(); route();

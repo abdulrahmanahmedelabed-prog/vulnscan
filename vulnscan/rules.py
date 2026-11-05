@@ -62,7 +62,7 @@ RULES: list[Rule] = [
          _r(r"\b(ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{60,}|glpat-[A-Za-z0-9\-_]{20}|xox[baprs]-[A-Za-z0-9\-]{10,}|sk_live_[0-9a-zA-Z]{24}|sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}|AIza[0-9A-Za-z\-_]{35})\b"),
          "أبطل الرمز من لوحة الخدمة وأصدر غيره، وانقله إلى متغيرات البيئة.", "CWE-798"),
     Rule("SEC004", "high", "Hard-coded password / secret / API key", "كلمة مرور أو مفتاح API مكتوب في الكود",
-         _r(r"""(?i)\b(password|passwd|pwd|secret|api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret)\b\s*[:=]\s*['"][^'"\s]{6,}['"]"""),
+         _r(r"""(?i)\b(password|passwd|pwd|secret|api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret)\b['"]?\s*[:=]\s*['"][^'"\s]{6,}['"]"""),
          "انقل القيمة إلى متغير بيئة أو مدير أسرار، وأصدر قيمة جديدة إذا كانت حقيقية.", "CWE-798",
          skip=_r(r"""(?i)(example|sample|placeholder|changeme|your[_-]|xxx+|\$\{|\{\{|<[a-z_]+>|os\.environ|getenv|process\.env|dummy|test|fake|mock|redacted|\*{3,})""")),
     Rule("SEC005", "high", "JWT token literal", "رمز JWT مكتوب حرفيًا",
