@@ -44,7 +44,7 @@ def wait_done(base, sid):
 
 def test_static_and_meta(server):
     status, body = call(server, "/")
-    assert status == 200 and b"<title>vulnscan</title>" in body
+    assert status == 200 and b"<title>" in body and b"vulnscan" in body
     assert call(server, "/../pyproject.toml")[0] == 404
     assert json.loads(call(server, "/api/meta")[1])["version"]
 

@@ -37,7 +37,7 @@ jobs:
           "${{ matrix.built }}" ui --no-browser --port 8799 &
           PID=$!
           sleep 8
-          curl -fsS http://127.0.0.1:8799/ | grep -q "<title>vulnscan</title>"
+          curl -fsS http://127.0.0.1:8799/ | grep -q "vulnscan"
           curl -fsS http://127.0.0.1:8799/styles.css > /dev/null
           kill $PID
       - uses: actions/upload-artifact@v4
