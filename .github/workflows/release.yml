@@ -68,3 +68,20 @@ jobs:
           name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           files: ${{ matrix.artifact }}
           fail_on_unmatched_files: true
+
+      - name: Prune stray release assets
+        # Keep only the three platform binaries; remove anything left from an
+        # earlier run (e.g. a mis-named asset). Runs once, on the Linux job.
+        if: matrix.os == 'ubuntu-latest' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != ''))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        shell: bash
+        run: |
+          keep=" vulnscan-linux vulnscan-macos vulnscan-windows.exe "
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | while read -r name; do
+            case "$keep" in
+              *" $name "*) ;;
+              *) echo "removing stray asset: $name"; gh release delete-asset "$TAG" "$name" -y --repo "$GITHUB_REPOSITORY" || true ;;
+            esac
+          done
