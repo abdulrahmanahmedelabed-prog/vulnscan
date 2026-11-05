@@ -12,5 +12,10 @@ from vulnscan.cli import main
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     args = sys.argv[1:] or ["ui"]
     sys.exit(main(args))

@@ -105,7 +105,17 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
     return findings, str(path), files, notes
 
 
+def _force_utf8_output() -> None:
+    """Arabic output crashes on a cp1252 Windows console; force UTF-8 if we can."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_output()
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "ui":
         return ui_main(argv[1:])
