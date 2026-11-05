@@ -40,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fail-on", choices=SEVERITIES, help="أعد رمز خروج 1 إذا وُجدت نتيجة بهذه الخطورة أو أعلى (لـ CI)")
     p.add_argument("--no-deps", action="store_true", help="لا تستعلم OSV.dev عن ثغرات الاعتماديات (دون إنترنت)")
     p.add_argument("--no-external", action="store_true", help="لا تشغّل bandit/semgrep/gitleaks/npm حتى لو كانت مثبّتة")
+    p.add_argument("--deep", action="store_true", help="فحص ويب أعمق: تحليل HTML وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)")
     p.add_argument("--no-jadx", action="store_true", help="لا تفكّ تجميع APK/JAR/AAR/DEX حتى لو كان jadx مثبّتًا")
     p.add_argument("--jadx-timeout", type=int, default=600, metavar="SEC", help="مهلة jadx بالثواني (الافتراضي 600)")
     p.add_argument("--jadx-include-libs", action="store_true", help="افحص أيضًا مكتبات الطرف الثالث داخل الكود المفكوك")
@@ -73,10 +74,11 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
     if target.startswith(("http://", "https://")):
         if not args.authorized:
             raise SystemExit("فحص عنوان ويب يتطلب --authorized (تأكيد أنك مخوَّل بفحص هذا الهدف).")
-        findings, err = scan_url(target)
+        findings, err = scan_url(target, deep=args.deep)
         if err:
             notes.append(err)
-        notes.append("فحص ويب سلبي: طلب واحد فقط، بلا أي اختبار نشط.")
+        notes.append("فحص ويب سلبي أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة، بلا اختبار نشط."
+                     if args.deep else "فحص ويب سلبي: طلب واحد فقط، بلا أي اختبار نشط.")
         return findings, target, 1, notes
 
     path = pathlib.Path(target)

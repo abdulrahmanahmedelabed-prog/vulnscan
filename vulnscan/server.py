@@ -43,9 +43,10 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
         if target.startswith(("http://", "https://")):
             if not authorized:
                 raise PermissionError("فحص عنوان ويب يتطلب تأكيد الصلاحية.")
-            findings, err = scan_url(target)
+            deep = bool(scan.get("deep"))
+            findings, err = scan_url(target, deep=deep)
             files = 1
-            notes.append(err or "فحص ويب سلبي: طلب واحد فقط.")
+            notes.append(err or ("فحص ويب سلبي أعمق: تحليل الصفحة ومسارات مكشوفة شائعة." if deep else "فحص ويب سلبي: طلب واحد فقط."))
         else:
             path = pathlib.Path(target)
             if not path.exists():
@@ -229,6 +230,9 @@ class Handler(BaseHTTPRequestHandler):
         if target.startswith(("http://", "https://")) and not authorized:
             return self._json({"error": "authorization required"}, 403)
         scan = self.store.new_scan(target, body.get("kind") or ("url" if target.startswith("http") else "path"))
+        if body.get("deep"):
+            scan["deep"] = True
+            self.store.save_scan(scan)
         threading.Thread(target=run_scan, args=(self.store, scan, settings, authorized), daemon=True).start()
         return self._json(scan, 202)
 
