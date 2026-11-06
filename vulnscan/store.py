@@ -30,9 +30,10 @@ DEFAULT_SETTINGS = {
 
 class Store:
     def __init__(self, home: pathlib.Path | None = None):
+        # nosec: VULNSCAN_HOME is the operator's own install location, not untrusted input; the store only ever writes under it.
         self.home = home or pathlib.Path(os.environ.get("VULNSCAN_HOME") or pathlib.Path.home() / ".vulnscan")
         self.scans_dir = self.home / "scans"
-        self.scans_dir.mkdir(parents=True, exist_ok=True)
+        self.scans_dir.mkdir(parents=True, exist_ok=True)  # nosec: scans_dir is under the operator-configured home.
         self._lock = threading.Lock()
 
     # ---------------------------------------------------------------- settings
@@ -69,7 +70,7 @@ class Store:
             final = self.scans_dir / f"{scan['id']}.json"
             tmp = final.with_suffix(".tmp")
             tmp.write_text(json.dumps(scan, ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, final)
+            os.replace(tmp, final)  # nosec: final is derived from the operator-configured home, not from scanned input.
         self._prune()
 
     def get_scan(self, scan_id: str) -> dict | None:

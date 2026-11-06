@@ -228,6 +228,21 @@ def is_archive(path: pathlib.Path) -> bool:
     return path.is_file() and path.name.lower().endswith(ARCHIVE_EXTS)
 
 
+def frontend_notes(projects) -> list[str]:
+    """What the language frontends could not parse: one note per file with skipped statements, so nothing is dropped silently."""
+    out: list[str] = []
+    for proj in projects:
+        for rel, d in sorted(getattr(proj, "diagnostics", {}).items()):
+            if not d.get("skipped"):
+                continue
+            lines = ", ".join(str(ln) for ln, _ in d["lines"][:8])
+            more = f" …+{d['skipped'] - 8}" if d["skipped"] > 8 else ""
+            total = d["statements"] + d["skipped"]
+            out.append(f"الواجهة الأمامية ({d['language']}): تخطّت {d['skipped']} من {total} عبارة في {rel} (الأسطر {lines}{more}) — "
+                       f"frontend skipped {d['skipped']}/{total} statements in {rel}")
+    return out
+
+
 def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
               ignore_rules: set[str] | None = None, rules: list[Rule] | None = None,
               jadx: bool = True, jadx_timeout: int = 600, jadx_include_libs: bool = False,
@@ -259,7 +274,8 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                 findings.extend(scan_sensitive_names(rel, ignore_rules))
                 findings.extend(scan_file(p, rel, rules, ignore_rules))
                 if p.suffix.lower() in (".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
-                                        ".java", ".kt", ".kts", ".cs", ".go", ".php", ".phtml") \
+                                        ".java", ".kt", ".kts", ".cs", ".go", ".php", ".phtml",
+                                        ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".rs", ".swift", ".rb", ".rake") \
                         and not p.name.endswith((".min.js", ".d.ts")):
                     try:
                         if p.stat().st_size <= MAX_FILE_BYTES:
@@ -270,6 +286,8 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
             if py_sources:  # whole-project cross-file data-flow (taint) analysis: Python + JS/TS, then VQL queries
                 projects, flows = taint.analyze_project_full(py_sources, models_dirs)
                 findings.extend(f for f in flows if f.rule_id not in ignore_rules)
+                if notes is not None:
+                    notes.extend(frontend_notes(projects))
                 if queries or query_paths:
                     qf, qnotes = vql.run_queries(projects, flows, query_paths, builtin=queries)
                     findings.extend(f for f in qf if f.rule_id not in ignore_rules)

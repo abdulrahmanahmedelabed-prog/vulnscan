@@ -45,7 +45,10 @@ DEFAULT_MODELS = pathlib.Path(__file__).parent / "models" / "python.json"
 DEFAULT_JS_MODELS = pathlib.Path(__file__).parent / "models" / "javascript.json"
 PY_EXTS = (".py",)
 JS_EXTS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
-CFAMILY = {".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".cs": "csharp", ".go": "go", ".php": "php", ".phtml": "php"}
+CFAMILY = {".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".cs": "csharp", ".go": "go", ".php": "php", ".phtml": "php",
+           ".c": "cpp", ".h": "cpp", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp",
+           ".rs": "rust", ".swift": "swift", ".rb": "ruby", ".rake": "ruby"}
+CFAMILY_LANGS = ("java", "kotlin", "csharp", "go", "php", "cpp", "rust", "swift", "ruby")
 MODELS_DIR = pathlib.Path(__file__).parent / "models"
 CONTAINER_WRITES = {"append", "extend", "insert", "add", "update", "put", "setdefault"}
 ARG_INJECTION = ("DF009", "medium", "Tainted data reaches a subprocess argument",
@@ -200,6 +203,7 @@ class Project:
     def __init__(self, models: dict | None = None):
         self.m = models or load_models()
         self.files: dict[str, dict] = {}
+        self.diagnostics: dict[str, dict] = {}   # rel path -> frontend parse diagnostics (skipped statements)
         self.gfuncs: dict[str, dict] = {}
         self.classes: dict[str, dict] = {}
         self.simple_funcs: dict[str, list] = {}
@@ -666,42 +670,53 @@ class Project:
                         fields[attr] = origin
         return fields, False
 
+    _ORIGIN_RANK = {"source": 0, "retsource": 1, "param": 2, "field": 3}
+
     def _taint(self, mod, cls, node, env):
+        """The most significant taint origin of an expression (sources before parameters before fields)."""
+        origins = self._taints(mod, cls, node, env)
+        if not origins:
+            return None
+        return min(origins, key=lambda o: self._ORIGIN_RANK.get(o[0], 9))
+
+    def _taints(self, mod, cls, node, env) -> list:
+        """All taint origins of an expression: a + b carries both a's and b's origins, so a parameter
+        concatenated with a field still reaches the sink summary as a parameter flow."""
+        if isinstance(node, ast.BinOp):
+            return self._taints(mod, cls, node.left, env) + self._taints(mod, cls, node.right, env)
+        if isinstance(node, ast.BoolOp):
+            out = []
+            for v in node.values:
+                out.extend(self._taints(mod, cls, v, env))
+            return out
+        if isinstance(node, ast.IfExp):
+            return self._taints(mod, cls, node.body, env) + self._taints(mod, cls, node.orelse, env)
+        if isinstance(node, ast.JoinedStr):
+            out = []
+            for v in node.values:
+                if isinstance(v, ast.FormattedValue):
+                    out.extend(self._taints(mod, cls, v.value, env))
+            return out
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            out = []
+            for e in node.elts:
+                out.extend(self._taints(mod, cls, e, env))
+            return out
+        if isinstance(node, ast.Dict):
+            out = []
+            for e in list(node.keys) + list(node.values):
+                if e is not None:
+                    out.extend(self._taints(mod, cls, e, env))
+            return out
+        o = self._taint_one(mod, cls, node, env)
+        return [o] if o else []
+
+    def _taint_one(self, mod, cls, node, env):
         src = self._is_source(mod, node)
         if src:
             return ("source", src, ())
         if isinstance(node, ast.Name):
             return env.tainted.get(node.id)
-        if isinstance(node, ast.BinOp):
-            return self._taint(mod, cls, node.left, env) or self._taint(mod, cls, node.right, env)
-        if isinstance(node, ast.BoolOp):
-            for v in node.values:
-                o = self._taint(mod, cls, v, env)
-                if o:
-                    return o
-            return None
-        if isinstance(node, ast.IfExp):
-            return self._taint(mod, cls, node.body, env) or self._taint(mod, cls, node.orelse, env)
-        if isinstance(node, ast.JoinedStr):
-            for v in node.values:
-                if isinstance(v, ast.FormattedValue):
-                    o = self._taint(mod, cls, v.value, env)
-                    if o:
-                        return o
-            return None
-        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
-            for e in node.elts:
-                o = self._taint(mod, cls, e, env)
-                if o:
-                    return o
-            return None
-        if isinstance(node, ast.Dict):
-            for e in list(node.keys) + list(node.values):
-                if e is not None:
-                    o = self._taint(mod, cls, e, env)
-                    if o:
-                        return o
-            return None
         if isinstance(node, (ast.Subscript, ast.Starred, ast.Await)):
             return self._taint(mod, cls, node.value, env)
         if isinstance(node, ast.Attribute):
@@ -1049,11 +1064,11 @@ class Project:
                     hit = self._attr_sink(node)
                     if hit:
                         si, value = hit
-                        o = self._taint(mod, cls, value, env)
-                        if o and o[0] in {"param", "field"} and not self._suppressed(path, node.lineno):
-                            lst = (new["sink_params"] if o[0] == "param" else new["sink_fields"]).setdefault(o[1], [])
-                            if (si, path, node.lineno) not in lst:
-                                lst.append((si, path, node.lineno))
+                        for o in self._taints(mod, cls, value, env):
+                            if o[0] in {"param", "field"} and not self._suppressed(path, node.lineno):
+                                lst = (new["sink_params"] if o[0] == "param" else new["sink_fields"]).setdefault(o[1], [])
+                                if (si, path, node.lineno) not in lst:
+                                    lst.append((si, path, node.lineno))
                 if new != summ:
                     summ.update(new)
                     changed = True
@@ -1073,9 +1088,10 @@ class Project:
         if si and not self._suppressed(path, call.lineno):
             for idx in si[7]:
                 if idx < len(call.args):
-                    o = self._taint(mod, cls, call.args[idx], env)
-                    if o and not self._guarded(mod, fn, call, self._tainted_names_in(call.args[idx], env)):
-                        record(o, (si, path, call.lineno))
+                    origins = self._taints(mod, cls, call.args[idx], env)
+                    if origins and not self._guarded(mod, fn, call, self._tainted_names_in(call.args[idx], env)):
+                        for o in origins:
+                            record(o, (si, path, call.lineno))
         cb_param = self._callback_param(fn, call)
         if cb_param is not None:
             pos = [(i, self._taint(mod, cls, a, env)) for i, a in enumerate(call.args)]
@@ -1097,10 +1113,11 @@ class Project:
                 arg = mapping.get(pname)
                 if arg is None:
                     continue
-                o = self._taint(mod, cls, arg, env)
-                if o and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
-                    for e in entries:
-                        record(o, e)
+                origins = self._taints(mod, cls, arg, env)
+                if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
+                    for o in origins:
+                        for e in entries:
+                            record(o, e)
             if is_self:
                 for fld, entries in summ["sink_fields"].items():
                     for e in entries:
@@ -1312,7 +1329,7 @@ def load_models_for(language: str, extra_dirs=()) -> dict:
 
 
 def analyze_project(files: dict[str, str], models_dirs=None) -> list[Finding]:
-    """Analyze a whole project: Python natively, JavaScript/TypeScript through the lowering frontend."""
+    """Analyze a whole project: Python natively, the other languages through the lowering frontends."""
     return analyze_project_full(files, models_dirs)[1]
 
 
@@ -1345,7 +1362,7 @@ def analyze_project_full(files: dict[str, str], models_dirs=None):
             proj.build()
             findings.extend(proj.report())
             projects.append(proj)
-    for lang in ("java", "kotlin", "csharp", "go", "php"):
+    for lang in CFAMILY_LANGS:
         if lang not in groups:
             continue
         from . import cfamily_frontend
@@ -1355,6 +1372,9 @@ def analyze_project_full(files: dict[str, str], models_dirs=None):
                 continue
             tree = cfamily_frontend.parse_cfamily(text, rel, lang)
             proj.add_file(cfamily_frontend.module_name(rel), rel, text, tree=tree)
+            diag = getattr(tree, "vulnscan_diagnostics", None)
+            if diag:
+                proj.diagnostics[rel] = diag
         if proj.files:
             proj.build()
             findings.extend(proj.report())

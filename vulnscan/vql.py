@@ -39,7 +39,29 @@ A predicate body is one or more clauses joined by ``or``; a clause is
 ``[from <decls> where] <conjunction>``. ``value x`` declares a free variable
 bound by a predicate atom or an equality. Atoms with unbound arguments join
 against the predicate's current tuples, so transitive closures and other
-recursive relations work. Still a subset of QL (no classes, no aggregates).
+recursive relations work.
+
+Classes are derived relations with a characteristic predicate, member
+predicates and getters, as in QL::
+
+    class ShellCall extends call {
+      ShellCall() { this.name in ("os.system", "subprocess.call") }
+      predicate isDynamic() { not this.arg0 matches "^[\"'\\[]" }
+      string target() { result = this.arg0 }
+    }
+    from ShellCall c where c.isDynamic() select c, "dynamic shell: " + c.target()
+
+``this`` is the current row; a subclass narrows its base with a further
+characteristic predicate. Aggregates range over a sub-query::
+
+    from func f
+    where count(call c | c.in_func = f.name and c.name = "print") > 5
+    select f, "noisy: " + count(call c | c.in_func = f.name)
+
+Supported: ``count``/``strictcount``/``sum``/``max``/``min``/``avg`` and the
+quantifiers ``exists``/``any``, each as ``agg(<decls> | <condition> | <value>)``.
+This is a large working subset of QL; it still lacks QL's module/import
+system, parameterised types and the full standard library.
 """
 
 from __future__ import annotations
@@ -171,8 +193,11 @@ def _unparse(node) -> str:
 
 
 # =================================================================== parser
-TOKEN = re.compile(r"""\s*(?:(?P<str>"(?:\\.|[^"\\])*")|(?P<num>\d+)|(?P<id>[A-Za-z_][\w]*)|(?P<op>!=|<=|>=|[=<>(),.+{}]))""")
-KEYWORDS = {"from", "where", "select", "and", "or", "not", "matches", "contains", "in", "predicate", "value"}
+TOKEN = re.compile(r"""\s*(?:(?P<str>"(?:\\.|[^"\\])*")|(?P<num>\d+)|(?P<id>[A-Za-z_][\w]*)|(?P<op>!=|<=|>=|[=<>(),.+{}|]))""")
+KEYWORDS = {"from", "where", "select", "and", "or", "not", "matches", "contains", "in", "predicate", "value", "class", "extends"}
+AGGREGATES = {"count", "strictcount", "sum", "max", "min", "avg", "exists", "any"}
+GETTER_TYPES = {"string", "int", "boolean", "float", "value"}
+MAX_MEMBER_DEPTH = 64
 
 
 class QueryError(Exception):
@@ -192,6 +217,8 @@ class Query:
         self.where = None
         self.select: list = []
         self.predicates: dict = {}     # name -> (params, [clauses]) ; clause = (vars, cond)
+        self.classes: dict = {}        # name -> {"base", "charpred", "members": {name: (kind, params, clauses)}}
+        self._member_depth = 0
         self._parse()
 
     @staticmethod
@@ -249,24 +276,66 @@ class Query:
             self._eat("kw", "where")
         return (decls, self._and())
 
+    def _params(self):
+        self._eat("op", "(")
+        params = []
+        while self._peek() != ("op", ")"):
+            params.append(self._eat("id")[1])
+            if self._peek() == ("op", ","):
+                self.i += 1
+        self._eat("op", ")")
+        return params
+
+    def _clauses(self):
+        self._eat("op", "{")
+        clauses = [self._clause()]
+        while self._peek() == ("kw", "or"):
+            self.i += 1
+            clauses.append(self._clause())
+        self._eat("op", "}")
+        return clauses
+
+    def _parse_class(self):
+        """class Name extends Base { Name() { charpred } predicate m(..) { .. } string g(..) { result = .. } }"""
+        self._eat("kw", "class")
+        name = self._eat("id")[1]
+        self._eat("kw", "extends")
+        base = self._eat("id")[1]
+        cls = {"base": base, "charpred": None, "members": {}}
+        self._eat("op", "{")
+        while self._peek() != ("op", "}"):
+            t = self._peek()
+            if t == ("id", name) and self.toks[self.i + 1] == ("op", "("):
+                self.i += 1
+                self._eat("op", "(")
+                self._eat("op", ")")
+                self._eat("op", "{")
+                cls["charpred"] = self._or()
+                self._eat("op", "}")
+            elif t == ("kw", "predicate"):
+                self.i += 1
+                mname = self._eat("id")[1]
+                params = self._params()
+                cls["members"][mname] = ("predicate", params, self._clauses())
+            elif t[0] in ("id", "kw") and t[1] in GETTER_TYPES:
+                self.i += 1
+                mname = self._eat("id")[1]
+                params = self._params()
+                cls["members"][mname] = ("getter", params, self._clauses())
+            else:
+                raise QueryError(f"unexpected {t[1]!r} in class {name}")
+        self._eat("op", "}")
+        self.classes[name] = cls
+
     def _parse(self):
-        while self._peek() == ("kw", "predicate"):
+        while self._peek() in (("kw", "predicate"), ("kw", "class")):
+            if self._peek() == ("kw", "class"):
+                self._parse_class()
+                continue
             self.i += 1
             name = self._eat("id")[1]
-            self._eat("op", "(")
-            params = []
-            while self._peek() != ("op", ")"):
-                params.append(self._eat("id")[1])
-                if self._peek() == ("op", ","):
-                    self.i += 1
-            self._eat("op", ")")
-            self._eat("op", "{")
-            clauses = [self._clause()]
-            while self._peek() == ("kw", "or"):
-                self.i += 1
-                clauses.append(self._clause())
-            self._eat("op", "}")
-            self.predicates[name] = (params, clauses)
+            params = self._params()
+            self.predicates[name] = (params, self._clauses())
         self._eat("kw", "from")
         self.vars = self._decls()
         if self._peek() == ("kw", "where"):
@@ -353,6 +422,8 @@ class Query:
         if t[0] == "num":
             self.i += 1
             return ("lit", t[1])
+        if t[0] == "id" and t[1] in AGGREGATES and self.toks[self.i + 1] == ("op", "("):
+            return self._aggregate()
         if t[0] == "id":
             self.i += 1
             if self._peek() == ("op", "."):
@@ -361,6 +432,15 @@ class Query:
                 if ft[0] not in ("id", "kw"):
                     raise QueryError(f"expected field name, got {ft[1]!r}")
                 self.i += 1
+                if self._peek() == ("op", "("):      # member predicate / getter call: c.isShell(), c.target()
+                    self.i += 1
+                    args = []
+                    while self._peek() != ("op", ")"):
+                        args.append(self._concat())
+                        if self._peek() == ("op", ","):
+                            self.i += 1
+                    self._eat("op", ")")
+                    return ("method", t[1], ft[1], args)
                 return ("field", t[1], ft[1])
             if self._peek() == ("op", "("):
                 self.i += 1
@@ -379,7 +459,99 @@ class Query:
             return e
         raise QueryError(f"unexpected {t[1]!r}")
 
+    def _aggregate(self):
+        """count(call c | cond) · sum/max/min/avg(call c | cond | expr) · exists(call c | cond) · any(call c | cond | expr)"""
+        fn = self._eat("id")[1]
+        self._eat("op", "(")
+        decls = self._decls()
+        cond, expr = None, None
+        if self._peek() == ("op", "|"):
+            self.i += 1
+            if self._peek() != ("op", "|") and self._peek() != ("op", ")"):
+                cond = self._or()
+        if self._peek() == ("op", "|"):
+            self.i += 1
+            expr = self._concat()
+        self._eat("op", ")")
+        if fn in ("sum", "max", "min", "avg", "any") and expr is None:
+            raise QueryError(f"{fn}(...) needs a value expression after a second '|'")
+        return ("agg", fn, decls, cond, expr)
+
     # evaluation
+    def _agg_val(self, e, env):
+        _, fn, decls, cond, expr = e
+        self._check_budget()
+        rows = self._solve_clause(self.db, decls, cond, env0=env)
+        if fn == "exists":
+            return bool(rows)
+        if fn in ("count", "strictcount"):
+            if fn == "strictcount" and not rows:
+                return None
+            return len(rows)
+        vals = [self._val(expr, r) for r in rows]
+        if fn == "any":
+            return vals[0] if vals else ""
+        nums = []
+        for v in vals:
+            try:
+                nums.append(float(v))
+            except (TypeError, ValueError):
+                pass
+        if not nums:
+            return 0 if fn == "sum" else None
+        if fn == "sum":
+            return int(sum(nums)) if all(n.is_integer() for n in nums) else sum(nums)
+        if fn == "max":
+            return max(nums)
+        if fn == "min":
+            return min(nums)
+        return sum(nums) / len(nums)
+
+    def _class_chain(self, cname):
+        out = []
+        while cname in self.classes:
+            out.append(cname)
+            cname = self.classes[cname]["base"]
+        return out
+
+    def _member(self, var, name, env):
+        """Resolve c.name(...) against the class the variable was declared with (or its ancestors)."""
+        for cname in self._class_chain(self.var_class.get(var, "")):
+            m = self.classes[cname]["members"].get(name)
+            if m:
+                return m
+        raise QueryError(f"unknown member {var}.{name}()")
+
+    def _method(self, e, env, want_value):
+        _, var, name, args = e
+        kind, params, clauses = self._member(var, name, env)
+        if len(params) != len(args):
+            raise QueryError(f"{var}.{name}() takes {len(params)} arguments")
+        if self._member_depth > MAX_MEMBER_DEPTH:
+            raise QueryError(f"member {name}() recursion too deep (member predicates are evaluated on demand)")
+        inner = {"this": env[var]}
+        self.var_class["this"] = self._class_chain(self.var_class.get(var, ""))[0] if self._class_chain(self.var_class.get(var, "")) else ""
+        for p, a in zip(params, args):
+            inner[p] = self._val(a, env)
+        self._member_depth += 1
+        try:
+            values = []
+            for decls, cond in clauses:
+                if kind == "getter":
+                    decls = list(decls) + [("value", "result")]
+                for r in self._solve_clause(self.db, decls, cond, env0=inner):
+                    if kind == "predicate":
+                        return True
+                    if "result" in r:
+                        values.append(r["result"])
+        finally:
+            self._member_depth -= 1
+        if kind == "predicate":
+            return False
+        if not want_value:
+            return bool(values)
+        return values[0] if values else ""
+
     def _val(self, e, env):
         k = e[0]
         if k == "lit":
@@ -392,7 +564,13 @@ class Query:
             row = env.get(e[1])
             if row is None:
                 raise QueryError(f"unknown variable {e[1]}")
-            return row.get(e[2], "")
+            if isinstance(row, dict):
+                return row.get(e[2], "")
+            return ""
+        if k == "method":
+            return self._method(e, env, True)
+        if k == "agg":
+            return self._agg_val(e, env)
         if k == "+":
             return f"{self._val(e[1], env)}{self._val(e[2], env)}"
         return self._bool(e, env)
@@ -406,12 +584,19 @@ class Query:
         if k == "not":
             return not self._bool(e[1], env)
         if k == "truthy":
-            return bool(self._val(e[1], env))
+            inner = e[1]
+            if isinstance(inner, tuple) and inner[0] == "method":
+                return self._method(inner, env, False)
+            return bool(self._val(inner, env))
+        if k == "method":
+            return self._method(e, env, False)
         if k == "pred":
             tup = tuple(self._val(a, env) for a in e[2])
             return tup in self.tuples.get(e[1], set())
         if k == "cmp":
             a, b = self._val(e[2], env), self._val(e[3], env)
+            if a is None or b is None:
+                return e[1] == "!=" and (a is None) != (b is None)
             if e[1] in ("<", ">", "<=", ">="):
                 try:
                     a, b = float(a), float(b)
@@ -430,8 +615,14 @@ class Query:
     def _vars_in(self, e, acc: set):
         if not isinstance(e, tuple):
             return acc
-        if e[0] in ("field", "var"):
+        if e[0] in ("field", "var", "method"):
             acc.add(e[1])
+        if e[0] == "agg":
+            inner: set = set()
+            self._vars_in(e[3], inner)
+            self._vars_in(e[4], inner)
+            acc |= inner - {v for _, v in e[2]}
+            return acc
         for x in e[1:]:
             if isinstance(x, tuple):
                 self._vars_in(x, acc)
@@ -572,13 +763,42 @@ class Query:
 
     BUDGET_SECONDS = 20.0
 
+    def _materialise_classes(self, db):
+        """A class is a derived relation: the rows of its base (relation or class) satisfying the characteristic
+        predicate, evaluated with `this` bound to the row. Rows are shared with the base so locations work."""
+        out = dict(db)
+        for name, cls in self.classes.items():
+            base = out.get(cls["base"])
+            if base is None:
+                raise QueryError(f"class {name}: unknown base {cls['base']}")
+            if cls["charpred"] is None:
+                out[name] = list(base)
+                continue
+            rows = []
+            self.var_class["this"] = name
+            for row in base:
+                if self._bool(cls["charpred"], {"this": row}):
+                    rows.append(row)
+            out[name] = rows
+            self._check_budget()
+        return out
+
     def run(self, db: dict) -> list[dict]:
         self.tuples = {}
         self._indexes = {}
         self._deadline = time.monotonic() + self.BUDGET_SECONDS
+        self.var_class = {v: r for r, v in self.vars if r in self.classes}
+        for _, clauses in self.predicates.values():
+            for decls, _c in clauses:
+                self.var_class.update({v: r for r, v in decls if r in self.classes})
+        for cls in self.classes.values():
+            for _k, _p, clauses in cls["members"].values():
+                for decls, _c in clauses:
+                    self.var_class.update({v: r for r, v in decls if r in self.classes})
+        self.db = self._materialise_classes(db) if self.classes else db
         if self.predicates:
-            self._eval_predicates(db)
-        return self._solve_clause(db, self.vars, self.where)
+            self._eval_predicates(self.db)
+        return self._solve_clause(self.db, self.vars, self.where)
 
     def findings(self, db: dict) -> list[Finding]:
         out, seen = [], set()
