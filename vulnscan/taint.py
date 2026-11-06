@@ -396,6 +396,19 @@ class Project:
         return found
 
     def _callees(self, mod: str, cls: str | None, call: ast.Call, env: _Env) -> tuple[list[str], str | None]:
+        """Static resolution (types, imports, names) unioned with points-to resolution (objects, function values)."""
+        static, ctor = self._callees_static(mod, cls, call, env)
+        pt = getattr(self, "pt", None)
+        if pt is not None and not ctor:
+            extra = [q for q in pt.callees_for_call(call) if q not in static and q in self.gfuncs]
+            if extra:
+                return static + sorted(extra), None
+        return static, ctor
+
+    def _dotted_safe(self, node) -> str:
+        return _dotted(node)
+
+    def _callees_static(self, mod: str, cls: str | None, call: ast.Call, env: _Env) -> tuple[list[str], str | None]:
         f = call.func
         if isinstance(f, ast.Name):
             if f.id in env.funcs:
@@ -434,6 +447,16 @@ class Project:
 
     # ---------------------------------------------------------------- types
     def _type_of(self, mod, cls, node, env) -> str | None:
+        t = self._type_of_static(mod, cls, node, env)
+        if t is None:
+            pt = getattr(self, "pt", None)
+            if pt is not None:
+                cs = pt.classes_for(node)
+                if len(cs) == 1:
+                    return next(iter(cs))
+        return t
+
+    def _type_of_static(self, mod, cls, node, env) -> str | None:
         if isinstance(node, ast.Name):
             if node.id in {"self", "cls"} and cls:
                 return cls
@@ -583,6 +606,12 @@ class Project:
         rtype = self._type_of(mod, cls, recv, env)
         if rtype:
             fields.update(self._class_fields(rtype, "tainted_fields"))
+        pt = getattr(self, "pt", None)
+        if pt is not None:
+            for o in pt.objs(recv):
+                for (oid, attr), origin in self.obj_taint.items():
+                    if oid == id(o) and attr not in fields:
+                        fields[attr] = origin
         return fields, False
 
     def _taint(self, mod, cls, node, env):
@@ -636,6 +665,12 @@ class Project:
                 tmp = self._ctor_inst_fields(mod, cls, recv, env)
                 if node.attr in tmp:
                     return tmp[node.attr]
+            pt = getattr(self, "pt", None)
+            if pt is not None:
+                for o in pt.objs(recv):
+                    hit = self.obj_taint.get((id(o), node.attr))
+                    if hit:
+                        return hit
             rtype = self._type_of(mod, cls, recv, env)
             if rtype:
                 tf = self._class_fields(rtype, "tainted_fields")
@@ -886,6 +921,12 @@ class Project:
     # ------------------------------------------------------------ summaries
     def build(self):
         self.link()
+        self.obj_taint: dict = {}
+        try:
+            from .pointsto import PointsTo
+            self.pt = PointsTo(self)
+        except Exception:  # noqa: BLE001 - points-to is an enhancement; never block the scan
+            self.pt = None
         for q in self.gfuncs:
             self.summaries[q] = {"source_return": None, "ret_params": set(), "sink_params": {},
                                  "sink_fields": {}, "ret_fields": set(), "ret_type": None, "ret_line": 0}
@@ -918,6 +959,16 @@ class Project:
                             t = self._type_of(mod, cls, node.value, env)
                             if t:
                                 new["ret_type"] = t
+                    if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None and self.pt is not None:
+                        for tgt in (node.targets if isinstance(node, ast.Assign) else [node.target]):
+                            if isinstance(tgt, ast.Attribute):
+                                o = self._taint(mod, cls, node.value, env)
+                                if o and o[0] in {"source", "retsource"}:
+                                    for obj in self.pt.objs(tgt.value):
+                                        key = (id(obj), tgt.attr)
+                                        if key not in self.obj_taint:
+                                            self.obj_taint[key] = _with_step(o, _step(path, node.lineno, f"{_dotted(tgt.value)}.{tgt.attr} = …"))
+                                            changed = True
                     if cls and isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
                         tgts = node.targets if isinstance(node, ast.Assign) else [node.target]
                         for tgt in tgts:

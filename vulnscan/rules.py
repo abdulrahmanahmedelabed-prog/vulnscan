@@ -152,7 +152,7 @@ RULES: list[Rule] = [
          skip=_r(r"(?i)(checksum|etag|cache|fingerprint|integrity|usedforsecurity\s*=\s*False)")),
     Rule("CRY002", "high", "TLS certificate verification disabled", "تعطيل التحقق من شهادة TLS",
          _r(r"(verify\s*=\s*False|InsecureSkipVerify\s*:\s*true|rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['\"]?0|CURLOPT_SSL_VERIFYPEER\s*,\s*(false|0)|badCertificateCallback\s*=.*=>\s*true|ALLOW_ALL_HOSTNAME_VERIFIER|TrustAllCerts|checkServerTrusted\s*\([^)]*\)\s*\{\s*\}|ssl\._create_unverified_context|CERT_NONE|--insecure\b|-k\s+https?://)"),
-         "فعّل التحقق من الشهادة؛ وثبّت شهادة خاصة (pinning) إذا كانت ذاتية التوقيع.", "CWE-295"),
+         "فعّل التحقق من الشهادة؛ وثبّت شهادة خاصة (pinning) إذا كانت ذاتية التوقيع.", "CWE-295", CODE | CONFIG),
     Rule("CRY003", "high", "Obsolete TLS/SSL protocol", "بروتوكول TLS/SSL قديم",
          _r(r"(PROTOCOL_(SSLv2|SSLv3|TLSv1|TLSv1_1)\b|SSLv3|TLSv1\.0|TLSv1\.1|ssl_version\s*=\s*['\"]?TLSv1['\"]?\b|\"TLSv1\"|'TLSv1')"),
          "استخدم TLS 1.2 أو أحدث.", "CWE-326", CODE | CONFIG),
