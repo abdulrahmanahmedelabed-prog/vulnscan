@@ -1720,6 +1720,8 @@ class Parser:
                 break
             if op == "..." and self.lang != "ruby":
                 break
+            if op == "as" and self.lang == "php":
+                break                                   # foreach ($rows as $r): not a cast
             if op not in self.BIN_PREC or self.BIN_PREC[op] < min_prec:
                 break
             if self.lang == "ruby" and op == "<<" and not self.t.nl_before:
@@ -2706,16 +2708,21 @@ class Parser:
             if t.val == "[":
                 self.i += 1
                 elts = []
+                keys, keyed = [], False
                 while not self.at("]") and self.t.kind != "eof":
                     if self.opt("...") or self.at(","):
                         self.opt(",")
                         continue
                     k = self.untuple(self.parse_assignment())
+                    key = None
                     if self.opt("=>"):   # php assoc
-                        k = self.untuple(self.parse_assignment())
+                        key, k, keyed = k, self.untuple(self.parse_assignment()), True
+                    keys.append(key)
                     elts.append(k)
                     self.opt(",")
                 self.eat("]")
+                if keyed:
+                    return _mk(ast.Dict, line, keys=[kk if kk is not None else _const(i, line) for i, kk in enumerate(keys)], values=elts)
                 return _mk(ast.List, line, elts=elts, ctx=ast.Load())
             if t.val == "{":
                 if self.lang in BRACE_LAMBDA_LANGS:          # closure value: val f = { x -> ... } / { x in ... }
@@ -2779,15 +2786,19 @@ class Parser:
             if v == "array" and self.lang == "php" and self.peek().val == "(":
                 self.i += 1
                 self.eat("(")
-                elts = []
+                elts, keys, keyed = [], [], False
                 while not self.at(")") and self.t.kind != "eof":
                     k = self.untuple(self.parse_assignment())
+                    key = None
                     if self.opt("=>"):
-                        k = self.untuple(self.parse_assignment())
+                        key, k, keyed = k, self.untuple(self.parse_assignment()), True
+                    keys.append(key)
                     elts.append(k)
                     if not self.opt(","):
                         break
                 self.eat(")")
+                if keyed:
+                    return _mk(ast.Dict, line, keys=[kk if kk is not None else _const(i, line) for i, kk in enumerate(keys)], values=elts)
                 return _mk(ast.List, line, elts=elts, ctx=ast.Load())
             if v == "func" and self.lang == "go":
                 fn = self.parse_function([])

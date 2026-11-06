@@ -678,8 +678,9 @@ def is_oracle_container(text: str, rel: str) -> bool:
     if low.endswith(".xml"):
         return bool(re.search(r"runOracleScript|<!\[CDATA\[\s*(begin|declare|create\s+or\s+replace)|ords\s*\.\s*define_", head, re.I))
     if low.endswith(".json"):
-        return bool(re.search(r'"(p_)?source"\s*:\s*"[^"]*(select|begin|declare)', head, re.I)) and bool(
+        keyed = bool(re.search(r'"(p_)?source"\s*:\s*"[^"]*(select|begin|declare)', head, re.I)) and bool(
             re.search(r'"(p_)?(source_?type|method|pattern|uri_template|module)"', head, re.I))
+        return keyed or bool(_JSON_PLSQL_VALUE.search(head))
     return False
 
 
@@ -697,6 +698,11 @@ def xml_scripts(text: str) -> list[tuple[int, str]]:
             body = re.sub(r"&lt;", "<", re.sub(r"&gt;", ">", re.sub(r"&quot;", '"', re.sub(r"&apos;", "'", body)))).replace("&amp;", "&")
         out.append((text.count("\n", 0, start_off) + 1, body))
     return out
+
+
+# a JSON string holding a whole PL/SQL block: begin/declare … at least one statement ';' … end
+_JSON_PLSQL_VALUE = re.compile(r'"\s*(?:declare|begin)(?:\\n|\s)(?:[^"\\]|\\.)*?;(?:[^"\\]|\\.)*?(?:\\n|[^A-Za-z0-9_])end\s*;?\s*(?:\\n)?\s*"', re.I)
+_PLSQL_BLOCK = re.compile(r"^\s*(declare|begin)\s.*;.*[^\w]end\s*;?\s*$", re.I | re.S)
 
 
 def extract_json_ords(text: str, rel: str) -> list[Block]:
@@ -728,8 +734,20 @@ def extract_json_ords(text: str, rel: str) -> list[Block]:
 
     index(data)
 
-    def walk(o, module=""):
+    keyed_ids: set = set()
+
+    def walk(o, module="", path="$"):
         nonlocal seq
+        if isinstance(o, str):
+            # any string that is a whole PL/SQL block is code, whatever its key is called
+            if id(o) not in keyed_ids and _PLSQL_BLOCK.match(o):
+                needle = json.dumps(o, ensure_ascii=False)[1:40]
+                pos = text.find(needle) if needle else -1
+                line = text.count("\n", 0, pos) + 1 if pos >= 0 else 1
+                seq += 1
+                blocks.append(Block("plsql", " ".join(re.sub(r"--[^\n]*", " ", o).split("\n")), line, f"JSON › {path}",
+                                    re.sub(r"\W", "_", f"json_block_{seq}").lower()))
+            return
         if isinstance(o, dict):
             low = {k.lower(): v for k, v in o.items()}
             module = low.get("name") if isinstance(low.get("name"), str) and ("handlers" in low or "templates" in low or "uri_prefix" in low) else module
@@ -749,15 +767,16 @@ def extract_json_ords(text: str, rel: str) -> list[Block]:
                 pos = text.find(needle) if needle else -1
                 line = text.count("\n", 0, pos) + 1 if pos >= 0 else 1
                 seq += 1
+                keyed_ids.add(id(src))
                 # the whole source sits on one JSON line: keep it on one line so findings point there
                 code = " ".join(re.sub(r"--[^\n]*", " ", src).split("\n"))
                 blocks.append(Block(kind, code, line, f"ORDS › {module} {method} {pattern}".strip(),
                                     re.sub(r"\W", "_", f"ords_json_{module}_{method}_{seq}").lower()))
-            for v in o.values():
-                walk(v, module)
+            for k, v in o.items():
+                walk(v, module, f"{path}.{k}")
         elif isinstance(o, list):
-            for v in o:
-                walk(v, module)
+            for i, v in enumerate(o):
+                walk(v, module, f"{path}[{i}]")
 
     walk(data)
     return blocks

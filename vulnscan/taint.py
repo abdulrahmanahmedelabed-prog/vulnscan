@@ -1369,47 +1369,117 @@ def analyze_project_full(files: dict[str, str], models_dirs=None):
             groups.setdefault(lang, {})[rel] = text
     findings: list[Finding] = []
     if "python" in groups:
-        proj = Project(load_models(models_dirs or (), DEFAULT_MODELS, "python"))
+        entries = []
         for rel, text in groups["python"].items():
-            proj.add_file(_module_name(rel), rel, text, is_pkg=rel.replace("\\", "/").endswith("__init__.py"))
+            try:
+                tree = ast.parse(text)
+            except (SyntaxError, ValueError):
+                continue
+            entries.append(_Entry(_module_name(rel), rel, text, tree, is_pkg=rel.replace("\\", "/").endswith("__init__.py")))
+        proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_MODELS, "python"), entries)
         if proj.files:
-            proj.build()
-            findings.extend(proj.report())
+            findings.extend(flows)
             projects.append(proj)
     if "javascript" in groups:
         from . import js_frontend
-        proj = Project(load_models(models_dirs or (), DEFAULT_JS_MODELS, "javascript"))
+        entries = []
         for rel, text in groups["javascript"].items():
             if len(text) > 600_000 or any(len(l) > 5000 for l in text.splitlines()[:50]):
                 continue  # bundles / minified
-            tree = js_frontend.parse_js(text, rel)
-            proj.add_file(js_frontend.module_name(rel), rel, text, tree=tree)
+            entries.append(_Entry(js_frontend.module_name(rel), rel, text, js_frontend.parse_js(text, rel)))
+        proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_JS_MODELS, "javascript"), entries)
         if proj.files:
-            proj.build()
-            findings.extend(proj.report())
+            findings.extend(flows)
             projects.append(proj)
     for lang in CFAMILY_LANGS:
         if lang not in groups:
             continue
         from . import cfamily_frontend
-        proj = Project(load_models_for(lang, models_dirs or ()))
+        entries, diags = [], {}
         for rel, text in groups[lang].items():
             if len(text) > 600_000:
                 continue
             tree = cfamily_frontend.parse_cfamily(text, rel, lang)
-            proj.add_file(cfamily_frontend.module_name(rel), rel, text, tree=tree)
+            entries.append(_Entry(cfamily_frontend.module_name(rel), rel, text, tree))
             diag = getattr(tree, "vulnscan_diagnostics", None)
             if diag:
-                proj.diagnostics[rel] = diag
+                diags[rel] = diag
+        proj, flows = _stored_build(load_models_for(lang, models_dirs or ()), entries, diagnostics=diags)
         if proj.files:
-            proj.build()
-            findings.extend(proj.report())
+            findings.extend(flows)
             projects.append(proj)
     if "plsql" in groups:
         p_projects, p_findings = _analyze_plsql(groups["plsql"], models_dirs or ())
         projects.extend(p_projects)
         findings.extend(p_findings)
     return projects, findings
+
+
+class _Entry:
+    __slots__ = ("mod", "rel", "text", "tree", "is_pkg", "lines")
+
+    def __init__(self, mod, rel, text, tree, is_pkg=False, lines=None):
+        self.mod, self.rel, self.text, self.tree, self.is_pkg, self.lines = mod, rel, text, tree, is_pkg, lines
+
+
+def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, instrument_db: bool = True,
+                  field_precise: bool = False):
+    """Build and report a project, following user data through database tables (second-order flows).
+
+    Pass 1 learns which TABLE.COLUMNs receive user data (internal sinks stored_db_write__T__C); later passes
+    make those columns sources wherever they are read, until no new column appears."""
+    from . import stored as st
+    if instrument_db and entries:
+        pairs = [(e.text, e.tree) for e in entries]
+        mods = st.model_names(pairs)
+        ctors = st.ctor_param_names(pairs, mods)
+        for e in entries:
+            try:
+                st.instrument(e.tree, mods, ctors)
+            except Exception:  # noqa: BLE001 - instrumentation is an enhancement; never block the scan
+                pass
+    store_names = sorted({n.func.id for e in entries for n in ast.walk(e.tree)
+                          if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id.startswith("stored_db_write__")})
+    store_sinks = [("DFSTORE", "info", "store:" + nm[len("stored_db_write__"):].upper().replace("__", ".", 1), "", "", "", "table write",
+                    [0], False, [nm], frozenset()) for nm in store_names]
+
+    def run_pass(prefix_sources):
+        m = dict(models)
+        m["sanitizers"] = models["sanitizers"] | {"stored_db_read"}
+        m["sinks"] = models["sinks"] + store_sinks
+        m["prefix_sources"] = models["prefix_sources"] + prefix_sources
+        pr = Project(m)
+        pr.field_precise_locals = field_precise
+        for e in entries:
+            pr.add_file(e.mod, e.rel, e.text, is_pkg=e.is_pkg, tree=e.tree, lines=e.lines)
+        pr.diagnostics.update(diagnostics or {})
+        if pr.files:
+            pr.build()
+            return pr, pr.report()
+        return pr, []
+
+    stored: dict = {}
+    proj, flows = run_pass([])
+    for _ in range(4 if store_sinks else 0):
+        new = {}
+        for f in flows:
+            if f.rule_id == "DFSTORE":
+                col = f.title[len("store:"):]
+                if col not in stored and col not in new:
+                    new[col] = f
+        if not new:
+            break
+        stored.update(new)
+        prefix = []
+        for col, f in stored.items():
+            label = f"{STORED_SOURCE_MARK} في {col} (كتبها مستخدم في {f.file}:{f.line})"
+            prefix.append(((f"stored_db.{col}",), label))
+            table = col.split(".")[0]
+            prefix.append(((f"stored_db.{table}.*",), label))      # SELECT * reads every column of the table
+        proj, flows = run_pass(prefix)
+    flows = [f for f in flows if f.rule_id != "DFSTORE"]
+    _retag_stored(flows)
+    return proj, flows
 
 
 AI_SOURCE_MARK = "الذكاء الاصطناعي"
@@ -1435,6 +1505,12 @@ STORED_RULES = {
     "DF012": ("DF023", "high", "CWE-94", "Second-order injection: stored user data executed as code",
               "حقن من الدرجة الثانية: بيانات خزّنها مستخدم تُنفَّذ لاحقًا ككود",
               "لا تنفّذ كودًا مبنيًا من بيانات مخزّنة؛ استخدم إجراءات ثابتة."),
+    "DF002": ("DF023", "high", "CWE-78", "Second-order command injection: stored user data reaches a shell command",
+              "حقن أوامر من الدرجة الثانية: بيانات خزّنها مستخدم تصل لاحقًا إلى أمر نظام",
+              "عامل البيانات المقروءة من قاعدة البيانات كمدخلات غير موثوقة: لا تمرّرها إلى الصدفة."),
+    "DF003": ("DF023", "high", "CWE-78", "Second-order command injection: stored user data reaches process execution",
+              "حقن أوامر من الدرجة الثانية: بيانات خزّنها مستخدم تصل لاحقًا إلى تنفيذ عملية",
+              "تحقق من البيانات المخزّنة بقائمة بيضاء قبل تمريرها كوسائط."),
     "DF013": ("DF024", "high", "CWE-79", "Stored XSS: data a user saved is written to the page unescaped",
               "XSS مخزّن: بيانات حفظها مستخدم تُكتب في الصفحة دون تهريب",
               "هرّب القيمة عند العرض (apex_escape.html / htf.escape_sc) لا عند الحفظ فقط."),
@@ -1564,48 +1640,11 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             models[k] = models[k] | jm[k]
     java_classes = {n.name: mname for mname, rel, tree in java_trees for n in tree.body if isinstance(n, ast.ClassDef)}
     modules = pf.build_modules(units_by_file, java_classes)
-    # second-order data flow: INSERT/UPDATE lower to stored_db_write__T__C(value) (an internal sink); a column a user
-    # wrote becomes a source wherever it is read back (SELECT INTO, cursor rows, FETCH), until no new column appears
-    store_names = sorted({n.func.id for _, _, mod in modules for n in ast.walk(mod)
-                          if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id.startswith("stored_db_write__")})
-    store_sinks = [("DFSTORE", "info", "store:" + nm[len("stored_db_write__"):].upper().replace("__", ".", 1), "", "", "", "table write",
-                    [0], False, [nm], frozenset()) for nm in store_names]
-
-    def run_pass(prefix_sources):
-        m = dict(models)
-        m["sinks"] = models["sinks"] + store_sinks
-        m["prefix_sources"] = models["prefix_sources"] + prefix_sources
-        pr = Project(m)
-        pr.field_precise_locals = True
-        for mname, rel, mod in modules:
-            pr.add_file(mname, rel, texts[rel], tree=mod, lines=shared_lines[rel])
-        for mname, rel, tree in java_trees:
-            pr.add_file(mname, rel, texts[rel], tree=tree, lines=shared_lines[rel])
-        pr.diagnostics.update(diags)
-        if pr.files:
-            pr.build()
-            return pr, pr.report()
-        return pr, []
-
-    stored: dict = {}
-    proj, flows = run_pass([])
-    for _ in range(4):
-        new = {}
-        for f in flows:
-            if f.rule_id == "DFSTORE":
-                col = f.title[len("store:"):]
-                if col not in stored and col not in new:
-                    new[col] = f
-        if not new:
-            break
-        stored.update(new)
-        prefix = [((f"stored_db.{col}",), f"{STORED_SOURCE_MARK} في {col} (كتبها مستخدم في {f.file}:{f.line})")
-                  for col, f in stored.items()]
-        proj, flows = run_pass(prefix)
-    flows = [f for f in flows if f.rule_id != "DFSTORE"]
+    entries = [_Entry(mname, rel, texts[rel], mod, lines=shared_lines[rel]) for mname, rel, mod in modules]
+    entries += [_Entry(mname, rel, texts[rel], tree, lines=shared_lines[rel]) for mname, rel, tree in java_trees]
+    proj, flows = _stored_build(models, entries, diagnostics=diags, instrument_db=False, field_precise=True)
     if proj.files:
         _retag_ai_output(flows)
-        _retag_stored(flows)
         findings.extend(flows)
         projects.append(proj)
     if js_trees or js_files:

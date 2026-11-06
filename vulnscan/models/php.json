@@ -200,7 +200,6 @@
     "real_query",
     "prepare",
     "exec",
-    "execute",
     "pg_query",
     "pg_send_query",
     "pg_prepare",

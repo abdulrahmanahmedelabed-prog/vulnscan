@@ -1,0 +1,7 @@
+{
+  "tool": "deploy-kit",
+  "steps": [
+    {"name": "cleanup", "plsqlBody": "begin\n  execute immediate 'drop table ' || :table_name;\nend;"},
+    {"name": "note", "description": "just text, not code"}
+  ]
+}

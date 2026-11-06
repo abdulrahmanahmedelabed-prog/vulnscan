@@ -197,6 +197,21 @@ vulnscan ./my-apex-app        # f100.sql أو application/pages/*.sql، وملف
 
 **تعريفات REST بصيغة JSON**: تُقرأ صيغتان معروفتان: الوحدة المتداخلة (`templates` → `handlers`)، وتصدير جداول ORDS الوصفية
 (`USER_ORDS_MODULES` و`_TEMPLATES` و`_HANDLERS`، كما يصدّرها SQL Developer) مع ربط المعالج بنمطه ووحدته عبر المعرّفات.
+وفي أي ملف JSON آخر، كل قيمة نصية هي كتلة PL/SQL كاملة (`begin … ; … end;`) تُحلَّل ككود أيًّا كان اسم مفتاحها،
+وتُنسب النتيجة إلى مسارها داخل الملف (`JSON › $.steps[0].plsqlBody`).
+
+### الحقن من الدرجة الثانية في كل اللغات
+
+الآلية نفسها (الكتابة في `جدول.عمود` ثم قراءته مصدرًا) تعمل على كل اللغات، لأنها تجري على الشجرة المشتركة بعد الواجهات الأمامية:
+
+| النوع | ما يُفهم |
+|---|---|
+| **SQL خام بمتغيرات ربط** | `?` و`%s` و`%(name)s` و`$1` و`:name` و`@name`: `cur.execute(sql, params)`، `db.query(sql, [..])`، `db.Exec(sql, a)`، JDBC `prepareStatement` + `setString(1, x)` + `executeQuery`/`ResultSet`، PDO `prepare` + `execute([..])`/`bindParam`، mysqli `bind_param`، ADO.NET `SqlCommand` + `Parameters.AddWithValue`، `db.prepare(sql).run(a)`، و`row.Scan(&x)` في Go. |
+| **ORM** | Django وSQLAlchemy وPeewee وSQLModel، وActiveRecord، وMongoose وSequelize وPrisma وTypeORM، وJPA/Hibernate (`@Entity` مع setters/getters ومستودعات Spring Data بالاسم). الكتابة: `create`/`update`/المُنشئ/`obj.f = x`/`setF(x)`؛ القراءة: حقول الكائن المجلوب أو متغير الحلقة. |
+
+ما يعود من قاعدة البيانات يحمل تلوّث الأعمدة فقط، لا تلوّث مفتاح البحث: `Msg.findById(req.params.id).who` ليس ملوّثًا إلا إن كتب
+مستخدمٌ في `MSG.WHO`. أسماء الجداول في SQL الخام وأسماء أصناف ORM تُطابَق كما كُتبت (حالة الأحرف لا تهم)، فجدول `notes` في SQL
+وصنف `Note` في ORM يُعاملان كجدولين مختلفين ما لم يتطابق الاسمان.
 
 ### VQL — لغة استعلام فوق قاعدة بيانات البرنامج
 
