@@ -53,6 +53,154 @@ APEX_RULES = [
     {"id": "APX005", "severity": "high", "cwe": "CWE-1427", "title": "User-controlled item substituted into an AI prompt",
      "title_ar": "عنصر يتحكم به المستخدم يُستبدل داخل تعليمات المساعد الذكي", "advice": "لا تضع قيم المستخدم في تعليمات النظام."},
 ]
+# configuration checks (what APEX Advisor / APEX-SERT look at), read from the export itself
+CONFIG_RULES = {
+    "APX006": ("high", "CWE-472", "Session State Protection is disabled", "حماية حالة الجلسة (Session State Protection) معطّلة",
+               "فعّلها من Shared Components › Security Attributes؛ دونها يمكن تغيير أي عنصر عبر الرابط."),
+    "APX007": ("high", "CWE-384", "Rejoin Sessions enabled for all sessions", "إعادة الانضمام للجلسات مفعّلة لكل الجلسات (تثبيت الجلسة)",
+               "اجعل Rejoin Sessions = Disabled أو للصفحات العامة فقط."),
+    "APX008": ("medium", "CWE-1021", "Application may be embedded in frames from any site", "يمكن تضمين التطبيق في إطار من أي موقع (Clickjacking)",
+               "اضبط Embed in Frames على Deny أو Allow from same origin."),
+    "APX009": ("medium", "CWE-489", "Application runs with developer edit links / toolbar", "التطبيق يعمل بروابط تعديل المطوّر في بيئة التشغيل",
+               "اجعل Status = Available في الإنتاج."),
+    "APX010": ("low", "CWE-328", "Weak checksum hash for bookmarks / URLs", "خوارزمية checksum ضعيفة للروابط",
+               "استخدم SH512 في Bookmark Hash Function."),
+    "APX011": ("medium", "CWE-79", "Basic HTML escaping mode", "وضع تهريب HTML أساسي (Basic)", "اجعل HTML Escaping Mode = Extended."),
+    "APX012": ("medium", "CWE-862", "Runtime API may modify this or other applications", "واجهة APEX وقت التشغيل يمكنها تعديل التطبيقات",
+               "أزل صلاحية Modify This Application / Modify Other Applications من Runtime API Usage."),
+    "APX013": ("medium", "CWE-614", "Authentication cookie not marked Secure", "كوكي المصادقة غير مقيّد بـ HTTPS (Secure)",
+               "فعّل Secure في إعدادات كوكي الجلسة لمخطط المصادقة."),
+    "APX014": ("high", "CWE-306", "Current authentication scheme is 'No Authentication'", "مخطط المصادقة الحالي «بلا مصادقة»",
+               "استخدم مخطط مصادقة حقيقيًا للتطبيق."),
+    "APX015": ("high", "CWE-256", "Password compared in plain text", "مقارنة كلمة المرور كنص صريح",
+               "خزّن تجزئة مملّحة (dbms_crypto / apex_util.get_hash مع ملح) وقارن التجزئة، لا النص."),
+    "APX016": ("high", "CWE-306", "Public page changes data", "صفحة عامة (بلا تسجيل دخول) تعدّل البيانات",
+               "اجعل الصفحة تتطلب المصادقة أو أزل العمليات التي تكتب البيانات منها."),
+    "APX017": ("medium", "CWE-862", "Page changes data without an authorization scheme", "صفحة تعدّل البيانات بلا مخطط تفويض",
+               "أسند Authorization Scheme للصفحة أو للتطبيق؛ المصادقة وحدها تسمح لأي مستخدم مسجّل."),
+    "APX018": ("low", "CWE-639", "Page access protection is unrestricted", "حماية الوصول للصفحة غير مقيّدة (يمكن تمرير أي قيم عبر الرابط)",
+               "اضبط Page Access Protection على Arguments Must Have Checksum."),
+    "APX019": ("medium", "CWE-472", "Hidden item value is not protected", "قيمة العنصر المخفي غير محمية (يمكن التلاعب بها)",
+               "فعّل Value Protected للعنصر المخفي، خصوصًا للمفاتيح والمعرّفات."),
+    "APX020": ("medium", "CWE-862", "On-demand application process without authorization", "عملية تطبيق عند الطلب (AJAX) بلا تفويض",
+               "أسند Authorization Scheme للعملية؛ يمكن لأي جلسة استدعاؤها عبر apex.server.process."),
+    "APX021": ("low", "CWE-94", "Substitutions without the trailing dot are allowed", "يُسمح بالاستبدال دون النقطة الختامية (&ITEM)",
+               "اجعل Substitutions = Exact substitutions only."),
+}
+for _rid, (_sev, _cwe, _t, _ta, _adv) in CONFIG_RULES.items():
+    APEX_RULES.append({"id": _rid, "severity": _sev, "cwe": _cwe, "title": _t, "title_ar": _ta, "advice": _adv})
+_PLAIN_PASSWORD = re.compile(r"\b(\w*pass(?:word|wd)?\w*)\s*=\s*(?:upper|lower|trim)?\s*\(?\s*(?::?p_pass\w*|p_password|:P\d+_PASSWORD|password)\b", re.I)
+_HASHING = re.compile(r"hash|crypto|digest|sha\d|md5|bcrypt|pbkdf|encrypt|apex_util\.get_hash|standard_hash|toolkit", re.I)
+
+
+def password_findings(code: str, rel: str, base_line: int, label: str = "") -> list:
+    """Plain-text password comparison in authentication code (custom authentication functions)."""
+    out = []
+    lines = code.split("\n")
+    for k, ln in enumerate(lines):
+        near = [x for x in lines[max(0, k - 1):k + 2] if not re.match(r"\s*(create\b|function\b|procedure\b|end\b)", x, re.I)]
+        if _PLAIN_PASSWORD.search(ln) and not _HASHING.search(" ".join(near)):
+            sev, cwe, t, ta, adv = CONFIG_RULES["APX015"]
+            out.append(_finding("APX015", sev, t, ta, rel, base_line + k, ln, adv, cwe, label))
+    return out
+
+
+class _ConfigChecks:
+    """Security attributes of the application, pages, items, processes and authentication schemes."""
+
+    def __init__(self, rel, lines):
+        self.rel, self.lines = rel, lines
+        self.out: list = []
+        self.app = None
+        self.auth: dict = {}             # scheme id raw -> (decoded, label)
+        self.pages: dict = {}            # page -> {"public", "role", "prot", "line", "label", "dml": [...], "login"}
+        self.app_scheme = False
+
+    def _f(self, rid, line, label, snippet=None):
+        sev, cwe, t, ta, adv = CONFIG_RULES[rid]
+        text = snippet if snippet is not None else (self.lines[line - 1] if 0 < line <= len(self.lines) else "")
+        self.out.append(_finding(rid, sev, t, ta, self.rel, line, text, adv, cwe, label))
+
+    def collect(self, fname, decoded, pg, label, name):
+        def raw(p):
+            return (decoded.get(p, (None, 0, ""))[2] or "").strip().upper()
+
+        def line(p):
+            return decoded.get(p, (None, 0, ""))[1]
+        if fname == "create_flow":
+            self.app = (decoded, label)
+            self.app_scheme = bool(raw("p_security_scheme")) and raw("p_security_scheme") not in ("MUST_NOT_BE_PUBLIC_USER",)
+            if raw("p_page_protection_enabled_y_n") == "N":
+                self._f("APX006", line("p_page_protection_enabled_y_n"), "التطبيق")
+            if raw("p_rejoin_existing_sessions") == "Y":
+                self._f("APX007", line("p_rejoin_existing_sessions"), "التطبيق")
+            if raw("p_browser_frame") == "A":
+                self._f("APX008", line("p_browser_frame"), "التطبيق")
+            if raw("p_flow_status") in ("AVAILABLE_W_EDIT_LINK", "AVAILABLE_W_DEV_TOOLBAR", "DEVELOPERS_ONLY_W_EDIT_LINK"):
+                self._f("APX009", line("p_flow_status"), "التطبيق")
+            if raw("p_bookmark_checksum_function") in ("MD5", "SH1"):
+                self._f("APX010", line("p_bookmark_checksum_function"), "التطبيق")
+            if raw("p_html_escaping_mode") == "B":
+                self._f("APX011", line("p_html_escaping_mode"), "التطبيق")
+            if "W" in raw("p_runtime_api_usage").replace(":", " ").split():
+                self._f("APX012", line("p_runtime_api_usage"), "التطبيق")
+            if raw("p_exact_substitutions_only") == "N":
+                self._f("APX021", line("p_exact_substitutions_only"), "التطبيق")
+        elif fname == "create_authentication":
+            self.auth[raw("p_id")] = (decoded, label)
+            code = decoded.get("p_plsql_code", (None,))[0]
+            if code:
+                self.out.extend(password_findings(code, self.rel, line("p_plsql_code"), label))
+        elif fname == "create_page":
+            self.pages[pg] = {"public": raw("p_page_is_public_y_n") == "Y", "role": bool(raw("p_required_role")),
+                              "prot": raw("p_protection_level"), "line": line("p_id") or line("p_name"), "label": label,
+                              "dml": [], "login": "LOGIN" in (decoded.get("p_name", (None,))[0] or "").upper()}
+            self.pages[pg]["prot_line"] = line("p_protection_level")
+        elif fname == "create_page_process":
+            ptype = raw("p_process_type")
+            point = raw("p_process_point")
+            if "LOGIN" in ptype or "LOGOUT" in ptype:
+                if pg in self.pages:
+                    self.pages[pg]["login"] = True
+            elif point in ("", "AFTER_SUBMIT", "ON_SUBMIT_BEFORE_COMPUTATION") and \
+                    any(x in ptype for x in ("PLSQL", "FORM_DML", "DML", "IG_DML", "INVOKE_API", "EXECUTE")) and pg in self.pages:
+                code = (decoded.get("p_process_sql_clob", (None,))[0] or decoded.get("p_process_sql", (None,))[0] or "")
+                real_dml = "FORM_DML" in ptype or "IG_DML" in ptype or bool(
+                    re.search(r"\b(insert\s+into|update\s+\w+\s+set|delete\s+from|merge\s+into|execute\s+immediate|apex_collection\.)", code, re.I))
+                self.pages[pg]["dml"].append((line("p_process_name") or line("p_id"), label, real_dml))
+        elif fname == "create_page_item":
+            if raw("p_display_as") in ("NATIVE_HIDDEN", "HIDDEN") and raw("p_attribute_01") == "N":
+                self._f("APX019", line("p_attribute_01"), label)
+        elif fname == "create_flow_process":
+            if raw("p_process_point") == "ON_DEMAND" and not raw("p_security_scheme"):
+                self._f("APX020", line("p_process_point"), label)
+
+    def finish(self) -> list:
+        if self.app:
+            decoded, _ = self.app
+            cur = (decoded.get("p_authentication_id", (None, 0, ""))[2] or "").strip().upper()
+            scheme = self.auth.get(cur)
+            if scheme:
+                sd, slabel = scheme
+                stype = (sd.get("p_scheme_type", (None, 0, ""))[2] or "").upper()
+                if stype == "NATIVE_DAD":
+                    self._f("APX014", sd.get("p_scheme_type", (None, 0))[1], slabel)
+                if (sd.get("p_use_secure_cookie_yn", (None, 0, ""))[2] or "").upper() == "N":
+                    self._f("APX013", sd.get("p_use_secure_cookie_yn", (None, 0))[1], slabel)
+        for pg, info in self.pages.items():
+            if info["prot"] == "U" and not info["login"]:
+                self._f("APX018", info.get("prot_line") or info["line"], info["label"])
+            if not info["dml"] or info["login"]:
+                continue
+            real = [d for d in info["dml"] if d[2]]
+            ln, plabel, _ = (real or info["dml"])[0]
+            if info["public"]:
+                self._f("APX016", ln, plabel)
+                if not real:                                   # e.g. apex_util.submit_feedback: abuse, not data tampering
+                    self.out[-1].severity = "medium"
+            elif not info["role"] and not self.app_scheme:
+                self._f("APX017", ln, plabel)
+        return self.out
 
 PLSQL_BLOCK = {"p_process_sql_clob", "p_process_sql", "p_plsql_function_body", "p_function_body", "p_plsql_process"}
 PLSQL_DECLS = {"p_plsql_code"}
@@ -290,6 +438,7 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
     region_tables: dict = {}         # region id (raw) -> table, for form regions
     form_tables: dict = {}           # page -> table of a legacy automatic row processing (DML) process
     form_items: list = []            # (page, item, column, region id raw, line, label)
+    checks = _ConfigChecks(rel, lines)
     i, n = 0, len(toks)
     while i < n:
         t = toks[i]
@@ -324,6 +473,7 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
         pg = decoded.get("p_page_id", (None, 0, ""))[2] or decoded.get("p_flow_step_id", (None, 0, ""))[2] or (page if page_scoped else None)
         comp_ar = COMPONENT_AR.get(comp, comp)
         label = (f"صفحة {pg} › " if pg else "") + comp_ar + (f": {name}" if name else "")
+        checks.collect(fname, decoded, pg, label, name)
         # implicit DML: a form region on a table, and page items whose source is one of its columns
         if fname == "create_page_plug" and decoded.get("p_query_table", (None,))[0]:
             region_tables[decoded.get("p_id", (None, 0, ""))[2]] = decoded["p_query_table"][0].upper().split(".")[-1]
@@ -366,6 +516,7 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
             blocks.append(b)
             findings.extend(_subst_findings(b, rel))
     blocks.extend(_form_store_blocks(form_items, region_tables, form_tables))
+    findings.extend(checks.finish())
     return blocks, findings, files
 
 
@@ -486,6 +637,7 @@ def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
     scopes: list[tuple[int, dict]] = []
     region_tables: dict = {}
     form_items: list = []
+    ycfg = _YamlConfig(rel, lines)
     i, n = 0, len(lines)
     while i < n:
         raw = lines[i]
@@ -552,6 +704,10 @@ def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
                 if ind2 == indent and m2.group(4) and m2.group(4)[:1] not in ("|", ">"):
                     sib.setdefault(m2.group(3), _yaml_scalar(m2.group(4)))
             k2 += 1
+        if here.get(key) is not None and val[:1] not in ("|", ">"):
+            ycfg.see(comp, key, here.get(key, ""), i, page_id, _yaml_label(page_id, page_name, comp, name, da_name), page_name, sib)
+        elif code and comp == "process":
+            ycfg.code(comp, page_id, code)
         if key == "table-name" and comp == "region" and here.get(key):
             region_tables[name] = here[key].upper().split(".")[-1]
         if key == "column" and comp in ("page item", "item") and here.get(key) and sib.get("form-region"):
@@ -573,7 +729,98 @@ def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
         blocks.append(b)
         findings.extend(_subst_findings(b, rel))
     blocks.extend(_form_store_blocks(form_items, region_tables, {}))
+    findings.extend(ycfg.finish())
     return blocks, findings, []
+
+
+class _YamlConfig:
+    """The same configuration checks for the readable (YAML) export: property names are the Builder labels."""
+
+    def __init__(self, rel, lines):
+        self.rel, self.lines = rel, lines
+        self.out: list = []
+        self.pages: dict = {}
+        self.app_authz = False
+
+    def _f(self, rid, line, label):
+        sev, cwe, t, ta, adv = CONFIG_RULES[rid]
+        self.out.append(_finding(rid, sev, t, ta, self.rel, line, self.lines[line - 1] if 0 < line <= len(self.lines) else "",
+                                 adv, cwe, label))
+
+    def see(self, comp, key, value, line, page_id, label, page_name, sib):
+        k, v = key.lower(), str(value).strip().lower()
+        if not v:
+            return
+        app = comp in (None, "application", "security attributes", "security")
+        page = self.pages.setdefault(page_id, {"public": False, "role": False, "dml": [], "login": False,
+                                               "unrestricted": None, "label": f"صفحة {page_id}"}) if page_id else None
+        if page is not None and page_name and "login" in str(page_name).lower():
+            page["login"] = True
+        if "session-state-protection" in k and app and v in ("false", "no", "disabled", "n"):
+            self._f("APX006", line, "التطبيق")
+        elif "rejoin-sessions" in k and "all" in v:
+            self._f("APX007", line, "التطبيق")
+        elif ("embed-in-frames" in k or "browser-frame" in k) and v.startswith("allow") and "origin" not in v:
+            self._f("APX008", line, "التطبيق")
+        elif k == "status" and app and ("edit link" in v or "developer toolbar" in v):
+            self._f("APX009", line, "التطبيق")
+        elif "hash-function" in k and v.replace("-", "") in ("md5", "sha1", "sh1"):
+            self._f("APX010", line, "التطبيق")
+        elif "html-escaping-mode" in k and v.startswith("basic"):
+            self._f("APX011", line, "التطبيق")
+        elif "runtime-api" in k and "modify" in v:
+            self._f("APX012", line, "التطبيق")
+        elif ("secure" in k and "cookie" in k or k == "secure") and comp == "authentication" and v in ("false", "no", "n"):
+            self._f("APX013", line, label)
+        elif k in ("scheme-type", "type") and comp == "authentication" and "no authentication" in v:
+            self._f("APX014", line, label)
+        elif "substitutions" in k and app and "exact" not in v and "allow" in v:
+            self._f("APX021", line, "التطبيق")
+        elif "page-access-protection" in k and v == "unrestricted" and page is not None:
+            page["unrestricted"] = line
+        elif "value-protected" in k and v in ("false", "no", "n") and comp in ("page item", "item"):
+            self._f("APX019", line, label)
+        elif k == "authentication" and page is not None and comp == "page" and "public" in v:
+            page["public"] = True
+        elif "authorization-scheme" in k and v not in ("", "none", "-"):
+            if comp == "page" and page is not None:
+                page["role"] = True
+            elif app:
+                self.app_authz = True
+            elif comp in ("application process",) and "point" in sib:
+                pass
+        elif k in ("point", "process-point") and comp == "application process" and ("ajax" in v or "on demand" in v):
+            if not any("authorization" in sk for sk in sib):
+                self._f("APX020", line, label)
+        elif k == "type" and comp == "process" and page is not None:
+            if "login" in v:
+                page["login"] = True
+            elif any(x in v for x in ("automatic row processing", "execute code", "plsql", "pl/sql", "invoke api", "form - ")):
+                page["dml"].append((line, label, "row processing" in v))
+
+    def code(self, comp, page_id, code):
+        """Process code tells whether a page really changes data."""
+        page = self.pages.get(page_id)
+        if page is not None and comp == "process" and page["dml"] and re.search(
+                r"\b(insert\s+into|update\s+\w+\s+set|delete\s+from|merge\s+into|execute\s+immediate)", code, re.I):
+            ln, lab, _ = page["dml"][-1]
+            page["dml"][-1] = (ln, lab, True)
+
+    def finish(self) -> list:
+        for pid, page in self.pages.items():
+            if page["unrestricted"] and not page["login"]:
+                self._f("APX018", page["unrestricted"], page["label"])
+            if not page["dml"] or page["login"]:
+                continue
+            real = [d for d in page["dml"] if d[2]]
+            ln, lab, _ = (real or page["dml"])[0]
+            if page["public"]:
+                self._f("APX016", ln, lab)
+                if not real:
+                    self.out[-1].severity = "medium"
+            elif not page["role"] and not self.app_authz:
+                self._f("APX017", ln, lab)
+        return self.out
 
 
 def _yaml_label(page_id, page_name, comp, name, da_name) -> str:

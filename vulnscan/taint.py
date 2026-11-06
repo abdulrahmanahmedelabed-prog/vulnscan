@@ -1640,6 +1640,7 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
         diag["statements"] += d["statements"]
         diag["skipped"] += d["skipped"]
         diag["lines"].extend((ln + delta, msg) for ln, msg in d["lines"])
+        findings.extend(apex_export.password_findings(text, rel, 1 + delta))   # custom authentication in packages
         ords = apex_export.extract_ords(text, rel)
         for b in ords:
             b.line += delta

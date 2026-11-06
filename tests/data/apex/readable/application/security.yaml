@@ -1,0 +1,39 @@
+---
+# ====== Application: HR Portal ==============================
+identification: 
+  name: HR Portal
+
+security: 
+  session-state-protection: false
+  rejoin-sessions: Enabled for All Sessions
+  embed-in-frames: Allow
+  html-escaping-mode: Basic
+
+# ====== Page: Salaries =======================================
+id: 10
+identification: 
+  name: Salaries
+security: 
+  authentication: Page Requires Authentication
+  page-access-protection: Unrestricted
+
+page-items: 
+- # ====== Page Item: P10_EMP_ID ==============================
+  id: 9010
+  identification: 
+    name: P10_EMP_ID
+    type: Hidden
+  settings: 
+    value-protected: false
+
+processes: 
+- # ====== Process: Raise Salary ==============================
+  id: 9011
+  identification: 
+    name: Raise Salary
+    type: Execute Code
+  source: 
+    location: Local Database
+    language: PL/SQL
+    pl/sql-code: |-
+      update emp set sal = sal * 2 where empno = :P10_EMP_ID;

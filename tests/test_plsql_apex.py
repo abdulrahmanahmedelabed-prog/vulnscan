@@ -270,3 +270,41 @@ def test_ords_metadata_view_export_json():
     from vulnscan.apex_export import extract_json_ords
     labels = {x.label for x in extract_json_ords((DATA / "ords_views.json").read_text(), "x.json")}
     assert "ORDS › inv.v1 PUT items/:sku" in labels
+
+
+# ------------------------------------------------------- application security configuration (Advisor / SERT style)
+def test_apex_security_configuration_sql_export():
+    _, fs, _ = apex_export.extract((DATA / "f400_security.sql").read_text(), "f400_security.sql")
+    got = {(f.rule_id, f.line): f.severity for f in fs if f.rule_id >= "APX006"}
+    expected = {("APX006", 6): "high", ("APX010", 7): "low", ("APX009", 9): "medium", ("APX021", 10): "low",
+                ("APX008", 11): "medium", ("APX007", 12): "high", ("APX011", 13): "medium", ("APX012", 14): "medium",
+                ("APX013", 23): "medium", ("APX015", 28): "high", ("APX020", 35): "medium", ("APX018", 48): "low",
+                ("APX019", 54): "medium", ("APX017", 61): "medium", ("APX016", 79): "high"}
+    assert got == expected, (set(got.items()) ^ set(expected.items()))
+
+
+def test_login_page_is_exempt_and_feedback_only_page_is_medium():
+    export = ("begin\nwwv_flow_imp_page.create_page(p_id=>5, p_name=>'Feedback', p_page_is_public_y_n=>'Y', p_protection_level=>'C');\n"
+              "wwv_flow_imp_page.create_page_process(p_id=>1, p_process_point=>'AFTER_SUBMIT', p_process_type=>'NATIVE_PLSQL',"
+              " p_process_name=>'Send', p_process_sql_clob=>'apex_util.submit_feedback(p_comment => :P5_C);');\nend;\n/\n")
+    _, fs, _ = apex_export.extract(export, "f.sql")
+    assert [(f.rule_id, f.severity) for f in fs if f.rule_id >= "APX006"] == [("APX016", "medium")]
+
+
+def test_apex_security_configuration_readable_yaml():
+    _, fs, _ = apex_export.extract_yaml((DATA / "readable/application/security.yaml").read_text(), "security.yaml")
+    got = sorted((f.rule_id, f.line) for f in fs if f.rule_id >= "APX006")
+    assert got == [("APX006", 7), ("APX007", 8), ("APX008", 9), ("APX011", 10), ("APX017", 34), ("APX018", 18), ("APX019", 27)], got
+
+
+def test_plain_text_password_in_a_package():
+    pkg = ("create or replace package body auth_pkg as\n"
+           "  function check_login(p_user varchar2, p_password varchar2) return boolean is\n    l number;\n  begin\n"
+           "    select count(*) into l from users where name = p_user and password = p_password;\n"
+           "    return l > 0;\n  end;\n"
+           "  function check_hashed(p_user varchar2, p_password varchar2) return boolean is\n    l number;\n  begin\n"
+           "    select count(*) into l from users where name = p_user\n"
+           "       and password_hash = standard_hash(p_password, 'SHA512');\n"
+           "    return l > 0;\n  end;\nend auth_pkg;\n/\n")
+    fs = analyze_project({"auth_pkg.pkb": pkg})
+    assert [(f.rule_id, f.line) for f in fs if f.rule_id == "APX015"] == [("APX015", 5)]
