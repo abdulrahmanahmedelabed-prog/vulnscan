@@ -52,6 +52,8 @@ def render_console(findings: list[Finding], target: str, files: int, notes: list
         if f.snippet:
             lines.append(f"     ▸ {f.snippet[:140]}")
         lines.append(f"     💡 {f.advice}")
+        for i, st in enumerate(f.extra.get("path") or [], 1):
+            lines.append(f"       {i}. {st['file']}:{st['line']}  {st['text']}")
     return "\n".join(lines)
 
 
@@ -91,6 +93,10 @@ def render_markdown(findings: list[Finding], target: str, files: int, notes: lis
         if f.snippet:
             md.append(f"- المقتطف: `{f.snippet.replace('`', 'ˋ')[:160]}`")
         md.append(f"- الإصلاح: {f.advice}")
+        if f.extra.get("path"):
+            md.append("- مسار التدفق:")
+            for i, st in enumerate(f.extra["path"], 1):
+                md.append(f"  {i}. `{st['file']}:{st['line']}` — {st['text']}")
         if f.extra.get("url"):
             md.append(f"- المرجع: {f.extra['url']}")
         md.append("")
@@ -113,7 +119,9 @@ def render_html(findings: list[Finding], target: str, files: int, notes: list[st
         rows.append(f"<tr class='{f.severity}'><td><span class='b {f.severity}'>{e(SEVERITY_AR[f.severity])}</span></td>"
                     f"<td><code>{e(f.rule_id)}</code><br><small>{e(f.cwe)}</small></td>"
                     f"<td><b>{e(f.title_ar)}</b><br><small>{e(f.title)}</small></td>"
-                    f"<td><code>{e(loc)}</code><br><small>{e(f.snippet[:140])}</small></td><td>{e(f.advice)}</td></tr>")
+                    f"<td><code>{e(loc)}</code><br><small>{e(f.snippet[:140])}</small>"
+                    + ("<ol class='flow'>" + "".join(f"<li><code>{e(st['file'])}:{st['line']}</code> {e(st['text'])}</li>" for st in f.extra.get('path') or []) + "</ol>" if f.extra.get("path") else "")
+                    + f"</td><td>{e(f.advice)}</td></tr>")
     summary = "".join(f"<div class='tile {s}'><div class='n'>{counts[s]}</div><div>{e(SEVERITY_AR[s])}<br><small>{s}</small></div></div>"
                       for s in SEVERITIES)
     notes_html = "".join(f"<li>{e(n)}</li>" for n in notes)
@@ -129,7 +137,7 @@ table{{border-collapse:collapse;width:100%;background:#fff}}
 th,td{{border:1px solid #ddd;padding:.5rem;vertical-align:top;text-align:right}}
 tr.critical td:first-child,tr.high td:first-child{{font-weight:700}}
 .b{{padding:.15rem .5rem;border-radius:.25rem;color:#fff;white-space:nowrap}}
-code{{direction:ltr;unicode-bidi:embed;font-size:.85em}}
+code{{direction:ltr;unicode-bidi:embed;font-size:.85em}}\n.flow{{margin:.4rem 0 0;padding-inline-start:1.2rem;font-size:.8em;color:#555}}
 </style></head><body>
 <h1>تقرير الفحص الأمني — <code>{e(target)}</code></h1>
 <p>الملفات المفحوصة: {files} · النتائج: {len(findings)} · {e(_meta(target, files, notes)['generated_at'])}</p>

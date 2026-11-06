@@ -14,7 +14,7 @@ const I18N = {
     'scan.authorize': 'أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه', 'scan.deep': 'فحص أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)', 'scan.crawl': 'زحف على صفحات الموقع وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)', 'scan.legal': 'فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.', 'scan.viewResults': 'عرض النتائج',
     'scan.running': 'جارٍ الفحص…', 'scan.done': 'اكتمل الفحص', 'scan.failed': 'فشل الفحص', 'scan.needAuth': 'يجب تأكيد الصلاحية أولًا', 'scan.selected': 'ملف محدد', 'scan.uploading': 'جارٍ الرفع…',
     'find.title': 'النتائج', 'find.sub': 'مرتبة من الأعلى خطورة إلى الأقل. اضغط على أي نتيجة لعرض التفاصيل وطريقة الإصلاح.', 'find.search': 'ابحث في الملف أو القاعدة أو النص…', 'find.allSources': 'كل المصادر',
-    'find.none': 'لا نتائج مطابقة.', 'find.files': 'ملفًا مفحوصًا', 'find.advice': 'طريقة الإصلاح', 'find.snippet': 'المقتطف', 'find.ref': 'المرجع',
+    'find.none': 'لا نتائج مطابقة.', 'find.flow': 'مسار التدفق (من المصدر إلى نقطة الخطر)', 'set.models': 'مجلد نماذج إضافية لمحرّك تدفق البيانات (JSON: مصادر، نقاط خطر، مُعقّمات)', 'find.files': 'ملفًا مفحوصًا', 'find.advice': 'طريقة الإصلاح', 'find.snippet': 'المقتطف', 'find.ref': 'المرجع',
     'rep.title': 'التقارير', 'rep.sub': 'سجل كل الفحوصات، تنزيل التقارير، ومقارنة فحصين لمعرفة ما أُصلح وما استجد.', 'rep.compare': 'مقارنة فحصين', 'rep.compareBtn': 'قارن', 'rep.fixed': '✅ أُصلحت (اختفت)', 'rep.new': '🆕 جديدة (ظهرت)',
     'rep.target': 'الهدف', 'rep.date': 'التاريخ', 'rep.status': 'الحالة', 'rep.total': 'الإجمالي', 'rep.actions': 'إجراءات', 'rep.delete': 'حذف', 'rep.view': 'عرض', 'rep.nothing': 'لا شيء',
     'rules.title': 'القواعد المدمجة', 'rules.search': 'ابحث في القواعد…', 'rules.count': 'قاعدة', 'rules.id': 'المعرّف', 'rules.sev': 'الخطورة', 'rules.name': 'الثغرة', 'rules.langs': 'الملفات', 'rules.advice': 'الإصلاح',
@@ -35,7 +35,7 @@ const I18N = {
     'scan.authorize': 'I own this site or have written permission to test it', 'scan.deep': 'Deeper scan: analyze the page and probe common exposed paths (a few extra requests)', 'scan.crawl': 'Crawl the site pages and scan them (for apps like Moodle and university portals)', 'scan.legal': 'Testing systems without permission may be illegal.', 'scan.viewResults': 'View findings',
     'scan.running': 'Scanning…', 'scan.done': 'Scan complete', 'scan.failed': 'Scan failed', 'scan.needAuth': 'Please confirm authorization first', 'scan.selected': 'file(s) selected', 'scan.uploading': 'Uploading…',
     'find.title': 'Findings', 'find.sub': 'Ordered from highest to lowest severity. Click a finding for details and remediation.', 'find.search': 'Search file, rule or text…', 'find.allSources': 'All sources',
-    'find.none': 'No matching findings.', 'find.files': 'files scanned', 'find.advice': 'Remediation', 'find.snippet': 'Snippet', 'find.ref': 'Reference',
+    'find.none': 'No matching findings.', 'find.flow': 'Flow path (source to sink)', 'set.models': 'Extra models folder for the data-flow engine (JSON: sources, sinks, sanitizers)', 'find.files': 'files scanned', 'find.advice': 'Remediation', 'find.snippet': 'Snippet', 'find.ref': 'Reference',
     'rep.title': 'Reports', 'rep.sub': 'Scan history, report downloads, and a diff between two scans.', 'rep.compare': 'Compare two scans', 'rep.compareBtn': 'Compare', 'rep.fixed': '✅ Fixed (gone)', 'rep.new': '🆕 New (appeared)',
     'rep.target': 'Target', 'rep.date': 'Date', 'rep.status': 'Status', 'rep.total': 'Total', 'rep.actions': 'Actions', 'rep.delete': 'Delete', 'rep.view': 'View', 'rep.nothing': 'Nothing',
     'rules.title': 'Built-in rules', 'rules.search': 'Search rules…', 'rules.count': 'rules', 'rules.id': 'ID', 'rules.sev': 'Severity', 'rules.name': 'Issue', 'rules.langs': 'Files', 'rules.advice': 'Remediation',
@@ -232,7 +232,7 @@ function renderFindings() {
     const loc = f.line ? `${f.file}:${f.line}` : f.file;
     html += `<div class="finding ${f.severity}" data-i="${i}"><div class="head"><code>${esc(f.rule_id)}</code><b>${esc(lang === 'ar' ? f.title_ar : f.title)}</b>${f.cwe ? `<small class="muted">${esc(f.cwe)}</small>` : ''}<small class="muted">${esc(f.source)}</small>${f.extra && f.extra.decompiled ? '<small class="badge info">jadx</small>' : ''}</div>
       <div class="loc">${esc(loc)}</div>
-      <div class="body"><div class="muted">${esc(lang === 'ar' ? f.title : f.title_ar)}</div>${f.snippet ? `<div><b>${t('find.snippet')}</b><pre>${esc(f.snippet)}</pre></div>` : ''}<div class="advice"><b>💡 ${t('find.advice')}:</b> ${esc(f.advice)}</div>${f.extra && f.extra.url ? `<p><b>${t('find.ref')}:</b> <a href="${esc(f.extra.url)}" target="_blank" rel="noopener">${esc(f.extra.url)}</a></p>` : ''}</div></div>`;
+      <div class="body"><div class="muted">${esc(lang === 'ar' ? f.title : f.title_ar)}</div>${f.snippet ? `<div><b>${t('find.snippet')}</b><pre>${esc(f.snippet)}</pre></div>` : ''}<div class="advice"><b>💡 ${t('find.advice')}:</b> ${esc(f.advice)}</div>${f.extra && f.extra.path ? `<div><b>${t('find.flow')}</b><ol class="flow">${f.extra.path.map((st) => `<li><code>${esc(st.file)}:${st.line}</code> ${esc(st.text)}</li>`).join('')}</ol></div>` : ''}${f.extra && f.extra.url ? `<p><b>${t('find.ref')}:</b> <a href="${esc(f.extra.url)}" target="_blank" rel="noopener">${esc(f.extra.url)}</a></p>` : ''}</div></div>`;
   });
   setHTML($('#findings-list'), html);
   $$('#findings-list .finding').forEach((el) => el.onclick = () => el.classList.toggle('open'));
@@ -281,6 +281,7 @@ async function loadSettings() {
   f.exclude.value = s.exclude.join('\n'); f.ignore_rules.value = s.ignore_rules.join('\n'); f.authorized_targets.value = s.authorized_targets.join('\n');
   f.use_osv.checked = !!s.use_osv; f.use_external.checked = !!s.use_external;
   f.use_jadx.checked = !!s.use_jadx; f.jadx_include_libs.checked = !!s.jadx_include_libs; f.jadx_timeout.value = s.jadx_timeout;
+  f.models_dir.value = s.models_dir || '';
   $('#jadx-state').textContent = `(${meta.jadx ? t('set.jadxOn') : t('set.jadxOff')})`;
   $('#ext-tools').textContent = `(${meta.external_tools.length ? meta.external_tools.join(', ') : t('set.none')})`;
   $('#settings-home').textContent = `${t('set.home')}: ${meta.home}`;
@@ -290,7 +291,8 @@ $('#settings-form').onsubmit = async (e) => {
   e.preventDefault(); const f = e.target; const lines = (v) => v.split('\n').map((x) => x.trim()).filter(Boolean);
   await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
     exclude: lines(f.exclude.value), ignore_rules: lines(f.ignore_rules.value), authorized_targets: lines(f.authorized_targets.value), use_osv: f.use_osv.checked, use_external: f.use_external.checked,
-    use_jadx: f.use_jadx.checked, jadx_include_libs: f.jadx_include_libs.checked, jadx_timeout: +f.jadx_timeout.value})});
+    use_jadx: f.use_jadx.checked, jadx_include_libs: f.jadx_include_libs.checked, jadx_timeout: +f.jadx_timeout.value,
+    models_dir: f.models_dir.value.trim()})});
   $('#settings-saved').textContent = t('set.saved'); setTimeout(() => $('#settings-saved').textContent = '', 2000);
 };
 

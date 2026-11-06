@@ -89,3 +89,5 @@ label{display:block;font-weight:600;margin-bottom:6px}
 .toast{position:fixed;bottom:24px;inset-inline-start:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:12px 20px;border-radius:12px;box-shadow:var(--shadow);z-index:9}
 [dir="ltr"] .toast{transform:translateX(-50%)}
 @media (max-width:900px){.app{grid-template-columns:1fr}.sidebar{position:static;height:auto;flex-direction:row;align-items:center;overflow-x:auto}nav{flex-direction:row}.side-foot{margin:0 0 0 auto}.content{padding:16px}.tiles,.grid-2{grid-template-columns:1fr 1fr}.donut-wrap{flex-direction:column}}
+
+.flow{margin:6px 0 0;padding-inline-start:1.4rem;font-size:13px;color:var(--muted)}.flow li{margin:2px 0}.flow code{direction:ltr;unicode-bidi:embed}

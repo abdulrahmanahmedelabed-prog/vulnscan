@@ -18,6 +18,7 @@ DEFAULT_SETTINGS = {
     "use_osv": True,
     "use_external": True,
     "use_jadx": True,
+    "models_dir": "",
     "jadx_timeout": 600,
     "jadx_include_libs": False,
     "fail_on": "high",

@@ -44,6 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--crawl", action="store_true", help="زحف على صفحات الموقع من نفس النطاق وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)")
     p.add_argument("--max-pages", type=int, default=20, metavar="N", help="أقصى عدد صفحات عند الزحف (الافتراضي 20)")
     p.add_argument("--max-depth", type=int, default=2, metavar="N", help="أقصى عمق للزحف (الافتراضي 2)")
+    p.add_argument("--models", action="append", default=[], metavar="DIR",
+                   help="مجلد (أو ملف JSON) نماذج إضافية لمحرّك تدفق البيانات: مصادر ونقاط خطر ومُعقّمات خاصة بمكتباتك")
     p.add_argument("--no-jadx", action="store_true", help="لا تفكّ تجميع APK/JAR/AAR/DEX حتى لو كان jadx مثبّتًا")
     p.add_argument("--jadx-timeout", type=int, default=600, metavar="SEC", help="مهلة jadx بالثواني (الافتراضي 600)")
     p.add_argument("--jadx-include-libs", action="store_true", help="افحص أيضًا مكتبات الطرف الثالث داخل الكود المفكوك")
@@ -96,7 +98,8 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
     if not path.exists():
         raise SystemExit(f"الهدف غير موجود: {target}")
     findings, files = scan_path(path, args.exclude, set(args.ignore_rule), jadx=not args.no_jadx,
-                                jadx_timeout=args.jadx_timeout, jadx_include_libs=args.jadx_include_libs, notes=notes)
+                                jadx_timeout=args.jadx_timeout, jadx_include_libs=args.jadx_include_libs, notes=notes,
+                                models_dirs=args.models)
     if not args.no_deps:
         dep_findings, err = audit_dependencies(path)
         findings.extend(dep_findings)

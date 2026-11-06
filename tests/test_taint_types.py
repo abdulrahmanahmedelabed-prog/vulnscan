@@ -70,7 +70,8 @@ def test_field_flow_between_methods():
     )
     f = analyze("a.py", code)
     hit = [x for x in f if x.rule_id == "DF002"]
-    assert hit and hit[0].line == 6 and "self.cmd" in hit[0].snippet
+    assert hit and hit[0].line == 6 and "request.args" in hit[0].snippet
+    assert any("self.cmd" in st["text"] for st in hit[0].extra["path"])   # field hop is in the path
 
 
 def test_constructor_argument_to_field_to_sink():

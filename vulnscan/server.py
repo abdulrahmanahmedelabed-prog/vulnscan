@@ -62,7 +62,8 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
                 raise FileNotFoundError(f"الهدف غير موجود: {target}")
             findings, files = scan_path(path, settings.get("exclude") or [], set(settings.get("ignore_rules") or []),
                                         jadx=bool(settings.get("use_jadx", True)), jadx_timeout=int(settings.get("jadx_timeout") or 600),
-                                        jadx_include_libs=bool(settings.get("jadx_include_libs")), notes=notes)
+                                        jadx_include_libs=bool(settings.get("jadx_include_libs")), notes=notes,
+                                        models_dirs=[settings["models_dir"]] if settings.get("models_dir") else None)
             scan["files_scanned"] = files
             store.save_scan(scan)
             if settings.get("use_osv", True):
@@ -82,7 +83,7 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
         scan.update(status="error", finished_at=time.time(), error=str(e))
     finally:
         if scan.get("kind") == "upload" and scan.get("tmp_root"):
-            shutil.rmtree(scan["tmp_root"], ignore_errors=True)
+            shutil.rmtree(scan["tmp_root"], ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
         store.save_scan(scan)
 
 
@@ -279,7 +280,7 @@ class Handler(BaseHTTPRequestHandler):
             dest.write_bytes(data)
             written.append(dest)
         if not written:
-            shutil.rmtree(tmp, ignore_errors=True)
+            shutil.rmtree(tmp, ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
             return self._json({"error": "file required"}, 400)
         if len(written) == 1 and written[0].name.lower().endswith(ARCHIVE_EXTS):
             target, label = written[0], written[0].name

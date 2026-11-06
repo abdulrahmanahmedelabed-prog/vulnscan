@@ -66,7 +66,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def _get(url: str, timeout: float, read_body: bool = False):
     opener = urllib.request.build_opener(_NoRedirect)
-    req = urllib.request.Request(url, headers={"User-Agent": "vulnscan/0.1 (passive posture check)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "vulnscan/0.1 (passive posture check)"})  # nosec - the URL is the user's own, --authorized scan target (intentional outbound request)
     try:
         resp = opener.open(req, timeout=timeout)
         body = resp.read(MAX_BODY) if read_body else b""

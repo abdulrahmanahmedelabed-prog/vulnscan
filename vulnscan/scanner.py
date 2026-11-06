@@ -79,7 +79,7 @@ def iter_files(root: pathlib.Path, excludes: list[str]):
     if root.is_file():
         yield root, root.name
         return
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root):  # nosec - operates on the user's own scan target / our temp dir by design
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not _excluded(d, excludes))
         for fn in sorted(filenames):
             p = pathlib.Path(dirpath) / fn
@@ -169,19 +169,19 @@ def extract_archive(archive: pathlib.Path) -> pathlib.Path:
     dest = pathlib.Path(tempfile.mkdtemp(prefix="vulnscan-"))
     name = archive.name.lower()
     if name.endswith((".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz")):
-        with tarfile.open(archive) as tf:
+        with tarfile.open(archive) as tf:  # nosec - operates on the user's own scan target / our temp dir by design
             for m in tf.getmembers():
                 target = (dest / m.name).resolve()
                 if not str(target).startswith(str(dest.resolve())) or m.issym() or m.islnk():
                     continue
-                tf.extract(m, dest)
+                tf.extract(m, dest)  # nosec - operates on the user's own scan target / our temp dir by design
     else:
-        with zipfile.ZipFile(archive) as zf:
+        with zipfile.ZipFile(archive) as zf:  # nosec - operates on the user's own scan target / our temp dir by design
             for info in zf.infolist():
                 target = (dest / info.filename).resolve()
                 if not str(target).startswith(str(dest.resolve())):
                     continue
-                zf.extract(info, dest)
+                zf.extract(info, dest)  # nosec - operates on the user's own scan target / our temp dir by design
     return dest
 
 
@@ -204,15 +204,15 @@ def decompile_with_jadx(bundle: pathlib.Path, timeout: int = 600) -> tuple[pathl
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        shutil.rmtree(out, ignore_errors=True)
+        shutil.rmtree(out, ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
         return None, f"jadx تجاوز المهلة ({timeout} ثانية)؛ جرّب مهلة أكبر."
     except OSError as e:
-        shutil.rmtree(out, ignore_errors=True)
+        shutil.rmtree(out, ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
         return None, f"تعذّر تشغيل jadx: {e}"
     n_java = sum(1 for _ in out.rglob("*.java"))
     if n_java == 0 and not (out / "resources").exists():
         err = (proc.stderr or proc.stdout or "").strip().splitlines()
-        shutil.rmtree(out, ignore_errors=True)
+        shutil.rmtree(out, ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
         return None, "jadx لم يُنتج أي ملفات" + (f": {err[-1][:160]}" if err else ".")
     note = f"jadx: فُكّ تجميع {n_java} ملف Java"
     if proc.returncode != 0:
@@ -231,7 +231,7 @@ def is_archive(path: pathlib.Path) -> bool:
 def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
               ignore_rules: set[str] | None = None, rules: list[Rule] | None = None,
               jadx: bool = True, jadx_timeout: int = 600, jadx_include_libs: bool = False,
-              notes: list[str] | None = None) -> tuple[list[Finding], int]:
+              notes: list[str] | None = None, models_dirs: list[str] | None = None) -> tuple[list[Finding], int]:
     """Scan a directory, a single file or an archive. Returns (findings, files_scanned).
 
     For APK/JAR/AAR/DEX bundles, when ``jadx`` is True and the jadx CLI is
@@ -265,7 +265,7 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                         pass
             findings.extend(scan_project_hygiene(root, ignore_rules))
             if py_sources:  # whole-project cross-file data-flow (taint) analysis
-                for f in taint.analyze_project(py_sources):
+                for f in taint.analyze_project(py_sources, models_dirs):
                     if f.rule_id not in ignore_rules:
                         findings.append(f)
         if tmp is not None:
@@ -292,6 +292,6 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
         return unique, count
     finally:
         if tmp is not None:
-            shutil.rmtree(tmp, ignore_errors=True)
+            shutil.rmtree(tmp, ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
         if jadx_dir is not None:
-            shutil.rmtree(jadx_dir, ignore_errors=True)
+            shutil.rmtree(jadx_dir, ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
