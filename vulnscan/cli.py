@@ -68,6 +68,10 @@ def _list_rules() -> str:
     lines = [f"{len(RULES)} قاعدة مدمجة:", ""]
     for r in sorted(RULES, key=lambda r: (SEVERITY_RANK[r.severity], r.id)):
         lines.append(f"{r.id:<8} {r.severity:<9} {r.cwe:<9} {r.title_ar} — {r.title}")
+    from .taint import TAINT_RULES
+    lines += ["", f"{len(TAINT_RULES)} قاعدة تدفق بيانات (Python، مدركة للأنواع، عبر الملفات):", ""]
+    for t in sorted(TAINT_RULES, key=lambda t: (SEVERITY_RANK[t["severity"]], t["id"])):
+        lines.append(f"{t['id']:<8} {t['severity']:<9} {t['cwe']:<9} {t['title_ar']} — {t['title']}")
     return "\n".join(lines)
 
 

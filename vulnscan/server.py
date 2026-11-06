@@ -185,9 +185,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             return self._json(self.store.settings())
         if path == "/api/rules":
-            return self._json([{"id": r.id, "severity": r.severity, "title": r.title, "title_ar": r.title_ar,
-                                "cwe": r.cwe, "advice": r.advice,
-                                "langs": sorted(r.langs) if r.langs else ["*"]} for r in RULES])
+            from .taint import TAINT_RULES
+            rules = [{"id": r.id, "severity": r.severity, "title": r.title, "title_ar": r.title_ar,
+                      "cwe": r.cwe, "advice": r.advice,
+                      "langs": sorted(r.langs) if r.langs else ["*"]} for r in RULES]
+            rules += [{**t, "langs": [".py (تدفق بيانات)"]} for t in TAINT_RULES]
+            return self._json(rules)
         if path == "/api/meta":
             return self._json({"version": __version__, "external_tools": available(), "jadx": jadx_available(),
                                "archive_exts": list(ARCHIVE_EXTS), "jadx_exts": list(JADX_EXTS), "home": str(self.store.home)})
