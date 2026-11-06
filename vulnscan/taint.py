@@ -646,6 +646,12 @@ class Project:
             m[a.vararg.arg] = ast.Tuple(elts=extra_pos, ctx=ast.Load())
         if extra_kw:
             m[a.kwarg.arg] = ast.Dict(keys=[None] * len(extra_kw), values=extra_kw)
+        # `p.keys()` inside the callee is tracked separately: for a dict literal argument only its keys count
+        for pname, arg in list(m.items()):
+            if isinstance(arg, ast.Dict):
+                m[pname + ".keys"] = ast.List(elts=[k for k in arg.keys if k is not None], ctx=ast.Load())
+            else:
+                m[pname + ".keys"] = arg
         return m
 
     def _ctor_inst_fields(self, mod, cls, call, env) -> dict:
@@ -766,6 +772,11 @@ class Project:
             canon = self._canon(mod, node.func)
             if self._is_sanitizer(canon):
                 return None
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "keys" and not node.args \
+                    and isinstance(node.func.value, ast.Name):
+                o = env.tainted.get(node.func.value.id)
+                if o and o[0] == "param":                 # keys of a parameter: their own origin (see _map_args)
+                    return ("param", o[1] + ".keys", _trail(o))
             callees, ctor = self._callees(mod, cls, node, env)
             if ctor:
                 return None
@@ -1430,12 +1441,13 @@ def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, 
     make those columns sources wherever they are read, until no new column appears."""
     from . import stored as st
     if instrument_db and entries:
-        pairs = [(e.text, e.tree) for e in entries]
-        mods = st.model_names(pairs)
-        ctors = st.ctor_param_names(pairs, mods)
+        triples = [(e.text, e.tree, e.rel) for e in entries]
+        mods = st.model_names(triples)
+        ctors = st.ctor_param_names(triples, mods)
+        sigs = st.helper_signatures(triples, mods)
         for e in entries:
             try:
-                st.instrument(e.tree, mods, ctors)
+                st.instrument(e.tree, mods, ctors, sigs)
             except Exception:  # noqa: BLE001 - instrumentation is an enhancement; never block the scan
                 pass
     store_names = sorted({n.func.id for e in entries for n in ast.walk(e.tree)

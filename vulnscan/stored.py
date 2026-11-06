@@ -47,6 +47,10 @@ ORM_READ_HINT = {"objects", "query", "get", "filter", "all", "first", "last", "f
                  "findOneBy", "findBy", "getOne", "getReferenceById", "orElseThrow", "orElse", "get_object_or_404"}
 
 
+FETCH_METHODS = {"fetchone", "fetchall", "fetchmany", "fetchval", "fetchrow", "first", "one", "scalar", "scalars", "all",
+                 "next", "getString", "getInt", "getObject", "getLong", "GetString", "GetValue", "GetInt32", "Read", "read",
+                 "row", "rows", "Scan", "fetch", "fetch_assoc", "fetch_array", "fetchAll", "fetchColumn", "fetchObject",
+                 "fetch_row", "fetch_object", "get_result", "toArray", "results"}
 NON_COLUMN_METHODS = {"save", "destroy", "delete", "reload", "valid", "valid?", "errors", "to_json", "as_json", "to_h", "to_s",
                       "attributes", "id", "persisted?", "new_record?", "update", "touch", "lock", "toJSON", "toObject",
                       "populate", "remove", "deleteOne", "exec", "lean", "then", "catch", "next", "close", "hasNext"}
@@ -222,8 +226,31 @@ def parse_read(sql: str) -> list[tuple[str, str]]:
     return out
 
 
+# --------------------------------------------------------------------------------------------- naming
+_ALIASES: dict = {}      # canonical table alias -> canonical table (e.g. Django BLOG_NOTE -> NOTE), set per project
+
+
+def canon_table(name: str) -> str:
+    """notes / Note / "public"."notes" / [dbo].[Notes] / categories -> NOTE / CATEGORY (lower-case singular, no schema)."""
+    n = str(name).strip().strip('`"[]').split(".")[-1].strip('`"[]').lower()
+    if n.endswith("ies") and len(n) > 4:
+        n = n[:-3] + "y"
+    elif n.endswith(("sses", "xes", "zes", "ches", "shes")):
+        n = n[:-2]
+    elif n.endswith("s") and not n.endswith(("ss", "us", "is")) and len(n) > 3:
+        n = n[:-1]
+    t = re.sub(r"\W", "_", n).upper()
+    return _ALIASES.get(t, t)
+
+
+def canon_col(name: str) -> str:
+    """created_at / createdAt / CREATED_AT -> CREATEDAT; '*' stays."""
+    return "*" if name == "*" else re.sub(r"[^0-9A-Za-z]", "", str(name)).upper()
+
+
 # --------------------------------------------------------------------------------------------- instrumentation
 def _load(table, col, line):
+    table, col = canon_table(table), canon_col(col)
     n = ast.Attribute(value=ast.Attribute(value=ast.Name(id="stored_db", ctx=ast.Load()), attr=table, ctx=ast.Load()),
                       attr=col, ctx=ast.Load())
     for x in ast.walk(n):
@@ -251,6 +278,7 @@ def _either(loads, node):
 
 
 def _write_stmt(table, col, expr, line):
+    table, col = canon_table(table), canon_col(col)
     e = copy.deepcopy(expr)
     call = ast.Call(func=ast.Name(id=f"stored_db_write__{table}__{col}", ctx=ast.Load()), args=[e], keywords=[])
     st = ast.Expr(value=call)
@@ -260,29 +288,171 @@ def _write_stmt(table, col, expr, line):
     return st
 
 
+def _explicit_table(cls: ast.ClassDef) -> str | None:
+    """The table a model class maps to, when the class says so (SQLAlchemy, Django Meta, Rails, JPA, TypeORM)."""
+    for st in cls.body:
+        if isinstance(st, ast.Assign):
+            for t in st.targets:
+                name = t.id if isinstance(t, ast.Name) else (t.attr if isinstance(t, ast.Attribute) else "")
+                if name in ("__tablename__", "table_name", "tableName", "_table", "collection") and _const_str(st.value):
+                    return _const_str(st.value)                    # __tablename__ = "x" / self.table_name = "x"
+        if isinstance(st, ast.ClassDef) and st.name == "Meta":
+            for m in st.body:
+                if isinstance(m, ast.Assign) and any(isinstance(t, ast.Name) and t.id in ("db_table", "table_name", "collection")
+                                                     for t in m.targets) and _const_str(m.value):
+                    return _const_str(m.value)                     # Django / Peewee Meta
+    for d in cls.decorator_list:
+        if isinstance(d, ast.Call) and _dotted(d.func).split(".")[-1] in ("Table", "Entity", "Document", "table", "entity"):
+            for k in d.keywords:
+                if k.arg in ("name", "collection", "tableName") and _const_str(k.value):
+                    return _const_str(k.value)                     # @Table(name = "x") / @Entity(name = "x")
+            if d.args and _const_str(d.args[0]):
+                return _const_str(d.args[0])                       # @Entity("x")
+            if d.args and isinstance(d.args[0], ast.Dict):
+                for k, v in zip(d.args[0].keys, d.args[0].values):
+                    if _const_str(k) in ("name", "tableName", "collection") and _const_str(v):
+                        return _const_str(v)
+    return None
+
+
 def model_names(trees: list) -> dict:
-    """Model class simple name -> table name, across a project."""
-    out = {}
-    for text, tree in trees:
+    """Model class simple name -> canonical table, across a project (and table aliases for raw SQL)."""
+    out, aliases = {}, {}
+    for item in trees:
+        text, tree = item[0], item[1]
+        rel = item[2] if len(item) > 2 else ""
         sqlalchemy = "sqlalchemy" in text or "declarative_base" in text
+        django = "django.db" in text
         for n in ast.walk(tree):
             if isinstance(n, ast.ClassDef):
                 bases = {_dotted(b) for b in n.bases}
                 decos = {_dotted(d).split(".")[-1] for d in n.decorator_list}
                 if (bases & (MODEL_BASES - {"Base"})) or ("Base" in bases and sqlalchemy) or (decos & ENTITY_DECOS):
-                    out[n.name] = n.name.upper()
+                    table = canon_table(_explicit_table(n) or n.name)
+                    out[n.name] = table
+                    aliases[canon_table(n.name)] = table
+                    if django and rel:                             # Django default table: <app label>_<model>
+                        parts = rel.replace("\\", "/").split("/")
+                        app = parts[-2] if len(parts) >= 2 else ""
+                        if app:
+                            aliases[canon_table(f"{app}_{n.name}")] = table
             elif isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) and isinstance(n.value, ast.Call):
                 canon = _dotted(n.value.func)
                 if canon.endswith(MODEL_FACTORIES) and n.value.args and _const_str(n.value.args[0]):
-                    out[n.targets[0].id] = _const_str(n.value.args[0]).upper()
+                    explicit = None
+                    for a in n.value.args[1:]:
+                        if _const_str(a):
+                            explicit = _const_str(a)               # mongoose.model('Note', schema, 'collection')
+                        elif isinstance(a, ast.Dict):
+                            for k, v in zip(a.keys, a.values):
+                                if _const_str(k) in ("tableName", "collection") and _const_str(v):
+                                    explicit = _const_str(v)       # sequelize.define('Note', {...}, {tableName})
+                    table = canon_table(explicit or _const_str(n.value.args[0]))
+                    out[n.targets[0].id] = table
+                    aliases[canon_table(_const_str(n.value.args[0]))] = table
+            elif isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "init" and len(n.args) >= 2 \
+                    and isinstance(n.func.value, ast.Name) and isinstance(n.args[1], ast.Dict):
+                for k, v in zip(n.args[1].keys, n.args[1].values):
+                    if _const_str(k) == "tableName" and _const_str(v):   # class Note extends Model; Note.init(attrs, {tableName})
+                        aliases[canon_table(_const_str(v))] = canon_table(n.func.value.id)
+    for k, v in list(aliases.items()):
+        if k == v:
+            del aliases[k]
+    out["__aliases__"] = aliases
     return out
 
 
+def helper_signatures(trees: list, models: dict) -> dict:
+    """Generic data-access helpers whose table / model and data arrive as arguments.
+
+    save(table, data): db.execute(f"INSERT INTO {table} …", data.values())   -> ('sql', table param, data param)
+    create(model, **fields): model.objects.create(**fields) / Model.create(data) -> ('orm', model param, data)
+    fetch(table, id): db.execute(f"SELECT * FROM {table} …")                    -> ('read', table param)"""
+    sigs: dict = {}
+    for item in trees:
+        tree = item[1]
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or fn.name in sigs:
+                continue
+            params = [a.arg for a in fn.args.posonlyargs + fn.args.args if a.arg not in ("self", "cls")]
+            kwarg = fn.args.kwarg.arg if fn.args.kwarg else None
+            if not params and not kwarg:
+                continue
+            dict_params = {n.func.value.id for n in _walk(fn) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                           and n.func.attr in ("keys", "values", "items") and isinstance(n.func.value, ast.Name)}
+            dict_params |= {k.value.id for n in _walk(fn) if isinstance(n, ast.Call) for k in n.keywords
+                            if k.arg is None and isinstance(k.value, ast.Name)}
+            data = None
+            for p in params:
+                if p in dict_params:
+                    data = ("idx", params.index(p), p)
+                    break
+            if data is None and kwarg and kwarg in dict_params | {kwarg}:
+                data = ("kwargs", kwarg)
+            for c in _walk(fn):
+                if not isinstance(c, ast.Call):
+                    continue
+                for a in c.args[:2]:
+                    head, tbl = _dynamic_sql(a)
+                    if tbl is None or not isinstance(tbl, ast.Name) or tbl.id not in params:
+                        continue
+                    if re.match(r"^\s*(insert\s+into|replace\s+into|update)\s+$", head, re.I) and data:
+                        sigs[fn.name] = {"kind": "sql", "table": (params.index(tbl.id), tbl.id), "data": data}
+                    elif re.match(r"^\s*select\b.*\bfrom\s+$", head, re.I | re.S):
+                        sigs[fn.name] = {"kind": "read", "table": (params.index(tbl.id), tbl.id)}
+                if fn.name in sigs:
+                    break
+                chain = _chain(c)
+                root = chain[0] if chain else None
+                if root in params and data is None:
+                    arg_param = next((a.id for a in c.args if isinstance(a, ast.Name) and a.id in params and a.id != root), None)
+                    if arg_param:
+                        data = ("idx", params.index(arg_param), arg_param)
+                if root in params:
+                    if any(m in ORM_WRITE for m in chain[1:]) and data:
+                        sigs[fn.name] = {"kind": "orm", "model": (params.index(root), root), "data": data}
+                        break
+                    if len(chain) == 1 and data:                    # model(**fields)
+                        sigs[fn.name] = {"kind": "orm", "model": (params.index(root), root), "data": data}
+                        break
+                    if any(m in ORM_READ_HINT for m in chain[1:]):
+                        sigs[fn.name] = {"kind": "read_orm", "model": (params.index(root), root)}
+                        break
+    return sigs
+
+
+def _dynamic_sql(node):
+    """f"INSERT INTO {table} …" / "SELECT * FROM " + table -> (constant text before the first value, that value)."""
+    pieces = []
+    if isinstance(node, ast.JoinedStr):
+        for v in node.values:
+            pieces.append(v.value if isinstance(v, ast.FormattedValue) else v)
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        def flat(n):
+            if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
+                flat(n.left)
+                flat(n.right)
+            else:
+                pieces.append(n)
+        flat(node)
+    else:
+        return "", None
+    head = ""
+    for p in pieces:
+        s = _const_str(p)
+        if s is None:
+            return head, p
+        head += s
+    return head, None
+
+
 class _Scope:
-    def __init__(self, models, ctor_params):
-        self.models = models
+    def __init__(self, models, ctor_params, sigs=None):
+        self.models = {k: v for k, v in models.items() if k != "__aliases__"}
         self.ctor_params = ctor_params
+        self.sigs = sigs or {}
         self.prepared: dict = {}     # var -> SQL text
+        self.cursors: dict = {}      # cursor var -> columns of the last SELECT it executed (in statement order)
         self.bound: dict = {}        # var -> table (ORM instance / loop row / JPA entity)
         self.consts: dict = {}       # var -> string constant
 
@@ -331,6 +501,12 @@ class _Scope:
             return self.models[root]                     # constructor
         if root in ("prisma",) and len(chain) >= 3:
             return chain[1].upper()
+        if isinstance(expr, (ast.Call, ast.Await)):
+            c = expr.value if isinstance(expr, ast.Await) else expr
+            if isinstance(c, ast.Call):
+                sig = self.sigs.get(c.func.id if isinstance(c.func, ast.Name) else (c.func.attr if isinstance(c.func, ast.Attribute) else ""))
+                if sig and sig["kind"] == "read_orm":
+                    return self._sig_table(c, sig)
         # session.query(Item) / session.get(Item, 1) / select(Item) / db.session.scalars(select(Item))
         for n in ast.walk(expr):
             if isinstance(n, ast.Call) and n.args and isinstance(n.args[0], ast.Name) and n.args[0].id in self.models \
@@ -421,8 +597,43 @@ class _Scope:
                         out.append((self.bound[t.value.id], t.attr.upper(), n.value))
         return out
 
+    def _sig_arg(self, call, pos):
+        idx, name = pos
+        for k in call.keywords:
+            if k.arg == name:
+                return k.value
+        return call.args[idx] if idx < len(call.args) else None
+
+    def _sig_table(self, call, sig):
+        if "table" in sig:
+            a = self._sig_arg(call, sig["table"])
+            s = _const_str(a) if a is not None else None
+            if s is None and isinstance(a, ast.Name):
+                s = self.consts.get(a.id)
+            return s
+        a = self._sig_arg(call, sig["model"])
+        if isinstance(a, ast.Name) and a.id in self.models:
+            return self.models[a.id]
+        return None
+
+    def helper_writes(self, call) -> list:
+        """Calls to generic save/create helpers: the table comes from this call site's arguments."""
+        name = call.func.id if isinstance(call.func, ast.Name) else (call.func.attr if isinstance(call.func, ast.Attribute) else "")
+        sig = self.sigs.get(name)
+        if not sig or sig["kind"] not in ("sql", "orm"):
+            return []
+        table = self._sig_table(call, sig)
+        if not table:
+            return []
+        data = sig["data"]
+        if data[0] == "idx":
+            d = self._sig_arg(call, (data[1], data[2]))
+            return _dict_items(table, d) if isinstance(d, ast.Dict) else []
+        skip = {sig.get("table", (0, None))[1], sig.get("model", (0, None))[1]}
+        return [(table, k.arg.upper(), k.value) for k in call.keywords if k.arg and k.arg not in skip]
+
     def call_writes(self, call) -> list:
-        out = []
+        out = self.helper_writes(call)
         sql, idx = self.sql_of(call)
         if sql and WRITE_SQL.match(sql):
             rest = call.args[idx + 1:] if idx is not None and idx >= 0 else call.args
@@ -492,6 +703,12 @@ class _Scope:
 
     # ------------------------------------------------------------------ reads
     def call_reads(self, call) -> list:
+        name = call.func.id if isinstance(call.func, ast.Name) else (call.func.attr if isinstance(call.func, ast.Attribute) else "")
+        sig = self.sigs.get(name)
+        if sig and sig["kind"] in ("read", "read_orm"):
+            table = self._sig_table(call, sig)
+            if table:
+                return [(table, "*")]
         sql, _ = self.sql_of(call)
         if sql and READ_SQL.match(sql):
             return parse_read(sql)
@@ -562,6 +779,9 @@ class _Rewriter(ast.NodeTransformer):
         for k in node.keywords:
             k.value = self.visit(k.value)
         reads = self.s.call_reads(node)
+        if not reads and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) \
+                and node.func.value.id in self.s.cursors and node.func.attr in FETCH_METHODS:
+            reads = self.s.cursors[node.func.value.id]          # cur.fetchone() after cur.execute("SELECT …")
         if reads:
             line = getattr(node, "lineno", 1)
             return _either([_load(t, c, line) for t, c in reads], _db_read(node))
@@ -589,7 +809,10 @@ def _block(stmts, scope: _Scope) -> list:
         line = getattr(st, "lineno", 1)
         if isinstance(st, (ast.For, ast.AsyncFor)):
             scope.learn_for(st.target, st.iter)
-            st.iter = rw.visit(st.iter)
+            if isinstance(st.iter, ast.Name) and st.iter.id in scope.cursors:     # for row in cur:
+                st.iter = _either([_load(t, c, line) for t, c in scope.cursors[st.iter.id]], _db_read(st.iter))
+            else:
+                st.iter = rw.visit(st.iter)
             st.body = _block(st.body, scope)
             st.orelse = _block(st.orelse, scope)
             out.append(st)
@@ -645,30 +868,26 @@ def _block(stmts, scope: _Scope) -> list:
                     x.col_offset = x.end_col_offset = 0
                 out.append(a)
         if cursor_read:
-            name, reads = cursor_read
-            tgt = ast.Name(id=name, ctx=ast.Store())
-            val = _either([_load(t, c, line) for t, c in reads], ast.Name(id=name, ctx=ast.Load()))
-            a = ast.Assign(targets=[tgt], value=val)
-            for x in (a, tgt, val.values[-1]):
-                x.lineno = x.end_lineno = line
-                x.col_offset = x.end_col_offset = 0
-            out.append(a)
+            scope.cursors[cursor_read[0]] = cursor_read[1]      # later fetches on this cursor read these columns
     return out
 
 
-def instrument(tree: ast.Module, models: dict, ctor_params: dict) -> ast.Module:
+def instrument(tree: ast.Module, models: dict, ctor_params: dict, sigs: dict | None = None) -> ast.Module:
     """Rewrite a module in place: explicit table writes / reads for the stored-data passes."""
-    tree.body = _block(tree.body, _Scope(models, ctor_params))
+    _ALIASES.clear()
+    _ALIASES.update(models.get("__aliases__", {}))
+    tree.body = _block(tree.body, _Scope(models, ctor_params, sigs))
     for n in ast.walk(tree):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            n.body = _block(n.body, _Scope(models, ctor_params)) or n.body
+            n.body = _block(n.body, _Scope(models, ctor_params, sigs)) or n.body
     return tree
 
 
 def ctor_param_names(trees: list, models: dict) -> dict:
     """Model class -> constructor parameter names (for positional `new Note(title, body)`)."""
     out = {}
-    for _, tree in trees:
+    for item in trees:
+        tree = item[1]
         for n in ast.walk(tree):
             if isinstance(n, ast.ClassDef) and n.name in models:
                 for f in n.body:

@@ -210,8 +210,17 @@ vulnscan ./my-apex-app        # f100.sql أو application/pages/*.sql، وملف
 | **ORM** | Django وSQLAlchemy وPeewee وSQLModel، وActiveRecord، وMongoose وSequelize وPrisma وTypeORM، وJPA/Hibernate (`@Entity` مع setters/getters ومستودعات Spring Data بالاسم). الكتابة: `create`/`update`/المُنشئ/`obj.f = x`/`setF(x)`؛ القراءة: حقول الكائن المجلوب أو متغير الحلقة. |
 
 ما يعود من قاعدة البيانات يحمل تلوّث الأعمدة فقط، لا تلوّث مفتاح البحث: `Msg.findById(req.params.id).who` ليس ملوّثًا إلا إن كتب
-مستخدمٌ في `MSG.WHO`. أسماء الجداول في SQL الخام وأسماء أصناف ORM تُطابَق كما كُتبت (حالة الأحرف لا تهم)، فجدول `notes` في SQL
-وصنف `Note` في ORM يُعاملان كجدولين مختلفين ما لم يتطابق الاسمان.
+مستخدمٌ في `MSG.WHO`.
+
+**أسماء الجداول الحقيقية**: يُحسب جدول كل صنف ORM كما يحسبه إطاره: `__tablename__` (SQLAlchemy)، و`Meta.db_table` أو
+`<app>_<model>` الافتراضي (Django)، و`self.table_name` (Rails)، و`@Table(name=…)`/`@Entity("…")` (JPA/TypeORM)، ومجموعة
+Mongoose في الوسيط الثالث، و`tableName` في Sequelize. ثم تُوحَّد كل الأسماء بصيغة قانونية (بلا مخطط، مفرد، وأسماء الأعمدة بلا
+شرطات: `created_at` = `createdAt`)، فجدول `notes` في SQL الخام وصنف `Note` في ORM جدول واحد.
+
+**الدوال الوسيطة العامة**: دالة تأخذ الجدول أو الصنف والبيانات كوسائط، مثل `save(table, data)` التي تبني
+`INSERT INTO {table}`، أو `create(Model, **fields)`، أو `createRecord(Model, data)`، أو `fetch(table, id)`، تُكتشف تلقائيًا،
+وتُنمذج الكتابة والقراءة عند كل استدعاء بالجدول والمفاتيح الفعلية. ومفاتيح قاموس حرفي ثابت لا تُعدّ مدخلات مستخدم،
+أما مفاتيح `request.form` فتبقى ملوّثة.
 
 ### VQL — لغة استعلام فوق قاعدة بيانات البرنامج
 
