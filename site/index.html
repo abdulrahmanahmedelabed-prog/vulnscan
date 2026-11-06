@@ -58,7 +58,7 @@ td.feat{font-weight:700}
 .col-us{background:rgba(34,211,238,.08)}
 th.col-us{background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(8,145,178,.18));color:var(--text)}
 .note{color:var(--muted);font-size:14px;margin-top:14px}
-.dl{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.dl{display:grid;grid-template-columns:minmax(0,420px);justify-content:center;gap:18px}
 .dl .card{text-align:center}
 .dl .os{font-size:40px}
 .footer{border-top:1px solid var(--border);padding:30px 0;color:var(--muted);text-align:center}
@@ -139,11 +139,9 @@ th.col-us{background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(8,145,178,
 
 <section id="download" class="wrap">
   <h2 class="title">حمّل الآن</h2>
-  <p class="sub">نسخ جاهزة لكل نظام، يبدأ التحميل مباشرة عند الضغط.</p>
+  <p class="sub">نسخة ويندوز جاهزة، يبدأ التحميل مباشرة عند الضغط. على macOS ولينكس شغّل المشروع عبر Python 3.</p>
   <div class="dl">
     <div class="card"><div class="os">🪟</div><h3>Windows</h3><p>vulnscan-windows.exe</p><p style="margin-top:12px"><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.1.0/vulnscan-windows.exe" download>تحميل exe</a></p></div>
-    <div class="card"><div class="os">🍎</div><h3>macOS</h3><p>vulnscan-macos</p><p style="margin-top:12px"><a class="btn ghost" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.1.0/vulnscan-macos" download>تحميل</a></p></div>
-    <div class="card"><div class="os">🐧</div><h3>Linux</h3><p>vulnscan-linux</p><p style="margin-top:12px"><a class="btn ghost" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.1.0/vulnscan-linux" download>تحميل</a></p></div>
   </div>
   <div class="legal">⚠️ افحص فقط ما تملكه أو ما لديك تصريح كتابي بفحصه. فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.</div>
 </section>

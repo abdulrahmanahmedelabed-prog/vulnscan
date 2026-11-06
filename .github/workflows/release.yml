@@ -1,4 +1,4 @@
-name: Build executables
+name: Build Windows executable
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "انشر النسخ في إصدار بهذا الوسم (اتركه فارغًا لبناء دون نشر)"
+        description: "انشر النسخة في إصدار بهذا الوسم (اتركه فارغًا لبناء دون نشر)"
         type: string
         default: "v0.1.0"
 
@@ -15,20 +15,7 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            artifact: vulnscan-windows.exe
-            built: dist/vulnscan.exe
-          - os: macos-latest
-            artifact: vulnscan-macos
-            built: dist/vulnscan
-          - os: ubuntu-latest
-            artifact: vulnscan-linux
-            built: dist/vulnscan
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -39,7 +26,7 @@ jobs:
       - name: Smoke test (the binary starts, serves the UI, then stops)
         shell: bash
         run: |
-          "${{ matrix.built }}" ui --no-browser --port 8799 &
+          dist/vulnscan.exe ui --no-browser --port 8799 &
           PID=$!
           OK=
           for i in $(seq 1 40); do
@@ -50,38 +37,36 @@ jobs:
           done
           kill $PID 2>/dev/null || true
           test "$OK" = 1
-      - name: Name the binary per platform
+      - name: Name the binary
         shell: bash
-        run: cp "${{ matrix.built }}" "${{ matrix.artifact }}"
+        run: cp dist/vulnscan.exe vulnscan-windows.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          name: vulnscan-windows.exe
+          path: vulnscan-windows.exe
       - name: Publish to release
         # On a tag push, or on a manual run when a tag name is given, create/update
-        # the release and attach this platform's binary. softprops/action-gh-release
+        # the release and attach the Windows binary. softprops/action-gh-release
         # creates the tag from the current commit when it does not yet exist.
         if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          files: ${{ matrix.artifact }}
+          files: vulnscan-windows.exe
           fail_on_unmatched_files: true
 
-      - name: Prune stray release assets
-        # Keep only the three platform binaries; remove anything left from an
-        # earlier run (e.g. a mis-named asset). Runs once, on the Linux job.
-        if: matrix.os == 'ubuntu-latest' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != ''))
+      - name: Prune other release assets
+        # Keep only the Windows binary; remove anything left from earlier runs
+        # (old macOS/Linux builds or mis-named assets).
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
         shell: bash
         run: |
-          keep=" vulnscan-linux vulnscan-macos vulnscan-windows.exe "
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | while read -r name; do
-            case "$keep" in
-              *" $name "*) ;;
-              *) echo "removing stray asset: $name"; gh release delete-asset "$TAG" "$name" -y --repo "$GITHUB_REPOSITORY" || true ;;
-            esac
+            if [ "$name" != "vulnscan-windows.exe" ]; then
+              echo "removing asset: $name"; gh release delete-asset "$TAG" "$name" -y --repo "$GITHUB_REPOSITORY" || true
+            fi
           done
