@@ -290,7 +290,8 @@
    "names": [
     "owa_util.redirect_url",
     "apex_util.redirect_url",
-    "sys.owa_util.redirect_url"
+    "sys.owa_util.redirect_url",
+    "ords_forward_location"
    ],
    "title": "Tainted data reaches a redirect",
    "title_ar": "بيانات غير موثوقة تصل إلى تحويل",

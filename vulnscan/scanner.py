@@ -16,6 +16,7 @@ from .model import Finding
 from .rules import RULES, SENSITIVE_FILES, Rule
 from . import taint, vql
 from .plsql_frontend import PLSQL_EXTS
+from . import apex_export
 
 SKIP_DIRS = {
     ".git", ".hg", ".svn", "node_modules", ".venv", "venv", "env", "__pycache__",
@@ -305,6 +306,15 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                             py_sources[rel] = p.read_text("utf-8", errors="replace")
                             if p.suffix.lower() == ".sql":
                                 findings.extend(scan_sql_dump(rel, py_sources[rel], ignore_rules))
+                    except OSError:
+                        pass
+                elif p.suffix.lower() in (".yaml", ".yml", ".xml", ".json") and not p.name.endswith(".min.json"):
+                    # APEX readable exports, Liquibase/SQLcl changelogs and ORDS definitions carry Oracle code
+                    try:
+                        if p.stat().st_size <= MAX_PLSQL_BYTES:
+                            text = p.read_text("utf-8", errors="replace")
+                            if apex_export.is_oracle_container(text, rel):
+                                py_sources[rel] = text
                     except OSError:
                         pass
             findings.extend(scan_project_hygiene(root, ignore_rules))

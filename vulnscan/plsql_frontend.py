@@ -35,6 +35,16 @@ SQLPLUS_CMDS = {"set", "prompt", "spool", "whenever", "define", "undefine", "col
 SKIP_STMTS = {"select", "insert", "update", "delete", "merge", "with", "fetch", "close", "commit", "rollback", "savepoint", "lock",
               "goto", "null", "exit", "continue", "pipe", "set", "dbms_output_put"}
 STOP_BODY = {"end", "exception", "elsif", "else", "when"}
+SQL_DML = {"select", "insert", "update", "delete", "merge", "with"}
+# words that may precede '(' in SQL without being a function call
+SQL_NON_FUNCS = {"in", "exists", "values", "over", "as", "from", "where", "and", "or", "not", "select", "when", "then", "else",
+                 "case", "using", "on", "into", "by", "set", "join", "any", "all", "some", "between", "like", "partition",
+                 "within", "keep", "returning", "group", "order", "having", "connect", "start", "union", "intersect", "minus",
+                 "except", "fetch", "offset", "for", "of", "update", "insert", "delete", "merge", "with", "is", "default",
+                 "check", "unique", "primary", "foreign", "references", "constraint", "pivot", "unpivot", "model", "lateral",
+                 "cross", "outer", "inner", "left", "right", "full", "natural", "apply", "tablesample", "sample", "rows", "range",
+                 "nulls", "first", "last", "only", "ties", "percent", "columns", "path", "nested", "match_recognize", "measures",
+                 "pattern", "define", "subset", "search", "cycle", "siblings", "prior", "level", "rownum", "distinct", "unique"}
 
 _TOKEN = re.compile(r"""
     (?P<nl>\n) | (?P<ws>[ \t\r\f\v]+) | (?P<lc>--[^\n]*) | (?P<bc>/\*.*?\*/) |
@@ -157,6 +167,7 @@ class Parser:
         self.diagnostics: list = []
         self.n_statements = 0
         self.anon = 0
+        self.pending_pre: list = []
 
     # ---------------------------------------------------------------- helpers
     @property
@@ -408,7 +419,12 @@ class Parser:
                 if self.at("member", "static", "constructor", "map", "order", "final", "instantiable", "overriding", "not"):
                     self.i += 1
                     continue
-                if self.at("cursor", "type", "subtype", "pragma"):
+                if self.at("cursor"):
+                    start = self.i
+                    self.skip_to_semicolon()
+                    out.extend(self.sql_calls(start, self.i))
+                    continue
+                if self.at("type", "subtype", "pragma"):
                     self.skip_to_semicolon()
                     continue
                 if self.t.kind != "id":
@@ -577,6 +593,10 @@ class Parser:
             if v == "raise" and self.peek().val in (";",) or (v == "raise" and self.peek().kind == "id" and self.peek(2).val == ";"):
                 self.skip_to_semicolon()
                 return [_mk(ast.Raise, line, exc=None, cause=None)]
+            if v in SQL_DML:
+                start = self.i
+                self.skip_to_semicolon()
+                return self.sql_calls(start, self.i)      # static SQL: binds are safe, but functions it calls are not
             if v in SKIP_STMTS:
                 self.skip_to_semicolon()
                 return []
@@ -602,6 +622,8 @@ class Parser:
             return [_mk(ast.Assign, line, targets=[_name(target.id, line, store=True)], value=value)]
         if isinstance(target, ast.Attribute):
             if _dotted(target).startswith("apex_item."):          # :P1_X := v  (session state write)
+                if target.attr == "FORWARD_LOCATION":              # ORDS: redirects the client to this URL
+                    return [_mk(ast.Expr, line, value=_call("ords_forward_location", [value], line))]
                 return [_mk(ast.Expr, line, value=_call("apex_util.set_session_state", [_const(target.attr, line), value], line))]
             target.ctx = ast.Store()
             return [_mk(ast.Assign, line, targets=[target], value=value)]
@@ -686,8 +708,12 @@ class Parser:
             self.i += 2
             it = self.parse_expr()
         elif self.at("(") and self.peek().val in ("select", "with"):
-            self.skip_balanced()                     # implicit cursor over static SQL (bound, safe)
+            start = self.i
+            self.skip_balanced()                     # implicit cursor over static SQL (bound, safe) …
+            pre = self.sql_calls(start, self.i)      # … except the PL/SQL functions it calls
             it = _const("", line)
+            if pre:
+                self.pending_pre.extend(pre)
         else:
             lo = self.parse_expr()
             if self.opt(".."):
@@ -702,8 +728,40 @@ class Parser:
         else:
             self.eat("loop")
             body = self.loop_body()
-        return _mk(ast.For, line, target=_name(var, line, store=True), iter=it, body=body or [_mk(ast.Pass, line)],
+        loop = _mk(ast.For, line, target=_name(var, line, store=True), iter=it, body=body or [_mk(ast.Pass, line)],
                    orelse=[], type_comment=None)
+        if self.pending_pre:
+            pre, self.pending_pre = self.pending_pre, []
+            return _mk(ast.If, line, test=_const(True, line), body=pre + [loop], orelse=[])
+        return loop
+
+    def sql_calls(self, start: int, end: int) -> list:
+        """Function calls inside a static SQL statement (token range) -> expression statements.
+
+        `select pkg.f(:P1_X) from dual` binds :P1_X safely for SQL, but pkg.f still receives the value: if it builds
+        dynamic SQL from it, that is injection. Calls with only constant arguments are dropped."""
+        out, j, save = [], start, self.i
+        toks = self.toks
+        while j < end:
+            t = toks[j]
+            if t.kind == "id" and t.val not in SQL_NON_FUNCS and not (j > start and toks[j - 1].val == "."):
+                k = j + 1
+                while k + 1 < end and toks[k].val == "." and toks[k + 1].kind == "id":
+                    k += 2
+                if k < end and toks[k].kind == "punct" and toks[k].val == "(":
+                    self.i = j
+                    try:
+                        e = self.parse_postfix()
+                        if self.i > j and any(isinstance(n, (ast.Name, ast.Attribute)) for a in getattr(e, "args", []) + [k.value for k in getattr(e, "keywords", [])]
+                                              for n in ast.walk(a)):
+                            out.append(_mk(ast.Expr, t.line, value=e))
+                        j = max(self.i, j + 1)
+                        continue
+                    except ParseError:
+                        pass
+            j += 1
+        self.i = save
+        return out
 
     # -------------------------------------------------------------- expressions
     def parse_expr(self):
@@ -981,6 +1039,23 @@ def parse_plsql(text: str):
         diag["skipped"] = 1
         diag["lines"] = [(1, f"frontend failure: {type(e).__name__}: {e}")]
         return [], diag
+
+
+def sql_call_units(sql: str, unit: str) -> tuple[list, dict]:
+    """A static SQL query (APEX report / LOV source, ORDS query handler) -> a unit holding the PL/SQL calls it makes."""
+    diag = {"language": "sql", "statements": 0, "skipped": 0, "lines": []}
+    try:
+        p = Parser(sql)
+        calls = p.sql_calls(0, len(p.toks) - 1)
+    except Exception as e:  # noqa: BLE001
+        diag["skipped"] = 1
+        diag["lines"] = [(1, f"sql frontend failure: {type(e).__name__}: {e}")]
+        return [], diag
+    diag["statements"] = len(calls)
+    if not calls:
+        return [], diag
+    fn = _mk(ast.FunctionDef, 1, name=unit, args=_args([], 1), body=calls, decorator_list=[], returns=None, type_params=[])
+    return [Unit("standalone", unit, [fn], 1)], diag
 
 
 def shift_lines(tree: ast.AST, delta: int) -> ast.AST:

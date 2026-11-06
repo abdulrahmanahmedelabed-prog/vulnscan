@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:n0="http://www.oracle.com/xml/ns/dbchangelog-ext">
+  <changeSet id="1" author="hr">
+    <n0:runOracleScript objectName="hr.v2" objectType="ORDS" ownerName="HR" sourceType="STRING">
+      <n0:source><![CDATA[
+BEGIN
+  ORDS.DEFINE_HANDLER(
+      p_module_name    => 'hr.v2',
+      p_pattern        => 'report',
+      p_method         => 'GET',
+      p_source_type    => 'plsql/block',
+      p_source         =>
+'begin
+  execute immediate ''select * from emp order by '' || :sort_col;
+  htp.p(:title);
+end;');
+END;
+]]></n0:source>
+    </n0:runOracleScript>
+  </changeSet>
+</databaseChangeLog>

@@ -1,0 +1,102 @@
+---
+# ====== Page: Customers =====================================
+id: 20
+identification: 
+  name: Customers
+  alias: CUSTOMERS
+  title: Customers
+
+javascript: 
+  function-and-global-variable-declaration: |-
+    var greeting = "&P20_NAME.";
+    var safe = "&P20_NAME!JS.";
+
+regions: 
+- # ====== Region: Customer Report =============================
+  id: 2001
+  identification: 
+    title: Customer Report
+    type: Classic Report
+
+  source: 
+    location: Local Database
+    type: SQL Query
+    sql-query: |-
+      select id, name, orders_pkg.label(name)
+        from customers
+       where name like '%&P20_SEARCH.%'
+         and id in (select * from table(orders_pkg.search(p_name => :P20_FILTER)))
+
+  columns: 
+  - # ====== Column: NAME ========================================
+    id: 2002
+    identification: 
+      column-name: NAME
+      type: Plain Text
+    security: 
+      escape-special-characters: false
+
+- # ====== Region: Dynamic Report ==============================
+  id: 2003
+  identification: 
+    title: Dynamic Report
+    type: Classic Report
+
+  source: 
+    location: Local Database
+    type: Function Body returning SQL Query
+    language: PL/SQL
+    pl/sql-function-body-returning-sql-query: |-
+      begin
+        return 'select * from customers where city = ''' || :P20_CITY || '''';
+      end;
+
+processes: 
+- # ====== Process: Archive ====================================
+  id: 2004
+  identification: 
+    name: Archive
+    type: Execute Code
+    execution-chain: None
+
+  source: 
+    location: Local Database
+    language: PL/SQL
+    pl/sql-code: |-
+      begin
+        execute immediate 'delete from customers where id = ' || :P20_ID;
+        execute immediate 'delete from customers where id = :1' using :P20_ID;
+      end;
+
+dynamic-actions: 
+- # ====== Dynamic Action: Ask AI ==============================
+  id: 2005
+  identification: 
+    name: Ask AI
+
+  actions: 
+  - # ====== Action: Execute Server-side Code ==================
+    id: 2006
+    identification: 
+      action: Execute Server-side Code
+
+    settings: 
+      language: PL/SQL
+      pl/sql-code: |-
+        declare
+          l_sql clob;
+        begin
+          l_sql := apex_ai.generate(p_prompt => :P20_QUESTION);
+          execute immediate l_sql;
+        end;
+      items-to-submit: 
+      - P20_QUESTION
+
+  - # ====== Action: Execute JavaScript Code ===================
+    id: 2007
+    identification: 
+      action: Execute JavaScript Code
+
+    settings: 
+      code: |-
+        apex.message.alert("&P20_QUESTION.");

@@ -129,3 +129,72 @@ def test_sql_file_is_a_dump_only_by_content(tmp_path):
     (tmp_path / "backup.sql").write_text("-- MySQL dump 10.13\nINSERT INTO users VALUES (1,'a');\n")
     ids = {(f.file, f.rule_id) for f in scan_path(tmp_path, notes=[])[0]}
     assert ("backup.sql", "FILE006") in ids and ("pkg.sql", "FILE006") not in ids
+
+
+# ------------------------------------------------- readable YAML, ORDS, XML / JSON, functions inside static SQL
+def _scan_lines(path):
+    notes = []
+    fs, _ = scan_path(DATA, notes=notes)
+    return by_line([f for f in fs if f.file == path]), fs, notes
+
+
+def test_readable_yaml_export():
+    b, fs, notes = _scan_lines("readable/application/pages/p00020.yaml")
+    assert "APX002" in b[11] and 12 not in b      # &P20_NAME. in page JS; the !JS line is safe
+    assert "APX001" in b[27]                      # substitution in the report SQL
+    assert "DF004" in b[28]                       # :P20_FILTER -> orders_pkg.search (orders.sql) via a function in the SQL
+    assert "APX004" in b[37]                      # escape-special-characters: false
+    assert "DF004" in b[51]                       # function body returning SQL query
+    assert "DF004" in b[67] and 68 not in b       # process: concatenation vs USING
+    assert "DF020" in b[90]                       # AI output executed
+    assert "APX002" in b[102]
+    labels = {f.extra.get("apex_component") for f in fs if f.file.endswith("p00020.yaml")}
+    assert "صفحة 20 › عملية: Archive" in labels and "صفحة 20 › إجراء ديناميكي: Ask AI" in labels
+    assert not any("p00020" in n for n in notes if "تخطّت" in n)
+
+
+def test_ords_handlers_in_sql_query_and_plsql():
+    b, fs, _ = _scan_lines("ords_module.sql")
+    assert "DF004" in b[16]                       # query handler: :id -> hr_util.visible -> execute immediate
+    assert "DF004" in b[28]                       # PL/SQL handler: open :result for <concatenated SQL>
+    assert "DF008" in b[29]                       # :forward_location := :next_url (open redirect)
+    assert any(f.extra.get("apex_component") == "ORDS › hr.v1 POST employees/search" for f in fs)
+
+
+def test_ords_in_liquibase_xml_and_json():
+    b, _, notes = _scan_lines("ords_changelog.xml")
+    assert b.get(14) == {"DF004"} and b.get(15) == {"DF013"}, b
+    j, _, _ = _scan_lines("ords_module.json")
+    assert j.get(9) == {"DF004"}, j               # DELETE handler; the GET query with a bind is safe
+    assert not any("ords_changelog" in n for n in notes if "تخطّت" in n)
+
+
+def test_functions_called_from_static_sql_inside_plsql():
+    pkg = ("create or replace package body u as\n"
+           "  function f(p in varchar2) return number is\n"
+           "    l number;\n"
+           "  begin\n"
+           "    execute immediate 'select 1 from t where c = ''' || p || '''' into l;\n"
+           "    return l;\n"
+           "  end;\n"
+           "end u;\n/\n")
+    proc = ("create or replace procedure p is\n"
+            "  cursor c is select u.f(:P9_A) from dual;\n"
+            "  l number;\n"
+            "begin\n"
+            "  select u.f(:P9_B) into l from dual;\n"
+            "  update t set x = u.f(:P9_C) where id = 1;\n"
+            "  for r in (select u.f(:P9_D) v from dual) loop null; end loop;\n"
+            "  select count(*) into l from t where c = :P9_E;\n"
+            "end;\n/\n")
+    b = by_line(analyze_project({"u.pkb": pkg, "p.sql": proc}), "p.sql")
+    assert {2, 5, 6, 7} <= set(b) and all(b[k] == {"DF004"} for k in (2, 5, 6, 7)), b
+    assert 8 not in b, b                          # a plain bind in static SQL is safe
+
+
+def test_only_oracle_bearing_containers_are_analyzed():
+    assert not apex_export.is_oracle_container('{"name": "app", "scripts": {"start": "node x"}}', "package.json")
+    assert not apex_export.is_oracle_container("services:\n  db:\n    image: postgres\n", "docker-compose.yml")
+    assert not apex_export.is_oracle_container("<project><build/></project>", "pom.xml")
+    assert apex_export.is_oracle_container((DATA / "ords_changelog.xml").read_text(), "x.xml")
+    assert apex_export.is_oracle_container((DATA / "ords_module.json").read_text(), "x.json")

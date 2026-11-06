@@ -1321,8 +1321,8 @@ def _module_name(rel: str) -> str:
 def _language(rel: str) -> str | None:
     low = rel.lower()
     from .plsql_frontend import PLSQL_EXTS
-    if low.endswith(PLSQL_EXTS):
-        return "plsql"
+    if low.endswith(PLSQL_EXTS + (".yaml", ".yml", ".xml", ".json")):
+        return "plsql"     # .yaml/.xml/.json only reach the engine when they carry Oracle code (see scanner)
     if low.endswith(PY_EXTS):
         return "python"
     if low.endswith(JS_EXTS) and not low.endswith((".d.ts", ".min.js")):
@@ -1453,40 +1453,77 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     js_trees: list = []          # (module, rel, tree)
     js_files: dict = {}          # decoded static files (virtual path -> text)
     java_trees: list = []
+    def add_blocks(rel, blocks, diag):
+        """Extracted code blocks (APEX export / readable YAML / ORDS handlers) -> units at their real lines."""
+        for b in blocks:
+            ranges.append((rel, b.line, b.line + b.code.count("\n"), b.label))
+            delta = b.line - 1
+            if b.kind.startswith("plsql"):
+                units, d = pf.parse_plsql(apex_export.wrapped_plsql(b))
+                apex_export.anchor_wrapper_sink(b, units)
+            elif b.kind == "sql":                       # static query: follow the PL/SQL functions it calls
+                units, d = pf.sql_call_units(b.code, b.unit)
+            elif b.kind == "js":
+                tree = js_frontend.parse_js(b.code, rel)
+                js_trees.append((b.unit, rel, pf.shift_lines(tree, delta)))
+                continue
+            else:
+                continue
+            for u in units:
+                for node in u.body:
+                    pf.shift_lines(node, delta)
+            units_by_file.append((rel, units))
+            diag["statements"] += d["statements"]
+            diag["skipped"] += d["skipped"]
+            diag["lines"].extend((ln + delta, f"[{b.label}] {msg}") for ln, msg in d["lines"])
+
+    def add_plsql_text(rel, text, delta, diag):
+        """Plain PL/SQL (a .sql/.pkb file or a script inside XML): units, ORDS handlers, Java sources."""
+        units, d = pf.parse_plsql(text)
+        for u in units:
+            for node in u.body:
+                pf.shift_lines(node, delta)
+        units_by_file.append((rel, units))
+        diag["statements"] += d["statements"]
+        diag["skipped"] += d["skipped"]
+        diag["lines"].extend((ln + delta, msg) for ln, msg in d["lines"])
+        ords = apex_export.extract_ords(text, rel)
+        for b in ords:
+            b.line += delta
+        add_blocks(rel, ords, diag)
+        for name, start, code in pf.java_sources(text):
+            tree = cfamily_frontend.parse_cfamily(code, f"{name}.java", "java")
+            java_trees.append((re.sub(r"\W", "_", f"java_{name}").lower(), rel, pf.shift_lines(tree, start - 1 + delta)))
+
     for rel, text in files.items():
         if len(text) > 60_000_000:
             continue
+        low = rel.lower()
         texts[rel] = text
         shared_lines[rel] = text.splitlines()
         diag = {"language": "plsql", "statements": 0, "skipped": 0, "lines": []}
-        if apex_export.is_apex_export(text):
+        if low.endswith((".yaml", ".yml")):
+            if not apex_export.is_apex_yaml(text, rel):
+                continue
+            diag["language"] = "apex-yaml"
+            blocks, afind, _ = apex_export.extract_yaml(text, rel)
+            findings.extend(afind)
+            add_blocks(rel, blocks, diag)
+        elif low.endswith(".xml"):
+            diag["language"] = "xml"
+            for start, script in apex_export.xml_scripts(text):
+                add_plsql_text(rel, script, start - 1, diag)
+        elif low.endswith(".json"):
+            diag["language"] = "ords-json"
+            add_blocks(rel, apex_export.extract_json_ords(text, rel), diag)
+        elif apex_export.is_apex_export(text):
             diag["language"] = "apex"
             blocks, afind, sfiles = apex_export.extract(text, rel)
             findings.extend(afind)
             js_files.update(sfiles)
-            for b in blocks:
-                ranges.append((rel, b.line, b.line + b.code.count("\n"), b.label))
-                delta = b.line - 1
-                if b.kind.startswith("plsql"):
-                    units, d = pf.parse_plsql(apex_export.wrapped_plsql(b))
-                    apex_export.anchor_wrapper_sink(b, units)
-                    for u in units:
-                        for node in u.body:
-                            pf.shift_lines(node, delta)
-                    units_by_file.append((rel, units))
-                    diag["statements"] += d["statements"]
-                    diag["skipped"] += d["skipped"]
-                    diag["lines"].extend((ln + delta, f"[{b.label}] {msg}") for ln, msg in d["lines"])
-                elif b.kind == "js":
-                    tree = js_frontend.parse_js(b.code, rel)
-                    js_trees.append((b.unit, rel, pf.shift_lines(tree, delta)))
+            add_blocks(rel, blocks + apex_export.extract_ords(text, rel), diag)
         else:
-            units, d = pf.parse_plsql(text)
-            units_by_file.append((rel, units))
-            diag = d
-            for name, start, code in pf.java_sources(text):
-                tree = cfamily_frontend.parse_cfamily(code, f"{name}.java", "java")
-                java_trees.append((re.sub(r"\W", "_", f"java_{name}").lower(), rel, pf.shift_lines(tree, start - 1)))
+            add_plsql_text(rel, text, 0, diag)
         diags[rel] = diag
     # Java stored in the database runs in the same project, so PL/SQL call specs flow into the Java methods
     models = load_models_for("plsql", models_dirs)

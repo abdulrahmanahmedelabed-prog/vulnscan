@@ -373,3 +373,328 @@ def anchor_wrapper_sink(block: Block, units: list) -> None:
                 for n in _ast.walk(fn.body[-1]):
                     if hasattr(n, "lineno"):
                         n.lineno = n.end_lineno = max(rets)
+
+
+# =============================================================== readable YAML export (APEX 23.2+)
+_YAML_HEADER = re.compile(r"^(\s*)(?:-\s*)?#\s*=+\s*([^:=]+?)\s*:\s*(.*?)\s*=*\s*$")
+_YAML_KEY = re.compile(r"^(\s*)(-\s+)?([A-Za-z0-9_/().\-]+(?: [A-Za-z0-9_/().\-]+)*)\s*:(?:\s+(.*?))?\s*$")
+YAML_HEADER_AR = {"page": "صفحة", "region": "منطقة", "process": "عملية", "page item": "عنصر", "item": "عنصر",
+                  "dynamic action": "إجراء ديناميكي", "action": "إجراء ديناميكي", "validation": "تحقق", "computation": "حساب",
+                  "column": "عمود", "branch": "تفرّع", "button": "زر", "plug-in": "إضافة", "plugin": "إضافة",
+                  "list of values": "قائمة قيم", "authorization": "تفويض", "authentication": "مصادقة",
+                  "application process": "عملية تطبيق", "application item": "عنصر تطبيق", "ai configuration": "إعداد الذكاء الاصطناعي",
+                  "rest data source": "مصدر REST", "web source": "مصدر ويب", "rag source": "مصدر RAG"}
+YAML_JS_KEYS = {"code", "javascript-code", "function-and-global-variable-declaration", "execute-when-page-loads",
+                "javascript-expression", "javascript-initialization-code", "initialization-javascript-function", "javascript"}
+YAML_HTML_KEYS = {"html-code", "html-expression", "text", "header", "footer", "pre-text", "post-text", "html", "link-text",
+                  "column-formatting", "help-text", "inline-help-text", "html-header", "page-html-body-attribute"}
+
+
+def is_apex_yaml(text: str, rel: str = "") -> bool:
+    head = text[:200_000]
+    if not re.search(r"^\s*-?\s*#\s*=+\s*(Page|Region|Process|Application|Plug-?in|List of Values|Page Item|Shared Component)", head, re.M | re.I):
+        return False
+    return "readable" in rel.replace("\\", "/").lower() or bool(re.search(r"^\s*identification\s*:", head, re.M))
+
+
+def _yaml_scalar(v: str) -> str:
+    v = v.strip()
+    if len(v) >= 2 and v[0] == v[-1] == "'":
+        return v[1:-1].replace("''", "'")
+    if len(v) >= 2 and v[0] == v[-1] == '"':
+        return v[1:-1].encode("utf-8").decode("unicode_escape", "replace") if "\\" in v else v[1:-1]
+    return v
+
+
+def _yaml_classify(key: str, siblings: dict) -> str | None:
+    k = key.lower()
+    lang = (siblings.get("language", "") + " " + siblings.get("type", "")).lower()
+    if "prompt" in k or "welcome-message" in k:
+        return "ai"
+    if "pl/sql" in k or "plsql" in k:
+        if "returning" in k and "sql" in k.split("returning", 1)[1]:
+            return "plsql_fn_sql"
+        if "returning" in k and "clob" in k:
+            return "plsql_fn_html"
+        if "function-body" in k:
+            if "returning sql" in lang:
+                return "plsql_fn_sql"
+            if "clob" in lang or "dynamic content" in lang:
+                return "plsql_fn_html"
+            return "plsql_fn"
+        if "expression" in k:
+            return "plsql_expr"
+        return "plsql"
+    if "sql-query" in k or k in ("sql", "sql-statement", "query", "list-of-values-query", "lov-query", "sql-query-returning-values"):
+        return "sql"
+    if "function-body" in k:
+        return "plsql_fn"
+    if k in YAML_JS_KEYS:
+        if "pl/sql" in lang or "plsql" in lang:
+            return "plsql"
+        if lang.strip().startswith("sql") or " sql" in lang:
+            return "sql"
+        return "js"
+    if "javascript" in k:
+        return "js"
+    if k in YAML_HTML_KEYS or "html" in k:
+        return "html"
+    return None
+
+
+def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple[str, str]]]:
+    """APEX readable export (YAML): code properties -> blocks at their real lines, labelled by component."""
+    lines = text.split("\n")
+    blocks: list[Block] = []
+    findings: list[Finding] = []
+    page_id = page_name = None
+    comp = name = None
+    da_name = None
+    seq = 0
+    # mapping scopes: indent -> {key: scalar}; reset when a line at a smaller indent starts
+    scopes: list[tuple[int, dict]] = []
+    i, n = 0, len(lines)
+    while i < n:
+        raw = lines[i]
+        h = _YAML_HEADER.match(raw)
+        if h:
+            kind, nm = h.group(2).strip().lower(), h.group(3).strip()
+            if kind == "page":
+                page_name, page_id = nm, None
+            elif kind == "dynamic action":
+                da_name = nm
+            comp, name = kind, nm
+            i += 1
+            continue
+        m = _YAML_KEY.match(raw)
+        if not m or raw.lstrip().startswith("#"):
+            i += 1
+            continue
+        indent = len(m.group(1)) + (len(m.group(2)) if m.group(2) else 0)
+        if m.group(2):                       # a new list item starts a new mapping at this indent
+            scopes = [(ind, d) for ind, d in scopes if ind < indent]
+        scopes = [(ind, d) for ind, d in scopes if ind <= indent]
+        if not scopes or scopes[-1][0] != indent:
+            scopes.append((indent, {}))
+        key, val = m.group(3), (m.group(4) or "")
+        here = scopes[-1][1]
+        if key == "id" and comp == "page" and page_id is None and indent == 0:
+            page_id = _yaml_scalar(val)
+        code, start = None, i + 1
+        if val[:1] in ("|", ">"):             # block scalar
+            j = i + 1
+            body: list[str] = []
+            base = None
+            while j < n:
+                ln = lines[j]
+                if ln.strip() == "":
+                    body.append("")
+                    j += 1
+                    continue
+                ind = len(ln) - len(ln.lstrip(" "))
+                if ind <= indent:
+                    break
+                if base is None:
+                    base = ind
+                body.append(ln[base:] if ind >= base else ln.lstrip())
+                j += 1
+            while body and body[-1] == "":
+                body.pop()
+            code, start = "\n".join(body), i + 2
+            i = j
+        else:
+            here[key] = _yaml_scalar(val)
+            if val and key not in ("id",):
+                code, start = _yaml_scalar(val), i + 1
+            i += 1
+        # sibling scalars already seen in this mapping, plus the ones that follow it (look ahead)
+        sib = dict(here)
+        k2 = i
+        while k2 < n and k2 < i + 40:
+            m2 = _YAML_KEY.match(lines[k2])
+            if m2:
+                ind2 = len(m2.group(1)) + (len(m2.group(2)) if m2.group(2) else 0)
+                if ind2 < indent or (m2.group(2) and ind2 <= indent):
+                    break
+                if ind2 == indent and m2.group(4) and m2.group(4)[:1] not in ("|", ">"):
+                    sib.setdefault(m2.group(3), _yaml_scalar(m2.group(4)))
+            k2 += 1
+        if key == "escape-special-characters" and str(here.get(key, "")).lower() in ("false", "no", "n"):
+            label = _yaml_label(page_id, page_name, comp, name, da_name)
+            findings.append(_finding("APX004", "medium", "Output escaping disabled", "تهريب المخرجات معطّل (XSS محتمل)",
+                                     rel, i, lines[i - 1], "أعد تفعيل Escape special characters، أو هرّب القيمة بـ apex_escape.html.",
+                                     "CWE-79", label))
+        if not code or len(code.strip()) < 2 or re.fullmatch(r"[A-Za-z0-9_$#,:. \-]*", code.strip()) and "&" not in code:
+            continue
+        kind = _yaml_classify(key, sib)
+        if not kind:
+            continue
+        seq += 1
+        label = _yaml_label(page_id, page_name, comp, name, da_name)
+        unit = re.sub(r"\W", "_", f"apex_{'p' + str(page_id) + '_' if page_id else ''}{comp or 'component'}_{seq}").lower()
+        b = Block(kind, code, start, label, unit)
+        blocks.append(b)
+        findings.extend(_subst_findings(b, rel))
+    return blocks, findings, []
+
+
+def _yaml_label(page_id, page_name, comp, name, da_name) -> str:
+    comp_ar = YAML_HEADER_AR.get(comp or "", comp or "")
+    if comp == "action" and da_name:
+        name = da_name
+    if comp == "page":
+        return f"صفحة {page_id or page_name}"
+    prefix = f"صفحة {page_id} › " if page_id else ""
+    return prefix + comp_ar + (f": {name}" if name else "")
+
+
+# ======================================================================= ORDS REST handlers
+_ORDS_CALL = re.compile(r"^(?:\w+\.)?(?:ords|ords_services|ords_metadata\.ords_services)\.(define_handler|define_service|create_handler|create_service)$")
+ORDS_POSITIONAL = {"define_handler": ["p_module_name", "p_pattern", "p_method", "p_source_type", "p_source"],
+                   "define_service": ["p_module_name", "p_base_path", "p_pattern", "p_method", "p_source_type", "p_source"]}
+ORDS_PLSQL_TYPES = ("PLSQL", "PLSQL/BLOCK", "SOURCE_TYPE_PLSQL")
+
+
+def has_ords(text: str) -> bool:
+    return bool(re.search(r"\bords(?:_services|_metadata)?\s*\.\s*(define_handler|define_service|create_handler|create_service)\b", text, re.I))
+
+
+def extract_ords(text: str, rel: str, toks=None) -> list[Block]:
+    """ORDS.DEFINE_HANDLER / DEFINE_SERVICE calls (in .sql, inside XML changelogs, anywhere PL/SQL appears):
+    the handler source becomes a block — PL/SQL handlers as code, query handlers as SQL."""
+    if not has_ords(text):
+        return []
+    toks = toks or tokenize(text)
+    blocks: list[Block] = []
+    i, n, seq = 0, len(toks), 0
+    while i < n:
+        t = toks[i]
+        if t.kind != "id" or not t.val.startswith("ords"):
+            i += 1
+            continue
+        j, name = i, t.val
+        while j + 2 < n and toks[j + 1].val == "." and toks[j + 2].kind == "id":
+            name += "." + toks[j + 2].val
+            j += 2
+        if j + 1 >= n or toks[j + 1].val != "(" or not _ORDS_CALL.match(name):
+            i += 1
+            continue
+        fn = name.rsplit(".", 1)[-1]
+        params, end = _args(toks, j + 1)
+        if not params:                                  # positional call
+            params = _positional(toks, j + 1, ORDS_POSITIONAL.get(fn, []))
+        decoded = {k: _value(v) for k, v in params.items()}
+        src, line, _ = decoded.get("p_source", (None, 0, ""))
+        if src and src.strip():
+            stype = decoded.get("p_source_type", (None, 0, ""))
+            stype_text = ((stype[0] or "") + " " + stype[2]).upper().replace("ORDS.", "")
+            kind = "plsql" if any(x in stype_text for x in ORDS_PLSQL_TYPES) or re.match(r"\s*(begin|declare)\b", src, re.I) else "sql"
+            module = decoded.get("p_module_name", (None,))[0] or ""
+            method = (decoded.get("p_method", (None,))[0] or "GET").upper()
+            pattern = decoded.get("p_pattern", (None,))[0] or decoded.get("p_base_path", (None,))[0] or ""
+            seq += 1
+            label = f"ORDS › {module} {method} {pattern}".strip()
+            blocks.append(Block(kind, src, line, label, re.sub(r"\W", "_", f"ords_{module}_{method}_{seq}").lower()))
+        i = end
+    return blocks
+
+
+def _positional(toks, i, names) -> dict:
+    """Arguments of a positional call -> {param name: tokens}."""
+    out, depth, cur, k = {}, 0, [], 0
+    j = i
+    while j < len(toks):
+        t = toks[j]
+        if t.kind == "punct" and t.val == "(":
+            depth += 1
+            if depth == 1:
+                j += 1
+                continue
+        elif t.kind == "punct" and t.val == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        if depth == 1 and t.kind == "punct" and t.val == ",":
+            if k < len(names):
+                out[names[k]] = cur
+            k, cur = k + 1, []
+            j += 1
+            continue
+        cur.append(t)
+        j += 1
+    if cur and k < len(names):
+        out[names[k]] = cur
+    return out
+
+
+# ============================================================ PL/SQL inside XML (Liquibase / SQLcl)
+_XML_SCRIPT = re.compile(r"<!\[CDATA\[(.*?)\]\]>|<(?:\w+:)?(?:sql|source|createProcedure|sqlFile)\b[^>]*>(.*?)</(?:\w+:)?(?:sql|source|createProcedure)>", re.S | re.I)
+
+
+def is_oracle_container(text: str, rel: str) -> bool:
+    """A non-.sql file that carries Oracle code: APEX readable YAML, Liquibase/SQLcl XML with PL/SQL, ORDS JSON."""
+    low = rel.lower()
+    head = text[:2_000_000]
+    if low.endswith((".yaml", ".yml")):
+        return is_apex_yaml(text, rel)
+    if low.endswith(".xml"):
+        return bool(re.search(r"runOracleScript|<!\[CDATA\[\s*(begin|declare|create\s+or\s+replace)|ords\s*\.\s*define_", head, re.I))
+    if low.endswith(".json"):
+        return bool(re.search(r'"(p_)?source"\s*:\s*"[^"]*(select|begin|declare)', head, re.I)) and bool(
+            re.search(r'"(p_)?(source_?type|method|pattern|uri_template|module)"', head, re.I))
+    return False
+
+
+def xml_scripts(text: str) -> list[tuple[int, str]]:
+    """PL/SQL / SQL scripts embedded in XML (CDATA or <sql>/<source> elements) -> [(first line, script)]."""
+    out = []
+    for m in _XML_SCRIPT.finditer(text):
+        body = m.group(1) if m.group(1) is not None else m.group(2)
+        if not body or not re.search(r"\b(begin|declare|create|select|ords\.)", body, re.I):
+            continue
+        start_off = m.start(1) if m.group(1) is not None else m.start(2)
+        if m.group(1) is None and "<![CDATA[" in body:     # <source><![CDATA[ … ]]></source>: drop the wrapper, keep lines
+            body = body.replace("<![CDATA[", " " * 9).replace("]]>", "   ")
+        elif m.group(1) is None:
+            body = re.sub(r"&lt;", "<", re.sub(r"&gt;", ">", re.sub(r"&quot;", '"', re.sub(r"&apos;", "'", body)))).replace("&amp;", "&")
+        out.append((text.count("\n", 0, start_off) + 1, body))
+    return out
+
+
+def extract_json_ords(text: str, rel: str) -> list[Block]:
+    """REST definitions in JSON (ORDS module/handler objects): objects with a source and a source type / method."""
+    import json
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return []
+    blocks: list[Block] = []
+    seq = 0
+
+    def walk(o, module=""):
+        nonlocal seq
+        if isinstance(o, dict):
+            low = {k.lower(): v for k, v in o.items()}
+            module = low.get("name") if isinstance(low.get("name"), str) and ("handlers" in low or "templates" in low or "uri_prefix" in low) else module
+            src = low.get("source") or low.get("p_source") or low.get("handler_source")
+            if isinstance(src, str) and re.search(r"\b(select|begin|declare|with)\b", src, re.I):
+                stype = str(low.get("source_type") or low.get("sourcetype") or low.get("p_source_type") or "").upper()
+                kind = "plsql" if "PLSQL" in stype or re.match(r"\s*(begin|declare)\b", src, re.I) else "sql"
+                method = str(low.get("method") or "GET").upper()
+                pattern = str(low.get("uri_template") or low.get("pattern") or low.get("uritemplate") or "")
+                needle = json.dumps(src, ensure_ascii=False)[1:40]
+                pos = text.find(needle) if needle else -1
+                line = text.count("\n", 0, pos) + 1 if pos >= 0 else 1
+                seq += 1
+                # the whole source sits on one JSON line: keep it on one line so findings point there
+                code = " ".join(re.sub(r"--[^\n]*", " ", src).split("\n"))
+                blocks.append(Block(kind, code, line, f"ORDS › {module} {method} {pattern}".strip(),
+                                    re.sub(r"\W", "_", f"ords_json_{module}_{method}_{seq}").lower()))
+            for v in o.values():
+                walk(v, module)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v, module)
+
+    walk(data)
+    return blocks

@@ -1,0 +1,13 @@
+{
+  "name": "hr.v3",
+  "uri_prefix": "/hr/v3/",
+  "templates": [
+    {
+      "uri_template": "dept/:dno",
+      "handlers": [
+        {"method": "GET", "source_type": "json/query", "source": "select * from dept where deptno = :dno"},
+        {"method": "DELETE", "source_type": "plsql/block", "source": "begin\n  execute immediate 'delete from dept where deptno = ' || :dno;\nend;"}
+      ]
+    }
+  ]
+}
