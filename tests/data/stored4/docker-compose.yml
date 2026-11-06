@@ -1,0 +1,5 @@
+services:
+  web:
+    image: app
+    environment:
+      - TICKETS_TABLE=tix_v2

@@ -130,3 +130,38 @@ def test_fold_and_config_parsing():
     assert fold(vals["x"], fc) == "SELECT a FROM items WHERE x = %s"
     assert fold(vals["y"], fc) == "a, b"
     assert fold(vals["z"], fc) == "INSERT INTO items (c) VALUES (?)"
+
+
+# --------------------------------------- deployment manifests; tables chosen at run time; trusted configuration
+DATA4 = pathlib.Path(__file__).parent / "data" / "stored4"
+
+
+def test_tables_from_deployment_manifests_and_run_time_tables():
+    fs, _ = scan_path(DATA4, notes=[])
+    got = {(f.file, f.line): f for f in fs if f.rule_id.startswith("DF")}
+    # Dockerfile ENV, docker-compose environment list, Kubernetes env name/value
+    assert "NOTES_V2.BODY" in got[("app.py", 19)].extra["taint_source"]
+    assert "TIX_V2.SUBJECT" in got[("app.py", 20)].extra["taint_source"]
+    assert "AUDIT_V3.MSG" in got[("app.py", 21)].extra["taint_source"]
+    # table from a registry row / a remote service: linked by column, one level lower, and said so
+    for line in (23, 24):
+        f = got[("app.py", line)]
+        assert f.rule_id == "DF023" and f.severity == "medium" and f.extra.get("runtime_table")
+        assert "وقت التشغيل" in f.title_ar
+    assert ("app.py", 25) not in got                 # archive.title: no user ever writes TITLE
+    # env lookups defined in the project's own deployment files are operator configuration, not user input
+    assert not any(k[1] in (11, 12, 13) and f.rule_id == "DF004" for k, f in got.items())
+
+
+def test_undefined_environment_variable_is_still_a_source():
+    code = ("import os, sqlite3\ndb = sqlite3.connect('x')\n"
+            "def main():\n    db.execute('SELECT * FROM t WHERE c = ' + os.getenv('USER_FILTER'))\n")
+    assert any(f.rule_id == "DF004" for f in analyze_project({"cli.py": code}))
+
+
+def test_manifest_parsers():
+    from vulnscan.stored import parse_config
+    assert parse_config("Dockerfile", "ENV A=1 B=\"x y\"\nENV C 3\n") == {"a": "1", "b": "x y", "c": "3"}
+    assert parse_config("docker-compose.yml", "s:\n  w:\n    environment:\n      - T=v\n")["t"] == "v"
+    assert parse_config("k.yaml", "env:\n- name: T\n  value: v\n")["t"] == "v"
+    assert parse_config("app.json", '{"env": {"T": {"value": "v"}}}')["t"] == "v"

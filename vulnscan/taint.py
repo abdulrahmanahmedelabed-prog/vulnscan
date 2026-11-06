@@ -552,7 +552,7 @@ class Project:
                     return label.replace("{name}", canon)
             if isinstance(node, (ast.Name, ast.Attribute)):
                 for prefixes, label in self.m["prefix_sources"]:
-                    if canon.startswith(prefixes):
+                    if any(canon == p or (p.endswith(".") and canon.startswith(p)) for p in prefixes):
                         return label.replace("{name}", canon).replace("{last}", canon.rsplit(".", 1)[-1])
             if isinstance(node, ast.Call):
                 for names, label in self.m["call_sources"]:
@@ -1470,7 +1470,7 @@ def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, 
 
     def run_pass(prefix_sources):
         m = dict(models)
-        m["sanitizers"] = models["sanitizers"] | {"stored_db_read"}
+        m["sanitizers"] = models["sanitizers"] | {"stored_db_read", "stored_db_config"}
         m["sinks"] = models["sinks"] + store_sinks
         m["prefix_sources"] = models["prefix_sources"] + prefix_sources
         pr = Project(m)
@@ -1498,10 +1498,21 @@ def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, 
         stored.update(new)
         prefix = []
         for col, f in stored.items():
-            label = f"{STORED_SOURCE_MARK} في {col} (كتبها مستخدم في {f.file}:{f.line})"
-            prefix.append(((f"stored_db.{col}",), label))
-            table = col.split(".")[0]
-            prefix.append(((f"stored_db.{table}.*",), label))      # SELECT * reads every column of the table
+            table, column = col.split(".", 1)
+            where = f"(كتبها مستخدم في {f.file}:{f.line})"
+            if table == "ANY_TABLE":
+                # written to a table chosen at run time: any read of that column may see it
+                label = f"{STORED_SOURCE_MARK} في العمود {column} {RUNTIME_TABLE_MARK} {where}"
+                prefix.append(((f"stored_db.ANY_TABLE.{column}", "stored_db.ANY_TABLE.*"), label))
+                continue
+            label = f"{STORED_SOURCE_MARK} في {col} {where}"
+            names = [f"stored_db.{col}", f"stored_db.{table}.*"]
+            if column == "*":
+                names.append(f"stored_db.{table}.")              # unknown columns written: every column of the table
+            prefix.append((tuple(names), label))
+            if column != "*":                                     # read back through a run-time-chosen table
+                prefix.append(((f"stored_db.ANY_TABLE.{column}",),
+                               f"{STORED_SOURCE_MARK} في {col} وقُرئت من جدول {RUNTIME_TABLE_MARK} {where}"))
         proj, flows = run_pass(prefix)
     flows = [f for f in flows if f.rule_id != "DFSTORE"]
     _retag_stored(flows)
@@ -1543,11 +1554,22 @@ STORED_RULES = {
 }
 
 
+RUNTIME_TABLE_MARK = "يُحدَّد وقت التشغيل"
+_LOWER = {"critical": "high", "high": "medium", "medium": "low", "low": "low", "info": "info"}
+
+
 def _retag_stored(findings: list) -> None:
-    """A flow whose source is a table column a user wrote earlier is a second-order / stored vulnerability."""
+    """A flow whose source is a table column a user wrote earlier is a second-order / stored vulnerability.
+    When the table is only known at run time the link is by column name: one severity level lower, and said so."""
     for f in findings:
-        if STORED_SOURCE_MARK in str(f.extra.get("taint_source", "")) and f.rule_id in STORED_RULES:
+        src = str(f.extra.get("taint_source", ""))
+        if STORED_SOURCE_MARK in src and f.rule_id in STORED_RULES:
             f.rule_id, f.severity, f.cwe, f.title, f.title_ar, f.advice = STORED_RULES[f.rule_id]
+            if RUNTIME_TABLE_MARK in src:
+                f.severity = _LOWER.get(f.severity, f.severity)
+                f.title += " (table chosen at run time; linked by column name)"
+                f.title_ar += " — الجدول يُحدَّد وقت التشغيل (الربط باسم العمود)"
+                f.extra["runtime_table"] = True
 
 
 def _retag_ai_output(findings: list) -> None:

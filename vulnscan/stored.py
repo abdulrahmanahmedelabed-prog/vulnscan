@@ -277,9 +277,33 @@ def _either(loads, node):
     return b
 
 
-def _known(table, col) -> bool:
-    """Writes / reads whose table or column could not be resolved (folded to __dyn__) are left to call-site helpers."""
-    return "DYN" not in canon_table(table) and canon_col(col) != "DYN" and bool(canon_table(table)) and bool(canon_col(col))
+ANY_TABLE = "ANY_TABLE"     # a table chosen at run time (from the database, a service, an unknown variable)
+
+
+def _resolve(table, col, in_helper: bool):
+    """(table, column) for a write / read, or None.
+
+    An unresolved table becomes ANY_TABLE (the column still links writes and reads) except inside a generic helper,
+    which is modelled precisely at each call site; an unresolved column becomes '*'."""
+    t = canon_table(table) if table else ""
+    c = canon_col(col) if col else ""
+    if not t or "DYN" in t:
+        if in_helper:
+            return None
+        t = ANY_TABLE
+    if not c or c == "DYN":
+        c = "*"
+    return t, c
+
+
+def _loads(reads, line) -> list:
+    """Loads for read columns, plus the run-time-table view of each column (matched by writes to unknown tables)."""
+    out = []
+    for t, c in reads:
+        out.append(_load(t, c, line))
+        if t != ANY_TABLE:
+            out.append(_load(ANY_TABLE, c, line))
+    return out
 
 
 def _write_stmt(table, col, expr, line):
@@ -452,7 +476,8 @@ def _dynamic_sql(node):
 
 
 class _Scope:
-    def __init__(self, models, ctor_params, sigs=None, fc=None):
+    def __init__(self, models, ctor_params, sigs=None, fc=None, in_helper=False):
+        self.in_helper = in_helper
         self.models = {k: v for k, v in models.items() if k != "__aliases__"}
         self.ctor_params = ctor_params
         self.sigs = sigs or {}
@@ -722,7 +747,12 @@ class _Scope:
 
     # ------------------------------------------------------------------ reads
     def call_reads(self, call) -> list:
-        return [(t, c) for t, c in self._call_reads(call) if _known(t, c)]
+        out = []
+        for t, c in self._call_reads(call):
+            r = _resolve(t, c, self.in_helper)
+            if r and r not in out:
+                out.append(r)
+        return out
 
     def _call_reads(self, call) -> list:
         name = call.func.id if isinstance(call.func, ast.Name) else (call.func.attr if isinstance(call.func, ast.Attribute) else "")
@@ -783,9 +813,51 @@ def _walk(node):
                 stack.append(c)
 
 
+def _trusted(node):
+    """stored_db_config(<lookup>): a configuration value defined in the project's own files (operator-controlled)."""
+    line = getattr(node, "lineno", 1)
+    c = ast.Call(func=ast.Name(id="stored_db_config", ctx=ast.Load()), args=[node], keywords=[])
+    for x in (c, c.func):
+        x.lineno = x.end_lineno = line
+        x.col_offset = x.end_col_offset = 0
+    return c
+
+
+def _is_config_lookup(node) -> bool:
+    if isinstance(node, ast.Call):
+        canon = _dotted(node.func)
+        return canon in ENV_CALLS or canon.split(".")[-1] in ("getenv", "Getenv", "getProperty", "GetEnvironmentVariable")
+    if isinstance(node, ast.Subscript):
+        base = _dotted(node.value)
+        return base in CONFIG_ROOTS or base.split(".")[0] in CONFIG_ROOTS
+    if isinstance(node, ast.Attribute):
+        d = _dotted(node)
+        root = d.rsplit(".", 1)[0] if "." in d else ""
+        return root in ("process.env", "os.environ", "ENV", "settings", "config", "app.config")
+    return False
+
+
 class _Rewriter(ast.NodeTransformer):
     def __init__(self, scope: _Scope):
         self.s = scope
+
+    def _config(self, node):
+        """Lookups resolved from the project's configuration files are trusted values, not user input."""
+        fc = self.s.fc
+        if fc is not None and fc.config and _is_config_lookup(node):
+            v = fold(node, fc)
+            if isinstance(v, str) and DYN not in v:
+                return _trusted(node)
+        return None
+
+    def visit_Subscript(self, node):
+        node.value = self.visit(node.value)
+        node.slice = self.visit(node.slice)
+        if isinstance(node.ctx, ast.Load):
+            t = self._config(node)
+            if t is not None:
+                return t
+        return node
 
     def visit_FunctionDef(self, node):
         return node
@@ -800,13 +872,16 @@ class _Rewriter(ast.NodeTransformer):
         node.args = [self.visit(a) for a in node.args]
         for k in node.keywords:
             k.value = self.visit(k.value)
+        t = self._config(node)
+        if t is not None:
+            return t
         reads = self.s.call_reads(node)
         if not reads and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) \
                 and node.func.value.id in self.s.cursors and node.func.attr in FETCH_METHODS:
             reads = self.s.cursors[node.func.value.id]          # cur.fetchone() after cur.execute("SELECT …")
         if reads:
             line = getattr(node, "lineno", 1)
-            return _either([_load(t, c, line) for t, c in reads], _db_read(node))
+            return _either(_loads(reads, line), _db_read(node))
         if self.s.is_fetch(node):
             return _db_read(node)
         return node
@@ -814,10 +889,13 @@ class _Rewriter(ast.NodeTransformer):
     def visit_Attribute(self, node):
         node.value = self.visit(node.value)
         if isinstance(node.ctx, ast.Load):
+            t = self._config(node)
+            if t is not None:
+                return t
             reads = self.s.attr_reads(node)
             if reads:
                 line = getattr(node, "lineno", 1)
-                return _either([_load(t, c, line) for t, c in reads], _db_read(node))
+                return _either(_loads(reads, line), _db_read(node))
         return node
 
 
@@ -832,7 +910,7 @@ def _block(stmts, scope: _Scope) -> list:
         if isinstance(st, (ast.For, ast.AsyncFor)):
             scope.learn_for(st.target, st.iter)
             if isinstance(st.iter, ast.Name) and st.iter.id in scope.cursors:     # for row in cur:
-                st.iter = _either([_load(t, c, line) for t, c in scope.cursors[st.iter.id]], _db_read(st.iter))
+                st.iter = _either(_loads(scope.cursors[st.iter.id], line), _db_read(st.iter))
             else:
                 st.iter = rw.visit(st.iter)
             st.body = _block(st.body, scope)
@@ -848,7 +926,7 @@ def _block(stmts, scope: _Scope) -> list:
             st.body = _block(st.body, scope)
             st.orelse = _block(st.orelse, scope)
             out.append(st)
-            out.extend(_write_stmt(t, c, e, line) for t, c, e in writes if _known(t, c))
+            out.extend(_write_stmt(*_resolve(t, c, scope.in_helper), e, line) for t, c, e in writes if _resolve(t, c, scope.in_helper))
             continue
         if isinstance(st, ast.Try) or (hasattr(ast, "TryStar") and isinstance(st, ast.TryStar)):
             st.body = _block(st.body, scope)
@@ -880,7 +958,7 @@ def _block(stmts, scope: _Scope) -> list:
             scan = (st.value.func.value, [a for a in st.value.args if isinstance(a, ast.Name)])
         st = rw.visit(st)
         out.append(st)
-        out.extend(_write_stmt(t, c, e, line) for t, c, e in writes if _known(t, c))
+        out.extend(_write_stmt(*_resolve(t, c, scope.in_helper), e, line) for t, c, e in writes if _resolve(t, c, scope.in_helper))
         if scan and scan[1]:
             recv, names = scan
             for nm in names:                                   # out-parameters receive the row
@@ -901,7 +979,7 @@ def instrument(tree: ast.Module, models: dict, ctor_params: dict, sigs: dict | N
     tree.body = _block(tree.body, _Scope(models, ctor_params, sigs, fc))
     for n in ast.walk(tree):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            n.body = _block(n.body, _Scope(models, ctor_params, sigs, fc)) or n.body
+            n.body = _block(n.body, _Scope(models, ctor_params, sigs, fc, in_helper=n.name in (sigs or {}))) or n.body
     return tree
 
 
@@ -935,6 +1013,21 @@ def parse_config(rel: str, text: str) -> dict:
     name = low.rsplit("/", 1)[-1]
     out: dict = {}
     try:
+        if name == "dockerfile" or name.startswith("dockerfile.") or name.endswith(".dockerfile") or name == "containerfile":
+            for ln in text.splitlines():
+                m = re.match(r"\s*(?:ENV|ARG)\s+(.*)$", ln, re.I)
+                if not m:
+                    continue
+                body = m.group(1).strip()
+                pairs = re.findall(r'([\w.\-]+)=("(?:[^"\\]|\\.)*"|\S+)', body)
+                if pairs:
+                    for k, v in pairs:
+                        out[k.lower()] = v.strip('"')
+                else:
+                    kv = body.split(None, 1)                       # ENV KEY value
+                    if len(kv) == 2:
+                        out[kv[0].lower()] = kv[1].strip().strip('"')
+            return out
         if name.startswith(".env") or name.endswith((".properties", ".env")):
             for ln in text.splitlines():
                 m = re.match(r"\s*(?:export\s+)?([\w.\-]+)\s*[=:]\s*(.*?)\s*$", ln)
@@ -966,11 +1059,30 @@ def parse_config(rel: str, text: str) -> dict:
                 elif isinstance(o, (str, int, float)) and prefix:
                     key = prefix[:-1]
                     out[key] = str(o)
-                    out.setdefault(key.rsplit(".", 1)[-1], str(o))
+                    leaf = key.rsplit(".", 1)[-1]
+                    out.setdefault(leaf, str(o))
+                    if leaf == "value" and key.count(".") >= 1:     # Heroku app.json: env.KEY.value
+                        out.setdefault(key.rsplit(".", 2)[-2], str(o))
             flat(json.loads(text))
         elif name.endswith((".yaml", ".yml")):
             stack: list = []
-            for ln in text.splitlines():
+            lines = text.splitlines()
+            for k, ln in enumerate(lines):
+                s2 = ln.strip()
+                # docker-compose `environment:` list form:  - KEY=VALUE  /  - "KEY=VALUE"
+                m = re.match(r"^-\s*[\"']?([A-Za-z_][\w.\-]*)=([^\"'#]*)[\"']?\s*$", s2)
+                if m:
+                    out[m.group(1).lower()] = m.group(2).strip()
+                    continue
+                # Kubernetes / GitHub Actions env pairs:  - name: KEY  /  value: VALUE
+                m = re.match(r"^-\s*name\s*:\s*[\"']?([\w.\-]+)[\"']?\s*$", s2)
+                if m:
+                    for nxt in lines[k + 1:k + 4]:
+                        m2 = re.match(r"^\s*value\s*:\s*(.*?)\s*$", nxt)
+                        if m2:
+                            out[m.group(1).lower()] = m2.group(1).strip("'\"")
+                            break
+                    continue
                 if not ln.strip() or ln.lstrip().startswith(("#", "-")):
                     continue
                 m = re.match(r"^(\s*)([\w.\-]+)\s*:\s*(.*?)\s*$", ln)
@@ -999,7 +1111,8 @@ def is_config_file(rel: str) -> bool:
     name = low.rsplit("/", 1)[-1]
     if name in ("package.json", "package-lock.json", "tsconfig.json", "composer.lock") or "node_modules/" in low:
         return False
-    return name.startswith(".env") or name.endswith(CONFIG_NAMES)
+    return (name.startswith((".env", "dockerfile")) or name.endswith(CONFIG_NAMES + (".dockerfile",))
+            or name in ("containerfile", "procfile"))
 
 
 class FoldContext:
