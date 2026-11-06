@@ -50,12 +50,15 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
                 raise PermissionError("فحص عنوان ويب يتطلب تأكيد الصلاحية.")
             deep = bool(scan.get("deep"))
             crawl = bool(scan.get("crawl"))
-            findings, err = scan_site(target, deep=deep, crawl=crawl)
+            timeout = float(settings.get("web_timeout") or 20)
+            findings, extra = scan_site(target, timeout=timeout, deep=deep, crawl=crawl)   # raises WebUnreachable -> status "error"
             files = 1
             if crawl:
-                notes.append(err or "فحص ويب سلبي مع زحف على صفحات النطاق نفسه.")
+                notes.append("فحص ويب سلبي مع زحف على صفحات النطاق نفسه.")
             else:
-                notes.append(err or ("فحص ويب سلبي أعمق: تحليل الصفحة ومسارات مكشوفة شائعة." if deep else "فحص ويب سلبي: طلب واحد فقط."))
+                notes.append("فحص ويب سلبي أعمق: تحليل الصفحة ومسارات مكشوفة شائعة." if deep else "فحص ويب سلبي: طلب واحد فقط.")
+            if extra:
+                notes.append(extra)
         else:
             path = pathlib.Path(target)
             if not path.exists():

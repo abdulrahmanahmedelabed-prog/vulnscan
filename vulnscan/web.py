@@ -57,6 +57,32 @@ EXPOSED_PATHS = [
      "لا تضع مسارات إدارية حساسة في robots.txt؛ فهو عام.", "__robots__"),
 ]
 MAX_BODY = 600_000
+DEFAULT_TIMEOUT = 20.0
+USER_AGENT = "Mozilla/5.0 (compatible; vulnscan/0.1; passive security posture check)"
+
+
+class WebUnreachable(Exception):
+    """The entry URL could not be fetched, so nothing was scanned. Never reported as a clean result."""
+
+
+def explain_failure(err: str, url: str, timeout: float) -> str:
+    """A clear Arabic explanation of why a site could not be reached (the raw error is kept at the end)."""
+    low = (err or "").lower()
+    host = urllib.parse.urlparse(url).hostname or url
+    if "timed out" in low or "timeout" in low:
+        why = (f"انتهت مهلة الاتصال بـ {host} بعد {int(timeout)} ثانية في محاولتين. الموقع لم يرد: قد يكون بطيئًا أو متوقفًا، "
+               "أو يحجب الطلبات القادمة من شبكتك أو من خارج بلده (جدار حماية / حجب جغرافي). جرّب من شبكة أخرى أو زد المهلة من الإعدادات.")
+    elif "name or service not known" in low or "nodename nor servname" in low or "getaddrinfo" in low or "no address associated" in low:
+        why = f"تعذّر حلّ اسم النطاق {host}: تحقق من كتابة العنوان ومن اتصال الإنترنت أو إعدادات DNS."
+    elif "refused" in low:
+        why = f"رفض الخادم {host} الاتصال: المنفذ مغلق أو الخدمة متوقفة."
+    elif "certificate" in low or "ssl" in low or "tls" in low:
+        why = f"فشل إنشاء اتصال TLS آمن مع {host} (شهادة غير صالحة أو إعداد TLS خاطئ). هذا بحد ذاته مشكلة أمنية تستحق المراجعة."
+    elif "reset" in low or "aborted" in low:
+        why = f"قطع الخادم {host} الاتصال أثناء الطلب: قد يكون جدار حماية تطبيقات الويب (WAF) يحجب الطلب."
+    else:
+        why = f"تعذّر الوصول إلى {host}."
+    return f"لم يُفحص الموقع — {why} (التفاصيل: {err})"
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -64,21 +90,29 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _get(url: str, timeout: float, read_body: bool = False):
+def _get(url: str, timeout: float, read_body: bool = False, retries: int = 0):
+    """GET without following redirects. On a timeout or dropped connection, retry with a doubled timeout."""
     opener = urllib.request.build_opener(_NoRedirect)
-    req = urllib.request.Request(url, headers={"User-Agent": "vulnscan/0.1 (passive posture check)"})  # nosec - the URL is the user's own, --authorized scan target (intentional outbound request)
-    try:
-        resp = opener.open(req, timeout=timeout)
-        body = resp.read(MAX_BODY) if read_body else b""
-        return resp.status, resp.headers, body, None
-    except urllib.error.HTTPError as e:
-        body = e.read(MAX_BODY) if read_body else b""
-        return e.code, e.headers, body, None
-    except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
-        return None, None, b"", str(e)
+    last = None
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8"})  # nosec - the URL is the user's own, --authorized scan target (intentional outbound request)
+        try:
+            resp = opener.open(req, timeout=timeout * (2 ** attempt))
+            body = resp.read(MAX_BODY) if read_body else b""
+            return resp.status, resp.headers, body, None
+        except urllib.error.HTTPError as e:
+            body = e.read(MAX_BODY) if read_body else b""
+            return e.code, e.headers, body, None
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+            last = str(getattr(e, "reason", None) or e)
+            transient = any(w in last.lower() for w in ("timed out", "timeout", "reset", "aborted", "temporarily"))
+            if not transient:
+                break
+    return None, None, b"", last
 
 
-def scan_url(url: str, timeout: float = 15.0, deep: bool = False) -> tuple[list[Finding], str | None]:
+def scan_url(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False) -> tuple[list[Finding], str | None]:
+    """Passive checks of one URL. Raises WebUnreachable when the URL cannot be fetched at all."""
     findings: list[Finding] = []
     parsed = urllib.parse.urlparse(url)
     label = parsed.netloc or url
@@ -87,9 +121,9 @@ def scan_url(url: str, timeout: float = 15.0, deep: bool = False) -> tuple[list[
         findings.append(Finding("WEB000", "high", "Site served over plain HTTP", "الموقع يُقدَّم عبر HTTP غير مشفّر",
                                 label, 0, url, "فعّل HTTPS وأعد توجيه HTTP إليه.", "CWE-319", source="web"))
 
-    status, headers, body, err = _get(url, timeout, read_body=True)
+    status, headers, body, err = _get(url, timeout, read_body=True, retries=1)
     if status is None:
-        return findings, f"request failed: {err}"
+        raise WebUnreachable(explain_failure(err, url, timeout))
     h = {k.lower(): v for k, v in headers.items()}
 
     for name, sev, title, title_ar, advice, cwe in EXPECTED_HEADERS:
@@ -328,7 +362,7 @@ def _same_origin_links(html: str, base_url: str, origin) -> list:
     return out
 
 
-def scan_site(url: str, timeout: float = 15.0, deep: bool = False,
+def scan_site(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False,
               crawl: bool = False, max_pages: int = 20, max_depth: int = 2) -> tuple:
     """Scan a web app. Always scans the entry URL (headers, TLS, HTML, platform).
 
@@ -340,6 +374,7 @@ def scan_site(url: str, timeout: float = 15.0, deep: bool = False,
     findings, err = scan_url(url, timeout=timeout, deep=deep)
     if err or not crawl:
         return findings, err
+    failed: list[str] = []
     origin = urllib.parse.urlparse(url)
     seen = {origin._replace(fragment="").geturl()}
     frontier = [(url, 0)]
@@ -348,6 +383,7 @@ def scan_site(url: str, timeout: float = 15.0, deep: bool = False,
         page_url, depth = frontier.pop(0)
         status, headers, body, e = _get(page_url, timeout, read_body=True)
         if status is None:
+            failed.append(page_url)
             continue
         ctype = headers.get("content-type", "") if headers else ""
         if "text/html" not in ctype:
@@ -370,7 +406,11 @@ def scan_site(url: str, timeout: float = 15.0, deep: bool = False,
         if k not in keys:
             keys.add(k)
             uniq.append(f)
-    return uniq, None
+    note = None
+    if failed:
+        shown = "، ".join(urllib.parse.urlparse(u).path or "/" for u in failed[:5])
+        note = f"تعذّر جلب {len(failed)} صفحة أثناء الزحف فلم تُفحص: {shown}{' …' if len(failed) > 5 else ''}"
+    return uniq, note
 
 
 def _tls_checks(host: str, port: int, label: str, timeout: float) -> list[Finding]:

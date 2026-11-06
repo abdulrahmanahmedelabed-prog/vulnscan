@@ -13,7 +13,7 @@ from .model import SEVERITIES, SEVERITY_RANK, Finding, sort_findings
 from .report import render_console, render_html, render_json, render_markdown, summary_counts
 from .rules import RULES
 from .scanner import scan_path
-from .web import scan_site
+from .web import WebUnreachable, scan_site
 
 AUTHORIZATION_NOTICE = (
     "افحص فقط ما تملكه أو ما لديك تصريح كتابي بفحصه. "
@@ -44,6 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--crawl", action="store_true", help="زحف على صفحات الموقع من نفس النطاق وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)")
     p.add_argument("--max-pages", type=int, default=20, metavar="N", help="أقصى عدد صفحات عند الزحف (الافتراضي 20)")
     p.add_argument("--max-depth", type=int, default=2, metavar="N", help="أقصى عمق للزحف (الافتراضي 2)")
+    p.add_argument("--timeout", type=float, default=20.0, metavar="SEC",
+                   help="مهلة كل طلب ويب بالثواني (الافتراضي 20؛ يُعاد الطلب الأول مرة بمهلة مضاعفة)")
     p.add_argument("--models", action="append", default=[], metavar="DIR",
                    help="مجلد (أو ملف JSON) نماذج إضافية لمحرّك تدفق البيانات: مصادر ونقاط خطر ومُعقّمات خاصة بمكتباتك")
     p.add_argument("--query", action="append", default=[], metavar="PATH",
@@ -91,8 +93,12 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
     if target.startswith(("http://", "https://")):
         if not args.authorized:
             raise SystemExit("فحص عنوان ويب يتطلب --authorized (تأكيد أنك مخوَّل بفحص هذا الهدف).")
-        findings, err = scan_site(target, deep=args.deep, crawl=args.crawl,
-                                  max_pages=args.max_pages, max_depth=args.max_depth)
+        try:
+            findings, err = scan_site(target, timeout=args.timeout, deep=args.deep, crawl=args.crawl,
+                                      max_pages=args.max_pages, max_depth=args.max_depth)
+        except WebUnreachable as e:
+            print(f"✖ {e}", file=sys.stderr)
+            return 2
         if err:
             notes.append(err)
         if args.crawl:

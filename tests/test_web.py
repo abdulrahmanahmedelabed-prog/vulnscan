@@ -162,3 +162,32 @@ def test_crawl_skips_external_and_logout(moodle):
     assert any("/course" in l for l in links)
     assert not any("other.example" in l for l in links)   # external skipped
     assert not any("logout" in l for l in links)          # logout skipped
+
+
+def test_unreachable_site_is_an_error_not_a_clean_result(monkeypatch):
+    """A timed-out site must never look like a scan with zero findings."""
+    import pytest
+    from vulnscan import web
+    calls = []
+
+    def fake_get(url, timeout, read_body=False, retries=0):
+        calls.append((url, retries))
+        return None, None, b"", "timed out"
+    monkeypatch.setattr(web, "_get", fake_get)
+    with pytest.raises(web.WebUnreachable) as ei:
+        web.scan_site("https://example.invalid/", timeout=5)
+    msg = str(ei.value)
+    assert "لم يُفحص" in msg and "انتهت مهلة" in msg and "timed out" in msg
+    assert calls and calls[0][1] == 1          # the entry request is retried
+
+
+def test_server_marks_unreachable_scan_as_error(monkeypatch, tmp_path):
+    from vulnscan import server, web
+    from vulnscan.store import Store
+    monkeypatch.setattr(web, "_get", lambda *a, **k: (None, None, b"", "timed out"))
+    store = Store(tmp_path)
+    scan = store.new_scan("https://example.invalid/", "web")
+    server.run_scan(store, scan, store.settings(), True)
+    saved = store.get_scan(scan["id"])
+    assert saved["status"] == "error" and "لم يُفحص" in saved["error"]
+    assert saved["summary"]["high"] == 0 and not saved["findings"]
