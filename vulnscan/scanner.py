@@ -258,7 +258,8 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                 count += 1
                 findings.extend(scan_sensitive_names(rel, ignore_rules))
                 findings.extend(scan_file(p, rel, rules, ignore_rules))
-                if p.suffix.lower() in (".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts") \
+                if p.suffix.lower() in (".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
+                                        ".java", ".kt", ".kts", ".cs", ".go", ".php", ".phtml") \
                         and not p.name.endswith((".min.js", ".d.ts")):
                     try:
                         if p.stat().st_size <= MAX_FILE_BYTES:

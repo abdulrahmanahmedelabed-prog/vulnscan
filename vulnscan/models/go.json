@@ -1,0 +1,516 @@
+{
+ "_comment": "Go (net/http, gin, echo, fiber, database/sql) models.",
+ "sources": [
+  {
+   "kind": "attr",
+   "roots": [
+    "r",
+    "req",
+    "request",
+    "c",
+    "ctx",
+    "r.URL",
+    "req.URL",
+    "c.Request",
+    "ctx.Request",
+    "c.Request.URL",
+    "r.Header",
+    "r.Form",
+    "r.PostForm",
+    "r.Body",
+    "os"
+   ],
+   "attrs": [
+    "URL",
+    "Form",
+    "PostForm",
+    "Body",
+    "Header",
+    "MultipartForm",
+    "RequestURI",
+    "RawQuery",
+    "Path",
+    "Host",
+    "Fragment",
+    "Args",
+    "Cookies",
+    "Params",
+    "Keys"
+   ],
+   "label": "r.{attr}"
+  },
+  {
+   "kind": "call",
+   "names": [
+    "FormValue",
+    "PostFormValue",
+    "URL.Query.Get",
+    "Query.Get",
+    "Query",
+    "QueryParam",
+    "Param",
+    "Params.Get",
+    "PostForm",
+    "DefaultQuery",
+    "DefaultPostForm",
+    "GetHeader",
+    "Header.Get",
+    "Cookie",
+    "mux.Vars",
+    "chi.URLParam",
+    "URLParam",
+    "ShouldBind",
+    "ShouldBindJSON",
+    "BindJSON",
+    "Bind",
+    "ParseForm",
+    "io.ReadAll",
+    "ioutil.ReadAll",
+    "ReadAll",
+    "bufio.NewReader",
+    "ReadString",
+    "os.Getenv",
+    "Getenv",
+    "flag.String",
+    "flag.Arg",
+    "FormFile",
+    "BodyParser",
+    "QueryParser"
+   ],
+   "label": "{name}()"
+  },
+  {
+   "kind": "name",
+   "names": [
+    "os.Args"
+   ],
+   "label": "{name}"
+  }
+ ],
+ "entry_points": [
+  {
+   "decorators": [
+    "route"
+   ],
+   "label": "معامل نقطة الدخول"
+  },
+  {
+   "view_bases": [
+    "Handler"
+   ],
+   "methods": [
+    "ServeHTTP",
+    "Handle",
+    "HandleFunc"
+   ]
+  },
+  {
+   "param_names": [
+    "r",
+    "req",
+    "request",
+    "c",
+    "ctx",
+    "w"
+   ]
+  }
+ ],
+ "sinks": [
+  {
+   "rule": "DF003",
+   "severity": "high",
+   "cwe": "CWE-78",
+   "label": "exec.Command",
+   "args": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "names": [
+    "exec.Command",
+    "exec.CommandContext",
+    "Command",
+    "CommandContext",
+    "syscall.Exec",
+    "os.StartProcess",
+    "StartProcess"
+   ],
+   "title": "Tainted data reaches exec.Command",
+   "title_ar": "بيانات غير موثوقة تصل إلى exec.Command",
+   "advice": "ثبّت البرنامج ولا تمرّر sh -c مع مدخلات؛ تحقق من الوسائط."
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    0
+   ],
+   "names": [
+    "db.Query",
+    "db.Exec",
+    "db.QueryRow",
+    "db.Prepare",
+    "Query",
+    "Exec",
+    "QueryRow",
+    "QueryContext",
+    "ExecContext",
+    "QueryRowContext",
+    "Prepare",
+    "PrepareContext",
+    "Raw",
+    "gorm.Raw",
+    "Where",
+    "Order",
+    "Select",
+    "Having",
+    "Joins",
+    "sqlx.Select",
+    "sqlx.Get",
+    "NamedQuery",
+    "NamedExec"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "استخدم placeholders (?) أو $1 بدل تركيب النص."
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    0
+   ],
+   "names": [
+    "os.Open",
+    "os.OpenFile",
+    "os.ReadFile",
+    "os.WriteFile",
+    "os.Create",
+    "ioutil.ReadFile",
+    "ioutil.WriteFile",
+    "os.Stat",
+    "os.Lstat",
+    "http.ServeFile",
+    "ServeFile",
+    "http.Dir",
+    "FileServer",
+    "SendFile",
+    "File",
+    "template.ParseFiles",
+    "ParseFiles",
+    "ParseGlob",
+    "filepath.Walk",
+    "os.ReadDir",
+    "ioutil.ReadDir"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "استخدم filepath.Clean/Rel وتحقق أن المسار داخل المجلد المسموح."
+  },
+  {
+   "rule": "DF011",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "filesystem operation",
+   "args": [
+    0
+   ],
+   "names": [
+    "os.Remove",
+    "os.RemoveAll",
+    "os.Rename",
+    "os.Mkdir",
+    "os.MkdirAll",
+    "os.Chmod",
+    "os.Chown",
+    "os.Symlink",
+    "os.Link",
+    "os.Truncate"
+   ],
+   "title": "Tainted path reaches a filesystem operation",
+   "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+   "advice": "تحقق من المسار قبل الحذف أو الإنشاء."
+  },
+  {
+   "rule": "DF006",
+   "severity": "critical",
+   "cwe": "CWE-502",
+   "label": "deserialization",
+   "args": [
+    0
+   ],
+   "names": [
+    "gob.NewDecoder",
+    "Decode",
+    "yaml.Unmarshal",
+    "xml.Unmarshal",
+    "gob.Decode"
+   ],
+   "title": "Tainted data reaches a decoder with dynamic types",
+   "title_ar": "بيانات غير موثوقة تصل إلى فك ترميز بأنواع ديناميكية",
+   "advice": "تحقق من البنية قبل الفك واستخدم أنواعًا ثابتة."
+  },
+  {
+   "rule": "DF007",
+   "severity": "high",
+   "cwe": "CWE-1336",
+   "label": "template (SSTI)",
+   "args": [
+    0
+   ],
+   "names": [
+    "template.New().Parse",
+    "Parse",
+    "template.Must",
+    "Must",
+    "text/template.Parse",
+    "ExecuteTemplate",
+    "template.HTML",
+    "HTML",
+    "template.JS",
+    "template.URL"
+   ],
+   "title": "Tainted data reaches a template parse or unescaped HTML",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحليل قالب أو HTML غير مُهرَّب",
+   "advice": "لا تبنِ القالب من المدخلات ولا تحوّلها إلى template.HTML."
+  },
+  {
+   "rule": "DF008",
+   "severity": "medium",
+   "cwe": "CWE-601",
+   "label": "redirect",
+   "args": [
+    2
+   ],
+   "names": [
+    "http.Redirect",
+    "Redirect",
+    "c.Redirect",
+    "ctx.Redirect",
+    "Location"
+   ],
+   "title": "Tainted data reaches a redirect",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+   "advice": "تحقق من الوجهة بقائمة بيضاء."
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (SSRF)",
+   "args": [
+    0
+   ],
+   "names": [
+    "http.Get",
+    "http.Post",
+    "http.Head",
+    "http.PostForm",
+    "http.NewRequest",
+    "http.NewRequestWithContext",
+    "NewRequest",
+    "NewRequestWithContext",
+    "client.Get",
+    "client.Post",
+    "client.Do",
+    "Get",
+    "Post",
+    "url.Parse",
+    "net.Dial",
+    "net.DialTimeout",
+    "Dial",
+    "DialTimeout",
+    "resty.R().Get",
+    "grequests.Get"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء وارفض العناوين الداخلية."
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-94",
+   "label": "plugin / code loading",
+   "args": [
+    0
+   ],
+   "names": [
+    "plugin.Open",
+    "Open",
+    "yaegi.Eval",
+    "otto.Run",
+    "goja.RunString",
+    "RunString",
+    "Eval"
+   ],
+   "title": "Tainted data reaches plugin or script loading",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحميل إضافات أو سكربتات",
+   "advice": "لا تحمّل إضافات من مسارات غير موثوقة."
+  },
+  {
+   "rule": "DF013",
+   "severity": "medium",
+   "cwe": "CWE-79",
+   "label": "HTTP response body (XSS)",
+   "args": [
+    0,
+    1,
+    2,
+    3,
+    4
+   ],
+   "names": [
+    "w.Write",
+    "Write",
+    "fmt.Fprintf",
+    "Fprintf",
+    "fmt.Fprint",
+    "Fprint",
+    "fmt.Fprintln",
+    "Fprintln",
+    "io.WriteString",
+    "WriteString",
+    "c.String",
+    "String",
+    "c.HTML",
+    "c.Data",
+    "Data",
+    "ctx.WriteString",
+    "SendString",
+    "c.SendString"
+   ],
+   "title": "Tainted data reflected into the response",
+   "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+   "advice": "هرّب المخرجات (html.EscapeString) أو استخدم html/template."
+  },
+  {
+   "rule": "DF014",
+   "severity": "high",
+   "cwe": "CWE-90",
+   "label": "LDAP filter",
+   "args": [
+    3
+   ],
+   "names": [
+    "ldap.NewSearchRequest",
+    "NewSearchRequest",
+    "Search"
+   ],
+   "title": "Tainted data reaches an LDAP search",
+   "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+   "advice": "هرّب المرشّح (ldap.EscapeFilter)."
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "args": [
+    0
+   ],
+   "names": [
+    "xmlpath.Compile",
+    "xpath.Compile",
+    "Compile",
+    "htmlquery.Find",
+    "xmlquery.Find",
+    "Find",
+    "QuerySelector"
+   ],
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "لا تركّب الاستعلام من المدخلات."
+  },
+  {
+   "rule": "DF016",
+   "severity": "medium",
+   "cwe": "CWE-117",
+   "label": "log injection",
+   "args": [
+    0
+   ],
+   "names": [
+    "log.Printf",
+    "log.Println",
+    "log.Print",
+    "log.Fatalf",
+    "log.Info",
+    "log.Warn",
+    "log.Error",
+    "logger.Info",
+    "logger.Warn",
+    "logger.Error",
+    "logrus.Info",
+    "logrus.Warn",
+    "logrus.Error",
+    "zap.Info",
+    "Infof",
+    "Warnf",
+    "Errorf"
+   ],
+   "title": "Tainted data written to a log",
+   "title_ar": "بيانات غير موثوقة تُكتب في السجل",
+   "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل."
+  }
+ ],
+ "sanitizers": [
+  "strconv.Atoi",
+  "strconv.ParseInt",
+  "strconv.ParseFloat",
+  "strconv.ParseBool",
+  "strconv.Quote",
+  "Atoi",
+  "ParseInt",
+  "ParseFloat",
+  "ParseBool",
+  "Quote",
+  "url.QueryEscape",
+  "url.PathEscape",
+  "QueryEscape",
+  "PathEscape",
+  "html.EscapeString",
+  "EscapeString",
+  "template.HTMLEscapeString",
+  "HTMLEscapeString",
+  "template.JSEscapeString",
+  "JSEscapeString",
+  "filepath.Base",
+  "path.Base",
+  "Base",
+  "filepath.Clean",
+  "Clean",
+  "shellescape.Quote",
+  "regexp.QuoteMeta",
+  "QuoteMeta",
+  "uuid.Parse",
+  "len",
+  "utf8.RuneCountInString"
+ ],
+ "safe_return_calls": [],
+ "validators": [
+  "Contains",
+  "HasPrefix",
+  "HasSuffix",
+  "MatchString",
+  "Match",
+  "IsDigit",
+  "IsLetter",
+  "IsNumber",
+  "validate",
+  "Validate",
+  "IsValid",
+  "Allowed",
+  "check",
+  "Check",
+  "verify",
+  "Verify",
+  "Struct",
+  "Var"
+ ]
+}

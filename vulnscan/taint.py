@@ -45,6 +45,8 @@ DEFAULT_MODELS = pathlib.Path(__file__).parent / "models" / "python.json"
 DEFAULT_JS_MODELS = pathlib.Path(__file__).parent / "models" / "javascript.json"
 PY_EXTS = (".py",)
 JS_EXTS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
+CFAMILY = {".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".cs": "csharp", ".go": "go", ".php": "php", ".phtml": "php"}
+MODELS_DIR = pathlib.Path(__file__).parent / "models"
 CONTAINER_WRITES = {"append", "extend", "insert", "add", "update", "put", "setdefault"}
 ARG_INJECTION = ("DF009", "medium", "Tainted data reaches a subprocess argument",
                  "بيانات غير موثوقة تصل إلى وسيط لأمر خارجي",
@@ -124,15 +126,25 @@ def _dotted(node: ast.AST) -> str:
     return ""
 
 
+_SCOPE_CACHE: dict = {}
+
+
 def _scope_nodes(fn: ast.AST):
-    """Nodes of a scope's body, without descending into nested functions, classes or lambdas."""
+    """Nodes of a scope's body, without descending into nested functions, classes or lambdas (cached per node)."""
+    key = id(fn)
+    hit = _SCOPE_CACHE.get(key)
+    if hit is not None and hit[0] is fn:
+        return hit[1]
+    out = []
     stack = list(reversed(getattr(fn, "body", []) or []))
     while stack:
         n = stack.pop()
-        yield n
+        out.append(n)
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
             continue
         stack.extend(reversed(list(ast.iter_child_nodes(n))))
+    _SCOPE_CACHE[key] = (fn, out)
+    return out
 
 
 def _param_names(fn: ast.AST) -> list[str]:
@@ -196,6 +208,11 @@ class Project:
         self.summaries: dict[str, dict] = {}
         self.lines_by_path: dict[str, list] = {}
         self._parents_cache: dict[int, dict] = {}
+        self._calls_cache: dict = {}
+        self._sink_cache: dict = {}
+        self._source_cache: dict = {}
+        self._sanitizer_cache: dict = {}
+        self._resolve_cache: dict = {}
         self.findings: list[Finding] = []
 
     # ------------------------------------------------------------ building
@@ -223,7 +240,7 @@ class Project:
                     modpart, _, name = full.rpartition(".")
                     file["aliases"][local] = ("from", modpart, name) if modpart else ("mod", full)
 
-        def visit(node, cls_qual):
+        def visit(node, cls_qual, parent_func=None):
             for child in ast.iter_child_nodes(node):
                 if isinstance(child, ast.ClassDef):
                     cq = f"{mod}::{child.name}"
@@ -233,7 +250,7 @@ class Project:
                                         "tainted_fields": {}, "ctor_param_fields": {}}
                     file["classes"][child.name] = cq
                     self.simple_classes.setdefault(child.name, []).append(cq)
-                    visit(child, cq)
+                    visit(child, cq, parent_func)
                 elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     if cls_qual:
                         q = f"{cls_qual}.{child.name}"
@@ -243,12 +260,13 @@ class Project:
                         q = f"{mod}::{child.name}"
                         file["funcs"][child.name] = q
                         self.simple_funcs.setdefault(child.name, []).append(q)
-                    self.gfuncs[q] = {"node": child, "mod": mod, "name": child.name, "cls": cls_qual, "path": path}
-                    visit(child, None)
+                    self.gfuncs[q] = {"node": child, "mod": mod, "name": child.name, "cls": cls_qual, "path": path,
+                                      "enclosing": ([parent_func] + self.gfuncs[parent_func]["enclosing"]) if parent_func else []}
+                    visit(child, None, q)
                 else:
-                    visit(child, cls_qual)
+                    visit(child, cls_qual, parent_func)
 
-        visit(tree, None)
+        visit(tree, None, None)
         return True
 
     @staticmethod
@@ -309,6 +327,14 @@ class Project:
     def _resolve_class(self, mod: str, name: str) -> str | None:
         if not name:
             return None
+        key = ("c", mod, name)
+        if key in self._resolve_cache:
+            return self._resolve_cache[key]
+        res = self._resolve_class_uncached(mod, name)
+        self._resolve_cache[key] = res
+        return res
+
+    def _resolve_class_uncached(self, mod: str, name: str) -> str | None:
         file = self.files.get(mod, {})
         short = name.split(".")[-1]
         if name == short and short in file.get("classes", {}):
@@ -333,6 +359,14 @@ class Project:
         return None
 
     def _resolve_function(self, mod: str, name: str) -> str | None:
+        key = ("f", mod, name)
+        if key in self._resolve_cache:
+            return self._resolve_cache[key]
+        res = self._resolve_function_uncached(mod, name)
+        self._resolve_cache[key] = res
+        return res
+
+    def _resolve_function_uncached(self, mod: str, name: str) -> str | None:
         file = self.files.get(mod, {})
         short = name.split(".")[-1]
         if name == short and short in file.get("funcs", {}):
@@ -479,6 +513,15 @@ class Project:
 
     # -------------------------------------------------------------- sources
     def _is_source(self, mod: str, node: ast.AST) -> str | None:
+        key = (mod, id(node))
+        hit = self._source_cache.get(key)
+        if hit is not None and hit[0] is node:
+            return hit[1]
+        res = self._is_source_uncached(mod, node)
+        self._source_cache[key] = (node, res)
+        return res
+
+    def _is_source_uncached(self, mod: str, node: ast.AST) -> str | None:
         cur = node
         if isinstance(cur, ast.Call) and isinstance(cur.func, ast.Attribute) \
                 and cur.func.attr in {"get", "getlist", "getall", "get_argument", "getone"}:
@@ -505,17 +548,26 @@ class Project:
         return None
 
     def _is_sanitizer(self, canon: str) -> bool:
-        return any(_name_matches(canon, s) for s in self.m["sanitizers"])
+        hit = self._sanitizer_cache.get(canon)
+        if hit is None:
+            hit = self._sanitizer_cache[canon] = any(_name_matches(canon, s) for s in self.m["sanitizers"])
+        return hit
 
     # ---------------------------------------------------------------- sinks
     def _sink_info(self, mod: str, call: ast.Call):
+        key = (mod, id(call))
+        hit = self._sink_cache.get(key)
+        if hit is not None and hit[0] is call:
+            return hit[1]
         canon = self._canon(mod, call.func)
-        if not canon:
-            return None
-        for entry in self.m["sinks"]:
-            if any(_name_matches(canon, n) for n in entry[9]):
-                return entry[:9]
-        return None
+        res = None
+        if canon:
+            for entry in self.m["sinks"]:
+                if any(_name_matches(canon, n) for n in entry[9]):
+                    res = entry[:9]
+                    break
+        self._sink_cache[key] = (call, res)
+        return res
 
     def _subprocess_elem_only(self, mod, cls, call, env) -> bool:
         kw = {k.arg: k.value for k in call.keywords}
@@ -844,11 +896,14 @@ class Project:
                             changed = True
         return env
 
-    @staticmethod
-    def _calls(fn: ast.AST):
-        for node in _scope_nodes(fn):
-            if isinstance(node, ast.Call):
-                yield node
+    def _calls(self, fn: ast.AST):
+        key = id(fn)
+        hit = self._calls_cache.get(key)
+        if hit is not None and hit[0] is fn:
+            return hit[1]
+        out = [n for n in _scope_nodes(fn) if isinstance(n, ast.Call)]
+        self._calls_cache[key] = (fn, out)
+        return out
 
     # ------------------------------------------------------------- guards
     def _parents(self, fn) -> dict:
@@ -920,7 +975,9 @@ class Project:
 
     # ------------------------------------------------------------ summaries
     def build(self):
+        self._resolve_cache.clear()
         self.link()
+        self._resolve_cache.clear()
         self.obj_taint: dict = {}
         try:
             from .pointsto import PointsTo
@@ -929,7 +986,7 @@ class Project:
             self.pt = None
         for q in self.gfuncs:
             self.summaries[q] = {"source_return": None, "ret_params": set(), "sink_params": {},
-                                 "sink_fields": {}, "ret_fields": set(), "ret_type": None, "ret_line": 0}
+                                 "sink_fields": {}, "ret_fields": set(), "ret_type": None, "ret_line": 0, "cb_calls": []}
         changed, passes = True, 0
         while changed and passes < MAX_PASSES:
             changed, passes = False, passes + 1
@@ -940,7 +997,8 @@ class Project:
                 new = {"source_return": summ["source_return"], "ret_params": set(summ["ret_params"]),
                        "sink_params": {k: list(v) for k, v in summ["sink_params"].items()},
                        "sink_fields": {k: list(v) for k, v in summ["sink_fields"].items()},
-                       "ret_fields": set(summ["ret_fields"]), "ret_type": summ["ret_type"], "ret_line": summ["ret_line"]}
+                       "ret_fields": set(summ["ret_fields"]), "ret_type": summ["ret_type"], "ret_line": summ["ret_line"],
+                       "cb_calls": list(summ["cb_calls"])}
                 rt = self._resolve_class(mod, _annotation_name(getattr(fn, "returns", None)) or "")
                 if rt:
                     new["ret_type"] = rt
@@ -1018,6 +1076,14 @@ class Project:
                     o = self._taint(mod, cls, call.args[idx], env)
                     if o and not self._guarded(mod, fn, call, self._tainted_names_in(call.args[idx], env)):
                         record(o, (si, path, call.lineno))
+        cb_param = self._callback_param(fn, call)
+        if cb_param is not None:
+            pos = [(i, self._taint(mod, cls, a, env)) for i, a in enumerate(call.args)]
+            kwo = {k.arg: self._taint(mod, cls, k.value, env) for k in call.keywords if k.arg}
+            entry = (cb_param, [(i, o) for i, o in pos if o], {k: o for k, o in kwo.items() if o}, path, call.lineno)
+            if entry not in new["cb_calls"]:
+                new["cb_calls"].append(entry)
+            return
         callees, ctor = self._callees(mod, cls, call, env)
         if ctor:
             return
@@ -1039,6 +1105,71 @@ class Project:
                 for fld, entries in summ["sink_fields"].items():
                     for e in entries:
                         record(("field", fld, ()), e)
+            # the callee itself calls one of ITS parameters: resolve the function value passed here, per call site
+            for cb in summ["cb_calls"]:
+                self._apply_callback(mod, cls, fn, path, call, env, q, cb, record, None)
+
+    @staticmethod
+    def _callback_param(fn, call):
+        """Name of the parameter of fn that this call invokes (f(x) where f is a parameter), else None."""
+        if isinstance(call.func, ast.Name) and isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if call.func.id in _param_names(fn):
+                return call.func.id
+        return None
+
+    def _func_values(self, mod, cls, expr, env) -> list[str]:
+        """Function quals an argument expression may evaluate to (static name or points-to function objects)."""
+        out = []
+        if isinstance(expr, (ast.Name, ast.Attribute)):
+            q = self._resolve_function(mod, _dotted(expr))
+            if q:
+                out.append(q)
+            if isinstance(expr, ast.Name) and expr.id in env.funcs:
+                out.append(env.funcs[expr.id])
+        pt = getattr(self, "pt", None)
+        if pt is not None:
+            out.extend(q for q in pt.funcs_for(expr) if q in self.gfuncs)
+        return sorted(set(out))
+
+    def _apply_callback(self, mod, cls, fn, path, call, env, q, cb, record, emit_ctx):
+        """At a call site of q, resolve the function value passed for q's callback parameter and
+        propagate its sinks: per call site, so run_all(shell, t) and run_all(logger, t) differ."""
+        cb_param, pos_origins, kw_origins, cb_path, cb_line = cb
+        mapping = self._map_args(call, q)
+        cb_arg = mapping.get(cb_param)
+        if cb_arg is None:
+            return
+        for q2 in self._func_values(mod, cls, cb_arg, env):
+            summ2 = self.summaries.get(q2)
+            if not summ2:
+                continue
+            fn2 = self.gfuncs[q2]["node"]
+            a2 = fn2.args
+            pos2 = [p.arg for p in (a2.posonlyargs + a2.args)]
+            off2 = 1 if (pos2 and pos2[0] in {"self", "cls"} and isinstance(cb_arg, ast.Attribute)) else 0
+            def actual(origin):
+                # origin inside q: a param of q -> the argument passed here; a real source -> itself
+                if origin[0] == "param":
+                    arg = mapping.get(origin[1])
+                    return self._taint(mod, cls, arg, env) if arg is not None else None
+                return origin
+            bindings = []
+            for i, o in pos_origins:
+                j = i + off2
+                if j < len(pos2):
+                    bindings.append((pos2[j], actual(o)))
+                elif a2.vararg:
+                    bindings.append((a2.vararg.arg, actual(o)))
+            for k, o in kw_origins.items():
+                bindings.append((k, actual(o)))
+            for pname2, o in bindings:
+                if not o:
+                    continue
+                for e in summ2["sink_params"].get(pname2, []):
+                    if emit_ctx is None:
+                        record(o, e)
+                    elif o[0] in {"source", "retsource"}:
+                        self._emit(e[0], emit_ctx[0], emit_ctx[1], o, self.gfuncs[q2]["name"], e)
 
     # ------------------------------------------------------------ reporting
     def report(self) -> list[Finding]:
@@ -1058,6 +1189,8 @@ class Project:
                                     and not self._guarded(mod, fn, call, self._tainted_names_in(call.args[idx], env)):
                                 self._emit(si, path, call.lineno, o, None, None)
                                 break
+                if self._callback_param(fn, call) is not None:
+                    continue
                 callees, ctor = self._callees(mod, cls, call, env)
                 if ctor:
                     continue
@@ -1085,6 +1218,8 @@ class Project:
                         if fld in fields:
                             self._emit(entries[0][0], path, call.lineno, fields[fld], name, entries[0])
                             break
+                    for cb in summ["cb_calls"]:
+                        self._apply_callback(mod, cls, fn, path, call, env, q, cb, None, (path, call.lineno))
             for node in _scope_nodes(fn):
                 hit = self._attr_sink(node)
                 if hit:
@@ -1157,7 +1292,23 @@ def _language(rel: str) -> str | None:
         return "python"
     if low.endswith(JS_EXTS) and not low.endswith((".d.ts", ".min.js")):
         return "javascript"
+    for ext, lang in CFAMILY.items():
+        if low.endswith(ext):
+            return lang
     return None
+
+
+def load_models_for(language: str, extra_dirs=()) -> dict:
+    """Built-in models for a language (Kotlin layers on Java), plus user model dirs."""
+    base = {"python": DEFAULT_MODELS, "javascript": DEFAULT_JS_MODELS}.get(language, MODELS_DIR / f"{language}.json")
+    m = load_models(extra_dirs, base, language)
+    if language == "kotlin":
+        j = load_models(extra_dirs, MODELS_DIR / "java.json", "kotlin")
+        for k in ("attr_sources", "call_sources", "name_sources", "sinks", "attr_sinks"):
+            m[k] = m[k] + [x for x in j[k] if x not in m[k]]
+        for k in ("entry_decorators", "view_bases", "view_methods", "request_params", "sanitizers", "safe_return_calls", "validators"):
+            m[k] = m[k] | j[k]
+    return m
 
 
 def analyze_project(files: dict[str, str], models_dirs=None) -> list[Finding]:
@@ -1190,6 +1341,20 @@ def analyze_project_full(files: dict[str, str], models_dirs=None):
                 continue  # bundles / minified
             tree = js_frontend.parse_js(text, rel)
             proj.add_file(js_frontend.module_name(rel), rel, text, tree=tree)
+        if proj.files:
+            proj.build()
+            findings.extend(proj.report())
+            projects.append(proj)
+    for lang in ("java", "kotlin", "csharp", "go", "php"):
+        if lang not in groups:
+            continue
+        from . import cfamily_frontend
+        proj = Project(load_models_for(lang, models_dirs or ()))
+        for rel, text in groups[lang].items():
+            if len(text) > 600_000:
+                continue
+            tree = cfamily_frontend.parse_cfamily(text, rel, lang)
+            proj.add_file(cfamily_frontend.module_name(rel), rel, text, tree=tree)
         if proj.files:
             proj.build()
             findings.extend(proj.report())

@@ -1,0 +1,11 @@
+// @id vql/entry-reaches-shell
+// @name Routed entry point can reach a shell command through the call graph
+// @name_ar نقطة دخول مُوجَّهة تصل إلى أمر shell عبر سلسلة استدعاءات
+// @severity info
+// @cwe CWE-78
+// @advice راجع سلسلة الاستدعاءات؛ إن مرّت مدخلات المستخدم فيها فهذا حقن أوامر محتمل.
+predicate calls(f, g) { from call c where c.in_func = f and c.func = g }
+predicate reaches(f, g) { calls(f, g) or from value h where calls(f, h) and reaches(h, g) }
+from func e, call c
+where e.is_entry and c.name in ("os.system", "os.popen", "subprocess.run", "subprocess.call", "subprocess.Popen", "child_process.exec", "child_process.execSync") and c.in_func != e.name and reaches(e.name, c.in_func)
+select e, "Entry point " + e.name + " reaches " + c.name + " in " + c.in_func + "()"

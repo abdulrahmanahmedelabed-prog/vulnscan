@@ -1,37 +1,40 @@
-"""Andersen-style points-to analysis for the taint engine.  (vulnscan: ignore-file)
+"""Context-sensitive (1-call-site) Andersen-style points-to analysis.  (vulnscan: ignore-file)
 
-Inclusion-based, flow-insensitive, context-insensitive, field-sensitive and
-allocation-site based: every constructor call, container literal and function
-value is an abstract object; variables, object fields, container elements and
-function returns are pointer nodes; assignments, field loads/stores, calls
-(argument -> parameter, return -> result, receiver -> self) and iteration
-generate inclusion constraints that are solved to a fixpoint.
+Inclusion-based, flow-insensitive, field-sensitive, allocation-site based,
+and **call-site sensitive with heap cloning** (k = 1): a function's pointer
+nodes are instantiated once per calling context, and objects allocated inside
+it are distinct per context, so a factory called from two places returns two
+different abstract objects and a callback parameter bound at one call site
+is not confused with the one bound at another.
 
-The taint engine uses the result for
-* call resolution on the *objects* a receiver may point to (not only its
-  static type), including function values stored in variables, passed as
-  callbacks or kept in containers;
-* heap aliasing: taint stored into a field of an object is visible through
-  every alias of that object, in any function, also via globals and
-  containers.
-It is not context-sensitive: a function's parameter node merges all callers.
+Constraints are collected once per scope as *templates* (context-free) and
+instantiated lazily for each (scope, context) pair discovered through calls.
+Globals and class this-objects are context-free. A function reached from
+more than MAX_CTX call sites falls back to one shared context ("*") so the
+analysis stays bounded.
+
+The taint engine uses the result for call resolution on the objects a
+receiver may point to (function values, callbacks, objects in containers and
+globals) and for heap aliasing of tainted fields.
 """
 
 from __future__ import annotations
 
 import ast
 
-MAX_ITER = 60
+MAX_ITER = 80
+MAX_CTX = 24
+K = 1
 
 
 class Obj:
-    __slots__ = ("kind", "cls", "site", "qual")
+    __slots__ = ("kind", "cls", "site", "qual", "ctx")
 
-    def __init__(self, kind, cls=None, site=None, qual=None):
-        self.kind, self.cls, self.site, self.qual = kind, cls, site, qual
+    def __init__(self, kind, cls=None, site=None, qual=None, ctx=()):
+        self.kind, self.cls, self.site, self.qual, self.ctx = kind, cls, site, qual, ctx
 
     def __repr__(self):
-        return f"Obj({self.kind},{self.cls or self.qual or ''}@{self.site})"
+        return f"Obj({self.kind},{self.cls or self.qual or ''}@{self.site},ctx={self.ctx})"
 
 
 def _param_list(fn):
@@ -42,104 +45,68 @@ def _param_list(fn):
 class PointsTo:
     def __init__(self, proj):
         self.p = proj
-        self.pts: dict = {}                  # node key -> set[Obj]
-        self.copies: list = []               # (src, dst)
-        self.loads: list = []                # (base, attr, dst)
-        self.stores: list = []               # (base, attr, src)
-        self.calls: list = []                # (call ast, mod, cls, scope chain, func_node, arg nodes, kw nodes, dst, recv node)
-        self.node_of: dict = {}              # id(ast node) -> node key
-        self.this_obj: dict = {}             # class qual -> Obj
-        self.func_obj: dict = {}             # function qual -> Obj
-        self.locals: dict = {}               # scope -> set of local names
+        self.templates: dict = {}        # scope -> list of template constraints
+        self.instances: dict = {}        # scope -> set of contexts
+        self.pts: dict = {}              # concrete key -> set[Obj]
+        self.node_key: dict = {}         # id(ast expr) -> (scope, template key)
+        self.objs_cache: dict = {}       # (kind, site, cls, qual, ctx) -> Obj
+        self.func_obj: dict = {}
+        self.this_obj: dict = {}
+        self.locals: dict = {}
         self.tmp = 0
+        self._cur_scope = None
         self._collect()
         self._solve()
 
-    # ---------------------------------------------------------------- nodes
+    # ------------------------------------------------------------ helpers
     def _new(self):
         self.tmp += 1
-        return ("t", self.tmp)
+        return ("t", self._cur_scope, self.tmp)
 
-    def _add(self, node, obj):
-        s = self.pts.setdefault(node, set())
-        if obj not in s:
-            s.add(obj)
-            return True
-        return False
-
-    def _var(self, chain, name):
-        """Resolve a name to the scope that defines it: innermost function with that local, else module."""
-        for scope in chain:
-            if name in self.locals.get(scope, ()):
-                return ("v", scope, name)
-        return ("v", chain[-1], name)
+    def _obj(self, kind, cls=None, site=None, qual=None, ctx=()):
+        k = (kind, site, cls, qual, ctx)
+        o = self.objs_cache.get(k)
+        if o is None:
+            o = self.objs_cache[k] = Obj(kind, cls, site, qual, ctx)
+        return o
 
     def _fobj(self, qual):
         o = self.func_obj.get(qual)
         if o is None:
             info = self.p.gfuncs[qual]
-            o = self.func_obj[qual] = Obj("func", site=(info["path"], info["node"].lineno), qual=qual)
+            o = self.func_obj[qual] = self._obj("func", site=(info["path"], info["node"].lineno), qual=qual)
         return o
 
     def _tobj(self, cq):
         o = self.this_obj.get(cq)
         if o is None:
             c = self.p.classes[cq]
-            o = self.this_obj[cq] = Obj("this", cls=cq, site=(c["path"], c["node"].lineno))
+            o = self.this_obj[cq] = self._obj("this", cls=cq, site=(c["path"], c["node"].lineno))
         return o
 
-    # -------------------------------------------------------------- collect
-    def _collect(self):
-        # local-name sets per scope
-        for q, info in self.p.gfuncs.items():
-            names = set(_param_list(info["node"]))
-            for n in self._scope_nodes(info["node"]):
-                if isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-                    tg = n.targets if isinstance(n, ast.Assign) else [n.target]
-                    for t in tg:
-                        names |= {x.id for x in ast.walk(t) if isinstance(x, ast.Name)}
-                elif isinstance(n, (ast.For, ast.AsyncFor)):
-                    names |= {x.id for x in ast.walk(n.target) if isinstance(x, ast.Name)}
-                elif isinstance(n, ast.withitem) and n.optional_vars is not None:
-                    names |= {x.id for x in ast.walk(n.optional_vars) if isinstance(x, ast.Name)}
-                elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    names.add(n.name)
-            self.locals[q] = names
-        for mod, file in self.p.files.items():
-            self.locals[mod] = set()
-        # module scopes
-        for mod, file in self.p.files.items():
-            self._collect_scope(file["tree"], mod, None, [mod], file["path"])
-        # function scopes (with enclosing chain)
-        for q, info in self.p.gfuncs.items():
-            fn, mod, cls = info["node"], info["mod"], info["cls"]
-            chain = [q] + self._enclosing(q) + [mod]
-            self._collect_scope(fn, mod, cls, chain, info["path"], q)
-        # a function definition is a function value in its enclosing scope; methods are reachable via classes
-        for q, info in self.p.gfuncs.items():
-            fo = self._fobj(q)
-            if info["cls"] is None:
-                enc = self._enclosing(q)
-                scope = enc[0] if enc else info["mod"]
-                self._add(("v", scope, info["name"]), fo)
-        # self of every method points to the class's this-object (and its bases', so fields unify across the hierarchy)
-        for cq, c in self.p.classes.items():
-            for mname, q in c["methods"].items():
-                for k in self.p._mro(cq):
-                    self._add(("v", q, "self"), self._tobj(k))
+    @staticmethod
+    def _concrete(key, ctx):
+        if key[0] == "g":
+            return key
+        return key + (ctx,)
 
-    def _enclosing(self, q):
-        """Enclosing function quals for nested defs (by source containment)."""
-        info = self.p.gfuncs[q]
-        out = []
-        for oq, oi in self.p.gfuncs.items():
-            if oq != q and oi["mod"] == info["mod"] and oi["node"] is not info["node"]:
-                n = oi["node"]
-                if n.lineno <= info["node"].lineno and getattr(n, "end_lineno", n.lineno) >= getattr(info["node"], "end_lineno", info["node"].lineno) \
-                        and any(ch is info["node"] for ch in ast.walk(n)):
-                    out.append(oq)
-        return sorted(out, key=lambda oq: -self.p.gfuncs[oq]["node"].lineno)
+    def _add(self, ckey, obj):
+        s = self.pts.setdefault(ckey, set())
+        if obj not in s:
+            s.add(obj)
+            return True
+        return False
 
+    def _var(self, chain, name):
+        """Variable key: innermost scope defining it; enclosing-function or module variables are context-free globals."""
+        if name in self.locals.get(chain[0], ()):
+            return ("v", chain[0], name)
+        for scope in chain[1:]:
+            if name in self.locals.get(scope, ()):
+                return ("g", scope, name)
+        return ("g", chain[-1], name)
+
+    # ------------------------------------------------------------ collect
     @staticmethod
     def _scope_nodes(fn):
         stack = list(reversed(getattr(fn, "body", []) or []))
@@ -150,7 +117,47 @@ class PointsTo:
                 continue
             stack.extend(reversed(list(ast.iter_child_nodes(n))))
 
-    def _collect_scope(self, fn, mod, cls, chain, path, qual=None):
+    def _enclosing(self, q):
+        return list(self.p.gfuncs[q].get("enclosing", []))
+
+    def _collect(self):
+        for q, info in self.p.gfuncs.items():
+            names = set(_param_list(info["node"]))
+            for n in self._scope_nodes(info["node"]):
+                if isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                    for t in (n.targets if isinstance(n, ast.Assign) else [n.target]):
+                        names |= {x.id for x in ast.walk(t) if isinstance(x, ast.Name)}
+                elif isinstance(n, (ast.For, ast.AsyncFor)):
+                    names |= {x.id for x in ast.walk(n.target) if isinstance(x, ast.Name)}
+                elif isinstance(n, ast.withitem) and n.optional_vars is not None:
+                    names |= {x.id for x in ast.walk(n.optional_vars) if isinstance(x, ast.Name)}
+                elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    names.add(n.name)
+            self.locals[q] = names
+        for mod in self.p.files:
+            self.locals[mod] = set()
+        for mod, file in self.p.files.items():
+            self._cur_scope = mod
+            self.templates[mod] = []
+            self._collect_scope(file["tree"], mod, None, [mod], file["path"], None)
+            self.instances[mod] = {()}
+        for q, info in self.p.gfuncs.items():
+            self._cur_scope = q
+            self.templates[q] = []
+            chain = [q] + self._enclosing(q) + [info["mod"]]
+            self._collect_scope(info["node"], info["mod"], info["cls"], chain, info["path"], q)
+            self.instances[q] = {()}   # entry/uncalled functions are analysed in the empty context
+        # function definitions are function values in their enclosing scope (context-free globals)
+        for q, info in self.p.gfuncs.items():
+            if info["cls"] is None:
+                enc = self._enclosing(q)
+                scope = enc[0] if enc else info["mod"]
+                self._add(("g", scope, info["name"]), self._fobj(q))
+
+    def _emit(self, c):
+        self.templates[self._cur_scope].append(c)
+
+    def _collect_scope(self, fn, mod, cls, chain, path, qual):
         for n in self._scope_nodes(fn):
             if isinstance(n, ast.Assign):
                 src = self._eval(n.value, mod, cls, chain, path)
@@ -163,12 +170,12 @@ class PointsTo:
             elif isinstance(n, (ast.For, ast.AsyncFor)):
                 it = self._eval(n.iter, mod, cls, chain, path)
                 tmp = self._new()
-                self.loads.append((it, "<elem>", tmp))
+                self._emit(("load", it, "<elem>", tmp))
                 self._assign(n.target, tmp, mod, cls, chain, path)
             elif isinstance(n, ast.withitem) and n.optional_vars is not None:
                 self._assign(n.optional_vars, self._eval(n.context_expr, mod, cls, chain, path), mod, cls, chain, path)
             elif isinstance(n, ast.Return) and n.value is not None and qual:
-                self.copies.append((self._eval(n.value, mod, cls, chain, path), ("r", qual)))
+                self._emit(("copy", self._eval(n.value, mod, cls, chain, path), ("r", qual)))
             elif isinstance(n, ast.Expr):
                 self._eval(n.value, mod, cls, chain, path)
             elif isinstance(n, (ast.If, ast.While)):
@@ -176,45 +183,41 @@ class PointsTo:
 
     def _assign(self, target, src, mod, cls, chain, path):
         if isinstance(target, ast.Name):
-            self.copies.append((src, self._var(chain, target.id)))
+            self._emit(("copy", src, self._var(chain, target.id)))
         elif isinstance(target, ast.Attribute):
-            base = self._eval(target.value, mod, cls, chain, path)
-            self.stores.append((base, target.attr, src))
+            self._emit(("store", self._eval(target.value, mod, cls, chain, path), target.attr, src))
         elif isinstance(target, ast.Subscript):
-            base = self._eval(target.value, mod, cls, chain, path)
-            self.stores.append((base, "<elem>", src))
+            self._emit(("store", self._eval(target.value, mod, cls, chain, path), "<elem>", src))
         elif isinstance(target, (ast.Tuple, ast.List)):
             tmp = self._new()
-            self.loads.append((src, "<elem>", tmp))
+            self._emit(("load", src, "<elem>", tmp))
             for e in target.elts:
                 self._assign(e, tmp, mod, cls, chain, path)
         elif isinstance(target, ast.Starred):
             self._assign(target.value, src, mod, cls, chain, path)
 
     def _eval(self, e, mod, cls, chain, path):
-        """Evaluate an expression to a pointer node (creating constraints)."""
         key = self._eval_inner(e, mod, cls, chain, path)
-        self.node_of[id(e)] = key
+        self.node_key[id(e)] = (self._cur_scope, key)
         return key
 
     def _eval_inner(self, e, mod, cls, chain, path):
         if isinstance(e, ast.Name):
-            if e.id in ("self", "cls") and chain and chain[0] in self.p.gfuncs:
+            if e.id in ("self", "cls") and chain[0] in self.p.gfuncs:
                 return ("v", chain[0], "self")
             return self._var(chain, e.id)
         if isinstance(e, ast.Attribute):
             base = self._eval(e.value, mod, cls, chain, path)
-            # module attribute: m.func -> function object
-            q = self.p._resolve_function(mod, self.p._dotted_safe(e)) if hasattr(self.p, "_dotted_safe") else None
             tmp = self._new()
+            q = self.p._resolve_function(mod, _dotted(e)) if "." in _dotted(e) else None
             if q:
-                self._add(tmp, self._fobj(q))
-            self.loads.append((base, e.attr, tmp))
+                self._emit(("alloc", ("func", None, None, q), tmp))
+            self._emit(("load", base, e.attr, tmp))
             return tmp
         if isinstance(e, ast.Subscript):
             base = self._eval(e.value, mod, cls, chain, path)
             tmp = self._new()
-            self.loads.append((base, "<elem>", tmp))
+            self._emit(("load", base, "<elem>", tmp))
             if isinstance(e.slice, (ast.Name, ast.Attribute, ast.Call, ast.Subscript)):
                 self._eval(e.slice, mod, cls, chain, path)
             return tmp
@@ -222,37 +225,35 @@ class PointsTo:
             return self._eval_call(e, mod, cls, chain, path)
         if isinstance(e, (ast.List, ast.Tuple, ast.Set)):
             tmp = self._new()
-            self._add(tmp, Obj("container", site=(path, getattr(e, "lineno", 0))))
+            self._emit(("alloc", ("container", None, (path, getattr(e, "lineno", 0)), None), tmp))
             for el in e.elts:
-                self.stores.append((tmp, "<elem>", self._eval(el, mod, cls, chain, path)))
+                self._emit(("store", tmp, "<elem>", self._eval(el, mod, cls, chain, path)))
             return tmp
         if isinstance(e, ast.Dict):
             tmp = self._new()
-            self._add(tmp, Obj("container", site=(path, getattr(e, "lineno", 0))))
+            self._emit(("alloc", ("container", None, (path, getattr(e, "lineno", 0)), None), tmp))
             for v in e.values:
                 if v is not None:
-                    self.stores.append((tmp, "<elem>", self._eval(v, mod, cls, chain, path)))
+                    self._emit(("store", tmp, "<elem>", self._eval(v, mod, cls, chain, path)))
             return tmp
-        if isinstance(e, (ast.BinOp,)):
+        if isinstance(e, ast.BinOp):
             tmp = self._new()
-            self.copies.append((self._eval(e.left, mod, cls, chain, path), tmp))
-            self.copies.append((self._eval(e.right, mod, cls, chain, path), tmp))
+            self._emit(("copy", self._eval(e.left, mod, cls, chain, path), tmp))
+            self._emit(("copy", self._eval(e.right, mod, cls, chain, path), tmp))
             return tmp
         if isinstance(e, ast.BoolOp):
             tmp = self._new()
             for v in e.values:
-                self.copies.append((self._eval(v, mod, cls, chain, path), tmp))
+                self._emit(("copy", self._eval(v, mod, cls, chain, path), tmp))
             return tmp
         if isinstance(e, ast.IfExp):
             tmp = self._new()
-            self.copies.append((self._eval(e.body, mod, cls, chain, path), tmp))
-            self.copies.append((self._eval(e.orelse, mod, cls, chain, path), tmp))
+            self._emit(("copy", self._eval(e.body, mod, cls, chain, path), tmp))
+            self._emit(("copy", self._eval(e.orelse, mod, cls, chain, path), tmp))
             self._eval(e.test, mod, cls, chain, path)
             return tmp
         if isinstance(e, (ast.Await, ast.Starred)):
             return self._eval(e.value, mod, cls, chain, path)
-        if isinstance(e, ast.Lambda):
-            return self._new()
         if isinstance(e, ast.JoinedStr):
             for v in e.values:
                 if isinstance(v, ast.FormattedValue):
@@ -272,24 +273,21 @@ class PointsTo:
         dst = self._new()
         args = [self._eval(a, mod, cls, chain, path) for a in call.args]
         kws = {k.arg: self._eval(k.value, mod, cls, chain, path) for k in call.keywords if k.arg}
-        func_node = None
-        recv = None
+        func_key, recv = None, None
         if isinstance(call.func, ast.Name):
-            func_node = self._var(chain, call.func.id)
-            self.node_of[id(call.func)] = func_node
+            func_key = self._var(chain, call.func.id)
+            self.node_key[id(call.func)] = (self._cur_scope, func_key)
         elif isinstance(call.func, ast.Attribute):
             recv = self._eval(call.func.value, mod, cls, chain, path)
-            func_node = self._eval(call.func, mod, cls, chain, path)
-            # container writes: x.append(v) / x.extend(v) / d.update(v) store into the element field
+            func_key = self._eval(call.func, mod, cls, chain, path)
             if call.func.attr in ("append", "add", "insert", "extend", "update", "put", "setdefault"):
                 for an in args:
-                    self.stores.append((recv, "<elem>", an))
-        # static resolution (constructor / plain function / module function)
-        static_callees, ctor = self._static(mod, cls, call)
+                    self._emit(("store", recv, "<elem>", an))
+        static, ctor = self._static(mod, cls, call)
         if ctor:
-            self._add(dst, Obj("inst", cls=ctor, site=(path, getattr(call, "lineno", 0))))
-            recv = dst  # self of __init__ is the new object
-        self.calls.append((call, mod, cls, chain, func_node, args, kws, dst, recv, static_callees, bool(ctor)))
+            self._emit(("alloc", ("inst", ctor, (path, getattr(call, "lineno", 0)), None), dst))
+            recv = dst
+        self._emit(("call", call, func_key, recv, args, kws, dst, tuple(static), bool(ctor)))
         return dst
 
     def _static(self, mod, cls, call):
@@ -299,72 +297,146 @@ class PointsTo:
         except Exception:  # noqa: BLE001
             return [], None
 
-    # ---------------------------------------------------------------- solve
+    # ------------------------------------------------------------- solve
+    def _ensure(self, scope, ctx):
+        s = self.instances.setdefault(scope, set())
+        if ctx in s:
+            return False
+        if len(s) >= MAX_CTX:
+            ctx = ("*",)
+            if ctx in s:
+                return False
+        s.add(ctx)
+        self._instantiate(scope, ctx)
+        # self of a method points to the class this-objects in every context
+        info = self.p.gfuncs.get(scope)
+        if info and info["cls"]:
+            for k in self.p._mro(info["cls"]):
+                self._add(self._concrete(("v", scope, "self"), ctx), self._tobj(k))
+        return True
+
+    def _callee_ctx(self, callee, call_ctx, call):
+        site = (id(call),)
+        s = self.instances.get(callee, set())
+        if len(s) >= MAX_CTX and site not in s:
+            return ("*",)
+        return site[:K]
+
+    def _instantiate(self, scope, ctx):
+        """Concrete constraints for one (scope, context): allocations applied once; copies/loads/stores/calls stored."""
+        copies, loads, stores, calls = [], [], [], []
+        for c in self.templates.get(scope, ()):
+            kind = c[0]
+            if kind == "copy":
+                copies.append((self._concrete(c[1], ctx), self._concrete(c[2], ctx)))
+            elif kind == "alloc":
+                k, ocls, site, qual = c[1]
+                o = self._fobj(qual) if k == "func" else self._obj(k, ocls, site, None, ctx)
+                self._add(self._concrete(c[2], ctx), o)
+            elif kind == "load":
+                loads.append((self._concrete(c[1], ctx), c[2], self._concrete(c[3], ctx)))
+            elif kind == "store":
+                stores.append((self._concrete(c[1], ctx), c[2], self._concrete(c[3], ctx)))
+            elif kind == "call":
+                calls.append((c, ctx))
+        self.concrete.append((copies, loads, stores, calls))
+
     def _solve(self):
+        self.concrete = []
+        for scope, ctxs in list(self.instances.items()):
+            for ctx in list(ctxs):
+                self.instances[scope].discard(ctx)
+                self._ensure(scope, ctx)
+        pts = self.pts
         for _ in range(MAX_ITER):
             changed = False
-            for src, dst in self.copies:
-                for o in list(self.pts.get(src, ())):
-                    changed |= self._add(dst, o)
-            for base, attr, dst in self.loads:
-                for o in list(self.pts.get(base, ())):
-                    for x in list(self.pts.get(("f", id(o), attr), ())):
-                        changed |= self._add(dst, x)
-            for base, attr, src in self.stores:
-                for o in list(self.pts.get(base, ())):
-                    for x in list(self.pts.get(src, ())):
-                        changed |= self._add(("f", id(o), attr), x)
-            for call, mod, cls, chain, func_node, args, kws, dst, recv, static, is_ctor in self.calls:
-                for q in self._resolve_call(call, func_node, recv, static):
-                    changed |= self._bind(q, args, kws, dst, recv, call)
+            for copies, loads, stores, calls in list(self.concrete):
+                for src, dst in copies:
+                    so = pts.get(src)
+                    if so:
+                        d = pts.setdefault(dst, set())
+                        before = len(d)
+                        d |= so
+                        changed |= len(d) != before
+                for base, attr, dst in loads:
+                    bo = pts.get(base)
+                    if bo:
+                        d = pts.setdefault(dst, set())
+                        before = len(d)
+                        for o in bo:
+                            fo = pts.get(("f", id(o), attr))
+                            if fo:
+                                d |= fo
+                        changed |= len(d) != before
+                for base, attr, src in stores:
+                    bo, so = pts.get(base), pts.get(src)
+                    if bo and so:
+                        for o in list(bo):
+                            d = pts.setdefault(("f", id(o), attr), set())
+                            before = len(d)
+                            d |= so
+                            changed |= len(d) != before
+                for c, ctx in calls:
+                    changed |= self._do_call(c, ctx)
             if not changed:
                 break
 
-    def _resolve_call(self, call, func_node, recv, static):
+    def _resolve(self, call, func_key, recv, static, ctx):
         quals = set(static)
-        if func_node is not None:
-            for o in self.pts.get(func_node, ()):
+        if func_key is not None:
+            for o in self.pts.get(self._concrete(func_key, ctx), ()):
                 if o.kind == "func":
                     quals.add(o.qual)
         if recv is not None and isinstance(call.func, ast.Attribute):
-            for o in self.pts.get(recv, ()):
+            for o in self.pts.get(self._concrete(recv, ctx), ()):
                 if o.cls:
-                    for q in self.p._lookup_method(o.cls, call.func.attr):
-                        quals.add(q)
+                    quals.update(self.p._lookup_method(o.cls, call.func.attr))
         return quals
 
-    def _bind(self, q, args, kws, dst, recv, call):
-        info = self.p.gfuncs.get(q)
-        if not info:
-            return False
-        fn = info["node"]
-        a = fn.args
-        pos = [p.arg for p in (a.posonlyargs + a.args)]
-        offset = 1 if (pos and pos[0] in ("self", "cls")) else 0
+    def _do_call(self, c, ctx):
+        _, call, func_key, recv, args, kws, dst, static, is_ctor = c
         changed = False
-        if offset and recv is not None:
-            for o in list(self.pts.get(recv, ())):
-                changed |= self._add(("v", q, pos[0]), o)
-        for i, an in enumerate(args):
-            j = i + offset
-            tgt = ("v", q, pos[j]) if j < len(pos) else (("v", q, a.vararg.arg) if a.vararg else None)
-            if tgt:
-                for o in list(self.pts.get(an, ())):
-                    changed |= self._add(tgt, o)
-        kwonly = {p.arg for p in a.kwonlyargs}
-        for k, an in kws.items():
-            tgt = ("v", q, k) if (k in pos or k in kwonly) else (("v", q, a.kwarg.arg) if a.kwarg else None)
-            if tgt:
-                for o in list(self.pts.get(an, ())):
-                    changed |= self._add(tgt, o)
-        for o in list(self.pts.get(("r", q), ())):
-            changed |= self._add(dst, o)
+        for q in self._resolve(call, func_key, recv, static, ctx):
+            info = self.p.gfuncs.get(q)
+            if not info:
+                continue
+            cctx = self._callee_ctx(q, ctx, call)
+            changed |= self._ensure(q, cctx)
+            fn = info["node"]
+            a = fn.args
+            pos = [p.arg for p in (a.posonlyargs + a.args)]
+            offset = 1 if (pos and pos[0] in ("self", "cls")) else 0
+            if offset and recv is not None:
+                for o in list(self.pts.get(self._concrete(recv, ctx), ())):
+                    changed |= self._add(self._concrete(("v", q, pos[0]), cctx), o)
+            for i, an in enumerate(args):
+                j = i + offset
+                tgt = ("v", q, pos[j]) if j < len(pos) else (("v", q, a.vararg.arg) if a.vararg else None)
+                if tgt:
+                    for o in list(self.pts.get(self._concrete(an, ctx), ())):
+                        changed |= self._add(self._concrete(tgt, cctx), o)
+            kwonly = {p.arg for p in a.kwonlyargs}
+            for k, an in kws.items():
+                tgt = ("v", q, k) if (k in pos or k in kwonly) else (("v", q, a.kwarg.arg) if a.kwarg else None)
+                if tgt:
+                    for o in list(self.pts.get(self._concrete(an, ctx), ())):
+                        changed |= self._add(self._concrete(tgt, cctx), o)
+            for o in list(self.pts.get(self._concrete(("r", q), cctx), ())):
+                changed |= self._add(self._concrete(dst, ctx), o)
         return changed
 
-    # ------------------------------------------------------------------ API
+    # ---------------------------------------------------------------- API
     def objs(self, node) -> set:
-        key = self.node_of.get(id(node))
-        return set(self.pts.get(key, ())) if key is not None else set()
+        hit = self.node_key.get(id(node))
+        if hit is None:
+            return set()
+        scope, key = hit
+        out = set()
+        if key[0] == "g":
+            return set(self.pts.get(key, ()))
+        for ctx in self.instances.get(scope, ()):
+            out |= self.pts.get(self._concrete(key, ctx), set())
+        return out
 
     def classes_for(self, node) -> set:
         return {o.cls for o in self.objs(node) if o.cls}
@@ -381,3 +453,12 @@ class PointsTo:
             for cq in self.classes_for(call.func.value):
                 quals |= set(self.p._lookup_method(cq, call.func.attr))
         return quals
+
+
+def _dotted(node):
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        b = _dotted(node.value)
+        return f"{b}.{node.attr}" if b else node.attr
+    return ""

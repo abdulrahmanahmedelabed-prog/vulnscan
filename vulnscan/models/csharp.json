@@ -1,0 +1,539 @@
+{
+ "_comment": "C# (ASP.NET / .NET) models.",
+ "sources": [
+  {
+   "kind": "attr",
+   "roots": [
+    "Request",
+    "request",
+    "req",
+    "HttpContext.Request",
+    "context.Request",
+    "Context.Request",
+    "ctx.Request",
+    "Request.Query",
+    "Request.Form"
+   ],
+   "attrs": [
+    "QueryString",
+    "Query",
+    "Form",
+    "Params",
+    "Cookies",
+    "Headers",
+    "Body",
+    "Path",
+    "RawUrl",
+    "Url",
+    "RouteValues",
+    "Files",
+    "ContentType",
+    "UserAgent",
+    "UrlReferrer",
+    "InputStream"
+   ],
+   "label": "Request.{attr}"
+  },
+  {
+   "kind": "call",
+   "names": [
+    "Console.ReadLine",
+    "ReadLine",
+    "Environment.GetEnvironmentVariable",
+    "GetEnvironmentVariable",
+    "Environment.GetCommandLineArgs",
+    "GetCommandLineArgs",
+    "ReadToEnd",
+    "Request.Query.TryGetValue"
+   ],
+   "label": "{name}()"
+  },
+  {
+   "kind": "name",
+   "names": [
+    "args"
+   ],
+   "label": "{name}"
+  }
+ ],
+ "entry_points": [
+  {
+   "decorators": [
+    "HttpGet",
+    "HttpPost",
+    "HttpPut",
+    "HttpDelete",
+    "HttpPatch",
+    "Route",
+    "FromQuery",
+    "FromBody",
+    "FromForm",
+    "FromRoute",
+    "FromHeader",
+    "ApiController",
+    "WebMethod",
+    "HubMethodName",
+    "Function",
+    "FunctionName",
+    "AcceptVerbs"
+   ],
+   "label": "معامل نقطة الدخول"
+  },
+  {
+   "view_bases": [
+    "Controller",
+    "ControllerBase",
+    "ApiController",
+    "Hub",
+    "PageModel",
+    "Page",
+    "IHttpHandler",
+    "HttpTaskAsyncHandler",
+    "WebService"
+   ],
+   "methods": [
+    "Get",
+    "Post",
+    "Put",
+    "Delete",
+    "Index",
+    "OnGet",
+    "OnPost",
+    "OnPut",
+    "OnDelete",
+    "ProcessRequest",
+    "Invoke",
+    "InvokeAsync",
+    "Handle",
+    "HandleAsync",
+    "Execute",
+    "Run"
+   ]
+  },
+  {
+   "param_names": [
+    "request",
+    "req",
+    "context",
+    "ctx",
+    "httpContext"
+   ]
+  }
+ ],
+ "sinks": [
+  {
+   "rule": "DF002",
+   "severity": "critical",
+   "cwe": "CWE-78",
+   "label": "shell command",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "Process.Start",
+    "Start",
+    "ProcessStartInfo",
+    "cmd.exe",
+    "/c"
+   ],
+   "title": "Tainted data reaches Process.Start",
+   "title_ar": "بيانات غير موثوقة تصل إلى Process.Start",
+   "advice": "لا تبنِ الأمر من المدخلات؛ ثبّت FileName ومرّر Arguments بعد تحقق.",
+   "shell": true
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    0
+   ],
+   "names": [
+    "SqlCommand",
+    "OleDbCommand",
+    "OdbcCommand",
+    "MySqlCommand",
+    "NpgsqlCommand",
+    "SqliteCommand",
+    "CommandText",
+    "ExecuteSqlRaw",
+    "ExecuteSqlRawAsync",
+    "FromSqlRaw",
+    "ExecuteSqlCommand",
+    "SqlQuery",
+    "ExecuteReader",
+    "ExecuteNonQuery",
+    "ExecuteScalar",
+    "Execute",
+    "Query",
+    "QueryAsync",
+    "QueryFirst",
+    "QueryFirstOrDefault",
+    "QuerySingle",
+    "SqlDataAdapter",
+    "CreateCommand"
+   ],
+   "title": "Tainted data reaches a SQL command",
+   "title_ar": "بيانات غير موثوقة تصل إلى أمر SQL",
+   "advice": "استخدم معاملات (SqlParameter / FromSqlInterpolated) بدل تركيب النص."
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    0
+   ],
+   "names": [
+    "File.ReadAllText",
+    "File.ReadAllBytes",
+    "File.ReadAllLines",
+    "File.WriteAllText",
+    "File.WriteAllBytes",
+    "File.Open",
+    "File.OpenRead",
+    "File.OpenWrite",
+    "File.Create",
+    "File.Exists",
+    "File.Copy",
+    "File.Move",
+    "FileStream",
+    "StreamReader",
+    "StreamWriter",
+    "FileInfo",
+    "DirectoryInfo",
+    "Directory.GetFiles",
+    "Directory.EnumerateFiles",
+    "Path.Combine",
+    "PhysicalFile",
+    "PhysicalFileResult",
+    "Server.MapPath",
+    "MapPath",
+    "TransmitFile",
+    "WriteFile",
+    "SendFile",
+    "SendFileAsync"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار (Path.GetFullPath) وتحقق أنه داخل المجلد المسموح."
+  },
+  {
+   "rule": "DF011",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "filesystem operation",
+   "args": [
+    0
+   ],
+   "names": [
+    "File.Delete",
+    "Directory.Delete",
+    "Directory.CreateDirectory",
+    "File.AppendAllText",
+    "ZipFile.ExtractToDirectory",
+    "ExtractToDirectory"
+   ],
+   "title": "Tainted path reaches a filesystem operation",
+   "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+   "advice": "تحقق من المسار قبل الحذف أو الإنشاء أو الاستخراج."
+  },
+  {
+   "rule": "DF006",
+   "severity": "critical",
+   "cwe": "CWE-502",
+   "label": "deserialization",
+   "args": [
+    0
+   ],
+   "names": [
+    "BinaryFormatter.Deserialize",
+    "Deserialize",
+    "SoapFormatter.Deserialize",
+    "NetDataContractSerializer.Deserialize",
+    "LosFormatter.Deserialize",
+    "ObjectStateFormatter.Deserialize",
+    "JavaScriptSerializer.Deserialize",
+    "JsonConvert.DeserializeObject",
+    "DeserializeObject",
+    "XmlSerializer.Deserialize",
+    "TypeNameHandling"
+   ],
+   "title": "Tainted data reaches unsafe deserialization",
+   "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل غير آمن",
+   "advice": "تجنّب BinaryFormatter؛ استخدم System.Text.Json بأنواع ثابتة وبلا TypeNameHandling."
+  },
+  {
+   "rule": "DF007",
+   "severity": "high",
+   "cwe": "CWE-1336",
+   "label": "template / eval",
+   "args": [
+    0
+   ],
+   "names": [
+    "Razor.Parse",
+    "RazorEngine.Parse",
+    "Engine.Razor.RunCompile",
+    "CSharpScript.EvaluateAsync",
+    "CSharpScript.RunAsync",
+    "EvaluateAsync",
+    "Eval",
+    "DataTable.Compute",
+    "Compute",
+    "Select",
+    "RowFilter",
+    "DynamicExpression.ParseLambda",
+    "ParseLambda"
+   ],
+   "title": "Tainted data reaches a template or expression evaluator",
+   "title_ar": "بيانات غير موثوقة تصل إلى قالب أو مقيّم تعبيرات",
+   "advice": "لا تبنِ القالب أو التعبير من المدخلات."
+  },
+  {
+   "rule": "DF008",
+   "severity": "medium",
+   "cwe": "CWE-601",
+   "label": "redirect",
+   "args": [
+    0
+   ],
+   "names": [
+    "Redirect",
+    "RedirectPermanent",
+    "Response.Redirect",
+    "LocalRedirect",
+    "RedirectToAction",
+    "RedirectResult",
+    "Redirect.Permanent"
+   ],
+   "title": "Tainted data reaches a redirect",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+   "advice": "استخدم LocalRedirect أو تحقق من الوجهة."
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (SSRF)",
+   "args": [
+    0
+   ],
+   "names": [
+    "HttpClient.GetAsync",
+    "GetAsync",
+    "PostAsync",
+    "GetStringAsync",
+    "GetByteArrayAsync",
+    "GetStreamAsync",
+    "SendAsync",
+    "HttpRequestMessage",
+    "WebRequest.Create",
+    "HttpWebRequest.Create",
+    "Create",
+    "WebClient.DownloadString",
+    "DownloadString",
+    "DownloadFile",
+    "DownloadData",
+    "OpenRead",
+    "UploadString",
+    "RestClient",
+    "RestRequest",
+    "Uri"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء."
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-470",
+   "label": "reflection / assembly load",
+   "args": [
+    0
+   ],
+   "names": [
+    "Assembly.Load",
+    "Assembly.LoadFrom",
+    "Assembly.LoadFile",
+    "LoadFrom",
+    "LoadFile",
+    "Type.GetType",
+    "GetType",
+    "Activator.CreateInstance",
+    "CreateInstance",
+    "InvokeMember",
+    "Invoke"
+   ],
+   "title": "Tainted data reaches reflection or assembly loading",
+   "title_ar": "بيانات غير موثوقة تصل إلى انعكاس أو تحميل تجميعات",
+   "advice": "استخدم قائمة بيضاء ثابتة من الأنواع."
+  },
+  {
+   "rule": "DF013",
+   "severity": "medium",
+   "cwe": "CWE-79",
+   "label": "HTTP response body (XSS)",
+   "args": [
+    0
+   ],
+   "names": [
+    "Response.Write",
+    "Write",
+    "WriteAsync",
+    "Response.WriteAsync",
+    "HtmlString",
+    "MvcHtmlString",
+    "Html.Raw",
+    "Raw",
+    "Content",
+    "InnerHtml",
+    "innerHTML",
+    "Literal.Text",
+    "Text"
+   ],
+   "title": "Tainted data reflected into the response",
+   "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+   "advice": "هرّب المخرجات (HtmlEncoder) أو استخدم Razor الذي يُهرِّب تلقائيًا."
+  },
+  {
+   "rule": "DF014",
+   "severity": "high",
+   "cwe": "CWE-90",
+   "label": "LDAP filter",
+   "args": [
+    0
+   ],
+   "names": [
+    "DirectorySearcher",
+    "DirectoryEntry",
+    "FindAll",
+    "FindOne",
+    "Filter",
+    "SearchRequest"
+   ],
+   "title": "Tainted data reaches an LDAP search",
+   "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+   "advice": "هرّب قيم المرشّح."
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "args": [
+    0
+   ],
+   "names": [
+    "SelectNodes",
+    "SelectSingleNode",
+    "XPathExpression.Compile",
+    "XPath.Compile",
+    "Evaluate",
+    "XPathEvaluate",
+    "XPathSelectElements",
+    "XPathSelectElement"
+   ],
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "استخدم متغيرات XPath بدل تركيب الاستعلام."
+  },
+  {
+   "rule": "DF016",
+   "severity": "medium",
+   "cwe": "CWE-117",
+   "label": "log injection",
+   "args": [
+    0
+   ],
+   "names": [
+    "logger.LogInformation",
+    "LogInformation",
+    "LogWarning",
+    "LogError",
+    "LogDebug",
+    "Log.Information",
+    "Log.Warning",
+    "Log.Error",
+    "Logger.Info",
+    "Logger.Warn",
+    "Logger.Error"
+   ],
+   "title": "Tainted data written to a log",
+   "title_ar": "بيانات غير موثوقة تُكتب في السجل",
+   "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل."
+  }
+ ],
+ "sanitizers": [
+  "int.Parse",
+  "Int32.Parse",
+  "long.Parse",
+  "Int64.Parse",
+  "double.Parse",
+  "decimal.Parse",
+  "bool.Parse",
+  "Guid.Parse",
+  "Guid.ParseExact",
+  "Convert.ToInt32",
+  "Convert.ToInt64",
+  "ToInt32",
+  "ToInt64",
+  "Parse",
+  "TryParse",
+  "HttpUtility.HtmlEncode",
+  "HttpUtility.UrlEncode",
+  "HttpUtility.JavaScriptStringEncode",
+  "WebUtility.HtmlEncode",
+  "WebUtility.UrlEncode",
+  "HtmlEncoder.Default.Encode",
+  "HtmlEncode",
+  "UrlEncode",
+  "JavaScriptEncoder.Default.Encode",
+  "Encode",
+  "Path.GetFileName",
+  "GetFileName",
+  "Uri.EscapeDataString",
+  "EscapeDataString",
+  "Regex.Escape",
+  "SecurityElement.Escape",
+  "AntiXss.HtmlEncode",
+  "Sanitizer.GetSafeHtml",
+  "GetSafeHtmlFragment",
+  "Length",
+  "Count"
+ ],
+ "safe_return_calls": [
+  "View",
+  "Json",
+  "Ok",
+  "Content",
+  "PartialView",
+  "RedirectToAction"
+ ],
+ "validators": [
+  "Contains",
+  "StartsWith",
+  "EndsWith",
+  "Equals",
+  "IsMatch",
+  "Regex.IsMatch",
+  "All",
+  "Any",
+  "IsDigit",
+  "IsLetter",
+  "IsLetterOrDigit",
+  "Validate",
+  "IsValid",
+  "IsSafe",
+  "Allowed",
+  "Check",
+  "Verify",
+  "ContainsKey",
+  "TryGetValue",
+  "IsNullOrEmpty"
+ ]
+}

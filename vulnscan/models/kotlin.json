@@ -1,0 +1,88 @@
+{
+ "_comment": "Kotlin additions on top of java.json (Ktor/Spring).",
+ "sources": [
+  {
+   "kind": "attr",
+   "roots": [
+    "call",
+    "call.request",
+    "request",
+    "req",
+    "ctx",
+    "exchange"
+   ],
+   "attrs": [
+    "parameters",
+    "queryParameters",
+    "headers",
+    "cookies",
+    "rawQueryParameters",
+    "uri",
+    "path",
+    "receive",
+    "receiveText",
+    "receiveParameters"
+   ],
+   "label": "call.{attr}"
+  },
+  {
+   "kind": "call",
+   "names": [
+    "receive",
+    "receiveText",
+    "receiveParameters",
+    "receiveOrNull",
+    "readLine",
+    "readln"
+   ],
+   "label": "{name}()"
+  }
+ ],
+ "entry_points": [
+  {
+   "decorators": [
+    "GetMapping",
+    "PostMapping",
+    "RequestMapping",
+    "Get",
+    "Post",
+    "Route"
+   ],
+   "label": "معامل نقطة الدخول"
+  },
+  {
+   "param_names": [
+    "call",
+    "request",
+    "req",
+    "ctx",
+    "exchange"
+   ]
+  }
+ ],
+ "sinks": [],
+ "sanitizers": [
+  "toInt",
+  "toLong",
+  "toIntOrNull",
+  "toLongOrNull",
+  "toDouble",
+  "toBoolean",
+  "encodeURLParameter",
+  "escapeHTML",
+  "htmlEscape"
+ ],
+ "validators": [
+  "matches",
+  "contains",
+  "startsWith",
+  "endsWith",
+  "all",
+  "isDigit",
+  "isLetterOrDigit",
+  "validate",
+  "isValid",
+  "check",
+  "verify"
+ ]
+}

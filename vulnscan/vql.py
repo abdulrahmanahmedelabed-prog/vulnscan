@@ -28,7 +28,18 @@ Relations (fields):
   flow      id rule severity cwe source label file line callee interprocedural hops sink_file sink_line
 Operators: = != < > <= >= matches (regex, search) contains (substring) in (list)
            and or not ( )  ;  string "+" concatenation in select.
-It is a relational subset, not QL: no recursion, no user-defined predicates, no classes.
+
+Predicates (user-defined, recursive, Datalog-style, evaluated bottom-up to a fixpoint)::
+
+    predicate calls(f, g) { from call c where c.in_func = f and c.func = g }
+    predicate reaches(f, g) { calls(f, g) or from value h where calls(f, h) and reaches(h, g) }
+    from func e where e.is_entry and reaches(e.name, "system") select e, "reaches os.system"
+
+A predicate body is one or more clauses joined by ``or``; a clause is
+``[from <decls> where] <conjunction>``. ``value x`` declares a free variable
+bound by a predicate atom or an equality. Atoms with unbound arguments join
+against the predicate's current tuples, so transitive closures and other
+recursive relations work. Still a subset of QL (no classes, no aggregates).
 """
 
 from __future__ import annotations
@@ -36,6 +47,7 @@ from __future__ import annotations
 import ast
 import pathlib
 import re
+import time
 
 from .model import Finding
 
@@ -56,12 +68,10 @@ def build_database(projects, flows) -> dict[str, list[dict]]:
         for mod, file in proj.files.items():
             path, tree = file["path"], file["tree"]
             lines = file["lines"]
+            blines = [l.encode("utf-8") for l in lines]   # col offsets are UTF-8 byte offsets
 
             def src(node):
-                try:
-                    seg = ast.get_source_segment("\n".join(lines), node)
-                except Exception:  # noqa: BLE001
-                    seg = None
+                seg = _segment(blines, node)
                 if seg:
                     return seg.strip()
                 return _unparse(node)
@@ -136,6 +146,23 @@ def build_database(projects, flows) -> dict[str, list[dict]]:
     return db
 
 
+def _segment(blines, node) -> str | None:
+    """Source text of a node from precomputed byte lines (O(size of node), unlike ast.get_source_segment)."""
+    try:
+        l1, c1, l2, c2 = node.lineno, node.col_offset, node.end_lineno, node.end_col_offset
+    except AttributeError:
+        return None
+    if not l1 or not l2 or l1 < 1 or l2 > len(blines) or (l1 == l2 and c2 <= c1):
+        return None
+    try:
+        if l1 == l2:
+            return blines[l1 - 1][c1:c2].decode("utf-8", "replace")
+        parts = [blines[l1 - 1][c1:]] + blines[l1:l2 - 1] + [blines[l2 - 1][:c2]]
+        return b"\n".join(parts).decode("utf-8", "replace")
+    except (IndexError, ValueError):
+        return None
+
+
 def _unparse(node) -> str:
     try:
         return ast.unparse(node)
@@ -144,8 +171,8 @@ def _unparse(node) -> str:
 
 
 # =================================================================== parser
-TOKEN = re.compile(r"""\s*(?:(?P<str>"(?:\\.|[^"\\])*")|(?P<num>\d+)|(?P<id>[A-Za-z_][\w]*)|(?P<op>!=|<=|>=|[=<>(),.+]))""")
-KEYWORDS = {"from", "where", "select", "and", "or", "not", "matches", "contains", "in"}
+TOKEN = re.compile(r"""\s*(?:(?P<str>"(?:\\.|[^"\\])*")|(?P<num>\d+)|(?P<id>[A-Za-z_][\w]*)|(?P<op>!=|<=|>=|[=<>(),.+{}]))""")
+KEYWORDS = {"from", "where", "select", "and", "or", "not", "matches", "contains", "in", "predicate", "value"}
 
 
 class QueryError(Exception):
@@ -164,6 +191,7 @@ class Query:
         self.vars: list[tuple[str, str]] = []
         self.where = None
         self.select: list = []
+        self.predicates: dict = {}     # name -> (params, [clauses]) ; clause = (vars, cond)
         self._parse()
 
     @staticmethod
@@ -199,16 +227,48 @@ class Query:
         self.i += 1
         return t
 
-    def _parse(self):
-        self._eat("kw", "from")
+    def _decls(self):
+        out = []
         while True:
-            rel = self._eat("id")[1]
+            t = self._peek()
+            rel = self._eat("kw", "value")[1] if t == ("kw", "value") else self._eat("id")[1]
             var = self._eat("id")[1]
-            self.vars.append((rel, var))
+            out.append((rel, var))
             if self._peek() == ("op", ","):
                 self.i += 1
                 continue
             break
+        return out
+
+    def _clause(self):
+        """A predicate clause (Datalog rule): [from decls where] <conjunction>. `or` separates clauses."""
+        decls = []
+        if self._peek() == ("kw", "from"):
+            self.i += 1
+            decls = self._decls()
+            self._eat("kw", "where")
+        return (decls, self._and())
+
+    def _parse(self):
+        while self._peek() == ("kw", "predicate"):
+            self.i += 1
+            name = self._eat("id")[1]
+            self._eat("op", "(")
+            params = []
+            while self._peek() != ("op", ")"):
+                params.append(self._eat("id")[1])
+                if self._peek() == ("op", ","):
+                    self.i += 1
+            self._eat("op", ")")
+            self._eat("op", "{")
+            clauses = [self._clause()]
+            while self._peek() == ("kw", "or"):
+                self.i += 1
+                clauses.append(self._clause())
+            self._eat("op", "}")
+            self.predicates[name] = (params, clauses)
+        self._eat("kw", "from")
+        self.vars = self._decls()
         if self._peek() == ("kw", "where"):
             self.i += 1
             self.where = self._or()
@@ -264,6 +324,9 @@ class Query:
                 items.append(self._concat())
             self._eat("op", ")")
             return ("in", left, items)
+        if left[0] == "pred" and not (t[0] == "op" and t[1] in ("=", "!=", "<", ">", "<=", ">=")) \
+                and t not in (("kw", "matches"), ("kw", "contains"), ("kw", "in")):
+            return left
         if t == ("kw", "not") and self.toks[self.i + 1] == ("kw", "in"):
             self.i += 2
             self._eat("op", "(")
@@ -294,8 +357,20 @@ class Query:
             self.i += 1
             if self._peek() == ("op", "."):
                 self.i += 1
-                field = self._eat("id")[1]
-                return ("field", t[1], field)
+                ft = self._peek()
+                if ft[0] not in ("id", "kw"):
+                    raise QueryError(f"expected field name, got {ft[1]!r}")
+                self.i += 1
+                return ("field", t[1], ft[1])
+            if self._peek() == ("op", "("):
+                self.i += 1
+                args = []
+                while self._peek() != ("op", ")"):
+                    args.append(self._concat())
+                    if self._peek() == ("op", ","):
+                        self.i += 1
+                self._eat("op", ")")
+                return ("pred", t[1], args)
             return ("var", t[1])
         if t == ("op", "("):
             self.i += 1
@@ -311,6 +386,8 @@ class Query:
             return e[1]
         if k == "var":
             return env[e[1]]
+        if k == "pred":
+            return self._bool(e, env)
         if k == "field":
             row = env.get(e[1])
             if row is None:
@@ -330,6 +407,9 @@ class Query:
             return not self._bool(e[1], env)
         if k == "truthy":
             return bool(self._val(e[1], env))
+        if k == "pred":
+            tup = tuple(self._val(a, env) for a in e[2])
+            return tup in self.tuples.get(e[1], set())
         if k == "cmp":
             a, b = self._val(e[2], env), self._val(e[3], env)
             if e[1] in ("<", ">", "<=", ">="):
@@ -360,43 +440,145 @@ class Query:
                     self._vars_in(y, acc)
         return acc
 
-    def run(self, db: dict) -> list[dict]:
-        # split the where clause into conjuncts; evaluate each as soon as its variables are bound
-        conjuncts: list = []
+    @staticmethod
+    def _split(e, out):
+        if isinstance(e, tuple) and e[0] == "and":
+            Query._split(e[1], out)
+            Query._split(e[2], out)
+        elif e is not None:
+            out.append(e)
+        return out
 
-        def split(e):
-            if isinstance(e, tuple) and e[0] == "and":
-                split(e[1])
-                split(e[2])
-            elif e is not None:
-                conjuncts.append(e)
-        split(self.where)
-        needs = [self._vars_in(c, set()) for c in conjuncts]
+    def _solve_clause(self, db, decls, cond, env0=None):
+        """Enumerate relation rows, then bind free variables (value vars / predicate params)
+        through equalities and predicate atoms, filtering with the remaining conjuncts."""
+        conjuncts = self._split(cond, [])
+        rel_vars = [(r, v) for r, v in decls if r != "value"]
+        free = {v for r, v in decls if r == "value"}
         results = []
-        order = list(self.vars)
 
-        def rec(idx, env, done):
-            if idx == len(order):
+        def solve(env, pending):
+            if not pending:
                 results.append(dict(env))
                 return
-            rel, var = order[idx]
+            progressed = False
+            for idx, c in enumerate(pending):
+                rest = pending[:idx] + pending[idx + 1:]
+                vs = self._vars_in(c, set())
+                unbound = {v for v in vs if v not in env}
+                if not unbound:
+                    if self._bool(c, env):
+                        solve(env, rest)
+                    return
+                # x = expr  (bind x)
+                if c[0] == "cmp" and c[1] == "=":
+                    for a, b in ((c[2], c[3]), (c[3], c[2])):
+                        if a[0] == "var" and a[1] in unbound and not (self._vars_in(b, set()) - set(env)):
+                            env2 = dict(env)
+                            env2[a[1]] = self._val(b, env)
+                            solve(env2, rest)
+                            return
+                # P(args) with unbound args: join against the predicate's tuples (indexed on bound positions)
+                if c[0] == "truthy" and isinstance(c[1], tuple) and c[1][0] == "pred":
+                    c = c[1]
+                if c[0] == "pred":
+                    self._check_budget()
+                    bound_pos = [i for i, a in enumerate(c[2]) if not (a[0] == "var" and a[1] not in env)
+                                 and not (self._vars_in(a, set()) - set(env))]
+                    if bound_pos:
+                        key = tuple(bound_pos)
+                        vals = tuple(self._val(c[2][i], env) for i in bound_pos)
+                        cands = self._index(c[1], key).get(vals, ())
+                    else:
+                        cands = self.tuples.get(c[1], set())
+                    for tup in list(cands):
+                        if len(tup) != len(c[2]):
+                            continue
+                        env2 = dict(env)
+                        ok = True
+                        for a, val in zip(c[2], tup):
+                            if a[0] == "var" and a[1] not in env2:
+                                env2[a[1]] = val
+                            elif self._vars_in(a, set()) - set(env2):
+                                ok = False
+                                break
+                            elif self._val(a, env2) != val:
+                                ok = False
+                                break
+                        if ok:
+                            solve(env2, rest)
+                    return
+            # no conjunct could make progress: unbound variables remain -> no solutions
+            return
+
+        def rec(i, env):
+            if i == len(rel_vars):
+                solve(env, list(conjuncts))
+                return
+            rel, var = rel_vars[i]
             rows = db.get(rel)
             if rows is None:
                 raise QueryError(f"unknown relation {rel}")
-            bound = set(env) | {var}
-            ready = [i for i, c in enumerate(conjuncts) if i not in done and needs[i] <= bound]
+            bound_after = set(env) | {var}
+            ready = [c for c in conjuncts if self._vars_in(c, set()) <= bound_after and not (self._vars_in(c, set()) & free)]
             for row in rows:
                 env[var] = row
-                ok = True
-                for i in ready:
-                    if not self._bool(conjuncts[i], env):
-                        ok = False
-                        break
-                if ok:
-                    rec(idx + 1, env, done | set(ready))
+                if all(self._bool(c, env) for c in ready):
+                    rec(i + 1, env)
             env.pop(var, None)
-        rec(0, {}, set())
+            if i == 0:
+                self._check_budget()
+
+        rec(0, dict(env0 or {}))
         return results
+
+    def _index(self, pred, positions):
+        """Hash index of a predicate's tuples on the given argument positions (rebuilt when tuples grow)."""
+        tuples = self.tuples.get(pred, set())
+        key = (pred, positions)
+        cached = self._indexes.get(key)
+        if cached is not None and cached[0] == len(tuples):
+            return cached[1]
+        idx: dict = {}
+        for tup in tuples:
+            idx.setdefault(tuple(tup[i] for i in positions if i < len(tup)), []).append(tup)
+        self._indexes[key] = (len(tuples), idx)
+        return idx
+
+    def _check_budget(self):
+        if time.monotonic() > self._deadline:
+            raise QueryError("time budget exceeded")
+
+    def _eval_predicates(self, db):
+        self.tuples = {name: set() for name in self.predicates}
+        self._indexes = {}
+        for _ in range(64):
+            grown = False
+            self._check_budget()
+            for name, (params, clauses) in self.predicates.items():
+                for decls, cond in clauses:
+                    for env in self._solve_clause(db, decls, cond):
+                        try:
+                            tup = tuple(env[p] if not isinstance(env[p], dict) else env[p].get("id") for p in params)
+                        except KeyError:
+                            continue
+                        if tup not in self.tuples[name]:
+                            self.tuples[name].add(tup)
+                            grown = True
+                            if len(self.tuples[name]) > 200_000:
+                                raise QueryError(f"predicate {name} too large")
+            if not grown:
+                break
+
+    BUDGET_SECONDS = 20.0
+
+    def run(self, db: dict) -> list[dict]:
+        self.tuples = {}
+        self._indexes = {}
+        self._deadline = time.monotonic() + self.BUDGET_SECONDS
+        if self.predicates:
+            self._eval_predicates(db)
+        return self._solve_clause(db, self.vars, self.where)
 
     def findings(self, db: dict) -> list[Finding]:
         out, seen = [], set()
@@ -411,7 +593,7 @@ class Query:
             if loc is None:
                 loc = env[self.vars[0][1]]
             msg = " ".join(msg_parts) or self.meta.get("name") or self.meta["id"]
-            key = (self.meta["id"], loc.get("file"), loc.get("line"))
+            key = (self.meta["id"], loc.get("file"), loc.get("line"), msg)
             if key in seen:
                 continue
             seen.add(key)
