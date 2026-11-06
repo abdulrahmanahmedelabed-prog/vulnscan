@@ -191,3 +191,25 @@ def test_server_marks_unreachable_scan_as_error(monkeypatch, tmp_path):
     saved = store.get_scan(scan["id"])
     assert saved["status"] == "error" and "لم يُفحص" in saved["error"]
     assert saved["summary"]["high"] == 0 and not saved["findings"]
+
+
+def test_windows_error_messages_are_explained_and_retried(monkeypatch):
+    import pytest
+    from vulnscan import web
+    win = ("[WinError 10060] A connection attempt failed because the connected party did not properly respond after a "
+           "period of time, or established connection failed because connected host has failed to respond")
+    msg = web.explain_failure(win, "https://www.example.edu/", 20)
+    assert "انتهت مهلة" in msg and "http://www.example.edu" in msg
+    assert "رفض الخادم" in web.explain_failure("[WinError 10061] No connection could be made because the target machine actively refused it", "https://x/", 20)
+    assert "اسم النطاق" in web.explain_failure("[Errno 11001] getaddrinfo failed", "https://x/", 20)
+    assert "قطع الخادم" in web.explain_failure("[WinError 10054] An existing connection was forcibly closed by the remote host", "https://x/", 20)
+    calls = []
+
+    class Opener:
+        def open(self, req, timeout):
+            calls.append(timeout)
+            raise OSError(win)
+    monkeypatch.setattr(web.urllib.request, "build_opener", lambda *a: Opener())
+    with pytest.raises(web.WebUnreachable):
+        web.scan_site("https://www.example.edu/", timeout=5)
+    assert calls == [5, 10]                     # the Windows timeout is recognised as transient: retried with double timeout

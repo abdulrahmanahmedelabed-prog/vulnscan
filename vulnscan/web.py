@@ -65,20 +65,34 @@ class WebUnreachable(Exception):
     """The entry URL could not be fetched, so nothing was scanned. Never reported as a clean result."""
 
 
+# Windows (WinError / WSA codes), Linux and macOS phrasings of the same network failures
+_TIMEOUT = ("timed out", "timeout", "10060", "did not properly respond", "failed to respond", "wsaetimedout")
+_DNS = ("name or service not known", "nodename nor servname", "getaddrinfo", "no address associated", "11001", "11004",
+        "temporary failure in name resolution", "name resolution", "wsahost_not_found", "no such host")
+_REFUSED = ("refused", "10061", "wsaeconnrefused")
+_RESET = ("reset", "aborted", "10054", "10053", "forcibly closed", "connection was closed", "remote end closed")
+_UNREACHABLE = ("unreachable", "10051", "10065", "no route to host")
+TRANSIENT = _TIMEOUT + _RESET + ("temporarily",)
+
+
 def explain_failure(err: str, url: str, timeout: float) -> str:
     """A clear Arabic explanation of why a site could not be reached (the raw error is kept at the end)."""
     low = (err or "").lower()
     host = urllib.parse.urlparse(url).hostname or url
-    if "timed out" in low or "timeout" in low:
+    other = "http://" if url.lower().startswith("https://") else "https://"
+    if any(w in low for w in _TIMEOUT):
         why = (f"انتهت مهلة الاتصال بـ {host} بعد {int(timeout)} ثانية في محاولتين. الموقع لم يرد: قد يكون بطيئًا أو متوقفًا، "
-               "أو يحجب الطلبات القادمة من شبكتك أو من خارج بلده (جدار حماية / حجب جغرافي). جرّب من شبكة أخرى أو زد المهلة من الإعدادات.")
-    elif "name or service not known" in low or "nodename nor servname" in low or "getaddrinfo" in low or "no address associated" in low:
+               "أو يحجب الطلبات القادمة من شبكتك أو من خارج بلده (جدار حماية / حجب جغرافي). "
+               f"جرّب: فتح الموقع من المتصفح على الجهاز نفسه، أو من شبكة أخرى (بيانات الجوال)، أو {other}{host}، أو زد المهلة من الإعدادات.")
+    elif any(w in low for w in _DNS):
         why = f"تعذّر حلّ اسم النطاق {host}: تحقق من كتابة العنوان ومن اتصال الإنترنت أو إعدادات DNS."
-    elif "refused" in low:
-        why = f"رفض الخادم {host} الاتصال: المنفذ مغلق أو الخدمة متوقفة."
+    elif any(w in low for w in _REFUSED):
+        why = f"رفض الخادم {host} الاتصال: المنفذ مغلق أو الخدمة متوقفة. جرّب {other}{host}."
+    elif any(w in low for w in _UNREACHABLE):
+        why = f"لا يوجد مسار شبكي إلى {host}: الشبكة أو الخادم غير قابلين للوصول من جهازك الآن."
     elif "certificate" in low or "ssl" in low or "tls" in low:
         why = f"فشل إنشاء اتصال TLS آمن مع {host} (شهادة غير صالحة أو إعداد TLS خاطئ). هذا بحد ذاته مشكلة أمنية تستحق المراجعة."
-    elif "reset" in low or "aborted" in low:
+    elif any(w in low for w in _RESET):
         why = f"قطع الخادم {host} الاتصال أثناء الطلب: قد يكون جدار حماية تطبيقات الويب (WAF) يحجب الطلب."
     else:
         why = f"تعذّر الوصول إلى {host}."
@@ -105,7 +119,7 @@ def _get(url: str, timeout: float, read_body: bool = False, retries: int = 0):
             return e.code, e.headers, body, None
         except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
             last = str(getattr(e, "reason", None) or e)
-            transient = any(w in last.lower() for w in ("timed out", "timeout", "reset", "aborted", "temporarily"))
+            transient = any(w in last.lower() for w in TRANSIENT)
             if not transient:
                 break
     return None, None, b"", last
