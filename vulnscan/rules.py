@@ -280,6 +280,6 @@ SENSITIVE_FILES: list[tuple[re.Pattern, str, str, str, str]] = [
      "Credentials config file", "ملف إعدادات قد يحوي بيانات اعتماد", "راجعه واحذف أي رموز وصول."),
     (re.compile(r"(^|/)(google-services\.json|GoogleService-Info\.plist)$"), "info", "Firebase config file",
      "ملف إعدادات Firebase", "عادةً عام، لكن تأكد من قواعد أمان Firebase."),
-    (re.compile(r"\.(sql|dump|bak|sqlite3?|db)$"), "medium", "Database dump/file", "ملف قاعدة بيانات أو نسخة",
+    (re.compile(r"\.(dump|bak|sqlite3?|db)$"), "medium", "Database dump/file", "ملف قاعدة بيانات أو نسخة",
      "تأكد أنه لا يحوي بيانات حقيقية."),
 ]

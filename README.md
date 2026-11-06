@@ -117,7 +117,7 @@ def handler():    run(read_name())               # ← يُبلَّغ عنه م�
 التحليل غير حسّاس للتدفق، وحساسيته للسياق بعمق استدعاء واحد (k = 1) مع حدّ أقصى للسياقات لكل دالة حفاظًا على
 الزمن، بينما تبقى حساسية السياق لتدفق التلوّث نفسه عبر ملخّصات الدوال، فتُبلَّغ النتيجة في موضع الاستدعاء الملوّث.
 
-### 11 لغة بنفس محرّك تدفق البيانات: Python، JavaScript/TypeScript، Java، Kotlin، C#، Go، PHP، C/C++، Rust، Swift، Ruby
+### 12 لغة بنفس محرّك تدفق البيانات: Python، JavaScript/TypeScript، Java، Kotlin، C#، Go، PHP، C/C++، Rust، Swift، Ruby، PL/SQL
 
 المحرّك يعمل على **شكل** البرنامج لا على لغته، لذا تدعم الأداة JavaScript وTypeScript عبر واجهة أمامية
 (`vulnscan/js_frontend.py`) تحلّل الكود بمحلّل متسامح خاص بها (بلا أي اعتمادية) وتُنزّله إلى الشجرة نفسها
@@ -148,6 +148,46 @@ module.exports = { run };
 const { run } = require('./lib/shell');
 app.post('/x', (req, res) => { run(req.body.c); });   // ← يُبلَّغ عنه عبر الملفين
 ```
+
+### Oracle APEX وPL/SQL والمساعد الذكي
+
+يفحص كاشِف كود قاعدة بيانات Oracle وتطبيقات APEX من المصدر، لا من الموقع فقط. ضع ملفات التصدير والحزم في مجلد وافحصه:
+
+```
+vulnscan ./my-apex-app        # f100.sql أو application/pages/*.sql، وملفات .pkb/.pks/.sql/.trg
+```
+
+| ما يُحلَّل | كيف |
+|---|---|
+| **PL/SQL** (`.sql` `.pkb` `.pks` `.pls` `.prc` `.fnc` `.trg` …) | الحزم والإجراءات والدوال والمشغّلات والكتل المجهولة، بتحليل تدفق البيانات نفسه عبر الحزم والملفات، مع الوسائط المسمّاة `p_x => v`. |
+| **ملف تصدير APEX** (تطبيق كامل أو صفحة أو إضافة) | يُستخرج كل كود من داخل استدعاءات `wwv_flow_imp_page.create_…`: العمليات، ومناطق PL/SQL، و"دالة تُعيد استعلام SQL"، والتحققات والحسابات والشروط، والإجراءات الديناميكية، ورمز الإضافات، وملفات JavaScript المضمّنة بالترميز الست عشري. كل نتيجة تشير إلى سطرها في ملف التصدير وإلى مكوّنها: «صفحة 10 › عملية: Save». |
+| **Java داخل قاعدة البيانات** | كتل `create … java source` تُحلَّل بواجهة Java، و«call spec» (`as language java name '…'`) يُربط بالدالة، فيُكشف التدفق من عنصر الصفحة عبر PL/SQL إلى `Runtime.exec` في Java. |
+
+**المصادر**: عناصر الصفحة `:P1_X` و`v('P1_X')` و`nv()` و`apex_util.get_session_state()`، و`apex_application.g_x01…g_f50`، وقيم الإضافات `p_item.value` و`p_param.value`، و`owa_util.get_cgi_env` و`apex_json`.
+**نقاط الخطر**: `EXECUTE IMMEDIATE` و`OPEN … FOR` و`DBMS_SQL.PARSE` و`apex_exec` و`apex_collection.create_collection_from_query`، و`htp.p`، و`owa_util.redirect_url`، و`apex_web_service`/`utl_http`، و`utl_file`، و`dbms_ldap`، و`dbms_scheduler`/`dbms_job`.
+**المعقّمات**: `USING` (متغيرات الربط) و`DBMS_ASSERT` و`apex_escape` و`htf.escape_sc`.
+
+قواعد خاصة بـ APEX لا تحتاج تدفق بيانات:
+
+| القاعدة | المشكلة |
+|---|---|
+| `APX001` | سلسلة استبدال `&P1_X.` داخل SQL أو PL/SQL — تُستبدل نصيًا قبل التنفيذ فتسمح بالحقن. |
+| `APX002` | `&P1_X.` داخل JavaScript دون المرشّح `!JS`. |
+| `APX003` | `&P1_X!RAW.` في HTML. |
+| `APX004` | تهريب المخرجات معطّل لعمود أو عنصر (`WITHOUT_MODIFICATION`). |
+| `APX005` | عنصر يتحكم به المستخدم يُستبدل داخل تعليمات المساعد الذكي (إعداد AI في APEX 24). |
+
+**ثغرات المساعد الذكي** (`apex_ai` و`dbms_cloud_ai` / Select AI و`dbms_vector_chain`):
+
+| القاعدة | المشكلة |
+|---|---|
+| `DF019` | بيانات المستخدم تصل إلى `p_system_prompt` — حقن التعليمات. |
+| `DF020` حرج | نص يولّده النموذج يُنفَّذ كـ SQL أو كود (`execute immediate` على مخرجات `apex_ai.generate`). |
+| `DF021` | مخرجات النموذج تُكتب في الصفحة دون تهريب (XSS عبر النموذج). |
+| `DF022` | نص المستخدم يقود توليد SQL عبر Select AI — يُنبّه لتقييد ملف التعريف وصلاحيات التنفيذ. |
+
+ما لا يغطيه بعد بصدق: ملفات التصدير المقروءة بصيغة YAML (`readable/`)، ومعالجات ORDS المعرّفة خارج ملفات `.sql`،
+والدوال التي تُستدعى من داخل استعلامات SQL الثابتة لمناطق التقارير (يُفحص فيها الاستبدال النصي فقط).
 
 ### VQL — لغة استعلام فوق قاعدة بيانات البرنامج
 

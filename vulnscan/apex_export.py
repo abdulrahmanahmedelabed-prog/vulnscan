@@ -1,0 +1,375 @@
+"""Oracle APEX export reader.  (vulnscan: ignore-file)
+
+An APEX application, page or plug-in export (``f100.sql``, ``application/pages/page_00010.sql``,
+``plugin_*.sql``) is PL/SQL that *calls* ``wwv_flow_imp*.create_…`` procedures; the application's own code
+lives inside their string arguments (``wwv_flow_string.join(wwv_flow_t_varchar2('line', 'line'))``, older
+``'…'||unistr('\\000a')||'…'`` concatenations, and hex-encoded static files). This module:
+
+1. walks every ``create_…`` call, decodes its arguments and classifies each code-bearing one by the
+   component's type attributes (PL/SQL block, function body, function body returning SQL, PL/SQL
+   expression, SQL query, JavaScript, HTML, AI prompt);
+2. returns the code with its exact line in the export and a component label ("Page 10 › Process: Save")
+   so the PL/SQL and JavaScript frontends can analyse it and findings point back into the export;
+3. reports APEX-specific issues that are not data flow: ``&ITEM.`` substitution strings inside SQL /
+   PL/SQL / JavaScript / AI prompts, ``!RAW`` substitutions in HTML, and disabled output escaping;
+4. decodes plug-in / application static JavaScript files so they are analysed as well.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from .model import Finding
+from .plsql_frontend import tokenize
+
+_DETECT = re.compile(r"wwv_flow_(?:imp|api)(?:_page|_shared)?\s*\.\s*create_", re.I)
+_SUBST = re.compile(r"&([A-Z][A-Z0-9_$#]*)(?:!([A-Z]+))?\.")
+BUILTIN_SUBST = {"APP_ID", "APP_PAGE_ID", "APP_SESSION", "APP_ALIAS", "APP_PAGE_ALIAS", "APP_IMAGES", "IMAGE_PREFIX",
+                 "WORKSPACE_IMAGES", "THEME_IMAGES", "THEME_DB_IMAGES", "APP_FILES", "WORKSPACE_FILES", "APEX_FILES",
+                 "APP_VERSION", "APP_TITLE", "DEBUG", "PRINTER_FRIENDLY", "WORKSPACE_ID", "HOME_LINK", "LOGIN_URL",
+                 "LOGOUT_URL", "APP_DATE_TIME_FORMAT", "APP_NLS_DECIMAL_SEPARATOR", "APP_NLS_GROUP_SEPARATOR",
+                 "JET_BASE_DIRECTORY", "JET_CSS_DIRECTORY", "APP_TEXT$", "APEX_CSP_NONCE_VALUE", "APP_BUILDER_SESSION",
+                 "THEME_STYLE_CSS", "APP_UNIQUE_PAGE_ID", "FLOW_ID", "FLOW_PAGE_ID", "SESSION"}
+
+COMPONENT_AR = {"page_process": "عملية", "flow_process": "عملية تطبيق", "page_plug": "منطقة", "page_item": "عنصر",
+                "page_validation": "تحقق", "page_computation": "حساب", "flow_computation": "حساب تطبيق",
+                "page_branch": "تفرّع", "page_da_event": "إجراء ديناميكي", "page_da_action": "إجراء ديناميكي",
+                "plugin": "إضافة", "list_of_values": "قائمة قيم", "authentication": "مصادقة",
+                "security_scheme": "تفويض", "page": "صفحة", "report_columns": "عمود", "worksheet_column": "عمود",
+                "region_column": "عمود", "flow_item": "عنصر تطبيق", "ai_config": "إعداد الذكاء الاصطناعي",
+                "ai_config_rag_source": "مصدر RAG", "web_source_module": "مصدر ويب", "page_button": "زر",
+                "plugin_file": "ملف إضافة", "app_static_file": "ملف ثابت للتطبيق", "workspace_static_file": "ملف ثابت لمساحة العمل",
+                "theme_file": "ملف سمة"}
+APEX_RULES = [
+    {"id": "APX001", "severity": "high", "cwe": "CWE-89", "title": "Substitution string inside SQL / PL/SQL",
+     "title_ar": "سلسلة استبدال &ITEM. داخل SQL أو PL/SQL (حقن)", "advice": "استخدم متغير الربط :ITEM بدل &ITEM."},
+    {"id": "APX002", "severity": "medium", "cwe": "CWE-79", "title": "Substitution string inside JavaScript without !JS",
+     "title_ar": "سلسلة استبدال داخل JavaScript دون مرشّح !JS", "advice": "استخدم &ITEM!JS. أو apex.item().getValue()."},
+    {"id": "APX003", "severity": "medium", "cwe": "CWE-79", "title": "Unescaped !RAW substitution in HTML",
+     "title_ar": "استبدال غير مُهرَّب !RAW في HTML", "advice": "أزل !RAW أو هرّب القيمة."},
+    {"id": "APX004", "severity": "medium", "cwe": "CWE-79", "title": "Output escaping disabled",
+     "title_ar": "تهريب المخرجات معطّل", "advice": "أعد تفعيل Escape special characters."},
+    {"id": "APX005", "severity": "high", "cwe": "CWE-1427", "title": "User-controlled item substituted into an AI prompt",
+     "title_ar": "عنصر يتحكم به المستخدم يُستبدل داخل تعليمات المساعد الذكي", "advice": "لا تضع قيم المستخدم في تعليمات النظام."},
+]
+
+PLSQL_BLOCK = {"p_process_sql_clob", "p_process_sql", "p_plsql_function_body", "p_function_body", "p_plsql_process"}
+PLSQL_DECLS = {"p_plsql_code"}
+JS_PARAMS = {"p_javascript_code", "p_javascript_code_onload", "p_javascript_expression", "p_inline_js", "p_page_javascript_code"}
+HTML_PARAMS = {"p_plug_header", "p_plug_footer", "p_html_expression", "p_column_html_expression", "p_pre_element_text",
+               "p_post_element_text", "p_html_page_header", "p_html_page_onload", "p_tag_attributes", "p_help_text",
+               "p_inline_help_text", "p_header", "p_footer", "p_column_link_text", "p_column_linktext", "p_link_text",
+               "p_region_header", "p_region_footer", "p_body_header", "p_static_content"}
+AI_PARAMS = {"p_system_prompt", "p_welcome_message", "p_user_prompt", "p_prompt", "p_initial_prompt"}
+CODE_PARAMS = {"p_source", "p_item_default", "p_computation", "p_validation", "p_validation2", "p_condition_expression1",
+               "p_display_when", "p_plug_source", "p_lov", "p_lov_query", "p_query", "p_query_text", "p_read_only_when",
+               "p_plug_display_when_condition", "p_scheme", "p_source_query", "p_rag_source", "p_sql_query", "p_where_clause",
+               "p_order_by_clause", "p_default_value"}
+TYPE_OF = {"p_source": ["p_source_type", "p_source_language"], "p_item_default": ["p_item_default_type"],
+           "p_computation": ["p_computation_type"], "p_validation": ["p_validation_type"], "p_validation2": ["p_validation_type"],
+           "p_condition_expression1": ["p_condition_type"], "p_display_when": ["p_display_when_type"],
+           "p_plug_source": ["p_query_type", "p_plug_source_type", "p_location", "p_function_body_language"],
+           "p_read_only_when": ["p_read_only_when_type"], "p_plug_display_when_condition": ["p_plug_display_condition_type"],
+           "p_scheme": ["p_scheme_type"], "p_default_value": ["p_default_value_type"], "p_rag_source": ["p_rag_source_type"],
+           "p_source_query": ["p_source_type"], "p_sql_query": ["p_source_type"]}
+ATTR_TYPES = ["p_action", "p_process_type", "p_scheme_type", "p_plug_source_type", "p_item_type", "p_display_as", "p_attribute_01"]
+ESCAPE_OFF = {("p_display_as", "WITHOUT_MODIFICATION"), ("p_display_text_as", "WITHOUT_MODIFICATION"),
+              ("p_escape_on_http_output", "N"), ("p_escape_on_http_output", "FALSE"), ("p_escape_on_http_input", "N")}
+STATIC_FILE_CALLS = {"create_plugin_file", "create_app_static_file", "create_workspace_static_file", "create_theme_file"}
+
+
+@dataclass
+class Block:
+    kind: str          # plsql | plsql_decls | plsql_fn | plsql_fn_sql | plsql_fn_html | plsql_expr | sql | js | html | ai
+    code: str
+    line: int          # export line of the first code line
+    label: str         # "صفحة 10 › عملية: Save"
+    unit: str          # identifier used for the lowered unit
+
+
+def is_apex_export(text: str) -> bool:
+    return bool(_DETECT.search(text[:400_000]))
+
+
+def _value(toks: list) -> tuple:
+    """Decode an argument expression -> (string or None, first line, raw upper-case scalar)."""
+    if not toks:
+        return None, 0, ""
+    raw = " ".join(t.val for t in toks if t.kind in ("id", "num", "str")).upper()
+    first = next((t.line for t in toks if t.kind == "str"), toks[0].line)
+    vals = [t.val for t in toks]
+    if len(toks) > 4 and vals[0] == "wwv_flow_string" and vals[2] == "join":
+        # wwv_flow_string.join(wwv_flow_t_varchar2('a', 'b' || 'c', …))
+        inner = toks[6:-2] if len(toks) > 8 else []
+        elems, cur, depth = [], [], 0
+        for t in inner:
+            if t.kind == "punct" and t.val == "(":
+                depth += 1
+            elif t.kind == "punct" and t.val == ")":
+                depth -= 1
+            if t.kind == "punct" and t.val == "," and depth == 0:
+                elems.append(cur)
+                cur = []
+                continue
+            cur.append(t)
+        if cur:
+            elems.append(cur)
+        return "\n".join(_concat(e) for e in elems), first, raw
+    if any(t.kind == "str" for t in toks):
+        return _concat(toks), first, raw
+    return None, first, raw
+
+
+def _concat(toks: list) -> str:
+    out, i = [], 0
+    while i < len(toks):
+        t = toks[i]
+        if t.kind == "str":
+            out.append(t.val)
+        elif t.kind == "id" and t.val == "unistr" and i + 2 < len(toks) and toks[i + 2].kind == "str":
+            out.append(re.sub(r"\\([0-9A-Fa-f]{4})", lambda m: chr(int(m.group(1), 16)), toks[i + 2].val))
+            i += 3
+        elif t.kind == "id" and t.val == "chr" and i + 2 < len(toks) and toks[i + 2].kind == "num":
+            try:
+                out.append(chr(int(float(toks[i + 2].val))))
+            except ValueError:
+                pass
+            i += 3
+        elif t.kind == "id" and t.val in ("lf", "crlf") and i and toks[i - 1].val == ".":
+            out.append("\n")
+        i += 1
+    return "".join(out)
+
+
+def _args(toks: list, i: int) -> tuple[dict, int]:
+    """At the '(' of a create_… call: {param: token list}, index after ')'."""
+    depth, j = 0, i
+    params: dict = {}
+    name, cur = None, []
+    while j < len(toks):
+        t = toks[j]
+        if t.kind == "punct" and t.val == "(":
+            depth += 1
+            if depth == 1:
+                j += 1
+                continue
+        elif t.kind == "punct" and t.val == ")":
+            depth -= 1
+            if depth == 0:
+                if name:
+                    params[name] = cur
+                return params, j + 1
+        if depth == 1 and t.kind == "id" and j + 1 < len(toks) and toks[j + 1].val == "=>":
+            if name:
+                params[name] = cur
+            name, cur = t.val, []
+            j += 2
+            continue
+        if depth == 1 and t.kind == "punct" and t.val == ",":
+            if name:
+                params[name] = cur
+            name, cur = None, []
+            j += 1
+            continue
+        cur.append(t)
+        j += 1
+    return params, j
+
+
+def _strip_comments(code: str) -> str:
+    return re.sub(r"--[^\n]*|/\*.*?\*/", " ", code, flags=re.S).strip()
+
+
+def _classify(fname: str, pname: str, text: str, decoded: dict) -> str | None:
+    if re.fullmatch(r"[A-Z0-9_$#,:. \-]*", text.strip()):
+        return None                                  # item lists, type codes, numbers
+    if pname in JS_PARAMS:
+        return "js"
+    action = decoded.get("p_action", ("", 0, ""))[2]
+    ai_attr = ("_AI" in action or "AI_" in action) and pname.startswith("p_attribute_")
+    if pname in AI_PARAMS or "prompt" in pname or ai_attr or (fname.startswith("create_ai") and "message" in pname):
+        body = _strip_comments(text).lower()
+        if not body.startswith(("select", "with", "begin", "declare", "return")):
+            return "ai"
+    if pname in HTML_PARAMS:
+        return "html"
+    if pname in PLSQL_DECLS:
+        return "plsql_decls" if re.search(r"\b(procedure|function)\b", text, re.I) else "plsql"
+    if pname in PLSQL_BLOCK:
+        return "plsql"
+    if pname not in CODE_PARAMS and not pname.startswith("p_attribute_"):
+        return None
+    tparams = TYPE_OF.get(pname, []) if not pname.startswith("p_attribute_") else ATTR_TYPES
+    typ = " ".join(decoded[p][2] for p in tparams if p in decoded and p != pname)
+    if "JAVASCRIPT" in typ or (action == "NATIVE_JAVASCRIPT_CODE" and pname == "p_attribute_01"):
+        return "js"
+    body = _strip_comments(text).lower()
+    if "RETURNING_SQL" in typ or "FUNC_BODY_RETURNING" in typ and "SQL" in typ:
+        return "plsql_fn_sql"
+    if "DYNAMIC_CONTENT" in typ:
+        return "plsql_fn_html"
+    if body.startswith(("select", "with")) or "QUERY" in typ or ("SQL" in typ and "PLSQL" not in typ):
+        return "sql"
+    if any(w in typ for w in ("FUNCTION_BODY", "FUNC_BODY", "FUNC_BOOLEAN", "FUNCTION_RETURNING", "FUNC_RETURN")):
+        return "plsql_fn"
+    if "EXPRESSION" in typ:
+        return "plsql_expr"
+    if "PLSQL" in typ or "EXECUTE_PLSQL" in action:
+        return "plsql"
+    if re.search(r":=|\bbegin\b.*\bend\b|;\s*$", body, re.S):
+        return "plsql_fn" if re.search(r"\breturn\b", body) and not re.search(r"\bbegin\b", body) else "plsql"
+    if pname == "p_plug_source":
+        return "html"
+    return None
+
+
+def _wrap(kind: str, unit: str, code: str) -> str:
+    """Wrap extracted APEX code as a PL/SQL unit; the prefix stays on the first code line so line numbers match."""
+    if kind == "plsql_decls":
+        return f"create package body {unit} as " + code + "\nend;\n/\n"
+    if kind == "plsql":
+        return f"create procedure {unit} is begin " + code + "\n;\nend;\n/\n"
+    if kind in ("plsql_fn", "plsql_fn_sql", "plsql_fn_html"):
+        sink = {"plsql_fn": "apex_eval", "plsql_fn_sql": "apex_dynamic_query", "plsql_fn_html": "htp.p"}[kind]
+        return f"create procedure {unit} is function body_ return varchar2 is begin " + code + f"\n;\nend; begin {sink}(body_()); end;\n/\n"
+    if kind == "plsql_expr":
+        return f"create procedure {unit} is begin apex_eval(" + code + "\n); end;\n/\n"
+    return ""
+
+
+def _finding(rule, sev, title, title_ar, rel, line, snippet, advice, cwe, label):
+    f = Finding(rule, sev, title, title_ar, rel, line, (f"[{label}] " if label else "") + snippet.strip()[:180], advice, cwe, source="apex")
+    if label:
+        f.extra["apex_component"] = label
+    return f
+
+
+def _subst_findings(block: Block, rel: str) -> list[Finding]:
+    out = []
+    for k, ln in enumerate(block.code.split("\n")):
+        for m in _SUBST.finditer(ln):
+            item, flt = m.group(1), (m.group(2) or "")
+            if item in BUILTIN_SUBST or item.startswith("APP_TEXT$"):
+                continue
+            line = block.line + k
+            if block.kind in ("sql", "plsql", "plsql_decls", "plsql_fn", "plsql_fn_sql", "plsql_fn_html", "plsql_expr"):
+                code_kind = "SQL" if block.kind == "sql" else "PL/SQL"
+                out.append(_finding("APX001", "high", f"Substitution string &{item}. inside {code_kind}",
+                                    f"سلسلة استبدال &{item}. داخل {code_kind} (حقن)", rel, line, ln,
+                                    f"APEX يستبدل &{item}. نصيًا قبل التنفيذ فيمكن حقن {code_kind}. استخدم متغير الربط :{item} أو v('{item}') بدلًا منها.",
+                                    "CWE-89" if block.kind == "sql" else "CWE-94", block.label))
+            elif block.kind == "js" and flt != "JS" and item not in ("APP_USER",):
+                out.append(_finding("APX002", "medium", f"Substitution string &{item}. inside JavaScript",
+                                    f"سلسلة استبدال &{item}. داخل JavaScript دون مرشّح !JS", rel, line, ln,
+                                    f"استخدم &{item}!JS. أو اقرأ القيمة بـ apex.item('{item}').getValue() بدل الاستبدال النصي.",
+                                    "CWE-79", block.label))
+            elif block.kind == "html" and flt == "RAW":
+                out.append(_finding("APX003", "medium", f"Unescaped substitution &{item}!RAW. in HTML",
+                                    f"استبدال غير مُهرَّب &{item}!RAW. في HTML", rel, line, ln,
+                                    "أزل !RAW (الافتراضي يهرّب HTML) أو هرّب القيمة قبل تخزينها في العنصر.", "CWE-79", block.label))
+            elif block.kind == "ai" and item not in ("APP_USER",):
+                out.append(_finding("APX005", "high", f"User-controlled item &{item}. substituted into an AI prompt",
+                                    f"عنصر يتحكم به المستخدم &{item}. يُستبدل داخل تعليمات المساعد الذكي (حقن التعليمات)", rel, line, ln,
+                                    "لا تضع قيم المستخدم في تعليمات النظام؛ مرّرها كرسالة مستخدم، وقيّد ما يستطيع المساعد الوصول إليه.",
+                                    "CWE-1427", block.label))
+    return out
+
+
+def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple[str, str]]]:
+    """Returns (code blocks, APEX findings, decoded static files [(virtual path, text)])."""
+    toks = tokenize(text)
+    lines = text.split("\n")
+    blocks: list[Block] = []
+    findings: list[Finding] = []
+    files: list[tuple[str, str]] = []
+    page = None
+    da_event = None
+    hexbuf: list[str] = []
+    seq = 0
+    i, n = 0, len(toks)
+    while i < n:
+        t = toks[i]
+        if t.kind == "id" and t.val == "g_varchar2_table" and i + 5 < n and toks[i + 1].val == "(" \
+                and toks[i + 4].val == ":=" and toks[i + 5].kind == "str":     # g_varchar2_table(1) := 'HEX…'
+            hexbuf.append(toks[i + 5].val)
+            i += 6
+            continue
+        if t.kind == "id" and t.val == "empty_varchar2_table":
+            hexbuf = []
+            i += 1
+            continue
+        if not (t.kind == "id" and t.val.startswith("wwv_flow") and i + 3 < n and toks[i + 1].val == "."
+                and toks[i + 2].kind == "id" and toks[i + 2].val.startswith("create_") and toks[i + 3].val == "("):
+            i += 1
+            continue
+        fname = toks[i + 2].val
+        page_scoped = toks[i].val.endswith("_page") or fname.startswith("create_page")
+        params, i = _args(toks, i + 3)
+        decoded = {k: _value(v) for k, v in params.items()}
+        comp = fname[len("create_"):]
+        if fname == "create_page":
+            pid = decoded.get("p_id", (None, 0, ""))[2]
+            page = pid or page
+        if fname == "create_page_da_event":
+            da_event = decoded.get("p_name", (None,))[0]
+        name = next((decoded[p][0] for p in ("p_process_name", "p_plug_name", "p_name", "p_validation_name", "p_lov_name",
+                                             "p_computation_item", "p_button_name", "p_column_alias", "p_db_column_name",
+                                             "p_static_id", "p_display_name") if decoded.get(p, (None,))[0]), None)
+        if fname == "create_page_da_action" and da_event:
+            name = da_event
+        pg = decoded.get("p_page_id", (None, 0, ""))[2] or decoded.get("p_flow_step_id", (None, 0, ""))[2] or (page if page_scoped else None)
+        comp_ar = COMPONENT_AR.get(comp, comp)
+        label = (f"صفحة {pg} › " if pg else "") + comp_ar + (f": {name}" if name else "")
+        # disabled output escaping
+        for p, (val, ln, raw) in decoded.items():
+            if (p, raw.strip()) in ESCAPE_OFF:
+                findings.append(_finding("APX004", "medium", "Output escaping disabled", "تهريب المخرجات معطّل (XSS محتمل)",
+                                         rel, ln, lines[ln - 1] if 0 < ln <= len(lines) else p,
+                                         "أعد تفعيل Escape special characters، أو هرّب القيمة بـ apex_escape.html في الاستعلام.", "CWE-79", label))
+        # static JavaScript files (plug-ins, application / workspace / theme files)
+        if fname in STATIC_FILE_CALLS and hexbuf:
+            fn_name = decoded.get("p_file_name", (None,))[0] or f"file_{len(files) + 1}"
+            if fn_name.lower().endswith((".js", ".mjs")):
+                try:
+                    content = bytes.fromhex("".join(hexbuf)).decode("utf-8", "replace")
+                    files.append((f"{rel}!{comp_ar}/{fn_name}", content))
+                except ValueError:
+                    pass
+            hexbuf = []
+        for p, (val, ln, raw) in decoded.items():
+            if not val or len(val.strip()) < 2:
+                continue
+            kind = _classify(fname, p, val, decoded)
+            if not kind:
+                continue
+            seq += 1
+            unit = re.sub(r"\W", "_", f"apex_{'p' + str(pg) + '_' if pg else ''}{comp}_{seq}").lower()
+            b = Block(kind, val, ln, label, unit)
+            blocks.append(b)
+            findings.extend(_subst_findings(b, rel))
+    return blocks, findings, files
+
+
+def wrapped_plsql(block: Block) -> str:
+    return _wrap(block.kind, block.unit, block.code)
+
+
+def anchor_wrapper_sink(block: Block, units: list) -> None:
+    """For function bodies the generated sink call (apex_dynamic_query / htp.p / apex_eval) sits after the code;
+    point it at the last `return` so findings land on the line that builds the value."""
+    if not block.kind.startswith("plsql_fn"):
+        return
+    import ast as _ast
+    for u in units:
+        for fn in u.body:
+            if not isinstance(fn, _ast.FunctionDef) or not fn.body:
+                continue
+            inner = next((n for n in fn.body if isinstance(n, _ast.FunctionDef) and n.name == "body_"), None)
+            if inner is None:
+                continue
+            rets = [n.lineno for n in _ast.walk(inner) if isinstance(n, _ast.Return)]
+            if rets:
+                for n in _ast.walk(fn.body[-1]):
+                    if hasattr(n, "lineno"):
+                        n.lineno = n.end_lineno = max(rets)

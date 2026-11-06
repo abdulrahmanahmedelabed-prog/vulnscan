@@ -64,7 +64,7 @@ REFLECTED_RETURN = ("DF013", "medium", "Tainted data returned in an HTTP respons
 # ------------------------------------------------------------------ models
 def load_models(extra_dirs=(), base=None, language="python") -> dict:
     """Merge the built-in models for a language with every *.json in the given directories."""
-    m = {"attr_sources": [], "call_sources": [], "name_sources": [], "entry_decorators": set(),
+    m = {"attr_sources": [], "call_sources": [], "name_sources": [], "prefix_sources": [], "entry_decorators": set(),
          "view_bases": set(), "view_methods": set(), "request_params": {"request", "req", "self"},
          "sinks": [], "attr_sinks": [], "sanitizers": set(), "safe_return_calls": set(), "validators": set(),
          "language": language}
@@ -94,6 +94,8 @@ def load_models(extra_dirs=(), base=None, language="python") -> dict:
                 m["call_sources"].append((list(s.get("names", [])), s.get("label", "{name}()")))
             elif kind == "name":
                 m["name_sources"].append((list(s.get("names", [])), s.get("label", "{name}")))
+            elif kind == "prefix":   # any dotted name starting with a prefix, e.g. apex_item.P10_NAME (an APEX page item)
+                m["prefix_sources"].append((tuple(s.get("prefixes", [])), s.get("label", "{name}")))
         for e in data.get("entry_points", []):
             m["entry_decorators"] |= set(e.get("decorators", []))
             m["view_bases"] |= set(e.get("view_bases", []))
@@ -102,7 +104,8 @@ def load_models(extra_dirs=(), base=None, language="python") -> dict:
         for k in data.get("sinks", []):
             m["sinks"].append((k["rule"], k.get("severity", "high"), k.get("title", k["rule"]), k.get("title_ar", k.get("title", k["rule"])),
                                k.get("advice", ""), k.get("cwe", ""), k.get("label", k["rule"]), list(k.get("args", [0])),
-                               bool(k.get("shell", False)), list(k.get("names", []))))
+                               bool(k.get("shell", False)), list(k.get("names", [])),
+                               frozenset(x.lower() for x in k.get("kwargs", []))))
         m["sanitizers"] |= set(data.get("sanitizers", []))
         m["safe_return_calls"] |= set(data.get("safe_return_calls", []))
         m["validators"] |= set(data.get("validators", []))
@@ -220,14 +223,15 @@ class Project:
         self.findings: list[Finding] = []
 
     # ------------------------------------------------------------ building
-    def add_file(self, mod: str, path: str, text: str, is_pkg: bool = False, tree: ast.AST | None = None) -> bool:
+    def add_file(self, mod: str, path: str, text: str, is_pkg: bool = False, tree: ast.AST | None = None,
+                 lines: list | None = None) -> bool:
         if tree is None:
             try:
                 tree = ast.parse(text)
             except (SyntaxError, ValueError):
                 return False
         file = {"path": path, "tree": tree, "aliases": self._aliases(tree, mod, is_pkg), "funcs": {},
-                "classes": {}, "lines": text.splitlines(), "assign_aliases": []}
+                "classes": {}, "lines": lines if lines is not None else text.splitlines(), "assign_aliases": []}
         self.files[mod] = file
         self.lines_by_path[path] = file["lines"]
         for st in tree.body:
@@ -545,6 +549,10 @@ class Project:
             for names, label in self.m["name_sources"]:
                 if any(canon == n for n in names):
                     return label.replace("{name}", canon)
+            if isinstance(node, (ast.Name, ast.Attribute)):
+                for prefixes, label in self.m["prefix_sources"]:
+                    if canon.startswith(prefixes):
+                        return label.replace("{name}", canon).replace("{last}", canon.rsplit(".", 1)[-1])
             if isinstance(node, ast.Call):
                 for names, label in self.m["call_sources"]:
                     if any(_name_matches(canon, n) for n in names):
@@ -568,7 +576,7 @@ class Project:
         if canon:
             for entry in self.m["sinks"]:
                 if any(_name_matches(canon, n) for n in entry[9]):
-                    res = entry[:9]
+                    res = entry[:9] + entry[10:11]      # drop the name list, keep the named-argument set at index 9
                     break
         self._sink_cache[key] = (call, res)
         return res
@@ -597,6 +605,15 @@ class Project:
                     if tgt.attr in attrs:
                         return si, node.value
         return None
+
+    @staticmethod
+    def _sink_args(si, call) -> list:
+        """Argument expressions a sink inspects: positional indices plus named arguments (PL/SQL `p_sql => x`, Python kw)."""
+        out = [call.args[i] for i in si[7] if i < len(call.args)]
+        kws = si[9] if len(si) > 9 else ()
+        if kws:
+            out.extend(k.value for k in call.keywords if k.arg and k.arg.lower() in kws)
+        return out
 
     def _sink(self, mod, cls, call, env):
         si = self._sink_info(mod, call)
@@ -1086,12 +1103,11 @@ class Project:
 
         si = self._sink(mod, cls, call, env)
         if si and not self._suppressed(path, call.lineno):
-            for idx in si[7]:
-                if idx < len(call.args):
-                    origins = self._taints(mod, cls, call.args[idx], env)
-                    if origins and not self._guarded(mod, fn, call, self._tainted_names_in(call.args[idx], env)):
-                        for o in origins:
-                            record(o, (si, path, call.lineno))
+            for arg in self._sink_args(si, call):
+                origins = self._taints(mod, cls, arg, env)
+                if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
+                    for o in origins:
+                        record(o, (si, path, call.lineno))
         cb_param = self._callback_param(fn, call)
         if cb_param is not None:
             pos = [(i, self._taint(mod, cls, a, env)) for i, a in enumerate(call.args)]
@@ -1199,13 +1215,12 @@ class Project:
             for call in self._calls(fn):
                 si = self._sink(mod, cls, call, env)
                 if si:
-                    for idx in si[7]:
-                        if idx < len(call.args):
-                            o = self._taint(mod, cls, call.args[idx], env)
-                            if o and o[0] in {"source", "retsource"} \
-                                    and not self._guarded(mod, fn, call, self._tainted_names_in(call.args[idx], env)):
-                                self._emit(si, path, call.lineno, o, None, None)
-                                break
+                    for arg in self._sink_args(si, call):
+                        o = self._taint(mod, cls, arg, env)
+                        if o and o[0] in {"source", "retsource"} \
+                                and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
+                            self._emit(si, path, call.lineno, o, None, None)
+                            break
                 if self._callback_param(fn, call) is not None:
                     continue
                 callees, ctor = self._callees(mod, cls, call, env)
@@ -1305,6 +1320,9 @@ def _module_name(rel: str) -> str:
 
 def _language(rel: str) -> str | None:
     low = rel.lower()
+    from .plsql_frontend import PLSQL_EXTS
+    if low.endswith(PLSQL_EXTS):
+        return "plsql"
     if low.endswith(PY_EXTS):
         return "python"
     if low.endswith(JS_EXTS) and not low.endswith((".d.ts", ".min.js")):
@@ -1379,6 +1397,128 @@ def analyze_project_full(files: dict[str, str], models_dirs=None):
             proj.build()
             findings.extend(proj.report())
             projects.append(proj)
+    if "plsql" in groups:
+        p_projects, p_findings = _analyze_plsql(groups["plsql"], models_dirs or ())
+        projects.extend(p_projects)
+        findings.extend(p_findings)
+    return projects, findings
+
+
+AI_SOURCE_MARK = "الذكاء الاصطناعي"
+AI_OUTPUT_RULES = {
+    "DF004": ("DF020", "critical", "CWE-1426", "AI-generated text executed as SQL / code",
+              "نص يولّده الذكاء الاصطناعي يُنفَّذ كـ SQL أو كود",
+              "لا تنفّذ مخرجات النموذج مباشرة: اسمح فقط بقوالب استعلام ثابتة بمتغيرات ربط، أو تحقّق من الناتج بمحلّل وقائمة بيضاء، "
+              "ونفّذ بحساب قراءة فقط محدود الصلاحيات."),
+    "DF012": ("DF020", "critical", "CWE-1426", "AI-generated text executed as SQL / code",
+              "نص يولّده الذكاء الاصطناعي يُنفَّذ كـ SQL أو كود",
+              "لا تنفّذ كودًا يولّده النموذج؛ اربط أفعاله بإجراءات ثابتة مسموحة."),
+    "DF013": ("DF021", "high", "CWE-1426", "AI-generated text rendered as HTML without escaping",
+              "نص يولّده الذكاء الاصطناعي يُعرض كـ HTML دون تهريب (XSS عبر النموذج)",
+              "هرّب مخرجات النموذج بـ apex_escape.html أو اعرضها كنص؛ النموذج قد يُخدع ليولّد سكربتًا."),
+}
+
+
+def _retag_ai_output(findings: list) -> None:
+    """A flow whose source is generated-AI output is insecure output handling (OWASP LLM05), not plain injection."""
+    for f in findings:
+        if AI_SOURCE_MARK in str(f.extra.get("taint_source", "")) and f.rule_id in AI_OUTPUT_RULES:
+            f.rule_id, f.severity, f.cwe, f.title, f.title_ar, f.advice = AI_OUTPUT_RULES[f.rule_id]
+
+
+def _label_findings(findings: list, ranges: list) -> None:
+    """Prefix findings inside an APEX export with the component they belong to (page › process: name)."""
+    by_file: dict = {}
+    for rel, start, end, label in ranges:
+        by_file.setdefault(rel, []).append((start, end, label))
+    for f in findings:
+        for start, end, label in by_file.get(f.file, ()):
+            if start <= f.line <= end:
+                f.extra["apex_component"] = label
+                if not str(f.snippet).startswith("["):
+                    f.snippet = f"[{label}] {f.snippet}"
+                break
+
+
+def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
+    """PL/SQL sources and Oracle APEX exports (application / page / plug-in), plus embedded JavaScript and Java."""
+    from . import apex_export, cfamily_frontend, js_frontend
+    from . import plsql_frontend as pf
+    projects, findings = [], []
+    units_by_file: list = []
+    shared_lines: dict = {}
+    texts: dict = {}
+    diags: dict = {}
+    ranges: list = []
+    js_trees: list = []          # (module, rel, tree)
+    js_files: dict = {}          # decoded static files (virtual path -> text)
+    java_trees: list = []
+    for rel, text in files.items():
+        if len(text) > 60_000_000:
+            continue
+        texts[rel] = text
+        shared_lines[rel] = text.splitlines()
+        diag = {"language": "plsql", "statements": 0, "skipped": 0, "lines": []}
+        if apex_export.is_apex_export(text):
+            diag["language"] = "apex"
+            blocks, afind, sfiles = apex_export.extract(text, rel)
+            findings.extend(afind)
+            js_files.update(sfiles)
+            for b in blocks:
+                ranges.append((rel, b.line, b.line + b.code.count("\n"), b.label))
+                delta = b.line - 1
+                if b.kind.startswith("plsql"):
+                    units, d = pf.parse_plsql(apex_export.wrapped_plsql(b))
+                    apex_export.anchor_wrapper_sink(b, units)
+                    for u in units:
+                        for node in u.body:
+                            pf.shift_lines(node, delta)
+                    units_by_file.append((rel, units))
+                    diag["statements"] += d["statements"]
+                    diag["skipped"] += d["skipped"]
+                    diag["lines"].extend((ln + delta, f"[{b.label}] {msg}") for ln, msg in d["lines"])
+                elif b.kind == "js":
+                    tree = js_frontend.parse_js(b.code, rel)
+                    js_trees.append((b.unit, rel, pf.shift_lines(tree, delta)))
+        else:
+            units, d = pf.parse_plsql(text)
+            units_by_file.append((rel, units))
+            diag = d
+            for name, start, code in pf.java_sources(text):
+                tree = cfamily_frontend.parse_cfamily(code, f"{name}.java", "java")
+                java_trees.append((re.sub(r"\W", "_", f"java_{name}").lower(), rel, pf.shift_lines(tree, start - 1)))
+        diags[rel] = diag
+    # Java stored in the database runs in the same project, so PL/SQL call specs flow into the Java methods
+    models = load_models_for("plsql", models_dirs)
+    if java_trees:
+        jm = load_models_for("java", models_dirs)
+        for k in ("attr_sources", "call_sources", "name_sources", "sinks", "attr_sinks"):
+            models[k] = models[k] + [x for x in jm[k] if x not in models[k]]
+        for k in ("sanitizers", "safe_return_calls", "validators"):
+            models[k] = models[k] | jm[k]
+    proj = Project(models)
+    java_classes = {n.name: mname for mname, rel, tree in java_trees for n in tree.body if isinstance(n, ast.ClassDef)}
+    for mname, rel, mod in pf.build_modules(units_by_file, java_classes):
+        proj.add_file(mname, rel, texts[rel], tree=mod, lines=shared_lines[rel])
+    for mname, rel, tree in java_trees:
+        proj.add_file(mname, rel, texts[rel], tree=tree, lines=shared_lines[rel])
+    proj.diagnostics.update(diags)
+    if proj.files:
+        proj.build()
+        flows = proj.report()
+        _retag_ai_output(flows)
+        findings.extend(flows)
+        projects.append(proj)
+    if js_trees or js_files:
+        jproj = Project(load_models(models_dirs, DEFAULT_JS_MODELS, "javascript"))
+        for mname, rel, tree in js_trees:
+            jproj.add_file(mname, rel, texts[rel], tree=tree, lines=shared_lines[rel])
+        for vpath, content in js_files.items():
+            jproj.add_file(js_frontend.module_name(vpath.replace("!", "/")), vpath, content, tree=js_frontend.parse_js(content, vpath))
+        jproj.build()
+        findings.extend(jproj.report())
+        projects.append(jproj)
+    _label_findings(findings, ranges)
     return projects, findings
 
 
@@ -1387,13 +1527,26 @@ def analyze(path: str, text: str, models_dirs=None) -> list[Finding]:
 
 
 def _catalogue() -> list[dict]:
+    """Every data-flow rule of every language model, the AI output-handling rules and the APEX export rules."""
     seen, out = set(), []
     entries = load_models()["sinks"] + load_models((), DEFAULT_JS_MODELS, "javascript")["sinks"]
+    for path in sorted(MODELS_DIR.glob("*.json")):
+        if path.stem not in ("python", "javascript"):
+            entries += load_models((), path, path.stem)["sinks"]
     for e in entries + [ARG_INJECTION + (None,), REFLECTED_RETURN + (None,)]:
         if e[0] in seen:
             continue
         seen.add(e[0])
         out.append({"id": e[0], "severity": e[1], "cwe": e[5], "title": e[2], "title_ar": e[3], "advice": e[4]})
+    for rule, sev, cwe, title, title_ar, advice in AI_OUTPUT_RULES.values():
+        if rule not in seen:
+            seen.add(rule)
+            out.append({"id": rule, "severity": sev, "cwe": cwe, "title": title, "title_ar": title_ar, "advice": advice})
+    from .apex_export import APEX_RULES
+    for r in APEX_RULES:
+        if r["id"] not in seen:
+            seen.add(r["id"])
+            out.append({k: r[k] for k in ("id", "severity", "cwe", "title", "title_ar", "advice")})
     return sorted(out, key=lambda d: d["id"])
 
 

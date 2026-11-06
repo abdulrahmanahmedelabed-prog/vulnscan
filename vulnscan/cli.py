@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
                     + AUTHORIZATION_NOTICE,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("target", help="مسار مجلد/ملف/أرشيف، أو عنوان http(s):// للفحص السلبي، أو «ui» لتشغيل الواجهة الرسومية")
+    p.add_argument("target", nargs="?", help="مسار مجلد/ملف/أرشيف، أو عنوان http(s):// للفحص السلبي، أو «ui» لتشغيل الواجهة الرسومية")
     p.add_argument("--authorized", action="store_true",
                    help="أقرّ بأنني مخوَّل بفحص هذا الهدف (إلزامي لفحص عناوين الويب)")
     p.add_argument("-f", "--format", choices=("console", "markdown", "json", "html"), default="console")
@@ -76,7 +76,7 @@ def _list_rules() -> str:
     for r in sorted(RULES, key=lambda r: (SEVERITY_RANK[r.severity], r.id)):
         lines.append(f"{r.id:<8} {r.severity:<9} {r.cwe:<9} {r.title_ar} — {r.title}")
     from .taint import TAINT_RULES
-    lines += ["", f"{len(TAINT_RULES)} قاعدة تدفق بيانات (Python وJavaScript/TypeScript، مدركة للأنواع، عبر الملفات):", ""]
+    lines += ["", f"{len(TAINT_RULES)} قاعدة تدفق بيانات وAPEX (12 لغة منها PL/SQL، مدركة للأنواع، عبر الملفات):", ""]
     for t in sorted(TAINT_RULES, key=lambda t: (SEVERITY_RANK[t["severity"]], t["id"])):
         lines.append(f"{t['id']:<8} {t['severity']:<9} {t['cwe']:<9} {t['title_ar']} — {t['title']}")
     from .vql import catalogue
@@ -144,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_rules:
         print(_list_rules())
         return 0
+    if not args.target:
+        build_parser().error("the following arguments are required: target")
     findings, target, files, notes = run(args)
     findings = [f for f in findings if SEVERITY_RANK[f.severity] <= SEVERITY_RANK[args.min_severity]]
     findings = sort_findings(findings)

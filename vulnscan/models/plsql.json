@@ -1,0 +1,488 @@
+{
+ "_comment": "Oracle PL/SQL, APEX and ORDS. Page items (:P1_X, v('P1_X')) are lowered by the frontend to apex_item.<NAME>; generated-AI output is a separate source so its flows can be reported as insecure output handling.",
+ "sources": [
+  {
+   "kind": "prefix",
+   "prefixes": [
+    "apex_item."
+   ],
+   "label": ":{last}"
+  },
+  {
+   "kind": "attr",
+   "roots": [
+    "apex_application",
+    "wwv_flow"
+   ],
+   "attrs": [
+    "g_x01",
+    "g_x02",
+    "g_x03",
+    "g_x04",
+    "g_x05",
+    "g_x06",
+    "g_x07",
+    "g_x08",
+    "g_x09",
+    "g_x10",
+    "g_x11",
+    "g_x12",
+    "g_x13",
+    "g_x14",
+    "g_x15",
+    "g_x16",
+    "g_x17",
+    "g_x18",
+    "g_x19",
+    "g_x20",
+    "g_f01",
+    "g_f02",
+    "g_f03",
+    "g_f04",
+    "g_f05",
+    "g_f06",
+    "g_f07",
+    "g_f08",
+    "g_f09",
+    "g_f10",
+    "g_f11",
+    "g_f12",
+    "g_f13",
+    "g_f14",
+    "g_f15",
+    "g_f16",
+    "g_f17",
+    "g_f18",
+    "g_f19",
+    "g_f20",
+    "g_f21",
+    "g_f22",
+    "g_f23",
+    "g_f24",
+    "g_f25",
+    "g_f26",
+    "g_f27",
+    "g_f28",
+    "g_f29",
+    "g_f30",
+    "g_f31",
+    "g_f32",
+    "g_f33",
+    "g_f34",
+    "g_f35",
+    "g_f36",
+    "g_f37",
+    "g_f38",
+    "g_f39",
+    "g_f40",
+    "g_f41",
+    "g_f42",
+    "g_f43",
+    "g_f44",
+    "g_f45",
+    "g_f46",
+    "g_f47",
+    "g_f48",
+    "g_f49",
+    "g_f50",
+    "g_request",
+    "g_clob_01",
+    "g_x01_clob",
+    "g_widget_name",
+    "g_widget_mod",
+    "g_widget_action",
+    "g_widget_action_mod",
+    "g_widget_num_return"
+   ],
+   "label": "apex_application.{attr}"
+  },
+  {
+   "kind": "attr",
+   "roots": [
+    "p_item"
+   ],
+   "attrs": [
+    "value",
+    "values",
+    "session_state_value"
+   ],
+   "label": "قيمة عنصر الإضافة p_item.{attr}"
+  },
+  {
+   "kind": "attr",
+   "roots": [
+    "p_param"
+   ],
+   "attrs": [
+    "value",
+    "values"
+   ],
+   "label": "قيمة الإضافة p_param.{attr}"
+  },
+  {
+   "kind": "call",
+   "names": [
+    "owa_util.get_cgi_env",
+    "apex_json.get_varchar2",
+    "apex_json.get_clob",
+    "apex_json.get_value",
+    "apex_json.get_t_varchar2",
+    "apex_json.find_paths_like",
+    "apex_web_service.make_rest_request",
+    "apex_web_service.make_rest_request_b",
+    "apex_web_service.make_request",
+    "utl_http.read_text",
+    "utl_http.read_line",
+    "apex_util.get_session_state",
+    "apex_util.string_to_table",
+    "apex_string.split",
+    "apex_mail.get_body"
+   ],
+   "label": "{name}()"
+  },
+  {
+   "kind": "call",
+   "names": [
+    "apex_ai.generate",
+    "apex_ai.chat",
+    "dbms_cloud_ai.generate",
+    "dbms_vector_chain.utl_to_generate_text",
+    "dbms_vector.utl_to_generate_text",
+    "dbms_cloud_ai_agent.run_team"
+   ],
+   "label": "مخرجات الذكاء الاصطناعي من {name}()"
+  }
+ ],
+ "entry_points": [
+  {
+   "param_names": [
+    "p_item",
+    "p_param",
+    "p_region",
+    "p_plugin"
+   ]
+  }
+ ],
+ "sinks": [
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "dynamic SQL",
+   "args": [
+    0
+   ],
+   "names": [
+    "execute_immediate",
+    "dbms_sql.parse",
+    "open_for",
+    "apex_dynamic_query",
+    "apex_collection.create_collection_from_query",
+    "apex_collection.create_collection_from_query_b",
+    "apex_collection.create_collection_from_queryb2",
+    "apex_collection.create_coll_from_query_b",
+    "apex_exec.open_query_context",
+    "apex_util.json_from_sql",
+    "apex_json.write",
+    "dbms_xmlgen.newcontext",
+    "dbms_xmlgen.getxml",
+    "dbms_xmlquery.newcontext",
+    "apex_region.open_query_context",
+    "apex_data_parser.discover",
+    "dbms_utility.exec_ddl_statement",
+    "sys.dbms_sql.parse",
+    "apex_exec.execute_dml"
+   ],
+   "title": "Tainted data reaches dynamic SQL",
+   "title_ar": "بيانات غير موثوقة تصل إلى SQL ديناميكي",
+   "advice": "استخدم متغيرات الربط (USING :x) بدل دمج النص، وطبّق DBMS_ASSERT على أسماء الجداول والأعمدة.",
+   "kwargs": [
+    "p_query",
+    "p_sql_query",
+    "p_sql",
+    "p_statement",
+    "statement",
+    "query",
+    "sqltext",
+    "p_sql_statement"
+   ]
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-94",
+   "label": "dynamic PL/SQL / job code",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "apex_exec.execute_plsql",
+    "apex_plugin_util.execute_plsql_code",
+    "apex_plugin_util.get_plsql_function_result",
+    "apex_plugin_util.get_plsql_expression_result",
+    "apex_plugin_util.get_plsql_func_result_boolean",
+    "apex_util.plsql_expression",
+    "dbms_job.submit",
+    "dbms_scheduler.create_job",
+    "dbms_scheduler.create_program",
+    "dbms_scheduler.set_attribute",
+    "apex_util.execute_plsql"
+   ],
+   "title": "Tainted data reaches dynamic PL/SQL or a scheduled job",
+   "title_ar": "بيانات غير موثوقة تصل إلى PL/SQL ديناميكي أو مهمة مجدولة",
+   "advice": "لا تنفّذ كودًا مبنيًا من المدخلات؛ استخدم إجراءات ثابتة بوسائط مربوطة.",
+   "kwargs": [
+    "p_plsql_code",
+    "p_plsql",
+    "what",
+    "job_action",
+    "program_action",
+    "p_plsql_function",
+    "p_plsql_expression"
+   ]
+  },
+  {
+   "rule": "DF013",
+   "severity": "medium",
+   "cwe": "CWE-79",
+   "label": "HTML output (htp)",
+   "args": [
+    0
+   ],
+   "names": [
+    "htp.p",
+    "htp.prn",
+    "htp.print",
+    "htp.prints",
+    "htp.ps",
+    "htp.para",
+    "htp.anchor",
+    "htp.anchor2",
+    "sys.htp.p",
+    "sys.htp.prn",
+    "sys.htp.print",
+    "apex_util.prn",
+    "apex_util.redirect_url",
+    "apex_application.do_substitutions",
+    "htp.tableData",
+    "htp.formHidden",
+    "htp.formText",
+    "apex_json.write_raw"
+   ],
+   "title": "Tainted data written to the page without escaping",
+   "title_ar": "بيانات غير موثوقة تُكتب في الصفحة دون تهريب (XSS)",
+   "advice": "هرّب المخرجات بـ apex_escape.html أو htf.escape_sc قبل htp.p.",
+   "kwargs": [
+    "cbuf",
+    "p_value",
+    "p_text"
+   ]
+  },
+  {
+   "rule": "DF008",
+   "severity": "medium",
+   "cwe": "CWE-601",
+   "label": "redirect",
+   "args": [
+    0
+   ],
+   "names": [
+    "owa_util.redirect_url",
+    "apex_util.redirect_url",
+    "sys.owa_util.redirect_url"
+   ],
+   "title": "Tainted data reaches a redirect",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+   "advice": "تحقق من الوجهة بقائمة بيضاء أو استخدم apex_page.get_url.",
+   "kwargs": [
+    "p_url",
+    "curl"
+   ]
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP (SSRF)",
+   "args": [
+    0
+   ],
+   "names": [
+    "apex_web_service.make_rest_request",
+    "apex_web_service.make_rest_request_b",
+    "apex_web_service.make_request",
+    "utl_http.begin_request",
+    "utl_http.request",
+    "utl_http.request_pieces",
+    "dbms_cloud.send_request",
+    "httpuritype",
+    "httpuritype.createuri",
+    "utl_tcp.open_connection",
+    "utl_smtp.open_connection"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء وبـ Network ACL.",
+   "kwargs": [
+    "p_url",
+    "url",
+    "remote_host",
+    "host",
+    "uri"
+   ]
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "utl_file.fopen",
+    "utl_file.fopen_nchar",
+    "utl_file.fremove",
+    "utl_file.frename",
+    "utl_file.fcopy",
+    "bfilename",
+    "dbms_lob.loadfromfile",
+    "dbms_lob.fileopen",
+    "xmltype.createxml"
+   ],
+   "title": "Tainted data reaches a server file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف على الخادم",
+   "advice": "لا تبنِ اسم الملف من المدخلات؛ استخدم قائمة بيضاء.",
+   "kwargs": [
+    "location",
+    "filename",
+    "src_location",
+    "src_filename",
+    "dest_filename",
+    "directory",
+    "file"
+   ]
+  },
+  {
+   "rule": "DF014",
+   "severity": "high",
+   "cwe": "CWE-90",
+   "label": "LDAP filter",
+   "args": [
+    3
+   ],
+   "names": [
+    "dbms_ldap.search_s",
+    "dbms_ldap.search_st",
+    "apex_ldap.search",
+    "apex_ldap.authenticate"
+   ],
+   "title": "Tainted data reaches an LDAP search",
+   "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+   "advice": "هرّب المرشّح بـ apex_escape.ldap_search_filter.",
+   "kwargs": [
+    "filter",
+    "p_search_filter",
+    "p_username"
+   ]
+  },
+  {
+   "rule": "DF019",
+   "severity": "high",
+   "cwe": "CWE-1427",
+   "label": "AI system prompt (prompt injection)",
+   "args": [
+    1
+   ],
+   "names": [
+    "apex_ai.generate",
+    "apex_ai.chat"
+   ],
+   "title": "User-controlled data placed in an AI system prompt",
+   "title_ar": "بيانات يتحكم بها المستخدم تُوضع في تعليمات النظام للمساعد الذكي (حقن التعليمات)",
+   "advice": "ضع مدخلات المستخدم في p_prompt فقط، وأبقِ p_system_prompt ثابتًا؛ افصل البيانات عن التعليمات ولا تمنح المساعد صلاحيات لا يحتاجها.",
+   "kwargs": [
+    "p_system_prompt"
+   ]
+  },
+  {
+   "rule": "DF022",
+   "severity": "medium",
+   "cwe": "CWE-1427",
+   "label": "Select AI (natural language to SQL)",
+   "args": [
+    0
+   ],
+   "names": [
+    "dbms_cloud_ai.generate"
+   ],
+   "title": "User text drives Select AI SQL generation",
+   "title_ar": "نص المستخدم يقود توليد SQL عبر Select AI",
+   "advice": "قيّد ملف تعريف الذكاء (object_list) بجداول آمنة للعرض، واستخدم action => 'showsql' للمراجعة بدل 'runsql'، ونفّذه بحساب قراءة فقط.",
+   "kwargs": [
+    "prompt"
+   ]
+  }
+ ],
+ "sanitizers": [
+  "dbms_assert.enquote_literal",
+  "dbms_assert.enquote_name",
+  "dbms_assert.simple_sql_name",
+  "dbms_assert.sql_object_name",
+  "dbms_assert.qualified_sql_name",
+  "dbms_assert.schema_name",
+  "sys.dbms_assert.enquote_literal",
+  "sys.dbms_assert.simple_sql_name",
+  "sys.dbms_assert.sql_object_name",
+  "sys.dbms_assert.qualified_sql_name",
+  "apex_escape.html",
+  "apex_escape.html_attribute",
+  "apex_escape.html_trunc",
+  "apex_escape.js_literal",
+  "apex_escape.json",
+  "apex_escape.ldap_search_filter",
+  "apex_escape.ldap_dn",
+  "apex_escape.regexp",
+  "apex_escape.striphtml",
+  "apex_escape.html_allowlist",
+  "apex_escape.html_whitelist",
+  "apex_escape.csv",
+  "htf.escape_sc",
+  "sys.htf.escape_sc",
+  "htf.escape_url",
+  "utl_url.escape",
+  "apex_util.url_encode",
+  "apex_page.get_url",
+  "apex_util.prepare_url",
+  "to_number",
+  "to_date",
+  "to_timestamp",
+  "length",
+  "lengthb",
+  "sys_guid",
+  "standard_hash",
+  "dbms_crypto.hash",
+  "dbms_obfuscation_toolkit.md5",
+  "apex_util.get_hash",
+  "ora_hash",
+  "count",
+  "trunc",
+  "round",
+  "abs",
+  "sign"
+ ],
+ "safe_return_calls": [],
+ "validators": [
+  "regexp_like",
+  "apex_string.is_number",
+  "dbms_assert.noop_check",
+  "validate",
+  "is_valid",
+  "check_access",
+  "apex_authorization.is_authorized",
+  "apex_acl.has_user_role",
+  "apex_util.public_check_authorization"
+ ]
+}

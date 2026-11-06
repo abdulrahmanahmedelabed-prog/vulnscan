@@ -86,11 +86,14 @@ def build_database(projects, flows) -> dict[str, list[dict]]:
         ids["n"] += 1
         return ids["n"]
 
+    encoded: dict = {}   # one encoding per source file, even when an APEX export is split into many modules
     for proj in projects:
         for mod, file in proj.files.items():
             path, tree = file["path"], file["tree"]
             lines = file["lines"]
-            blines = [l.encode("utf-8") for l in lines]   # col offsets are UTF-8 byte offsets
+            blines = encoded.get(id(lines))
+            if blines is None:
+                blines = encoded[id(lines)] = [l.encode("utf-8") for l in lines]   # col offsets are UTF-8 byte offsets
 
             def src(node):
                 seg = _segment(blines, node)

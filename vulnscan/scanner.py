@@ -15,6 +15,7 @@ import zipfile
 from .model import Finding
 from .rules import RULES, SENSITIVE_FILES, Rule
 from . import taint, vql
+from .plsql_frontend import PLSQL_EXTS
 
 SKIP_DIRS = {
     ".git", ".hg", ".svn", "node_modules", ".venv", "venv", "env", "__pycache__",
@@ -32,6 +33,7 @@ SKIP_FILE_GLOBS = (
 ARCHIVE_EXTS = (".zip", ".jar", ".war", ".ear", ".apk", ".aar", ".whl", ".ipa", ".nupkg",
                 ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz")
 MAX_FILE_BYTES = 2 * 1024 * 1024
+MAX_PLSQL_BYTES = 64 * 1024 * 1024
 # Binary bundles jadx can decompile (Java/Kotlin bytecode and Android packages).
 JADX_EXTS = (".apk", ".jar", ".aar", ".war", ".ear", ".dex", ".class", ".aab", ".xapk")
 # Third-party packages inside decompiled bundles: scanning them floods the
@@ -140,6 +142,25 @@ def scan_sensitive_names(rel: str, ignore_rules: set[str]) -> list[Finding]:
         if pat.search(rel):
             out.append(Finding(rid, sev, title, title_ar, rel, 0, "(file name)", advice, "CWE-538"))
     return out
+
+
+_DUMP_MARKERS = re.compile(r"^-- (MySQL dump|PostgreSQL database dump|Dumped (from|by) )|^COPY [\w.\"]+ .*FROM stdin;|"
+                           r"^-- Oracle (Data Pump|export)|^INSERT INTO ", re.M | re.I)
+
+
+def scan_sql_dump(rel: str, text: str, ignore_rules: set[str]) -> list[Finding]:
+    """A .sql file is only a data dump when its content says so (dump headers, COPY … FROM stdin, many INSERTs);
+    PL/SQL packages and APEX exports are source code, not dumps."""
+    from .rules import SENSITIVE_FILES as _SF
+    rid = next((f"FILE{i:03d}" for i, e in enumerate(_SF, 1) if e[2] == "Database dump/file"), "FILE006")
+    if rid in ignore_rules:
+        return []
+    hits = _DUMP_MARKERS.findall(text[:2_000_000])
+    header = re.search(r"^-- (MySQL dump|PostgreSQL database dump|Oracle (Data Pump|export))|FROM stdin;", text[:200_000], re.M | re.I)
+    if header or len(hits) >= 50:
+        return [Finding(rid, "medium", "Database dump/file", "ملف قاعدة بيانات أو نسخة", rel, 0, "(data dump content)",
+                        "لا تضع نسخ قواعد البيانات في المستودع أو الحزمة؛ قد تحتوي بيانات حساسة.", "CWE-538")]
+    return []
 
 
 def scan_project_hygiene(root: pathlib.Path, ignore_rules: set[str]) -> list[Finding]:
@@ -275,11 +296,15 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                 findings.extend(scan_file(p, rel, rules, ignore_rules))
                 if p.suffix.lower() in (".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts",
                                         ".java", ".kt", ".kts", ".cs", ".go", ".php", ".phtml",
-                                        ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".rs", ".swift", ".rb", ".rake") \
+                                        ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".rs", ".swift", ".rb", ".rake") + PLSQL_EXTS \
                         and not p.name.endswith((".min.js", ".d.ts")):
                     try:
-                        if p.stat().st_size <= MAX_FILE_BYTES:
+                        # APEX application exports are routinely tens of MB; PL/SQL gets a larger limit
+                        limit = MAX_PLSQL_BYTES if p.suffix.lower() in PLSQL_EXTS else MAX_FILE_BYTES
+                        if p.stat().st_size <= limit:
                             py_sources[rel] = p.read_text("utf-8", errors="replace")
+                            if p.suffix.lower() == ".sql":
+                                findings.extend(scan_sql_dump(rel, py_sources[rel], ignore_rules))
                     except OSError:
                         pass
             findings.extend(scan_project_hygiene(root, ignore_rules))
