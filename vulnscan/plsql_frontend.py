@@ -168,6 +168,7 @@ class Parser:
         self.n_statements = 0
         self.anon = 0
         self.pending_pre: list = []
+        self.cursors: dict = {}          # cursor name -> select info (for rows read through it)
 
     # ---------------------------------------------------------------- helpers
     @property
@@ -421,7 +422,11 @@ class Parser:
                     continue
                 if self.at("cursor"):
                     start = self.i
+                    cname = self.peek().val
                     self.skip_to_semicolon()
+                    sel = next((k for k in range(start, self.i) if self.toks[k].val in ("select", "with") and self.toks[k].kind == "id"), None)
+                    if sel is not None:
+                        self.cursors[cname] = self.select_info(sel, self.i)
                     out.extend(self.sql_calls(start, self.i))
                     continue
                 if self.at("type", "subtype", "pragma"):
@@ -596,7 +601,13 @@ class Parser:
             if v in SQL_DML:
                 start = self.i
                 self.skip_to_semicolon()
-                return self.sql_calls(start, self.i)      # static SQL: binds are safe, but functions it calls are not
+                end = self.i
+                # static SQL: binds are safe, but functions it calls are not, and what it writes / reads is tracked
+                return self.sql_effects(start, end) + self.sql_calls(start, end)
+            if v == "fetch":
+                start = self.i
+                self.skip_to_semicolon()
+                return self.fetch_effects(start, self.i)
             if v in SKIP_STMTS:
                 self.skip_to_semicolon()
                 return []
@@ -702,6 +713,7 @@ class Parser:
         line = self.t.line
         self.i += 1
         var = self.eat().val
+        row_info = None
         self.eat("in")
         self.opt("reverse")
         if self.at("indices", "values") and self.peek().val == "of":
@@ -711,6 +723,7 @@ class Parser:
             start = self.i
             self.skip_balanced()                     # implicit cursor over static SQL (bound, safe) …
             pre = self.sql_calls(start, self.i)      # … except the PL/SQL functions it calls
+            row_info = self.select_info(start + 1, self.i - 1)
             it = _const("", line)
             if pre:
                 self.pending_pre.extend(pre)
@@ -721,6 +734,9 @@ class Parser:
                 it = _call("range", [lo, hi], line)
             else:
                 it = lo
+                cur = lo.func if isinstance(lo, ast.Call) else lo
+                if isinstance(cur, ast.Name) and cur.id in self.cursors:
+                    row_info = self.cursors[cur.id]
         if kw == "forall":
             self.opt("save")
             self.opt("exceptions")
@@ -728,12 +744,220 @@ class Parser:
         else:
             self.eat("loop")
             body = self.loop_body()
+        if row_info:
+            body = self.row_loads(var, row_info, line) + (body or [])
         loop = _mk(ast.For, line, target=_name(var, line, store=True), iter=it, body=body or [_mk(ast.Pass, line)],
                    orelse=[], type_comment=None)
         if self.pending_pre:
             pre, self.pending_pre = self.pending_pre, []
             return _mk(ast.If, line, test=_const(True, line), body=pre + [loop], orelse=[])
         return loop
+
+    # ------------------------------------------------------- table effects
+    def _path(self, j, end):
+        """id(.id)* at token j -> (last name upper, qualifier or None, next j)."""
+        parts = [self.toks[j].val]
+        j += 1
+        while j + 1 < end and self.toks[j].val == "." and self.toks[j + 1].kind == "id":
+            parts.append(self.toks[j + 1].val)
+            j += 2
+        return parts[-1].upper(), (parts[-2] if len(parts) > 1 else None), j
+
+    def select_info(self, sel: int, end: int) -> dict:
+        """A static SELECT (token range starting at `select`/`with`) -> columns read, into-targets and tables."""
+        toks = self.toks
+        while sel < end and not (toks[sel].kind == "id" and toks[sel].val == "select"):
+            sel += 1
+        items, into, frm = [[]], [[]], []
+        state, depth = "list", 0
+        for k in range(sel + 1, end):
+            t = toks[k]
+            if t.kind == "punct" and t.val == "(":
+                depth += 1
+            elif t.kind == "punct" and t.val == ")":
+                depth -= 1
+                if depth < 0:
+                    break
+            if depth == 0 and t.kind == "id":
+                if t.val in ("bulk", "collect", "distinct", "unique", "all") and state in ("list", "into"):
+                    continue
+                if t.val == "into" and state == "list":
+                    state = "into"
+                    continue
+                if t.val == "from" and state in ("list", "into"):
+                    state = "from"
+                    continue
+                if state == "from" and t.val in ("where", "group", "order", "connect", "start", "having", "union", "minus",
+                                                  "intersect", "fetch", "for", "offset", "model", "window"):
+                    break
+            if depth == 0 and t.kind == "punct" and t.val in (",", ";"):
+                if t.val == ";":
+                    break
+                if state == "list":
+                    items.append([])
+                elif state == "into":
+                    into.append([])
+                else:
+                    frm.append(t)
+                continue
+            (items[-1] if state == "list" else into[-1] if state == "into" else frm).append(t)
+        tables, first = {}, None
+        seg: list = []
+        for t in frm + [Tok("punct", ",", 0, False)]:
+            if (t.kind == "punct" and t.val == ",") or (t.kind == "id" and t.val in ("join", "on", "using")):
+                if seg and seg[0].kind == "id" and seg[0].val not in ("inner", "left", "right", "full", "cross", "natural", "outer", "lateral", "table", "json_table", "xmltable"):
+                    parts = [x for x in seg if x.kind == "id"]
+                    dots = [x for x in seg if x.kind == "punct" and x.val == "."]
+                    name = parts[len(dots)].val if len(parts) > len(dots) else parts[0].val
+                    tbl = parts[min(len(dots), len(parts) - 1)].val.upper()
+                    alias = parts[len(dots) + 1].val if len(parts) > len(dots) + 1 else name
+                    tables[alias] = tbl
+                    tables.setdefault(tbl.lower(), tbl)
+                    first = first or tbl
+                seg = []
+                continue
+            if t.kind == "id" and t.val in ("inner", "left", "right", "full", "cross", "natural", "outer", "lateral"):
+                continue
+            seg.append(t)
+        cols = []
+        for it in items:
+            ids = [x for x in it if x.kind == "id" and x.val != "as"]
+            simple = it and it[0].kind == "id" and all(x.kind == "id" or (x.kind == "punct" and x.val == ".") for x in it)
+            if not simple or not ids:
+                cols.append(None)
+                continue
+            dotted = any(x.kind == "punct" for x in it)
+            col = (ids[1] if dotted else ids[0]).val.upper()
+            qual = ids[0].val if dotted else None
+            alias = (ids[2] if dotted and len(ids) > 2 else ids[1] if not dotted and len(ids) > 1 else None)
+            tbl = tables.get(qual) if qual else (first if len({v for v in tables.values()}) == 1 else first)
+            cols.append((tbl, col, (alias.val if alias else col.lower())) if tbl else None)
+        targets = []
+        for tv in into:
+            ids = [x for x in tv if x.kind in ("id", "bind")]
+            targets.append(tv if ids else None)
+        return {"cols": cols, "into": targets}
+
+    @staticmethod
+    def _load(table: str, col: str, line: int):
+        return _mk(ast.Attribute, line, value=_mk(ast.Attribute, line, value=_name("stored_db", line), attr=table, ctx=ast.Load()),
+                   attr=col, ctx=ast.Load())
+
+    def _target(self, toks_, line):
+        """into-target tokens (v / rec.f / :P1_X) -> assignment target."""
+        if len(toks_) == 1 and toks_[0].kind == "id":
+            return _name(toks_[0].val, line, store=True)
+        if len(toks_) == 3 and toks_[0].kind == "id" and toks_[1].val == "." and toks_[2].kind == "id":
+            return _mk(ast.Attribute, line, value=_name(toks_[0].val, line), attr=toks_[2].val, ctx=ast.Store())
+        return None
+
+    def row_loads(self, var: str, info: dict, line: int) -> list:
+        """Rows of a cursor loop: rec.<column alias> holds the stored column value."""
+        out = []
+        for c in info.get("cols", []):
+            if c:
+                tbl, col, alias = c
+                out.append(_mk(ast.Assign, line, targets=[_mk(ast.Attribute, line, value=_name(var, line), attr=alias, ctx=ast.Store())],
+                               value=self._load(tbl, col, line)))
+        return out
+
+    def sql_effects(self, start: int, end: int) -> list:
+        """What a static INSERT / UPDATE writes into table columns, and what SELECT … INTO reads from them."""
+        toks, line = self.toks, self.toks[start].line
+        v = toks[start].val
+        save = self.i
+        out: list = []
+        try:
+            if v in ("select", "with"):
+                info = self.select_info(start, end)
+                for c, tgt in zip(info["cols"], info["into"]):
+                    t = self._target(tgt, line) if (c and tgt) else None
+                    if t is not None:
+                        out.append(_mk(ast.Assign, line, targets=[t], value=self._load(c[0], c[1], line)))
+            elif v == "insert" and start + 2 < end and toks[start + 1].val == "into" and toks[start + 2].kind == "id":
+                table, _, j = self._path(start + 2, end)
+                if j < end and toks[j].kind == "id" and toks[j].val not in ("values", "select", "with"):
+                    j += 1                                           # alias
+                if j < end and toks[j].val == "(":
+                    cols, j = [], j + 1
+                    while j < end and toks[j].val != ")":
+                        if toks[j].kind == "id":
+                            cols.append(toks[j].val.upper())
+                        j += 1
+                    j += 1
+                    exprs = []
+                    if j < end and toks[j].val == "values" and j + 1 < end and toks[j + 1].val == "(":
+                        self.i = j + 2
+                        while not self.at(")") and self.t.kind != "eof" and self.i < end:
+                            exprs.append(self.parse_expr())
+                            if not self.opt(","):
+                                break
+                    elif j < end and toks[j].val in ("select", "with"):
+                        info = self.select_info(j, end)              # table-to-table copies carry the stored value
+                        self.i = j + 1
+                        while self.i < end and toks[self.i].val in ("select", "distinct", "all", "unique"):
+                            self.i += 1
+                        k = 0
+                        while self.i < end and not self.at("from", ";"):
+                            e = self.parse_expr()
+                            c = info["cols"][k] if k < len(info["cols"]) else None
+                            exprs.append(self._load(c[0], c[1], line) if c else e)
+                            k += 1
+                            self.opt("as")
+                            if self.t.kind == "id" and not self.at("from"):
+                                self.i += 1                          # column alias
+                            if not self.opt(","):
+                                break
+                    for col, e in zip(cols, exprs):
+                        out.append(_mk(ast.Expr, line, value=_call(f"stored_db_write__{table}__{col}", [e], line)))
+            elif v == "update" and start + 1 < end and toks[start + 1].kind == "id":
+                table, _, j = self._path(start + 1, end)
+                if j < end and toks[j].kind == "id" and toks[j].val != "set":
+                    j += 1
+                if j < end and toks[j].val == "set":
+                    self.i = j + 1
+                    while self.i < end and self.t.kind == "id":
+                        col, _, k = self._path(self.i, end)
+                        self.i = k
+                        if not self.opt("="):
+                            break
+                        e = self.parse_expr()
+                        out.append(_mk(ast.Expr, line, value=_call(f"stored_db_write__{table}__{col}", [e], line)))
+                        if not self.opt(","):
+                            break
+        except ParseError:
+            pass
+        self.i = save
+        return out
+
+    def fetch_effects(self, start: int, end: int) -> list:
+        """fetch c [bulk collect] into a, b — positions map to the cursor's select list."""
+        toks, line = self.toks, self.toks[start].line
+        if start + 1 >= end or toks[start + 1].kind != "id":
+            return []
+        info = self.cursors.get(toks[start + 1].val)
+        if not info:
+            return []
+        j = start + 2
+        while j < end and toks[j].val != "into":
+            j += 1
+        targets, cur = [], []
+        for t in toks[j + 1:end]:
+            if t.kind == "id" and t.val == "limit":
+                break
+            if t.kind == "punct" and t.val in (",", ";"):
+                targets.append(cur)
+                cur = []
+                continue
+            cur.append(t)
+        if cur:
+            targets.append(cur)
+        out = []
+        for c, tg in zip(info["cols"], targets):
+            t = self._target(tg, line) if c else None
+            if t is not None:
+                out.append(_mk(ast.Assign, line, targets=[t], value=self._load(c[0], c[1], line)))
+        return out
 
     def sql_calls(self, start: int, end: int) -> list:
         """Function calls inside a static SQL statement (token range) -> expression statements.
@@ -744,7 +968,7 @@ class Parser:
         toks = self.toks
         while j < end:
             t = toks[j]
-            if t.kind == "id" and t.val not in SQL_NON_FUNCS and not (j > start and toks[j - 1].val == "."):
+            if t.kind == "id" and t.val not in SQL_NON_FUNCS and not (j > start and toks[j - 1].val in (".", "into", "update", "table")):
                 k = j + 1
                 while k + 1 < end and toks[k].val == "." and toks[k + 1].kind == "id":
                     k += 2

@@ -1,0 +1,11 @@
+{"results":[
+ {"columns":[{"name":"ID"},{"name":"NAME"},{"name":"URI_PREFIX"}],
+  "items":[{"id":10,"name":"inv.v1","uri_prefix":"/inv/v1/"}]},
+ {"columns":[{"name":"ID"},{"name":"MODULE_ID"},{"name":"URI_TEMPLATE"}],
+  "items":[{"id":20,"module_id":10,"uri_template":"items/:sku"}]},
+ {"columns":[{"name":"ID"},{"name":"TEMPLATE_ID"},{"name":"SOURCE_TYPE"},{"name":"METHOD"},{"name":"SOURCE"}],
+  "items":[
+   {"id":30,"template_id":20,"source_type":"plsql/block","method":"PUT","source":"begin execute immediate 'update items set qty = 0 where sku = ''' || :sku || ''''; end;"},
+   {"id":31,"template_id":20,"source_type":"json/item","method":"GET","source":"select * from items where sku = :sku"}
+  ]}
+]}

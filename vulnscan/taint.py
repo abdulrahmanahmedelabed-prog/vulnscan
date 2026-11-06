@@ -207,6 +207,7 @@ class Project:
         self.m = models or load_models()
         self.files: dict[str, dict] = {}
         self.diagnostics: dict[str, dict] = {}   # rel path -> frontend parse diagnostics (skipped statements)
+        self.field_precise_locals = False         # PL/SQL: `rec.col := v` taints the field, not the whole record
         self.gfuncs: dict[str, dict] = {}
         self.classes: dict[str, dict] = {}
         self.simple_funcs: dict[str, list] = {}
@@ -907,6 +908,13 @@ class Project:
                     o = self._taint(mod, cls, value, env)
                     if o is None:
                         continue
+                    if self.field_precise_locals and isinstance(tgt, ast.Attribute) and isinstance(tgt.value, ast.Name) \
+                            and tgt.value.id not in {"self", "cls"}:
+                        # record.field := v  (PL/SQL records / cursor rows): taint that field only
+                        if tgt.attr not in env.inst.setdefault(tgt.value.id, {}):
+                            env.inst[tgt.value.id][tgt.attr] = _with_step(o, _step(path, line, f"{tgt.value.id}.{tgt.attr} = …"))
+                            changed = True
+                        continue
                     if isinstance(tgt, ast.Subscript) and isinstance(tgt.value, ast.Name):
                         names, elem = [tgt.value.id], True
                     else:
@@ -1419,6 +1427,27 @@ AI_OUTPUT_RULES = {
 }
 
 
+STORED_SOURCE_MARK = "بيانات مخزّنة"
+STORED_RULES = {
+    "DF004": ("DF023", "high", "CWE-89", "Second-order SQL injection: stored user data executed as SQL",
+              "حقن SQL من الدرجة الثانية: بيانات خزّنها مستخدم تُنفَّذ لاحقًا كـ SQL",
+              "عامل البيانات المقروءة من الجداول كمدخلات غير موثوقة: استخدم متغيرات الربط وDBMS_ASSERT عند بناء SQL منها."),
+    "DF012": ("DF023", "high", "CWE-94", "Second-order injection: stored user data executed as code",
+              "حقن من الدرجة الثانية: بيانات خزّنها مستخدم تُنفَّذ لاحقًا ككود",
+              "لا تنفّذ كودًا مبنيًا من بيانات مخزّنة؛ استخدم إجراءات ثابتة."),
+    "DF013": ("DF024", "high", "CWE-79", "Stored XSS: data a user saved is written to the page unescaped",
+              "XSS مخزّن: بيانات حفظها مستخدم تُكتب في الصفحة دون تهريب",
+              "هرّب القيمة عند العرض (apex_escape.html / htf.escape_sc) لا عند الحفظ فقط."),
+}
+
+
+def _retag_stored(findings: list) -> None:
+    """A flow whose source is a table column a user wrote earlier is a second-order / stored vulnerability."""
+    for f in findings:
+        if STORED_SOURCE_MARK in str(f.extra.get("taint_source", "")) and f.rule_id in STORED_RULES:
+            f.rule_id, f.severity, f.cwe, f.title, f.title_ar, f.advice = STORED_RULES[f.rule_id]
+
+
 def _retag_ai_output(findings: list) -> None:
     """A flow whose source is generated-AI output is insecure output handling (OWASP LLM05), not plain injection."""
     for f in findings:
@@ -1533,17 +1562,50 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             models[k] = models[k] + [x for x in jm[k] if x not in models[k]]
         for k in ("sanitizers", "safe_return_calls", "validators"):
             models[k] = models[k] | jm[k]
-    proj = Project(models)
     java_classes = {n.name: mname for mname, rel, tree in java_trees for n in tree.body if isinstance(n, ast.ClassDef)}
-    for mname, rel, mod in pf.build_modules(units_by_file, java_classes):
-        proj.add_file(mname, rel, texts[rel], tree=mod, lines=shared_lines[rel])
-    for mname, rel, tree in java_trees:
-        proj.add_file(mname, rel, texts[rel], tree=tree, lines=shared_lines[rel])
-    proj.diagnostics.update(diags)
+    modules = pf.build_modules(units_by_file, java_classes)
+    # second-order data flow: INSERT/UPDATE lower to stored_db_write__T__C(value) (an internal sink); a column a user
+    # wrote becomes a source wherever it is read back (SELECT INTO, cursor rows, FETCH), until no new column appears
+    store_names = sorted({n.func.id for _, _, mod in modules for n in ast.walk(mod)
+                          if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id.startswith("stored_db_write__")})
+    store_sinks = [("DFSTORE", "info", "store:" + nm[len("stored_db_write__"):].upper().replace("__", ".", 1), "", "", "", "table write",
+                    [0], False, [nm], frozenset()) for nm in store_names]
+
+    def run_pass(prefix_sources):
+        m = dict(models)
+        m["sinks"] = models["sinks"] + store_sinks
+        m["prefix_sources"] = models["prefix_sources"] + prefix_sources
+        pr = Project(m)
+        pr.field_precise_locals = True
+        for mname, rel, mod in modules:
+            pr.add_file(mname, rel, texts[rel], tree=mod, lines=shared_lines[rel])
+        for mname, rel, tree in java_trees:
+            pr.add_file(mname, rel, texts[rel], tree=tree, lines=shared_lines[rel])
+        pr.diagnostics.update(diags)
+        if pr.files:
+            pr.build()
+            return pr, pr.report()
+        return pr, []
+
+    stored: dict = {}
+    proj, flows = run_pass([])
+    for _ in range(4):
+        new = {}
+        for f in flows:
+            if f.rule_id == "DFSTORE":
+                col = f.title[len("store:"):]
+                if col not in stored and col not in new:
+                    new[col] = f
+        if not new:
+            break
+        stored.update(new)
+        prefix = [((f"stored_db.{col}",), f"{STORED_SOURCE_MARK} في {col} (كتبها مستخدم في {f.file}:{f.line})")
+                  for col, f in stored.items()]
+        proj, flows = run_pass(prefix)
+    flows = [f for f in flows if f.rule_id != "DFSTORE"]
     if proj.files:
-        proj.build()
-        flows = proj.report()
         _retag_ai_output(flows)
+        _retag_stored(flows)
         findings.extend(flows)
         projects.append(proj)
     if js_trees or js_files:
@@ -1575,7 +1637,7 @@ def _catalogue() -> list[dict]:
             continue
         seen.add(e[0])
         out.append({"id": e[0], "severity": e[1], "cwe": e[5], "title": e[2], "title_ar": e[3], "advice": e[4]})
-    for rule, sev, cwe, title, title_ar, advice in AI_OUTPUT_RULES.values():
+    for rule, sev, cwe, title, title_ar, advice in list(AI_OUTPUT_RULES.values()) + list(STORED_RULES.values()):
         if rule not in seen:
             seen.add(rule)
             out.append({"id": rule, "severity": sev, "cwe": cwe, "title": title, "title_ar": title_ar, "advice": advice})

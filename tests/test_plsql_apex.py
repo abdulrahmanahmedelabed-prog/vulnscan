@@ -198,3 +198,75 @@ def test_only_oracle_bearing_containers_are_analyzed():
     assert not apex_export.is_oracle_container("<project><build/></project>", "pom.xml")
     assert apex_export.is_oracle_container((DATA / "ords_changelog.xml").read_text(), "x.xml")
     assert apex_export.is_oracle_container((DATA / "ords_module.json").read_text(), "x.json")
+
+
+# --------------------------------------------------------- second-order (stored) flows and ORDS view exports
+def test_second_order_sql_injection_and_stored_xss():
+    src = ("create or replace procedure save_note is\n"
+           "begin\n"
+           "  insert into notes (id, body, author) values (1, :P5_BODY, :APP_USER);\n"
+           "  update notes n set n.title = 'x' where id = 2;\n"
+           "end;\n/\n"
+           "create or replace procedure show_notes is\n"
+           "  l_body varchar2(4000);\n"
+           "  l_t varchar2(100);\n"
+           "  cursor c is select n.body, n.title t from notes n;\n"
+           "begin\n"
+           "  select body, title into l_body, l_t from notes where id = 1;\n"
+           "  execute immediate 'select * from x where y = ''' || l_body || '''';\n"
+           "  execute immediate 'select * from x where y = ''' || l_t || '''';\n"
+           "  for r in (select body b, title from notes) loop\n"
+           "    htp.p(r.b);\n"
+           "    htp.p(r.title);\n"
+           "  end loop;\n"
+           "  for r2 in c loop\n"
+           "    htp.p(apex_escape.html(r2.body));\n"
+           "  end loop;\n"
+           "  open c;\n"
+           "  fetch c into l_body, l_t;\n"
+           "  htp.p(l_body);\n"
+           "end;\n/\n")
+    fs = analyze_project({"notes.sql": src})
+    b = by_line(fs)
+    assert b.get(13) == {"DF023"}, b       # stored NOTES.BODY concatenated into dynamic SQL
+    assert 14 not in b, b                   # TITLE only ever receives a constant
+    assert b.get(16) == {"DF024"}, b       # stored XSS through a cursor-loop row field
+    assert 17 not in b and 20 not in b, b   # r.title is clean; the escaped value is safe
+    assert b.get(24) == {"DF024"}, b       # FETCH into a variable
+    src_label = next(f.extra["taint_source"] for f in fs if f.line == 13)
+    assert "NOTES.BODY" in src_label and "notes.sql:3" in src_label
+
+
+def test_stored_value_copied_between_tables():
+    src = ("create or replace procedure a is begin insert into notes (body) values (:P5_BODY); end;\n/\n"
+           "create or replace procedure b is begin insert into archive (txt, n) select body, id from notes; end;\n/\n"
+           "create or replace procedure c is begin\n"
+           "  for r in (select txt, n from archive) loop htp.p(r.txt); htp.p(r.n); end loop;\nend;\n/\n")
+    b = by_line(analyze_project({"chain.sql": src}))
+    assert b == {6: {"DF024"}}, b
+
+
+def test_apex_form_region_stores_items_and_another_page_renders_them():
+    b = by_line(analyze_project({"f300_form.sql": (DATA / "f300_form.sql").read_text()}))
+    assert b.get(44) == {"DF024"} and b.get(45) == {"DF024"}, b   # both form items are user-editable
+    assert 46 not in b, b
+
+
+def test_readable_yaml_form_region_store():
+    yaml = ("---\n# ====== Page: Note Form ======\nid: 40\nidentification: \n  name: Note Form\n\n"
+            "regions: \n- # ====== Region: Note ======\n  id: 4001\n  identification: \n    title: Note\n    type: Form\n"
+            "  source: \n    location: Local Database\n    type: Table / View\n    table-name: NOTES\n\n"
+            "page-items: \n- # ====== Page Item: P40_BODY ======\n  id: 4002\n  identification: \n    name: P40_BODY\n"
+            "    type: Textarea\n  source: \n    form-region: Note\n    column: BODY\n    data-type: VARCHAR2\n")
+    show = ("create or replace procedure board is begin\n"
+            "  for r in (select body from notes) loop htp.p(r.body); end loop;\nend;\n/\n")
+    b = by_line(analyze_project({"readable/application/pages/p00040.yaml": yaml, "board.sql": show}), "board.sql")
+    assert b.get(2) == {"DF024"}, b
+
+
+def test_ords_metadata_view_export_json():
+    b = by_line(analyze_project({"ords_views.json": (DATA / "ords_views.json").read_text()}))
+    assert b == {8: {"DF004"}}, b          # the PUT handler; the GET query handler only binds
+    from vulnscan.apex_export import extract_json_ords
+    labels = {x.label for x in extract_json_ords((DATA / "ords_views.json").read_text(), "x.json")}
+    assert "ORDS › inv.v1 PUT items/:sku" in labels

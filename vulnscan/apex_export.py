@@ -287,6 +287,9 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
     da_event = None
     hexbuf: list[str] = []
     seq = 0
+    region_tables: dict = {}         # region id (raw) -> table, for form regions
+    form_tables: dict = {}           # page -> table of a legacy automatic row processing (DML) process
+    form_items: list = []            # (page, item, column, region id raw, line, label)
     i, n = 0, len(toks)
     while i < n:
         t = toks[i]
@@ -321,6 +324,20 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
         pg = decoded.get("p_page_id", (None, 0, ""))[2] or decoded.get("p_flow_step_id", (None, 0, ""))[2] or (page if page_scoped else None)
         comp_ar = COMPONENT_AR.get(comp, comp)
         label = (f"صفحة {pg} › " if pg else "") + comp_ar + (f": {name}" if name else "")
+        # implicit DML: a form region on a table, and page items whose source is one of its columns
+        if fname == "create_page_plug" and decoded.get("p_query_table", (None,))[0]:
+            region_tables[decoded.get("p_id", (None, 0, ""))[2]] = decoded["p_query_table"][0].upper().split(".")[-1]
+        if fname in ("create_page_process", "create_page_process_dml") and any(
+                x in decoded.get("p_process_type", (None, 0, ""))[2] for x in ("FORM_DML", "FORM_FETCH", "DML", "ROW")):
+            tbl = decoded.get("p_attribute_02", (None,))[0] or decoded.get("p_attribute_01", (None,))[0]
+            if tbl and re.fullmatch(r"[A-Za-z][\w$#.]*", tbl):
+                form_tables[pg] = tbl.upper().split(".")[-1]
+        if fname == "create_page_item":
+            stype = decoded.get("p_source_type", (None, 0, ""))[2]
+            col = decoded.get("p_source", (None,))[0]
+            if col and ("REGION_SOURCE_COLUMN" in stype or "DB_COLUMN" in stype) and re.fullmatch(r"[A-Za-z][\w$#]*", col.strip()):
+                form_items.append((pg, name, col.strip().upper(), decoded.get("p_item_source_plug_id", (None, 0, ""))[2],
+                                   decoded.get("p_source", (None, 0))[1], label))
         # disabled output escaping
         for p, (val, ln, raw) in decoded.items():
             if (p, raw.strip()) in ESCAPE_OFF:
@@ -348,7 +365,21 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
             b = Block(kind, val, ln, label, unit)
             blocks.append(b)
             findings.extend(_subst_findings(b, rel))
+    blocks.extend(_form_store_blocks(form_items, region_tables, form_tables))
     return blocks, findings, files
+
+
+def _form_store_blocks(form_items, region_tables, form_tables) -> list[Block]:
+    """Page items saved by a form region / automatic row processing -> stored_db_write__T__C(:ITEM) blocks."""
+    out = []
+    for k, (pg, item, col, plug, line, label) in enumerate(form_items):
+        table = region_tables.get(plug) or form_tables.get(pg)
+        if not table or not item:
+            continue
+        code = f"stored_db_write__{table}__{col}(:{item.upper()});"
+        out.append(Block("plsql", code, line, f"{label} (يُحفظ في {table}.{col})",
+                         re.sub(r"\W", "_", f"apex_form_{pg}_{item}_{k}").lower()))
+    return out
 
 
 def wrapped_plsql(block: Block) -> str:
@@ -453,6 +484,8 @@ def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
     seq = 0
     # mapping scopes: indent -> {key: scalar}; reset when a line at a smaller indent starts
     scopes: list[tuple[int, dict]] = []
+    region_tables: dict = {}
+    form_items: list = []
     i, n = 0, len(lines)
     while i < n:
         raw = lines[i]
@@ -519,6 +552,10 @@ def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
                 if ind2 == indent and m2.group(4) and m2.group(4)[:1] not in ("|", ">"):
                     sib.setdefault(m2.group(3), _yaml_scalar(m2.group(4)))
             k2 += 1
+        if key == "table-name" and comp == "region" and here.get(key):
+            region_tables[name] = here[key].upper().split(".")[-1]
+        if key == "column" and comp in ("page item", "item") and here.get(key) and sib.get("form-region"):
+            form_items.append((page_id, name, here[key].upper(), sib["form-region"], i, _yaml_label(page_id, page_name, comp, name, da_name)))
         if key == "escape-special-characters" and str(here.get(key, "")).lower() in ("false", "no", "n"):
             label = _yaml_label(page_id, page_name, comp, name, da_name)
             findings.append(_finding("APX004", "medium", "Output escaping disabled", "تهريب المخرجات معطّل (XSS محتمل)",
@@ -535,6 +572,7 @@ def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
         b = Block(kind, code, start, label, unit)
         blocks.append(b)
         findings.extend(_subst_findings(b, rel))
+    blocks.extend(_form_store_blocks(form_items, region_tables, {}))
     return blocks, findings, []
 
 
@@ -670,12 +708,37 @@ def extract_json_ords(text: str, rel: str) -> list[Block]:
         return []
     blocks: list[Block] = []
     seq = 0
+    # flat exports of the ORDS metadata views (USER_ORDS_MODULES / _TEMPLATES / _HANDLERS, e.g. SQL Developer's
+    # JSON export {"results":[{"items":[…]}]}) link handlers to templates and modules by id
+    modules_by_id: dict = {}
+    templates_by_id: dict = {}
+
+    def index(o):
+        if isinstance(o, dict):
+            low = {k.lower(): v for k, v in o.items()}
+            if "id" in low and "uri_prefix" in low and isinstance(low.get("name"), str):
+                modules_by_id[str(low["id"])] = low["name"]
+            if "id" in low and "uri_template" in low and ("module_id" in low or "handlers" not in low):
+                templates_by_id[str(low["id"])] = (str(low.get("uri_template") or ""), str(low.get("module_id") or ""))
+            for v in o.values():
+                index(v)
+        elif isinstance(o, list):
+            for v in o:
+                index(v)
+
+    index(data)
 
     def walk(o, module=""):
         nonlocal seq
         if isinstance(o, dict):
             low = {k.lower(): v for k, v in o.items()}
             module = low.get("name") if isinstance(low.get("name"), str) and ("handlers" in low or "templates" in low or "uri_prefix" in low) else module
+            if "template_id" in low and str(low["template_id"]) in templates_by_id:
+                tpl, mod_id = templates_by_id[str(low["template_id"])]
+                low.setdefault("uri_template", tpl)
+                module = modules_by_id.get(mod_id, module)
+            elif "module_id" in low and str(low["module_id"]) in modules_by_id:
+                module = modules_by_id[str(low["module_id"])]
             src = low.get("source") or low.get("p_source") or low.get("handler_source")
             if isinstance(src, str) and re.search(r"\b(select|begin|declare|with)\b", src, re.I):
                 stype = str(low.get("source_type") or low.get("sourcetype") or low.get("p_source_type") or "").upper()
