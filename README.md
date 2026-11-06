@@ -90,8 +90,62 @@ def handler():    run(read_name())               # ← يُبلَّغ عنه م�
  "sanitizers": ["mylib.clean"]}
 ```
 
-ما يبقى مختلفًا عن CodeQL بصدق: لا تحليل points-to كامل (الأسماء المستعارة للكائنات تُتابَع تقريبيًا)، والنماذج
-JSON تصريحية وليست لغة استعلام مثل QL، والمحرّك للغة Python فقط.
+ما يبقى مختلفًا عن CodeQL بصدق: لا تحليل points-to كامل بعد (الأسماء المستعارة للكائنات تُتابَع بالأنواع
+المستنتَجة تقريبيًا)، وVQL مجموعة علاقية صغيرة لا QL، واللغات المدعومة Python وJavaScript/TypeScript فقط.
+
+### JavaScript / TypeScript بنفس محرّك تدفق البيانات
+
+المحرّك يعمل على **شكل** البرنامج لا على لغته، لذا تدعم الأداة JavaScript وTypeScript عبر واجهة أمامية
+(`vulnscan/js_frontend.py`) تحلّل الكود بمحلّل متسامح خاص بها (بلا أي اعتمادية) وتُنزّله إلى الشجرة نفسها
+التي يفهمها المحرّك، فتحصل تلقائيًا على كل ما سبق: إدراك الأنواع، عبر الملفات، الحقول، حواجز التحقق، ومسار التدفق.
+
+- **ما يُفهم**: ES2020+ (الاستيراد والتصدير و`require`، الأسهم، القوالب النصية، التفكيك، الأصناف، `async/await`،
+  التسلسل الاختياري) وTypeScript (التعليقات النوعية تُتجاهل، والمُزخرِفات وخصائص معاملات المُنشئ تُحفظ،
+  و`interface/type/enum` تُتخطّى).
+- **نماذج Node والمتصفح** في `vulnscan/models/javascript.json`: مصادر Express/Koa/Lambda (`req.query/body/params`،
+  `event`، `process.argv`، `location`، `document.cookie`)، ونقاط دخول (`app.get(...)`، NestJS `@Get()`،
+  `exports.handler`)، ونقاط خطر `child_process`، `fs`، `res.send`، `innerHTML`، `axios/fetch` (SSRF)، `res.redirect`،
+  `require` الديناميكي، قوالب EJS/Pug/Handlebars، واستعلامات `query/raw/$queryRawUnsafe`.
+- أسماء الاستيراد تُحلّ (`const cp = require('child_process')` فيُفهم `cp.exec`)، والملفات النسبية
+  (`require('./lib/shell')`) تُربط عبر المشروع.
+- الملفات المضغوطة (`*.min.js`) وتعريفات الأنواع (`*.d.ts`) والحزم الضخمة تُتخطّى.
+
+```js
+// lib/shell.js
+const cp = require('child_process');
+function run(c) { cp.execSync(c); }        // وسيط يصل إلى أمر shell
+module.exports = { run };
+// server.js
+const { run } = require('./lib/shell');
+app.post('/x', (req, res) => { run(req.body.c); });   // ← يُبلَّغ عنه عبر الملفين
+```
+
+### VQL — لغة استعلام فوق قاعدة بيانات البرنامج
+
+على نهج `from … where … select` في CodeQL، تبني الأداة **قاعدة بيانات علاقية** للبرنامج (الاستدعاءات، الدوال،
+الأصناف، الإسنادات، السلاسل، الاستيرادات، المُزخرِفات، السمات، **وتدفقات** محرّك التلوّث) وتشغّل عليها استعلامات
+تصريحية. عشرة استعلامات مدمجة في `vulnscan/queries/` (منها: تعطيل التحقق من TLS، `yaml.load` بلا Loader، JWT ضعيف،
+CORS بنجمة، نقطة دخول بلا مصادقة، عشوائية غير مشفّرة لسر، SQL مُركّب نصيًا)، وتضيف استعلاماتك بـ `--query DIR`:
+
+```
+// @id vql/tls-verify-disabled
+// @name TLS certificate verification disabled
+// @severity high
+// @cwe CWE-295
+// @advice فعّل التحقق من الشهادة.
+from call c
+where c.name matches "^(requests|httpx)\." and c.kwargs contains "verify=False"
+select c, "TLS verification disabled in " + c.name
+```
+
+- **العلاقات**: `call` (name, func, receiver, args, arg0..arg3, kwargs, in_func, in_class…)، `func` (name, qual,
+  decorators, is_entry, is_method…)، `class`، `assign` (target, value)، `string`، `import`، `decorator`، `attr`،
+  و`flow` (rule, severity, source, callee, interprocedural, hops, sink_file, sink_line) لنتائج تدفق البيانات.
+- **المعاملات**: `=` `!=` `<` `>` `<=` `>=` `matches` (regex) `contains` `in (…)` `and` `or` `not` والأقواس،
+  وربط عدة علاقات في `from` بشروط مساواة، و`+` لتركيب الرسالة.
+- `vulnscan --list-rules .` يعرض الاستعلامات مع القواعد، وتظهر نتائجها بمصدر `vql`.
+
+بصدق: VQL مجموعة علاقية صغيرة لا QL؛ لا استدعاء ذاتي (recursion) ولا مسندات أو أصناف يعرّفها المستخدم.
 
 ### فحص تطبيقات الويب وصفحاتها (الزحف وبصمة المنصّات)
 
@@ -267,7 +321,7 @@ vulnscan — ./my-project  (156 ملفًا مفحوصًا، 37 نتيجة)
 
 | | **vulnscan** | Semgrep | SonarQube | Snyk Code | GitHub CodeQL | Bandit | Trivy |
 |---|---|---|---|---|---|---|---|
-| نوع التحليل | أنماط + تدفق بيانات مدرك للأنواع مع نماذج كبيانات وحواجز تحقق ومسارات تدفق (Python، عبر الملفات) | أنماط دلالية + تتبع بيانات (Pro) | تحليل دلالي عميق | تحليل دلالي + تعلّم آلي | تحليل تدفق بيانات بلغة استعلام | AST لـ Python | إعدادات + اعتماديات + حاويات |
+| نوع التحليل | أنماط + تدفق بيانات مدرك للأنواع عبر الملفات (Python وJS/TS) + نماذج كبيانات + لغة استعلام VQL | أنماط دلالية + تتبع بيانات (Pro) | تحليل دلالي عميق | تحليل دلالي + تعلّم آلي | تحليل تدفق بيانات بلغة استعلام | AST لـ Python | إعدادات + اعتماديات + حاويات |
 | اللغات | 15+ لغة وملفات إعداد | 30+ | 30+ | 15+ | 10+ | Python فقط | — (لا كود) |
 | كشف الأسرار | ✅ | محدود | ✅ (نسخ مدفوعة) | ✅ | ✅ | ❌ | ✅ |
 | ثغرات الاعتماديات (CVE) | ✅ عبر OSV.dev | ✅ (Supply Chain) | محدود | ✅ قوي | ✅ Dependabot | ❌ | ✅ قوي |

@@ -1,0 +1,9 @@
+// @id vql/jwt-weak-verification
+// @name JWT decoded without signature verification or with the none algorithm
+// @name_ar JWT بلا تحقق من التوقيع أو بخوارزمية none
+// @severity high
+// @cwe CWE-347
+// @advice تحقق دائمًا من التوقيع وحدّد الخوارزميات المسموحة صراحة.
+from call c
+where c.name matches "jwt\.(decode|encode)" and (c.args matches "(?i)['\"]none['\"]" or c.kwargs contains "verify=False" or c.kwargs matches "verify_signature['\"]?\s*:\s*False")
+select c, "Weak JWT verification in " + c.name

@@ -5,6 +5,7 @@ import glob
 # Bundle the web UI assets (robust whether or not the package is installed).
 datas = [(f, "vulnscan/ui") for f in glob.glob("vulnscan/ui/*")]
 datas += [(f, "vulnscan/models") for f in glob.glob("vulnscan/models/*.json")]
+datas += [(f, "vulnscan/queries") for f in glob.glob("vulnscan/queries/*.vql")]
 assert datas, "vulnscan/ui assets not found — run from the repo root"
 
 a = Analysis(

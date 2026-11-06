@@ -46,6 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-depth", type=int, default=2, metavar="N", help="أقصى عمق للزحف (الافتراضي 2)")
     p.add_argument("--models", action="append", default=[], metavar="DIR",
                    help="مجلد (أو ملف JSON) نماذج إضافية لمحرّك تدفق البيانات: مصادر ونقاط خطر ومُعقّمات خاصة بمكتباتك")
+    p.add_argument("--query", action="append", default=[], metavar="PATH",
+                   help="ملف أو مجلد استعلامات VQL إضافية (لغة استعلام تصريحية فوق قاعدة بيانات البرنامج)")
+    p.add_argument("--no-queries", action="store_true", help="لا تشغّل استعلامات VQL المدمجة")
     p.add_argument("--no-jadx", action="store_true", help="لا تفكّ تجميع APK/JAR/AAR/DEX حتى لو كان jadx مثبّتًا")
     p.add_argument("--jadx-timeout", type=int, default=600, metavar="SEC", help="مهلة jadx بالثواني (الافتراضي 600)")
     p.add_argument("--jadx-include-libs", action="store_true", help="افحص أيضًا مكتبات الطرف الثالث داخل الكود المفكوك")
@@ -71,9 +74,14 @@ def _list_rules() -> str:
     for r in sorted(RULES, key=lambda r: (SEVERITY_RANK[r.severity], r.id)):
         lines.append(f"{r.id:<8} {r.severity:<9} {r.cwe:<9} {r.title_ar} — {r.title}")
     from .taint import TAINT_RULES
-    lines += ["", f"{len(TAINT_RULES)} قاعدة تدفق بيانات (Python، مدركة للأنواع، عبر الملفات):", ""]
+    lines += ["", f"{len(TAINT_RULES)} قاعدة تدفق بيانات (Python وJavaScript/TypeScript، مدركة للأنواع، عبر الملفات):", ""]
     for t in sorted(TAINT_RULES, key=lambda t: (SEVERITY_RANK[t["severity"]], t["id"])):
         lines.append(f"{t['id']:<8} {t['severity']:<9} {t['cwe']:<9} {t['title_ar']} — {t['title']}")
+    from .vql import catalogue
+    qs = catalogue()
+    lines += ["", f"{len(qs)} استعلام VQL مدمج (فوق قاعدة بيانات البرنامج):", ""]
+    for q in sorted(qs, key=lambda q: (SEVERITY_RANK.get(q["severity"], 9), q["id"])):
+        lines.append(f"{q['id']:<32} {q['severity']:<9} {q['cwe']:<9} {q['title_ar']}")
     return "\n".join(lines)
 
 
@@ -99,7 +107,7 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
         raise SystemExit(f"الهدف غير موجود: {target}")
     findings, files = scan_path(path, args.exclude, set(args.ignore_rule), jadx=not args.no_jadx,
                                 jadx_timeout=args.jadx_timeout, jadx_include_libs=args.jadx_include_libs, notes=notes,
-                                models_dirs=args.models)
+                                models_dirs=args.models, query_paths=args.query, queries=not args.no_queries)
     if not args.no_deps:
         dep_findings, err = audit_dependencies(path)
         findings.extend(dep_findings)

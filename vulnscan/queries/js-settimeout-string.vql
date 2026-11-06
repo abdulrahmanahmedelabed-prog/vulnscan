@@ -1,0 +1,9 @@
+// @id vql/js-settimeout-string
+// @name setTimeout/setInterval called with a string (implicit eval)
+// @name_ar setTimeout/setInterval بسلسلة نصية (eval ضمني)
+// @severity medium
+// @cwe CWE-95
+// @advice مرّر دالة بدل سلسلة نصية.
+from call c
+where c.name in ("setTimeout", "setInterval", "window.setTimeout", "window.setInterval") and c.arg0 matches "^['\"`]"
+select c, "String passed to " + c.name

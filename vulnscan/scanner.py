@@ -14,7 +14,7 @@ import zipfile
 
 from .model import Finding
 from .rules import RULES, SENSITIVE_FILES, Rule
-from . import taint
+from . import taint, vql
 
 SKIP_DIRS = {
     ".git", ".hg", ".svn", "node_modules", ".venv", "venv", "env", "__pycache__",
@@ -27,7 +27,7 @@ SKIP_FILE_GLOBS = (
     "pnpm-lock.yaml", "*.svg", "*.ttf", "*.otf", "*.woff*", "*.png", "*.jpg",
     "*.jpeg", "*.gif", "*.ico", "*.pdf", "*.mp3", "*.wav", "*.mp4", "*.zip",
     "*.gz", "*.bin", "*.so", "*.dylib", "*.dll", "*.class", "*.jar", "*.pyc",
-    "*.wasm", "*.dex",
+    "*.wasm", "*.dex", "*.vql",
 )
 ARCHIVE_EXTS = (".zip", ".jar", ".war", ".ear", ".apk", ".aar", ".whl", ".ipa", ".nupkg",
                 ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz")
@@ -231,7 +231,8 @@ def is_archive(path: pathlib.Path) -> bool:
 def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
               ignore_rules: set[str] | None = None, rules: list[Rule] | None = None,
               jadx: bool = True, jadx_timeout: int = 600, jadx_include_libs: bool = False,
-              notes: list[str] | None = None, models_dirs: list[str] | None = None) -> tuple[list[Finding], int]:
+              notes: list[str] | None = None, models_dirs: list[str] | None = None,
+              query_paths: list[str] | None = None, queries: bool = True) -> tuple[list[Finding], int]:
     """Scan a directory, a single file or an archive. Returns (findings, files_scanned).
 
     For APK/JAR/AAR/DEX bundles, when ``jadx`` is True and the jadx CLI is
@@ -257,17 +258,22 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                 count += 1
                 findings.extend(scan_sensitive_names(rel, ignore_rules))
                 findings.extend(scan_file(p, rel, rules, ignore_rules))
-                if p.suffix.lower() == ".py":
+                if p.suffix.lower() in (".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts") \
+                        and not p.name.endswith((".min.js", ".d.ts")):
                     try:
                         if p.stat().st_size <= MAX_FILE_BYTES:
                             py_sources[rel] = p.read_text("utf-8", errors="replace")
                     except OSError:
                         pass
             findings.extend(scan_project_hygiene(root, ignore_rules))
-            if py_sources:  # whole-project cross-file data-flow (taint) analysis
-                for f in taint.analyze_project(py_sources, models_dirs):
-                    if f.rule_id not in ignore_rules:
-                        findings.append(f)
+            if py_sources:  # whole-project cross-file data-flow (taint) analysis: Python + JS/TS, then VQL queries
+                projects, flows = taint.analyze_project_full(py_sources, models_dirs)
+                findings.extend(f for f in flows if f.rule_id not in ignore_rules)
+                if queries or query_paths:
+                    qf, qnotes = vql.run_queries(projects, flows, query_paths, builtin=queries)
+                    findings.extend(f for f in qf if f.rule_id not in ignore_rules)
+                    if notes is not None:
+                        notes.extend(qnotes)
         if tmp is not None:
             for f in findings:
                 f.file = f"{target.name}!{f.file}"

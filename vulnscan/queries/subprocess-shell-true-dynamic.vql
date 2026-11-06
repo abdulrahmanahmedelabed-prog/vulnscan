@@ -1,0 +1,9 @@
+// @id vql/subprocess-shell-true-dynamic
+// @name subprocess with shell=True and a non-literal command
+// @name_ar subprocess مع shell=True وأمر غير ثابت
+// @severity medium
+// @cwe CWE-78
+// @advice أزل shell=True ومرّر قائمة وسائط ثابتة البرنامج.
+from call c
+where c.name matches "^subprocess\." and c.kwargs contains "shell=True" and not c.arg0 matches "^['\"]"
+select c, "shell=True with a dynamic command in " + c.name

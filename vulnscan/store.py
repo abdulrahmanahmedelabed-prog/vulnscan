@@ -19,6 +19,7 @@ DEFAULT_SETTINGS = {
     "use_external": True,
     "use_jadx": True,
     "models_dir": "",
+    "queries_dir": "",
     "jadx_timeout": 600,
     "jadx_include_libs": False,
     "fail_on": "high",

@@ -1,0 +1,9 @@
+// @id vql/cors-wildcard
+// @name CORS configured with a wildcard origin
+// @name_ar إعداد CORS يسمح بأي أصل (*)
+// @severity medium
+// @cwe CWE-942
+// @advice حدّد الأصول المسموحة صراحة، خاصة مع بيانات الاعتماد.
+from call c
+where c.name matches "(?i)cors|add_middleware|allow_origin" and c.args matches "['\"]\*['\"]"
+select c, "CORS wildcard origin in " + c.name

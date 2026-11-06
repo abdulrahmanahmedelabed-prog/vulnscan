@@ -42,6 +42,9 @@ from .model import Finding
 MAX_PASSES = 16
 SUPPRESS = re.compile(r"(nosec|vulnscan:\s*ignore|noqa:\s*S\d+)", re.I)
 DEFAULT_MODELS = pathlib.Path(__file__).parent / "models" / "python.json"
+DEFAULT_JS_MODELS = pathlib.Path(__file__).parent / "models" / "javascript.json"
+PY_EXTS = (".py",)
+JS_EXTS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 CONTAINER_WRITES = {"append", "extend", "insert", "add", "update", "put", "setdefault"}
 ARG_INJECTION = ("DF009", "medium", "Tainted data reaches a subprocess argument",
                  "بيانات غير موثوقة تصل إلى وسيط لأمر خارجي",
@@ -54,12 +57,13 @@ REFLECTED_RETURN = ("DF013", "medium", "Tainted data returned in an HTTP respons
 
 
 # ------------------------------------------------------------------ models
-def load_models(extra_dirs=()) -> dict:
-    """Merge the built-in models with every *.json in the given directories."""
+def load_models(extra_dirs=(), base=None, language="python") -> dict:
+    """Merge the built-in models for a language with every *.json in the given directories."""
     m = {"attr_sources": [], "call_sources": [], "name_sources": [], "entry_decorators": set(),
          "view_bases": set(), "view_methods": set(), "request_params": {"request", "req", "self"},
-         "sinks": [], "sanitizers": set(), "safe_return_calls": set(), "validators": set()}
-    paths = [DEFAULT_MODELS]
+         "sinks": [], "attr_sinks": [], "sanitizers": set(), "safe_return_calls": set(), "validators": set(),
+         "language": language}
+    paths = [base or DEFAULT_MODELS]
     for d in extra_dirs or ():
         p = pathlib.Path(d)
         if p.is_file() and p.suffix == ".json":
@@ -71,6 +75,12 @@ def load_models(extra_dirs=()) -> dict:
             data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        langs = data.get("languages")
+        if langs and language not in langs:
+            continue
+        for a in data.get("attr_sinks", []):
+            m["attr_sinks"].append(((a["rule"], a.get("severity", "medium"), a.get("title", a["rule"]), a.get("title_ar", a.get("title", a["rule"])),
+                                     a.get("advice", ""), a.get("cwe", ""), a.get("label", a["rule"]), [0], False), set(a.get("attrs", []))))
         for s in data.get("sources", []):
             kind = s.get("kind")
             if kind == "attr":
@@ -189,11 +199,12 @@ class Project:
         self.findings: list[Finding] = []
 
     # ------------------------------------------------------------ building
-    def add_file(self, mod: str, path: str, text: str, is_pkg: bool = False) -> bool:
-        try:
-            tree = ast.parse(text)
-        except (SyntaxError, ValueError):
-            return False
+    def add_file(self, mod: str, path: str, text: str, is_pkg: bool = False, tree: ast.AST | None = None) -> bool:
+        if tree is None:
+            try:
+                tree = ast.parse(text)
+            except (SyntaxError, ValueError):
+                return False
         file = {"path": path, "tree": tree, "aliases": self._aliases(tree, mod, is_pkg), "funcs": {},
                 "classes": {}, "lines": text.splitlines(), "assign_aliases": []}
         self.files[mod] = file
@@ -201,7 +212,16 @@ class Project:
         for st in tree.body:
             if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name) \
                     and isinstance(st.value, (ast.Name, ast.Attribute)):
-                file["assign_aliases"].append((st.targets[0].id, _dotted(st.value)))
+                local, dotted = st.targets[0].id, _dotted(st.value)
+                file["assign_aliases"].append((local, dotted))
+                # name aliases of imported things: fs = __req1 / run = subprocess.run / exec = cp.exec
+                first, _, rest = dotted.partition(".")
+                tgt = file["aliases"].get(first)
+                if tgt and local not in file["aliases"]:
+                    base = tgt[1] if tgt[0] == "mod" else (f"{tgt[1]}.{tgt[2]}" if tgt[1] else tgt[2])
+                    full = f"{base}.{rest}" if rest else base
+                    modpart, _, name = full.rpartition(".")
+                    file["aliases"][local] = ("from", modpart, name) if modpart else ("mod", full)
 
         def visit(node, cls_qual):
             for child in ast.iter_child_nodes(node):
@@ -487,6 +507,18 @@ class Project:
             return arg.id in env.elem
         return False
 
+    def _attr_sink(self, node):
+        """Assignment to a modelled attribute (e.g. innerHTML) -> (sink info, value expr) or None."""
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+            return None
+        tgts = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for tgt in tgts:
+            if isinstance(tgt, ast.Attribute):
+                for si, attrs in self.m["attr_sinks"]:
+                    if tgt.attr in attrs:
+                        return si, node.value
+        return None
+
     def _sink(self, mod, cls, call, env):
         si = self._sink_info(mod, call)
         if si and si[0] == "DF003" and not si[8] and self._subprocess_elem_only(mod, cls, call, env):
@@ -653,21 +685,26 @@ class Project:
         return None
 
     # ---------------------------------------------------------- entry points
-    def _entry_params(self, mod, cls, fn) -> list[str]:
+    def _is_entry(self, mod, cls, fn) -> bool:
+        """A routed handler / CLI command / framework view method, with or without parameters."""
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            return []
-        params = [p for p in _param_names(fn) if p not in {"self", "cls"}]
+            return False
         for d in fn.decorator_list:
             dn = _dotted(d.func if isinstance(d, ast.Call) else d).split(".")[-1]
             if dn in self.m["entry_decorators"]:
-                return params
+                return True
         if cls and fn.name in self.m["view_methods"]:
             bases = set()
             for c in self._mro(cls):
                 bases |= {b.split(".")[-1] for b in self.classes[c]["base_names"]}
             if bases & self.m["view_bases"]:
-                return params
-        return []
+                return True
+        return False
+
+    def _entry_params(self, mod, cls, fn) -> list[str]:
+        if not self._is_entry(mod, cls, fn):
+            return []
+        return [p for p in _param_names(fn) if p not in {"self", "cls"}]
 
     # --------------------------------------------------------- environment
     def _env(self, mod, cls, fn, path, seed_params: bool, entry: bool = False) -> _Env:
@@ -899,6 +936,15 @@ class Project:
                                     changed = True
                 for call in self._calls(fn):
                     self._absorb_sinks(mod, cls, fn, path, call, env, new)
+                for node in _scope_nodes(fn):
+                    hit = self._attr_sink(node)
+                    if hit:
+                        si, value = hit
+                        o = self._taint(mod, cls, value, env)
+                        if o and o[0] in {"param", "field"} and not self._suppressed(path, node.lineno):
+                            lst = (new["sink_params"] if o[0] == "param" else new["sink_fields"]).setdefault(o[1], [])
+                            if (si, path, node.lineno) not in lst:
+                                lst.append((si, path, node.lineno))
                 if new != summ:
                     summ.update(new)
                     changed = True
@@ -950,7 +996,7 @@ class Project:
             scopes.append((mod, None, file["tree"], file["path"]))
         for mod, cls, fn, path in scopes:
             env = self._env(mod, cls, fn, path, seed_params=False, entry=True)
-            is_entry = bool(self._entry_params(mod, cls, fn))
+            is_entry = self._is_entry(mod, cls, fn)
             for call in self._calls(fn):
                 si = self._sink(mod, cls, call, env)
                 if si:
@@ -988,6 +1034,13 @@ class Project:
                         if fld in fields:
                             self._emit(entries[0][0], path, call.lineno, fields[fld], name, entries[0])
                             break
+            for node in _scope_nodes(fn):
+                hit = self._attr_sink(node)
+                if hit:
+                    si, value = hit
+                    o = self._taint(mod, cls, value, env)
+                    if o and o[0] in {"source", "retsource"} and not self._guarded(mod, fn, node, self._tainted_names_in(value, env)):
+                        self._emit(si, path, node.lineno, o, None, None)
             # reflected output from an entry point: `return tainted`
             if is_entry:
                 for node in _scope_nodes(fn):
@@ -1041,19 +1094,56 @@ class Project:
 
 
 def _module_name(rel: str) -> str:
+    rel = rel.replace("\\", "/")
     rel = rel[:-3] if rel.endswith(".py") else rel
     rel = rel[:-9] if rel.endswith("/__init__") else rel
-    return rel.replace("/", ".").replace("\\", ".")
+    return rel.replace("/", ".")
+
+
+def _language(rel: str) -> str | None:
+    low = rel.lower()
+    if low.endswith(PY_EXTS):
+        return "python"
+    if low.endswith(JS_EXTS) and not low.endswith((".d.ts", ".min.js")):
+        return "javascript"
+    return None
 
 
 def analyze_project(files: dict[str, str], models_dirs=None) -> list[Finding]:
-    proj = Project(load_models(models_dirs or ()))
+    """Analyze a whole project: Python natively, JavaScript/TypeScript through the lowering frontend."""
+    return analyze_project_full(files, models_dirs)[1]
+
+
+def analyze_project_full(files: dict[str, str], models_dirs=None):
+    """Like analyze_project but also returns the built Project models (for VQL queries)."""
+    projects: list = []
+    groups: dict[str, dict[str, str]] = {}
     for rel, text in files.items():
-        proj.add_file(_module_name(rel), rel, text, is_pkg=rel.replace("\\", "/").endswith("__init__.py"))
-    if not proj.files:
-        return []
-    proj.build()
-    return proj.report()
+        lang = _language(rel)
+        if lang:
+            groups.setdefault(lang, {})[rel] = text
+    findings: list[Finding] = []
+    if "python" in groups:
+        proj = Project(load_models(models_dirs or (), DEFAULT_MODELS, "python"))
+        for rel, text in groups["python"].items():
+            proj.add_file(_module_name(rel), rel, text, is_pkg=rel.replace("\\", "/").endswith("__init__.py"))
+        if proj.files:
+            proj.build()
+            findings.extend(proj.report())
+            projects.append(proj)
+    if "javascript" in groups:
+        from . import js_frontend
+        proj = Project(load_models(models_dirs or (), DEFAULT_JS_MODELS, "javascript"))
+        for rel, text in groups["javascript"].items():
+            if len(text) > 600_000 or any(len(l) > 5000 for l in text.splitlines()[:50]):
+                continue  # bundles / minified
+            tree = js_frontend.parse_js(text, rel)
+            proj.add_file(js_frontend.module_name(rel), rel, text, tree=tree)
+        if proj.files:
+            proj.build()
+            findings.extend(proj.report())
+            projects.append(proj)
+    return projects, findings
 
 
 def analyze(path: str, text: str, models_dirs=None) -> list[Finding]:
@@ -1061,9 +1151,9 @@ def analyze(path: str, text: str, models_dirs=None) -> list[Finding]:
 
 
 def _catalogue() -> list[dict]:
-    m = load_models()
     seen, out = set(), []
-    for e in m["sinks"] + [ARG_INJECTION + (None,), REFLECTED_RETURN + (None,)]:
+    entries = load_models()["sinks"] + load_models((), DEFAULT_JS_MODELS, "javascript")["sinks"]
+    for e in entries + [ARG_INJECTION + (None,), REFLECTED_RETURN + (None,)]:
         if e[0] in seen:
             continue
         seen.add(e[0])

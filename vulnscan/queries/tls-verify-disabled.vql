@@ -1,0 +1,9 @@
+// @id vql/tls-verify-disabled
+// @name TLS certificate verification disabled in an HTTP call
+// @name_ar تعطيل التحقق من شهادة TLS في طلب HTTP
+// @severity high
+// @cwe CWE-295
+// @advice فعّل التحقق من الشهادة؛ وإن كانت ذاتية التوقيع فاستخدم ملف CA خاصًا أو تثبيتًا (pinning).
+from call c
+where c.name matches "^(requests|httpx|urllib3|aiohttp)\." and c.kwargs contains "verify=False"
+select c, "TLS verification disabled in " + c.name

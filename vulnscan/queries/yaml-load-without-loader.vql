@@ -1,0 +1,9 @@
+// @id vql/yaml-load-without-loader
+// @name yaml.load without an explicit safe Loader
+// @name_ar yaml.load بلا Loader صريح
+// @severity medium
+// @cwe CWE-502
+// @advice استخدم yaml.safe_load أو مرّر Loader=yaml.SafeLoader.
+from call c
+where c.name = "yaml.load" and not c.kwargs contains "Loader="
+select c, "yaml.load called without Loader="

@@ -1,0 +1,9 @@
+// @id vql/entry-point-without-auth
+// @name Routed entry point without an authentication decorator
+// @name_ar نقطة دخول مُوجَّهة بلا مُزخرِف مصادقة
+// @severity info
+// @cwe CWE-306
+// @advice تأكد أن المسار عام عن قصد، وإلا أضف مصادقة (login_required، jwt_required، guard…).
+from func f
+where f.is_entry and f.decorators matches "route|get|post|put|delete|patch|Get|Post|Put|Delete|Patch" and not f.decorators matches "(?i)login_required|auth|jwt|permission|protected|guard|roles|csrf"
+select f, "Entry point " + f.name + " has no authentication decorator"
