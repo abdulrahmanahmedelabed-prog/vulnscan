@@ -277,6 +277,11 @@ def _either(loads, node):
     return b
 
 
+def _known(table, col) -> bool:
+    """Writes / reads whose table or column could not be resolved (folded to __dyn__) are left to call-site helpers."""
+    return "DYN" not in canon_table(table) and canon_col(col) != "DYN" and bool(canon_table(table)) and bool(canon_col(col))
+
+
 def _write_stmt(table, col, expr, line):
     table, col = canon_table(table), canon_col(col)
     e = copy.deepcopy(expr)
@@ -447,22 +452,31 @@ def _dynamic_sql(node):
 
 
 class _Scope:
-    def __init__(self, models, ctor_params, sigs=None):
+    def __init__(self, models, ctor_params, sigs=None, fc=None):
         self.models = {k: v for k, v in models.items() if k != "__aliases__"}
         self.ctor_params = ctor_params
         self.sigs = sigs or {}
+        self.fc = fc
         self.prepared: dict = {}     # var -> SQL text
         self.cursors: dict = {}      # cursor var -> columns of the last SELECT it executed (in statement order)
         self.bound: dict = {}        # var -> table (ORM instance / loop row / JPA entity)
         self.consts: dict = {}       # var -> string constant
 
     # ------------------------------------------------------------------ helpers
+    def _text(self, a):
+        """Text of an argument: literal, local constant, or folded (config / helpers / format / concatenation)."""
+        s = _const_str(a)
+        if s is None and isinstance(a, ast.Name):
+            s = self.consts.get(a.id)
+        if s is None and self.fc is not None and not isinstance(a, (ast.Dict, ast.List, ast.Tuple)):
+            v = fold(a, self.fc, self.consts)
+            s = v if isinstance(v, str) else None
+        return s
+
     def sql_of(self, call):
         """(sql, index of the sql argument) for a call that carries SQL text."""
         for i, a in enumerate(call.args[:2]):
-            s = _const_str(a)
-            if s is None and isinstance(a, ast.Name):
-                s = self.consts.get(a.id)
+            s = self._text(a)
             if s is None and isinstance(a, ast.Call) and a.args and _dotted(a.func).split(".")[-1] in ("text", "sql", "raw", "SQL"):
                 s = _const_str(a.args[0])
             if s and (WRITE_SQL.match(s) or READ_SQL.match(s)):
@@ -528,13 +542,21 @@ class _Scope:
 
     # ------------------------------------------------------------------ learning
     def learn(self, st):
+        if isinstance(st, ast.AugAssign) and isinstance(st.target, ast.Name) and isinstance(st.op, ast.Add):
+            cur = self.consts.get(st.target.id)
+            if isinstance(cur, str):                              # q += " WHERE …"
+                add = self._text(st.value)
+                self.consts[st.target.id] = cur + (add if isinstance(add, str) else DYN)
+                if WRITE_SQL.match(self.consts[st.target.id]) or READ_SQL.match(self.consts[st.target.id]):
+                    self.prepared[st.target.id] = self.consts[st.target.id]
+            return
         if isinstance(st, (ast.Assign, ast.AnnAssign)) and getattr(st, "value", None) is not None:
             tgts = st.targets if isinstance(st, ast.Assign) else [st.target]
             v = st.value.value if isinstance(st.value, ast.Await) else st.value
             for t in tgts:
                 if isinstance(t, ast.Name):
-                    s = _const_str(v)
-                    if s is not None:
+                    s = self._text(v) if not isinstance(v, ast.Call) or self.fc is not None else _const_str(v)
+                    if isinstance(s, str):
                         self.consts[t.id] = s
                     if isinstance(v, ast.Call):
                         sql, _ = self.sql_of(v)
@@ -607,10 +629,7 @@ class _Scope:
     def _sig_table(self, call, sig):
         if "table" in sig:
             a = self._sig_arg(call, sig["table"])
-            s = _const_str(a) if a is not None else None
-            if s is None and isinstance(a, ast.Name):
-                s = self.consts.get(a.id)
-            return s
+            return self._text(a) if a is not None else None
         a = self._sig_arg(call, sig["model"])
         if isinstance(a, ast.Name) and a.id in self.models:
             return self.models[a.id]
@@ -703,6 +722,9 @@ class _Scope:
 
     # ------------------------------------------------------------------ reads
     def call_reads(self, call) -> list:
+        return [(t, c) for t, c in self._call_reads(call) if _known(t, c)]
+
+    def _call_reads(self, call) -> list:
         name = call.func.id if isinstance(call.func, ast.Name) else (call.func.attr if isinstance(call.func, ast.Attribute) else "")
         sig = self.sigs.get(name)
         if sig and sig["kind"] in ("read", "read_orm"):
@@ -826,7 +848,7 @@ def _block(stmts, scope: _Scope) -> list:
             st.body = _block(st.body, scope)
             st.orelse = _block(st.orelse, scope)
             out.append(st)
-            out.extend(_write_stmt(t, c, e, line) for t, c, e in writes)
+            out.extend(_write_stmt(t, c, e, line) for t, c, e in writes if _known(t, c))
             continue
         if isinstance(st, ast.Try) or (hasattr(ast, "TryStar") and isinstance(st, ast.TryStar)):
             st.body = _block(st.body, scope)
@@ -858,7 +880,7 @@ def _block(stmts, scope: _Scope) -> list:
             scan = (st.value.func.value, [a for a in st.value.args if isinstance(a, ast.Name)])
         st = rw.visit(st)
         out.append(st)
-        out.extend(_write_stmt(t, c, e, line) for t, c, e in writes)
+        out.extend(_write_stmt(t, c, e, line) for t, c, e in writes if _known(t, c))
         if scan and scan[1]:
             recv, names = scan
             for nm in names:                                   # out-parameters receive the row
@@ -872,14 +894,14 @@ def _block(stmts, scope: _Scope) -> list:
     return out
 
 
-def instrument(tree: ast.Module, models: dict, ctor_params: dict, sigs: dict | None = None) -> ast.Module:
+def instrument(tree: ast.Module, models: dict, ctor_params: dict, sigs: dict | None = None, fc: FoldContext | None = None) -> ast.Module:
     """Rewrite a module in place: explicit table writes / reads for the stored-data passes."""
     _ALIASES.clear()
     _ALIASES.update(models.get("__aliases__", {}))
-    tree.body = _block(tree.body, _Scope(models, ctor_params, sigs))
+    tree.body = _block(tree.body, _Scope(models, ctor_params, sigs, fc))
     for n in ast.walk(tree):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            n.body = _block(n.body, _Scope(models, ctor_params, sigs)) or n.body
+            n.body = _block(n.body, _Scope(models, ctor_params, sigs, fc)) or n.body
     return tree
 
 
@@ -898,3 +920,270 @@ def ctor_param_names(trees: list, models: dict) -> dict:
 
 def has_store_writes(trees) -> bool:
     return any(isinstance(n, ast.Name) and n.id.startswith("stored_db_write__") for _, tree in trees for n in ast.walk(tree))
+
+
+# =========================================================================================== folding SQL text
+# Table names and queries are often not literals: they come from configuration (.env, settings, YAML, @Value),
+# module constants, `q += …` sequences, str.format / % / join, or helper functions that build the SQL.
+# fold() evaluates such expressions to text so the writes / reads above still see real tables and columns.
+DYN = "__dyn__"
+
+
+def parse_config(rel: str, text: str) -> dict:
+    """Key/value pairs of a configuration file (flattened, keys lower-cased; nested keys dotted)."""
+    low = rel.lower().replace("\\", "/")
+    name = low.rsplit("/", 1)[-1]
+    out: dict = {}
+    try:
+        if name.startswith(".env") or name.endswith((".properties", ".env")):
+            for ln in text.splitlines():
+                m = re.match(r"\s*(?:export\s+)?([\w.\-]+)\s*[=:]\s*(.*?)\s*$", ln)
+                if m and not ln.lstrip().startswith(("#", "!")):
+                    out[m.group(1).lower()] = m.group(2).strip().strip("'\"")
+        elif name.endswith((".ini", ".cfg", ".conf", ".toml")):
+            section = ""
+            for ln in text.splitlines():
+                s = ln.strip()
+                if not s or s.startswith(("#", ";")):
+                    continue
+                m = re.match(r"\[\s*([^\]]+?)\s*\]$", s)
+                if m:
+                    section = m.group(1).lower()
+                    continue
+                m = re.match(r"([\w.\-]+)\s*[=:]\s*(.*)$", s)
+                if m:
+                    v = m.group(2).strip().strip("'\"")
+                    out[m.group(1).lower()] = v
+                    if section:
+                        out[f"{section}.{m.group(1).lower()}"] = v
+        elif name.endswith(".json"):
+            import json
+
+            def flat(o, prefix=""):
+                if isinstance(o, dict):
+                    for k, v in o.items():
+                        flat(v, f"{prefix}{str(k).lower()}.")
+                elif isinstance(o, (str, int, float)) and prefix:
+                    key = prefix[:-1]
+                    out[key] = str(o)
+                    out.setdefault(key.rsplit(".", 1)[-1], str(o))
+            flat(json.loads(text))
+        elif name.endswith((".yaml", ".yml")):
+            stack: list = []
+            for ln in text.splitlines():
+                if not ln.strip() or ln.lstrip().startswith(("#", "-")):
+                    continue
+                m = re.match(r"^(\s*)([\w.\-]+)\s*:\s*(.*?)\s*$", ln)
+                if not m:
+                    continue
+                ind = len(m.group(1))
+                while stack and stack[-1][0] >= ind:
+                    stack.pop()
+                key = ".".join([k for _, k in stack] + [m.group(2).lower()])
+                val = m.group(3)
+                if val and not val.startswith(("|", ">", "&", "*")):
+                    out[key] = val.strip("'\"")
+                    out.setdefault(m.group(2).lower(), val.strip("'\""))
+                else:
+                    stack.append((ind, m.group(2).lower()))
+    except Exception:  # noqa: BLE001 - a broken config file is simply ignored
+        return out
+    return out
+
+
+CONFIG_NAMES = (".env", ".ini", ".cfg", ".conf", ".toml", ".properties", ".json", ".yaml", ".yml")
+
+
+def is_config_file(rel: str) -> bool:
+    low = rel.lower().replace("\\", "/")
+    name = low.rsplit("/", 1)[-1]
+    if name in ("package.json", "package-lock.json", "tsconfig.json", "composer.lock") or "node_modules/" in low:
+        return False
+    return name.startswith(".env") or name.endswith(CONFIG_NAMES)
+
+
+class FoldContext:
+    """Project-wide facts used to evaluate SQL text: functions, module constants, instance fields, configuration."""
+
+    def __init__(self, trees: list, config: dict | None = None):
+        self.funcs: dict = {}
+        self.consts: dict = {}
+        self.fields: dict = {}
+        self.config = {str(k).lower(): v for k, v in (config or {}).items()}
+        for item in trees:
+            tree = item[1]
+            for st in tree.body:
+                if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name):
+                    self.consts.setdefault(st.targets[0].id, st.value)
+            for n in ast.walk(tree):
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    self.funcs.setdefault(n.name, n)
+                elif isinstance(n, ast.ClassDef):
+                    for st in n.body:              # class-level constants (Java static final / Python class attrs)
+                        if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name):
+                            self.consts.setdefault(st.targets[0].id, st.value)
+                elif isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Attribute) \
+                        and isinstance(n.targets[0].value, ast.Name) and n.targets[0].value.id in ("self", "this"):
+                    self.fields.setdefault(n.targets[0].attr, n.value)
+
+    def config_value(self, key: str):
+        if not key:
+            return None
+        k = key.lower().strip()
+        k = re.sub(r"^\$\{(.*?)(:.*)?\}$", r"\1", k)          # Spring ${a.b:default}
+        for cand in (k, k.replace("_", "."), k.replace(".", "_"), k.rsplit(".", 1)[-1]):
+            if cand in self.config:
+                return self.config[cand]
+        return None
+
+
+ENV_CALLS = {"getenv", "os.getenv", "os.environ.get", "environ.get", "System.getenv", "os.Getenv", "Getenv", "env",
+             "ENV.fetch", "config.get", "settings.get", "cfg.get", "conf.get", "app.config.get", "config_value",
+             "Environment.GetEnvironmentVariable", "GetEnvironmentVariable", "getProperty", "System.getProperty",
+             "ConfigurationManager.AppSettings.get", "config"}
+CONFIG_ROOTS = {"settings", "config", "cfg", "conf", "CONFIG", "SETTINGS", "Config", "Settings", "app.config", "environ",
+                "os.environ", "process.env", "ENV", "env", "_ENV", "$_ENV", "configuration", "Configuration"}
+
+
+def fold(expr, fc: FoldContext, local: dict | None = None, depth: int = 0):
+    """Evaluate an expression to text (or a list of texts) when possible; unknown parts become __dyn__."""
+    if expr is None or depth > 6:
+        return None
+    local = local or {}
+    if isinstance(expr, ast.Constant):
+        return expr.value if isinstance(expr.value, str) else (str(expr.value) if isinstance(expr.value, (int, float)) else None)
+    if isinstance(expr, ast.Name):
+        if expr.id in local:
+            return local[expr.id]
+        if expr.id in fc.consts:
+            return fold(fc.consts[expr.id], fc, {}, depth + 1)
+        return None
+    if isinstance(expr, ast.JoinedStr):
+        parts = []
+        for v in expr.values:
+            if isinstance(v, ast.FormattedValue):
+                r = fold(v.value, fc, local, depth)
+                parts.append(r if isinstance(r, str) else DYN)
+            else:
+                parts.append(v.value)
+        return "".join(parts)
+    if isinstance(expr, ast.BinOp):
+        left = fold(expr.left, fc, local, depth)
+        if isinstance(expr.op, ast.Add):
+            right = fold(expr.right, fc, local, depth)
+            if isinstance(left, str) or isinstance(right, str):
+                return (left if isinstance(left, str) else DYN) + (right if isinstance(right, str) else DYN)
+            return None
+        if isinstance(expr.op, ast.Mod) and isinstance(left, str):
+            vals = expr.right.elts if isinstance(expr.right, ast.Tuple) else [expr.right]
+            args = [fold(v, fc, local, depth) for v in vals]
+            try:
+                return left % tuple(a if isinstance(a, str) else DYN for a in args)
+            except (TypeError, ValueError):
+                return left
+        return None
+    if isinstance(expr, (ast.List, ast.Tuple)):
+        vals = [fold(e, fc, local, depth) for e in expr.elts]
+        return [v if isinstance(v, str) else DYN for v in vals]
+    if isinstance(expr, ast.Attribute):
+        dotted = _dotted(expr)
+        root = dotted.rsplit(".", 1)[0] if "." in dotted else ""
+        if isinstance(expr.value, ast.Name) and expr.value.id in ("self", "this") and expr.attr in fc.fields:
+            return fold(fc.fields[expr.attr], fc, {}, depth + 1)
+        if root in CONFIG_ROOTS or root.split(".")[0] in CONFIG_ROOTS:
+            v = fc.config_value(dotted.split(".", 1)[1] if root.split(".")[0] in CONFIG_ROOTS and "." in dotted else expr.attr)
+            if v is None:
+                v = fc.config_value(expr.attr)
+            if v is not None:
+                return v
+        if expr.attr in fc.consts:                                 # Config.NOTES_TABLE / Constants.TABLE
+            return fold(fc.consts[expr.attr], fc, {}, depth + 1)
+        return None
+    if isinstance(expr, ast.Subscript):
+        key = fold(expr.slice, fc, local, depth)
+        base = _dotted(expr.value)
+        if isinstance(key, str):
+            if base in CONFIG_ROOTS or base.split(".")[0] in CONFIG_ROOTS or isinstance(expr.value, ast.Subscript):
+                prefix = ""
+                if isinstance(expr.value, ast.Subscript):        # config["db"]["table"] -> db.table
+                    p = fold(expr.value.slice, fc, local, depth)
+                    prefix = f"{p}." if isinstance(p, str) else ""
+                v = fc.config_value(prefix + key) or fc.config_value(key)
+                if v is not None:
+                    return v
+        return None
+    if isinstance(expr, ast.Call):
+        func = expr.func
+        canon = _dotted(func)
+        # configuration lookups
+        if canon in ENV_CALLS or canon.split(".")[-1] in ("getenv", "Getenv", "getProperty", "GetEnvironmentVariable", "config_value"):
+            keys = [fold(a, fc, local, depth) for a in expr.args]
+            keys = [k for k in keys if isinstance(k, str)]
+            if keys:
+                v = fc.config_value(".".join(keys[:2]) if len(keys) >= 2 and canon.endswith(("config.get", "cfg.get", "conf.get")) else keys[0])
+                if v is None and len(keys) >= 2:
+                    v = fc.config_value(keys[0]) or keys[-1]          # default argument
+                if v is not None:
+                    return v
+        if isinstance(func, ast.Attribute):
+            recv = fold(func.value, fc, local, depth)
+            if func.attr == "format" and isinstance(recv, str):
+                args = [fold(a, fc, local, depth) for a in expr.args]
+                kws = {k.arg: fold(k.value, fc, local, depth) for k in expr.keywords if k.arg}
+                try:
+                    return recv.format(*[a if isinstance(a, str) else DYN for a in args],
+                                       **{k: (v if isinstance(v, str) else DYN) for k, v in kws.items()})
+                except (IndexError, KeyError, ValueError):
+                    return recv
+            if func.attr == "join" and isinstance(recv, str) and expr.args:
+                items = fold(expr.args[0], fc, local, depth)
+                if isinstance(items, list):
+                    return recv.join(items)
+                return DYN
+            if func.attr in ("upper", "lower", "strip", "trim", "toUpperCase", "toLowerCase") and isinstance(recv, str):
+                return recv
+            if func.attr == "concat" and isinstance(recv, str):
+                rest = [fold(a, fc, local, depth) for a in expr.args]
+                return recv + "".join(r if isinstance(r, str) else DYN for r in rest)
+        # helper functions in the project that build SQL text from their parameters
+        name = func.id if isinstance(func, ast.Name) else (func.attr if isinstance(func, ast.Attribute) else "")
+        fn = fc.funcs.get(name)
+        if fn is not None:
+            params = [a.arg for a in fn.args.posonlyargs + fn.args.args if a.arg not in ("self", "cls")]
+            env = {}
+            for p, a in zip(params, expr.args):
+                v = fold(a, fc, local, depth)
+                if v is not None:
+                    env[p] = v
+            for k in expr.keywords:
+                v = fold(k.value, fc, local, depth)
+                if k.arg and v is not None:
+                    env[k.arg] = v
+            return run_text_function(fn, fc, env, depth + 1)
+        return None
+    return None
+
+
+def run_text_function(fn, fc: FoldContext, env: dict, depth: int):
+    """Evaluate a straight-line function body (assignments, +=, return) to the text it returns."""
+    local = dict(env)
+    for st in fn.body:
+        if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name):
+            v = fold(st.value, fc, local, depth)
+            if v is not None:
+                local[st.targets[0].id] = v
+        elif isinstance(st, ast.AugAssign) and isinstance(st.target, ast.Name) and isinstance(st.op, ast.Add):
+            cur = local.get(st.target.id)
+            add = fold(st.value, fc, local, depth)
+            if isinstance(cur, str):
+                local[st.target.id] = cur + (add if isinstance(add, str) else DYN)
+            elif isinstance(cur, list) and isinstance(add, list):
+                local[st.target.id] = cur + add
+        elif isinstance(st, ast.Expr) and isinstance(st.value, ast.Call) and isinstance(st.value.func, ast.Attribute) \
+                and st.value.func.attr in ("append", "push", "add") and isinstance(st.value.func.value, ast.Name) \
+                and isinstance(local.get(st.value.func.value.id), list) and st.value.args:
+            v = fold(st.value.args[0], fc, local, depth)
+            local[st.value.func.value.id].append(v if isinstance(v, str) else DYN)
+        elif isinstance(st, ast.Return):
+            return fold(st.value, fc, local, depth)
+    return None

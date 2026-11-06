@@ -1291,7 +1291,7 @@ class Project:
                             self._emit(REFLECTED_RETURN, path, node.lineno, o, None, None)
         seen, uniq = set(), []
         for f in self.findings:
-            k = (f.rule_id, f.file, f.line)
+            k = (f.rule_id, f.file, f.line, f.title if f.rule_id == "DFSTORE" else "")   # one internal write per column
             if k not in seen:
                 seen.add(k)
                 uniq.append(f)
@@ -1365,13 +1365,22 @@ def load_models_for(language: str, extra_dirs=()) -> dict:
     return m
 
 
-def analyze_project(files: dict[str, str], models_dirs=None) -> list[Finding]:
+def analyze_project(files: dict[str, str], models_dirs=None, config: dict | None = None) -> list[Finding]:
     """Analyze a whole project: Python natively, the other languages through the lowering frontends."""
-    return analyze_project_full(files, models_dirs)[1]
+    return analyze_project_full(files, models_dirs, config)[1]
 
 
-def analyze_project_full(files: dict[str, str], models_dirs=None):
-    """Like analyze_project but also returns the built Project models (for VQL queries)."""
+def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict | None = None):
+    """Like analyze_project but also returns the built Project models (for VQL queries).
+
+    `config` holds key/values from the project's configuration files (.env, YAML, properties …), used to resolve
+    table names and SQL that code reads from configuration."""
+    if config is None:
+        from . import stored as _st
+        config = {}
+        for rel, text in files.items():
+            if _st.is_config_file(rel):
+                config.update(_st.parse_config(rel, text))
     projects: list = []
     groups: dict[str, dict[str, str]] = {}
     for rel, text in files.items():
@@ -1387,7 +1396,7 @@ def analyze_project_full(files: dict[str, str], models_dirs=None):
             except (SyntaxError, ValueError):
                 continue
             entries.append(_Entry(_module_name(rel), rel, text, tree, is_pkg=rel.replace("\\", "/").endswith("__init__.py")))
-        proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_MODELS, "python"), entries)
+        proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_MODELS, "python"), entries, config=config)
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
@@ -1398,7 +1407,7 @@ def analyze_project_full(files: dict[str, str], models_dirs=None):
             if len(text) > 600_000 or any(len(l) > 5000 for l in text.splitlines()[:50]):
                 continue  # bundles / minified
             entries.append(_Entry(js_frontend.module_name(rel), rel, text, js_frontend.parse_js(text, rel)))
-        proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_JS_MODELS, "javascript"), entries)
+        proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_JS_MODELS, "javascript"), entries, config=config)
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
@@ -1415,7 +1424,7 @@ def analyze_project_full(files: dict[str, str], models_dirs=None):
             diag = getattr(tree, "vulnscan_diagnostics", None)
             if diag:
                 diags[rel] = diag
-        proj, flows = _stored_build(load_models_for(lang, models_dirs or ()), entries, diagnostics=diags)
+        proj, flows = _stored_build(load_models_for(lang, models_dirs or ()), entries, diagnostics=diags, config=config)
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
@@ -1434,7 +1443,7 @@ class _Entry:
 
 
 def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, instrument_db: bool = True,
-                  field_precise: bool = False):
+                  field_precise: bool = False, config: dict | None = None):
     """Build and report a project, following user data through database tables (second-order flows).
 
     Pass 1 learns which TABLE.COLUMNs receive user data (internal sinks stored_db_write__T__C); later passes
@@ -1445,14 +1454,18 @@ def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, 
         mods = st.model_names(triples)
         ctors = st.ctor_param_names(triples, mods)
         sigs = st.helper_signatures(triples, mods)
+        fc = st.FoldContext(triples, config)
         for e in entries:
             try:
-                st.instrument(e.tree, mods, ctors, sigs)
+                st.instrument(e.tree, mods, ctors, sigs, fc)
             except Exception:  # noqa: BLE001 - instrumentation is an enhancement; never block the scan
                 pass
     store_names = sorted({n.func.id for e in entries for n in ast.walk(e.tree)
                           if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id.startswith("stored_db_write__")})
-    store_sinks = [("DFSTORE", "info", "store:" + nm[len("stored_db_write__"):].upper().replace("__", ".", 1), "", "", "", "table write",
+    def store_col(nm):
+        return nm[len("stored_db_write__"):].upper().replace("__", ".", 1)
+    # the column is in the title and the label, so flows through helpers (titled "… into <label>") keep it
+    store_sinks = [("DFSTORE", "info", "store:" + store_col(nm), "", "", "", "store:" + store_col(nm),
                     [0], False, [nm], frozenset()) for nm in store_names]
 
     def run_pass(prefix_sources):
@@ -1476,8 +1489,9 @@ def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, 
         new = {}
         for f in flows:
             if f.rule_id == "DFSTORE":
-                col = f.title[len("store:"):]
-                if col not in stored and col not in new:
+                m = re.search(r"store:([\w$#*]+\.[\w$#*]+)", f.title)
+                col = m.group(1) if m else None
+                if col and col not in stored and col not in new:
                     new[col] = f
         if not new:
             break

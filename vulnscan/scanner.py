@@ -16,7 +16,7 @@ from .model import Finding
 from .rules import RULES, SENSITIVE_FILES, Rule
 from . import taint, vql
 from .plsql_frontend import PLSQL_EXTS
-from . import apex_export
+from . import apex_export, stored
 
 SKIP_DIRS = {
     ".git", ".hg", ".svn", "node_modules", ".venv", "venv", "env", "__pycache__",
@@ -290,6 +290,7 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
         findings: list[Finding] = []
         count = 0
         py_sources: dict[str, str] = {}
+        config_values: dict = {}
         if not (root.is_file() and is_jadx_bundle(root)):  # a bare .dex/.class has nothing to walk
             for p, rel in iter_files(root, excludes):
                 count += 1
@@ -308,7 +309,13 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                                 findings.extend(scan_sql_dump(rel, py_sources[rel], ignore_rules))
                     except OSError:
                         pass
-                elif p.suffix.lower() in (".yaml", ".yml", ".xml", ".json") and not p.name.endswith(".min.json"):
+                if stored.is_config_file(rel):
+                    try:
+                        if p.stat().st_size <= 1_000_000:
+                            config_values.update(stored.parse_config(rel, p.read_text("utf-8", errors="replace")))
+                    except OSError:
+                        pass
+                if p.suffix.lower() in (".yaml", ".yml", ".xml", ".json") and not p.name.endswith(".min.json") and rel not in py_sources:
                     # APEX readable exports, Liquibase/SQLcl changelogs and ORDS definitions carry Oracle code
                     try:
                         if p.stat().st_size <= MAX_PLSQL_BYTES:
@@ -319,7 +326,7 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                         pass
             findings.extend(scan_project_hygiene(root, ignore_rules))
             if py_sources:  # whole-project cross-file data-flow (taint) analysis: Python + JS/TS, then VQL queries
-                projects, flows = taint.analyze_project_full(py_sources, models_dirs)
+                projects, flows = taint.analyze_project_full(py_sources, models_dirs, config_values)
                 findings.extend(f for f in flows if f.rule_id not in ignore_rules)
                 if notes is not None:
                     notes.extend(frontend_notes(projects))

@@ -94,3 +94,39 @@ def test_user_controlled_dict_keys_still_count():
             "def x():\n"
             "    save('t', request.form)\n")
     assert any(f.rule_id == "DF004" and f.line == 9 for f in analyze_project({"a.py": code}))
+
+
+# ------------------------------------------------ tables from configuration; queries built across functions
+DATA3 = pathlib.Path(__file__).parent / "data" / "stored3"
+
+
+def test_tables_from_configuration_and_sql_built_across_functions():
+    fs, _ = scan_path(DATA3, notes=[])
+    got = {(f.file, f.line, f.rule_id): f.extra.get("taint_source", "") for f in fs if f.rule_id.startswith("DF")}
+    # .env NOTES_TABLE via os.getenv; INSERT built by insert_sql(), SELECT by base_select() with +=
+    assert "USER_NOTE.BODY" in got[("app.py", 24, "DF023")]
+    # config.yaml db.tickets via cfg['db']['tickets'] and str.format
+    assert "HELP_TICKET.SUBJECT" in got[("app.py", 27, "DF023")]
+    assert ("app.py", 29, "DF023") not in got                       # user_notes.title is never written by users
+    # process.env.LOG_TABLE (.env) in a template literal
+    assert "EVENT_LOG.LINE" in got[("logs.js", 6, "DF023")]
+    # Spring @Value("${app.audit.table}") from application.properties
+    assert "AUDIT_ENTRY.MSG" in got[("src/main/java/Audit.java", 12, "DF023")]
+
+
+def test_fold_and_config_parsing():
+    import ast
+    from vulnscan.stored import FoldContext, fold, parse_config
+    assert parse_config("app.ini", "[db]\ntable = t1\n")["db.table"] == "t1"
+    assert parse_config("c.json", '{"db": {"table": "t2"}}')["db.table"] == "t2"
+    assert parse_config(".env.local", "export T=t3\n")["t"] == "t3"
+    tree = ast.parse("BASE = 'SELECT a FROM '\n"
+                     "def q(t):\n    s = BASE + t\n    s += ' WHERE x = %s'\n    return s\n"
+                     "x = q(settings.T)\n"
+                     "y = ', '.join(['a', 'b'])\n"
+                     "z = 'INSERT INTO %s (c) VALUES (?)' % os.environ['T']\n")
+    fc = FoldContext([("", tree)], {"t": "items"})
+    vals = {st.targets[0].id: st.value for st in tree.body if isinstance(st, ast.Assign)}
+    assert fold(vals["x"], fc) == "SELECT a FROM items WHERE x = %s"
+    assert fold(vals["y"], fc) == "a, b"
+    assert fold(vals["z"], fc) == "INSERT INTO items (c) VALUES (?)"

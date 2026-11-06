@@ -539,7 +539,7 @@ class Parser:
                 self.i += 1
                 if self.lang == "rust" and self.at_kw("mut"):
                     self.i += 1
-                return self.parse_var_decl(line)
+                return self.parse_var_decl(line, decs)
             if v in ("var", "const") and self.lang == "go":
                 self.i += 1
                 if self.at("("):
@@ -885,12 +885,15 @@ class Parser:
             self.end_stmt()
             return self.field_or_local(name, v, line)
         out = []
+        cfg = _config_annotation(decs, line)
         while True:
             if self.cls_stack and not self.in_function and self.field_names_stack:
                 self.field_names_stack[-1].add(name)
             if self.opt("="):
                 v = self.untuple(self.parse_assignment())
                 out.extend(self.field_or_local(name, v, line))
+            elif cfg is not None:
+                out.extend(self.field_or_local(name, cfg, line))
             if self.opt(","):
                 name = self.eat().val
                 continue
@@ -911,8 +914,9 @@ class Parser:
 
     in_function = False
 
-    def parse_var_decl(self, line) -> list:
+    def parse_var_decl(self, line, decs=()) -> list:
         out = []
+        cfg = _config_annotation(decs, line)
         while True:
             if self.at("("):   # kotlin destructuring val (a, b) = ...
                 self.eat("(")
@@ -956,6 +960,8 @@ class Parser:
                 break
             if self.cls_stack and not self.in_function and self.field_names_stack:
                 self.field_names_stack[-1].add(name)
+            if not self.at("=") and cfg is not None:
+                out.extend(self.field_or_local(name, cfg, line))
             if self.opt("="):
                 v = self.untuple(self.parse_assignment())
                 out.extend(self.field_or_local(name, v, line))
@@ -2818,6 +2824,23 @@ class Parser:
             name = v.lstrip("$") if (v.startswith("$") and v not in ("$_GET", "$_POST", "$_REQUEST", "$_COOKIE", "$_SERVER", "$_FILES", "$_ENV", "$argv", "$HTTP_RAW_POST_DATA", "$GLOBALS", "$_SESSION")) else v
             return _name(name, line)
         raise ParseError(f"unexpected {t.val!r} line {line}")
+
+
+def _config_annotation(decs, line):
+    """@Value("${app.table}") / @ConfigProperty(name = "x") -> config_value("…") for the annotated field."""
+    for d in decs or ():
+        if isinstance(d, ast.Call):
+            name = d.func.id if isinstance(d.func, ast.Name) else (d.func.attr if isinstance(d.func, ast.Attribute) else "")
+            if name in ("Value", "ConfigProperty", "ConfigurationProperty"):
+                key = None
+                for a in list(d.args) + [k.value for k in d.keywords if k.arg in ("name", "value", "key")]:
+                    if isinstance(a, ast.Constant) and isinstance(a.value, str):
+                        key = a.value
+                    elif isinstance(a, ast.JoinedStr):            # Kotlin "\${app.table}" lowered to an f-string
+                        key = "".join(v.value for v in a.values if isinstance(v, ast.Constant))
+                if key:
+                    return _mk(ast.Call, line, func=_name("config_value", line), args=[_const(key, line)], keywords=[])
+    return None
 
 
 def _tail_return(body: list) -> None:

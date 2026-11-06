@@ -1,3 +1,3 @@
 """vulnscan: standalone, dependency-free source-code vulnerability scanner."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
