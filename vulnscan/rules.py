@@ -73,7 +73,7 @@ RULES: list[Rule] = [
          "احذف كلمة المرور من السلسلة واقرأها من متغير بيئة.", "CWE-798",
          skip=_r(r"(?i)(example|localhost|127\.0\.0\.1|\$\{|\{\{|<pass|password@|changeme)")),
     Rule("SEC007", "critical", "Cloud / service provider token", "رمز مزوّد خدمة سحابية",
-         _r(r"\b(SG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}"           # SendGrid
+         _r(r"(?<![A-Za-z0-9_\-])(SG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}"           # SendGrid
             r"|SK[0-9a-fA-F]{32}"                                          # Twilio API key SID
             r"|AC[0-9a-fA-F]{32}"                                          # Twilio Account SID
             r"|key-[0-9a-zA-Z]{32}"                                        # Mailgun
@@ -82,9 +82,9 @@ RULES: list[Rule] = [
             r"|dop_v1_[a-f0-9]{64}"                                        # DigitalOcean
             r"|shpat_[a-fA-F0-9]{32}"                                      # Shopify private app
             r"|sq0atp-[0-9A-Za-z\-_]{22}"                                 # Square
-            r"|EAACEdEose0cBA[0-9A-Za-z]+"                                 # Facebook
+            r"|EAA[A-Za-z0-9]{90,}"                                        # Facebook / Meta access token
             r"|ya29\.[0-9A-Za-z_\-]{30,}"                                # Google OAuth access
-            r"|[0-9]{8,10}:AA[0-9A-Za-z_\-]{33})\b"),                    # Telegram bot token
+            r"|[0-9]{8,10}:AA[0-9A-Za-z_\-]{33})(?![A-Za-z0-9_\-])"),   # Telegram bot token
          "أبطل الرمز من لوحة المزوّد فورًا وأصدر غيره، وانقله إلى متغيرات البيئة أو مدير أسرار.", "CWE-798"),
     Rule("SEC008", "high", "Slack / Discord / Teams webhook URL", "رابط webhook (Slack/Discord/Teams)",
          _r(r"https://(hooks\.slack\.com/services/[A-Za-z0-9/]+|discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_\-]+|[a-z0-9.]+\.webhook\.office\.com/[A-Za-z0-9/@\-]+)"),

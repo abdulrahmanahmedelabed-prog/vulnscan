@@ -97,13 +97,50 @@ def _excluded(rel: str, excludes: list[str]) -> bool:
     return any(fnmatch.fnmatch(rel, pat) for pat in excludes)
 
 
-_SECRET_KEY = re.compile(r"(?i)(secret|token|passwd|password|pwd|api[_-]?key|apikey|access[_-]?key|client[_-]?secret|"
-                         r"auth|credential|private[_-]?key|encryption[_-]?key|signing[_-]?key)")
+# The value must be bound to a secret-like NAME: `name = "…"`, `"name": "…"`, `name: …`, `name => …`, `name := …`.
+# The identifier right before the operator is split into words (snake/kebab/camelCase) and checked as a whole word,
+# so `author_id`, `R.id.authButton`, i18n keys and import paths do not count.
+_ASSIGN_LHS = re.compile(r"""([A-Za-z_$@][A-Za-z0-9_.\-]*)['"\]]*\s*(?:=|:=|=>|:)\s*[@]?['"]?$""")
+_AUTH_SCHEME = re.compile(r"(?i)\b(bearer|token)\s+$")
+_SECRET_WORDS = frozenset({"secret", "secrets", "token", "tokens", "password", "passwd", "pwd", "passphrase", "apikey",
+                           "auth", "credential", "credentials", "pat", "bearer"})
+_KEY_QUALIFIERS = frozenset({"api", "access", "private", "signing", "encryption", "master", "secret", "client", "app",
+                             "auth", "license", "service", "account", "subscription", "webhook"})
 _TOKEN = re.compile(r"[A-Za-z0-9+/_\-]{16,}={0,2}")
-_ENTROPY_SKIP = re.compile(r"(?i)(example|sample|placeholder|changeme|your[_-]|xxx+|dummy|test|fake|mock|redacted|"
-                           r"lorem|00000|12345|abcdef|aaaa|\$\{|\{\{|<[a-z_]+>|base64,|sha(?:1|256|384|512)-|integrity|h1:)")
-# strings we must not flag: version/hash-looking content in lock/doc files, base64 of images, etc.
+# Structural line-level skips: templating, data URIs, SRI / lock-file hashes, Go module sums.
+_ENTROPY_SKIP_LINE = re.compile(r"(?i)(\$\{|\{\{|base64,|\bsha(?:1|256|384|512)-|\bintegrity\b|\bh1:)")
+# Placeholder words are checked against the candidate VALUE only, never the whole line (a comment saying
+# "latest" or "contest" must not hide a real key).
+_PLACEHOLDER = re.compile(r"(?i)(example|sample|placeholder|changeme|your[_-]|xxxx|dummy|fake|redacted|lorem|"
+                          r"00000|12345|abcdef|aaaa|^test|_test_|<[a-z_]+>)")
 _HEXONLY = re.compile(r"^[0-9a-fA-F]+$")
+_UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def _split_ident(name: str) -> list[str]:
+    name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name.split(".")[-1].lstrip("$@"))
+    return [w for w in re.split(r"[_\-]+", name.lower()) if w]
+
+
+def _secret_name(prefix: str) -> bool:
+    """Is the text immediately before a value an assignment to a secret-like name?"""
+    if _AUTH_SCHEME.search(prefix):          # "Authorization: Bearer <value>"
+        return True
+    m = _ASSIGN_LHS.search(prefix)
+    if not m:
+        return False
+    words = _split_ident(m.group(1))
+    if any(w in _SECRET_WORDS for w in words):
+        return True
+    return any(w == "key" and i > 0 and words[i - 1] in _KEY_QUALIFIERS for i, w in enumerate(words)) or \
+        any(w in ("apikey", "accesskey", "privatekey", "secretkey", "clientsecret", "authtoken") for w in words)
+
+
+def _in_url(line: str, start: int) -> bool:
+    """Does the token at `start` sit inside a URL (or a path that is part of one)?"""
+    head = line[:start]
+    word_start = max(head.rfind(c) for c in " \t'\"(<>=,`") + 1
+    return "://" in head[word_start:] or head[word_start:].startswith("www.")
 
 
 # Catalogue entry for the entropy detector (it is a function, not a regex Rule, so it is listed explicitly).
@@ -123,34 +160,35 @@ def _shannon(s: str) -> float:
 
 
 def _entropy_findings(rel: str, lineno: int, line: str) -> list[Finding]:
-    """Generic high-entropy secret detection: a random-looking token assigned to a secret-like name, or a
-    standalone very-high-entropy base64 token. Catches keys from providers we have no explicit pattern for."""
-    if _ENTROPY_SKIP.search(line):
+    """Generic high-entropy secret detection (gitleaks / trufflehog style), for keys from providers we have no
+    explicit pattern for. Two triggers:
+      1. a random-looking value assigned to a secret-like name (`api_key = "…"`, `"password": "…"`);
+      2. a standalone, very-high-entropy base62/base64 run of 40+ characters (not hex, not in a URL, not a cert).
+    """
+    if _ENTROPY_SKIP_LINE.search(line):
         return []
-    key_here = _SECRET_KEY.search(line) is not None
-    out = []
     for m in _TOKEN.finditer(line):
         tok = m.group(0)
-        if len(tok) < 20 or len(tok) > 200:
+        if len(tok) < 20 or len(tok) > 200 or _PLACEHOLDER.search(tok) or _UUID.match(tok):
             continue
         has_upper = any(c.isupper() for c in tok)
         has_lower = any(c.islower() for c in tok)
         has_digit = any(c.isdigit() for c in tok)
         ent = _shannon(tok)
         mixed = has_upper and has_lower and has_digit        # base64/base62-like, not a plain word or hex hash
-        if key_here and ent >= 3.5 and (has_digit or mixed) and len(tok) >= 20:
+        if _secret_name(line[:m.start()]) and ent >= 3.5 and (has_digit or mixed):
             reason = "token assigned to a secret-like name"
-        elif mixed and ent >= 4.2 and len(tok) >= 40 and not _HEXONLY.match(tok):
+        elif (mixed and ent >= 4.2 and len(tok) >= 40 and not _HEXONLY.match(tok) and not tok.startswith("MII")
+              and not _in_url(line, m.start())):
             reason = "standalone high-entropy token"
         else:
             continue
-        out.append(Finding("SEC011", "high", "High-entropy string (possible secret)",
-                           "سلسلة عالية العشوائية (سرّ محتمل)", rel, lineno, line.strip()[:200],
-                           "تحقّق: إن كان سرًّا حقيقيًا فأبطله وانقله إلى متغير بيئة أو مدير أسرار. "
-                           "إن كان قيمة مشروعة (تجزئة، معرّف) فاستثنِ السطر بـ # nosec.",
-                           "CWE-798", extra={"entropy": round(ent, 2), "why": reason}))
-        break   # one per line is enough
-    return out
+        return [Finding("SEC011", "high", "High-entropy string (possible secret)",
+                        "سلسلة عالية العشوائية (سرّ محتمل)", rel, lineno, line.strip()[:200],
+                        "تحقّق: إن كان سرًّا حقيقيًا فأبطله وانقله إلى متغير بيئة أو مدير أسرار. "
+                        "إن كان قيمة مشروعة (تجزئة، معرّف) فاستثنِ السطر بـ # nosec.",
+                        "CWE-798", extra={"entropy": round(ent, 2), "why": reason})]   # one per line is enough
+    return []
 
 
 def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set[str]) -> list[Finding]:

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import html
 import json
+import pathlib
+import urllib.parse
 from datetime import datetime, timezone
 
 from . import __version__
 from .model import (SARIF_LEVEL, SECURITY_SEVERITY, SEVERITIES, SEVERITY_AR, Finding,
-                    assign_fingerprints, sort_findings)
+                    ensure_fingerprints, sort_findings)
 
 REPO_URL = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan"
 
@@ -109,6 +111,7 @@ def render_markdown(findings: list[Finding], target: str, files: int, notes: lis
 
 def render_json(findings: list[Finding], target: str, files: int, notes: list[str]) -> str:
     findings = sort_findings(findings)
+    ensure_fingerprints(findings)
     return json.dumps({**_meta(target, files, notes), "summary": summary_counts(findings),
                        "findings": [f.to_dict() for f in findings]}, ensure_ascii=False, indent=2)
 
@@ -153,12 +156,27 @@ code{{direction:ltr;unicode-bidi:embed;font-size:.85em}}\n.flow{{margin:.4rem 0 
 </body></html>"""
 
 
+def _uri(path: str) -> str:
+    """A relative path as an RFC 3986 URI reference: forward slashes, everything else percent-encoded
+    (spaces, Arabic, '#', '%', ':' …) so viewers resolve it to the right file."""
+    return urllib.parse.quote(path.replace("\\", "/"), safe="/")
+
+
+def _root_uri(target: str) -> str:
+    try:
+        p = pathlib.Path(target).resolve()
+        return (p if p.is_dir() else p.parent).as_uri() + "/"
+    except (OSError, ValueError):
+        return "file:///"
+
+
 def render_sarif(findings: list[Finding], target: str, files: int, notes: list[str]) -> str:
     """SARIF 2.1.0 — the OASIS standard consumed by GitHub Code Scanning, VS Code's SARIF viewer,
     Azure DevOps and others. Rules carry CWE tags and a GitHub security-severity; each result carries
     a stable partialFingerprint so the platform can track an issue across commits."""
     findings = sort_findings(findings)
-    assign_fingerprints(findings)
+    ensure_fingerprints(findings)
+    web_base = urllib.parse.urlsplit(target) if target.startswith(("http://", "https://")) else None
     rules: dict[str, dict] = {}
     results = []
     for f in findings:
@@ -178,21 +196,26 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
             if f.cwe:
                 rule["relationships"] = [{"target": {"id": f.cwe, "toolComponent": {"name": "CWE"}}}]
             rules[f.rule_id] = rule
-        region = {"startLine": max(1, f.line)} if f.line else {"startLine": 1}
+        if f.source == "web" and web_base is not None:
+            # a web finding has no source file: point at the page URL itself, with no line region
+            page = f.file if f.file.startswith("/") else "/"
+            host = web_base.netloc if f.file.startswith("/") else (f.file or web_base.netloc)
+            phys = {"artifactLocation": {"uri": f"{web_base.scheme}://{host}{_uri(page)}"}}
+        else:
+            phys = {"artifactLocation": {"uri": _uri(f.file), "uriBaseId": "%SRCROOT%"},
+                    "region": {"startLine": max(1, f.line or 1)}}
         result = {
             "ruleId": f.rule_id,
             "level": SARIF_LEVEL.get(f.severity, "warning"),
             "message": {"text": f"{f.title}: {f.snippet}".strip(": ") or f.rule_id},
-            "locations": [{"physicalLocation": {
-                "artifactLocation": {"uri": f.file.replace("\\", "/")},
-                "region": region}}],
+            "locations": [{"physicalLocation": phys}],
             "partialFingerprints": {"vulnscan/v1": f.fingerprint()},
             "properties": {"severity": f.severity, "title_ar": f.title_ar, "advice": f.advice},
         }
         path = f.extra.get("path")
         if path:   # a data-flow finding: emit the source→sink trail as a SARIF codeFlow
             locs = [{"location": {"physicalLocation": {
-                "artifactLocation": {"uri": str(st.get("file", f.file)).replace("\\", "/")},
+                "artifactLocation": {"uri": _uri(str(st.get("file", f.file))), "uriBaseId": "%SRCROOT%"},
                 "region": {"startLine": max(1, int(st.get("line", 1) or 1))}},
                 "message": {"text": str(st.get("text", ""))}}} for st in path]
             result["codeFlows"] = [{"threadFlows": [{"locations": locs}]}]
@@ -209,6 +232,7 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
                 "rules": list(rules.values()),
             }},
             "results": results,
+            **({} if web_base else {"originalUriBaseIds": {"%SRCROOT%": {"uri": _root_uri(target)}}}),
             "properties": {"target": target, "filesScanned": files, "notes": notes},
         }],
     }

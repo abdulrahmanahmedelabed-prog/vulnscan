@@ -9,7 +9,7 @@ import sys
 from . import __version__
 from .deps import audit_dependencies
 from .external import run_external
-from .model import SEVERITIES, SEVERITY_RANK, Finding, sort_findings
+from .model import SEVERITIES, SEVERITY_RANK, Finding, assign_fingerprints, sort_findings
 from .report import render_console, render_html, render_json, render_markdown, render_sarif, summary_counts
 from .baseline import apply_baseline, save_baseline
 from .rules import RULES
@@ -94,7 +94,7 @@ def _list_rules() -> str:
     return "\n".join(lines)
 
 
-def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
+def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]] | int:
     notes: list[str] = []
     target = args.target
     if target.startswith(("http://", "https://")):
@@ -153,9 +153,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.target:
         build_parser().error("the following arguments are required: target")
-    findings, target, files, notes = run(args)
-    findings = [f for f in findings if SEVERITY_RANK[f.severity] <= SEVERITY_RANK[args.min_severity]]
-    findings = sort_findings(findings)
+    result = run(args)
+    if isinstance(result, int):          # web target unreachable: message already printed
+        return result
+    findings, target, files, notes = result
+    # Fingerprints are assigned once, on the complete list, so every report and the baseline agree.
+    # The baseline is written and applied BEFORE --min-severity: it must record everything that exists
+    # today, otherwise lower-severity pre-existing issues would come back as "new" later.
+    assign_fingerprints(findings)
 
     if args.write_baseline:
         n = save_baseline(findings, args.write_baseline)
@@ -165,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
         findings, suppressed, size = apply_baseline(findings, args.baseline)
         notes = list(notes) + ([f"خط الأساس: كُتمت {suppressed} نتيجة معروفة من أصل {size}؛ تُعرض النتائج الجديدة فقط."]
                                if size else ["خط الأساس غير موجود أو فارغ؛ كل النتائج تُعرض كجديدة."])
+    findings = [f for f in findings if SEVERITY_RANK[f.severity] <= SEVERITY_RANK[args.min_severity]]
+    findings = sort_findings(findings)
 
     renderers = {"console": lambda: render_console(findings, target, files, notes, color=not args.no_color and args.output is None),
                  "markdown": lambda: render_markdown(findings, target, files, notes),

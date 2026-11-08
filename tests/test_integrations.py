@@ -211,3 +211,114 @@ def test_list_rules_includes_new_rules(capsys):
     out = capsys.readouterr().out
     for rid in ("SEC007", "SEC008", "SEC009", "SEC010", "SEC011"):
         assert rid in out
+
+
+# ---------------------------------------------------------------- regressions from adversarial review
+
+def _sarif_of(tmp_path, files):
+    for name, body in files.items():
+        p = tmp_path / "src" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body, encoding="utf-8")
+    out = tmp_path / "r.sarif"
+    main([str(tmp_path / "src"), "--no-deps", "--no-external", "-f", "sarif", "-o", str(out)])
+    return json.loads(out.read_text(encoding="utf-8"))
+
+
+def test_sarif_uris_are_percent_encoded(tmp_path):
+    doc = _sarif_of(tmp_path, {"my dir/app 1.py": "eval(input())\n", "مجلد/ملف.py": "eval(input())\n",
+                               "a#b%20.py": "eval(input())\n", "fix:eval.py": "eval(input())\n"})
+    uris = {r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for r in doc["runs"][0]["results"]}
+    assert "my%20dir/app%201.py" in uris and "a%23b%2520.py" in uris and "fix%3Aeval.py" in uris
+    assert any(u.startswith("%D9%85") for u in uris)          # Arabic, UTF-8 percent-encoded
+    assert all(" " not in u and "#" not in u for u in uris)
+    assert doc["runs"][0]["originalUriBaseIds"]["%SRCROOT%"]["uri"].startswith("file:///")
+
+
+def test_sarif_web_findings_point_at_url():
+    f = Finding("WEB-x-frame-options", "medium", "Missing X-Frame-Options", "ع", "example.com:8443", 0,
+                "HTTP 200", "advice", "CWE-1021", source="web")
+    loc = json.loads(render_sarif([f], "https://example.com:8443/", 1, []))["runs"][0]["results"][0]
+    phys = loc["locations"][0]["physicalLocation"]
+    assert phys["artifactLocation"]["uri"] == "https://example.com:8443/" and "region" not in phys
+
+
+def test_all_reports_share_fingerprints(tmp_path):
+    src = tmp_path / "p"
+    src.mkdir()
+    (src / "a.py").write_text("import os\nos.system(cmd)\n")
+    base = tmp_path / "b.json"
+    main([str(src), "--no-deps", "--no-external", "--write-baseline", str(base)])
+    (src / "a.py").write_text("import os\nos.system(cmd)\nos.system(cmd)\n")
+    prefix = tmp_path / "out"
+    main([str(src), "--no-deps", "--no-external", "--baseline", str(base), "--all-formats", str(prefix)])
+    known = load_baseline(str(base))
+    js = [f["fingerprint"] for f in json.loads((tmp_path / "out.json").read_text(encoding="utf-8"))["findings"]]
+    sf = [r["partialFingerprints"]["vulnscan/v1"]
+          for r in json.loads((tmp_path / "out.sarif").read_text(encoding="utf-8"))["runs"][0]["results"]]
+    assert js == sf and len(js) == 1 and js[0] not in known
+
+
+def test_json_report_fingerprints_unique_without_baseline(tmp_path):
+    (tmp_path / "a.py").write_text("import os\nos.system(cmd)\nx = 1\nos.system(cmd)\n")
+    out = tmp_path / "r.json"
+    main([str(tmp_path), "--no-deps", "--no-external", "-f", "json", "-o", str(out)])
+    fps = [f["fingerprint"] for f in json.loads(out.read_text(encoding="utf-8"))["findings"]]
+    assert len(fps) == len(set(fps))
+
+
+def test_baseline_ignores_min_severity(tmp_path):
+    src = tmp_path / "q"
+    src.mkdir()
+    (src / "a.py").write_text("import os, hashlib\nos.system(cmd)\nh = hashlib.md5(x)\n")
+    base = tmp_path / "b.json"
+    main([str(src), "--no-deps", "--no-external", "--min-severity", "high", "--write-baseline", str(base)])
+    assert main([str(src), "--no-deps", "--no-external", "--baseline", str(base), "--fail-on", "low",
+                 "-o", str(tmp_path / "r.txt")]) == 0
+
+
+def test_baseline_survives_archive_rename(tmp_path):
+    import zipfile
+    for name in ("app-1.0.zip", "app-1.1.zip"):
+        with zipfile.ZipFile(tmp_path / name, "w") as z:
+            z.writestr("a.py", "import os\nos.system(cmd)\n")
+    base = tmp_path / "b.json"
+    main([str(tmp_path / "app-1.0.zip"), "--no-deps", "--no-external", "--no-jadx", "--write-baseline", str(base)])
+    assert main([str(tmp_path / "app-1.1.zip"), "--no-deps", "--no-external", "--no-jadx", "--baseline", str(base),
+                 "--fail-on", "low", "-o", str(tmp_path / "r.txt")]) == 0
+
+
+def test_web_fingerprint_ignores_cookie_value_and_status():
+    def ck(val, status="HTTP 200"):
+        return (Finding("WEB021", "medium", "Cookie without HttpOnly flag: sid", "ع", "h", 0, f"sid={val}; Path=/",
+                        "a", source="web"),
+                Finding("WEB-csp", "medium", "Missing CSP", "ع", "h", 0, status, "a", source="web"))
+    a, b = ck("1111"), ck("2222", "HTTP 302")
+    assert a[0].fingerprint() == b[0].fingerprint() and a[1].fingerprint() == b[1].fingerprint()
+
+
+def test_entropy_precision_regressions():
+    tok = "Zk3p" + "Q9vX2mT7bN4cR8wY1hL6jF0sD5gA"
+    for line in (f'STRIPE_SECRET = "{tok}"  # latest', f'DB_PASSWORD = "{tok}"  # attestation',
+                 f'config["api_key"] = "{tok}"', f'h = {{"Authorization": "Bearer {tok}"}}', f'apiKey := "{tok}"'):
+        assert _entropy_findings("a", 1, line), line
+    uuid = "9b2f6c1e-4d3a-4e8f-a1b2-7c9d0e3f5a61"
+    for line in ("findViewById(R.id.authButtonSignInWithGoogle2);",
+                 "import org.springframework.security.oauth2.server.resource.authentication.JwtConverter2",
+                 "t('auth.loginForm.passwordResetConfirmation2FA')", f'author_id = "{uuid}"', f'csrf_token = "{uuid}"',
+                 "ca_bundle: MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhkiG9w0BAQUFADBaMQswCQYDVQQGEwJJRTESMBAGA1UE",
+                 "https://docs.google.com/document/d/1aB2cD3eF4gH5iJ6kL7mN8oP9qR0sT1uV2wX3yZ4AbCd/edit"):
+        assert not _entropy_findings("a", 1, line), line
+
+
+def test_sec007_boundaries_and_facebook(tmp_path):
+    from vulnscan.rules import RULES
+    pat = next(r for r in RULES if r.id == "SEC007").pattern
+    assert pat.search('v = "123456789:AA' + "b" * 32 + '-"')
+    assert pat.search('v = "SG.' + "a" * 22 + "." + "b" * 42 + '-"')
+    assert pat.search('v = "EAAG' + "aB3" * 40 + '"')
+    assert not pat.search("TASK" + "0" * 32)
+
+
+def test_cli_unreachable_web_returns_2(capsys):
+    assert main(["http://127.0.0.1:1/", "--authorized", "--timeout", "1"]) == 2

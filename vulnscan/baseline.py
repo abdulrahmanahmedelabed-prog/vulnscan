@@ -4,7 +4,9 @@ This is how teams adopt a scanner on an existing codebase without drowning in pr
 same idea as Semgrep ``--baseline``, CodeQL's baseline, and Snyk's ignore policy. A baseline is a small JSON
 file of stable fingerprints (see ``Finding.fingerprint``); it does not store code, only identities, so it is
 safe to commit. Matching is by fingerprint (rule + file + normalized snippet + dedup index), so a finding
-survives edits that shift its line, and a genuinely new issue is never accidentally suppressed.
+survives edits that shift its line or reformat it. Identical findings in the same file (same rule, same
+normalized code) are told apart only by count: if a file had two and now has three, one is reported as new,
+but which of the three carries the label is not meaningful.
 """
 
 from __future__ import annotations
@@ -13,14 +15,14 @@ import json
 import pathlib
 
 from . import __version__
-from .model import Finding, assign_fingerprints
+from .model import Finding, ensure_fingerprints
 
 SCHEMA = "vulnscan-baseline/1"
 
 
 def save_baseline(findings: list[Finding], path: str) -> int:
     """Write the current findings' fingerprints to ``path``. Returns how many were recorded."""
-    assign_fingerprints(findings)
+    ensure_fingerprints(findings)
     entries = []
     for f in sorted(findings, key=lambda f: f.fingerprint()):
         entries.append({"fp": f.fingerprint(), "rule": f.rule_id, "file": f.file, "severity": f.severity})
@@ -46,7 +48,7 @@ def apply_baseline(findings: list[Finding], path: str) -> tuple[list[Finding], i
     A finding in the baseline is dropped (it was known); a finding not in the baseline is kept and marked
     ``extra['new'] = True`` so a report can highlight it. The baseline itself is never modified here."""
     known = load_baseline(path)
-    assign_fingerprints(findings)
+    ensure_fingerprints(findings)
     if not known:
         for f in findings:
             f.extra["new"] = True
