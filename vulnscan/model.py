@@ -18,6 +18,9 @@ SEVERITY_AR = {
 }
 
 
+_COOKIE_RULES = frozenset({"WEB020", "WEB021", "WEB022"})
+
+
 @dataclass
 class Finding:
     rule_id: str
@@ -44,10 +47,14 @@ class Finding:
         * Web findings fingerprint on the title plus a snippet with volatile values removed (cookie values,
           HTTP status codes), so an unchanged site is not reported as new on every run.
         A deduplication index (added by assign_fingerprints) distinguishes identical findings in one file."""
-        file = self.file.split("!", 1)[1] if "!" in self.file else self.file
+        file = self.extra.get("archive_member") or self.file
         snippet = self.snippet or ""
         if self.source == "web":
-            snippet = self.title + "|" + re.sub(r"=[^;\s]*", "", re.sub(r"\bHTTP \d{3}\b", "HTTP", snippet))
+            title = re.sub(r"\d+", "N", self.title)            # "expires in 9 days" must not change identity
+            if self.rule_id in _COOKIE_RULES:
+                snippet = title                                # cookie name is in the title; values/Expires vary
+            else:
+                snippet = title + "|" + re.sub(r"\bHTTP \d{3}\b", "HTTP", snippet)
         norm = re.sub(r"\s+", "", snippet).lower()   # ignore all whitespace: survives reformatting
         raw = f"{self.rule_id}\x00{file.replace(chr(92), '/')}\x00{norm}"
         return hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()[:16]

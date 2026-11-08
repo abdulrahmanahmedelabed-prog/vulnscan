@@ -170,6 +170,15 @@ def _root_uri(target: str) -> str:
         return "file:///"
 
 
+def _base_ids(target: str, findings: list[Finding]) -> dict:
+    """%SRCROOT% is the scanned directory. Findings inside an archive are relative to %ARCHIVEROOT%, which is
+    described (not resolved to a directory: the files only exist inside the archive)."""
+    ids = {"%SRCROOT%": {"uri": _root_uri(target)}}
+    if any(f.extra.get("archive_member") for f in findings):
+        ids["%ARCHIVEROOT%"] = {"description": {"text": f"Root of the scanned archive {pathlib.Path(target).name}"}}
+    return ids
+
+
 def render_sarif(findings: list[Finding], target: str, files: int, notes: list[str]) -> str:
     """SARIF 2.1.0 — the OASIS standard consumed by GitHub Code Scanning, VS Code's SARIF viewer,
     Azure DevOps and others. Rules carry CWE tags and a GitHub security-severity; each result carries
@@ -196,13 +205,16 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
             if f.cwe:
                 rule["relationships"] = [{"target": {"id": f.cwe, "toolComponent": {"name": "CWE"}}}]
             rules[f.rule_id] = rule
+        member = f.extra.get("archive_member")
+        base_id = "%ARCHIVEROOT%" if member else "%SRCROOT%"     # inside an archive: relative to the archive root
         if f.source == "web" and web_base is not None:
-            # a web finding has no source file: point at the page URL itself, with no line region
-            page = f.file if f.file.startswith("/") else "/"
-            host = web_base.netloc if f.file.startswith("/") else (f.file or web_base.netloc)
-            phys = {"artifactLocation": {"uri": f"{web_base.scheme}://{host}{_uri(page)}"}}
+            # a web finding has no source file: point at the exact page that was fetched (already a valid URL),
+            # falling back to the scanned URL itself; no line region
+            pages = f.extra.get("pages") or []
+            page_url = f.extra.get("page") or (pages[0] if pages else None) or target
+            phys = {"artifactLocation": {"uri": page_url}}
         else:
-            phys = {"artifactLocation": {"uri": _uri(f.file), "uriBaseId": "%SRCROOT%"},
+            phys = {"artifactLocation": {"uri": _uri(member or f.file), "uriBaseId": base_id},
                     "region": {"startLine": max(1, f.line or 1)}}
         result = {
             "ruleId": f.rule_id,
@@ -215,7 +227,7 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
         path = f.extra.get("path")
         if path:   # a data-flow finding: emit the source→sink trail as a SARIF codeFlow
             locs = [{"location": {"physicalLocation": {
-                "artifactLocation": {"uri": _uri(str(st.get("file", f.file))), "uriBaseId": "%SRCROOT%"},
+                "artifactLocation": {"uri": _uri(str(st.get("file") or member or f.file)), "uriBaseId": base_id},
                 "region": {"startLine": max(1, int(st.get("line", 1) or 1))}},
                 "message": {"text": str(st.get("text", ""))}}} for st in path]
             result["codeFlows"] = [{"threadFlows": [{"locations": locs}]}]
@@ -232,7 +244,7 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
                 "rules": list(rules.values()),
             }},
             "results": results,
-            **({} if web_base else {"originalUriBaseIds": {"%SRCROOT%": {"uri": _root_uri(target)}}}),
+            **({} if web_base else {"originalUriBaseIds": _base_ids(target, findings)}),
             "properties": {"target": target, "filesScanned": files, "notes": notes},
         }],
     }

@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import __version__
 from .deps import audit_dependencies
 from .external import available, run_external
-from .model import SEVERITY_RANK, Finding, sort_findings
+from .model import SEVERITY_RANK, Finding, assign_fingerprints, sort_findings
 from .report import render_html, render_json, render_markdown, summary_counts
 from .rules import RULES
 from .scanner import ARCHIVE_EXTS, JADX_EXTS, jadx_available, scan_path
@@ -80,6 +80,7 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
                 findings.extend(ext)
                 if ran:
                     notes.append("أدوات خارجية: " + ", ".join(ran))
+        assign_fingerprints(findings)          # on the full list, as the CLI does, so every endpoint agrees
         min_sev = settings.get("min_severity", "info")
         findings = [f for f in sort_findings(findings) if SEVERITY_RANK[f.severity] <= SEVERITY_RANK[min_sev]]
         scan.update(status="done", finished_at=time.time(), files_scanned=files, notes=notes,

@@ -322,3 +322,80 @@ def test_sec007_boundaries_and_facebook(tmp_path):
 
 def test_cli_unreachable_web_returns_2(capsys):
     assert main(["http://127.0.0.1:1/", "--authorized", "--timeout", "1"]) == 2
+
+
+# ---------------------------------------------------------------- regressions from the second review round
+
+def test_entropy_line_length_is_linear():
+    import time
+    line = ".".join("abcd_efgh_ijkl_mnop_q1" for _ in range(173))
+    t = time.time()
+    _entropy_findings("a", 1, line)
+    assert time.time() - t < 0.5
+
+
+def test_entropy_typed_and_call_bindings():
+    tok = "Zk3p" + "Q9vX2mT7bN4cR8wY1hL6jF0sD5gA"
+    for line in (f'api_key: str = "{tok}"', f'const apiKey: string = "{tok}";', f'var apiKey string = "{tok}"',
+                 f"define('API_KEY', '{tok}');", f'props.setProperty("password", "{tok}");',
+                 f'<add key="ApiKey" value="{tok}" />', f"ENV API_KEY {tok}", f"apiKey: `{tok}`",
+                 f'API_KEY = os.environ.get("API_KEY", "{tok}")', f'"Authorization" => "Basic {tok}"',
+                 f'DB_PASSWORD = "{tok}"  # integrity checked', f'export API_TOKEN="{tok}"; echo "${{API_TOKEN}}"'):
+        assert _entropy_findings("a", 1, line), line
+
+
+def test_entropy_reference_names_and_slugs():
+    for line in ("secretName: my-app-tls-cert-2024", 'SECRET_ID = "prod/payments/stripe-webhook-v3"',
+                 'password_reset_template = "emails/password_reset_v2"', 'pwd = "/home/runner/work/app2/build"',
+                 'token_env = "GITHUB_TOKEN_FOR_CI_2"', 'auth: "github-oauth2-provider-v1"',
+                 'passwordInputId = "loginForm-passwordInput2"', 'authClass: "OAuth2PasswordBearerV2"'):
+        assert not _entropy_findings("a", 1, line), line
+
+
+def test_bang_in_ordinary_path_is_not_an_archive():
+    a = _f(rule="EXE004", file="tools/legacy!a.py", snippet="os.system(cmd)")
+    b = _f(rule="EXE004", file="a.py", snippet="os.system(cmd)")
+    assert a.fingerprint() != b.fingerprint()
+
+
+def test_web_volatile_title_and_cookie_attributes():
+    def w(rule, title, snip):
+        return Finding(rule, "medium", title, "ع", "h", 0, snip, "a", source="web").fingerprint()
+    assert w("WEB071", "TLS certificate expires in 10 days", "Nov 18") == \
+        w("WEB071", "TLS certificate expires in 9 days", "Nov 18")
+    t = "Cookie without HttpOnly flag: sid"
+    assert w("WEB021", t, "sid=abc; Path=/; Expires=Sun, 08 Nov 2026 10:00:00 GMT") == \
+        w("WEB021", t, ("sid=" + "A" * 100 + "; Path=/; Expires=Mon, 09 Nov 2026 10:00:01 GMT")[:120])
+
+
+def test_sarif_web_page_urls():
+    f = Finding("WEB051", "high", "Form over HTTP", "ع", "/a%20b/p.html", 0, "x", "a", source="web",
+                extra={"page": "http://h/a%20b/p.html?x=1"})
+    g = Finding("WEB051", "high", "Form over HTTP", "ع", "h", 0, "x", "a", source="web")
+    doc = json.loads(render_sarif([f, g], "http://h/dir/q.html?a=1", 1, []))
+    uris = {r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for r in doc["runs"][0]["results"]}
+    assert uris == {"http://h/a%20b/p.html?x=1", "http://h/dir/q.html?a=1"}
+
+
+def test_sarif_archive_members_use_archive_root(tmp_path):
+    import zipfile
+    with zipfile.ZipFile(tmp_path / "app.zip", "w") as z:
+        z.writestr("t.py", "import subprocess\nx = input()\nsubprocess.call(x, shell=True)\n")
+    out = tmp_path / "r.sarif"
+    main([str(tmp_path / "app.zip"), "--no-deps", "--no-external", "--no-jadx", "-f", "sarif", "-o", str(out)])
+    run = json.loads(out.read_text(encoding="utf-8"))["runs"][0]
+    locs = [r["locations"][0]["physicalLocation"]["artifactLocation"] for r in run["results"]]
+    assert locs and all(l["uriBaseId"] == "%ARCHIVEROOT%" and "!" not in l["uri"] for l in locs)
+    assert "%ARCHIVEROOT%" in run["originalUriBaseIds"]
+
+
+def test_server_scan_fingerprints_unique(tmp_path):
+    from vulnscan.server import Store, run_scan
+    proj = tmp_path / "p"
+    proj.mkdir()
+    (proj / "a.py").write_text("import os\nos.system(cmd)\nx = 1\nos.system(cmd)\n")
+    store = Store(tmp_path / "home")
+    scan = store.new_scan(str(proj), "path")
+    run_scan(store, scan, {"use_osv": False, "use_external": False, "use_jadx": False}, False)
+    fps = [f["fingerprint"] for f in store.get_scan(scan["id"])["findings"]]
+    assert len(fps) == 2 and len(set(fps)) == 2

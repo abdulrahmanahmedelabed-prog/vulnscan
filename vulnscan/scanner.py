@@ -97,24 +97,36 @@ def _excluded(rel: str, excludes: list[str]) -> bool:
     return any(fnmatch.fnmatch(rel, pat) for pat in excludes)
 
 
-# The value must be bound to a secret-like NAME: `name = "…"`, `"name": "…"`, `name: …`, `name => …`, `name := …`.
-# The identifier right before the operator is split into words (snake/kebab/camelCase) and checked as a whole word,
-# so `author_id`, `R.id.authButton`, i18n keys and import paths do not count.
-_ASSIGN_LHS = re.compile(r"""([A-Za-z_$@][A-Za-z0-9_.\-]*)['"\]]*\s*(?:=|:=|=>|:)\s*[@]?['"]?$""")
-_AUTH_SCHEME = re.compile(r"(?i)\b(bearer|token)\s+$")
-_SECRET_WORDS = frozenset({"secret", "secrets", "token", "tokens", "password", "passwd", "pwd", "passphrase", "apikey",
-                           "auth", "credential", "credentials", "pat", "bearer"})
+# The value must be bound to a secret-like NAME. Supported bindings (the name is checked as a whole identifier,
+# by its LAST word, so `author_id`, `secretName`, `token_env`, `R.id.authButton`, i18n keys and imports do not count):
+#   name = v · name: v · name => v · name := v · name: Type = v · var name Type = v · Type name = v
+#   ("name", v) · define('NAME', v) · setProperty("name", v) · getenv("NAME", v) · ENV NAME v · key="name" value=v
+#   Authorization: Bearer|Basic|Token v
+_NAME = r"(?<![\w.$@\-])([A-Za-z_$@][\w.\-]*)"
+_BIND = re.compile(r"""(?x)(?:
+      """ + _NAME + r"""['"\]]*\s*(?::\s*[\w.<>\[\]|?]+\s*)?(?:=|:=|=>|:)          # name [: Type] =
+    | """ + _NAME + r"""\s+([\w.<>\[\]*]+)\s*=                                      # Go `name Type =` / C `Type name =`
+    | ['"]""" + _NAME + r"""['"]\s*,                                                 # ("name", value)
+    | \bENV\s+""" + _NAME + r"""\s                                                   # Dockerfile ENV NAME value
+    | \bkey\s*=\s*['"]""" + _NAME + r"""['"]\s+value\s*=                             # <add key="X" value="…">
+    | \b(?:bearer|basic|token)\s                                                     # Authorization scheme
+  )\s*[@]?['"`]?$""", re.I)
+_SECRET_WORDS = frozenset({"secret", "secrets", "token", "password", "passwd", "pwd", "passphrase", "apikey", "auth",
+                           "credential", "credentials", "pat", "accesskey", "privatekey", "secretkey", "clientsecret",
+                           "authtoken", "pass"})
 _KEY_QUALIFIERS = frozenset({"api", "access", "private", "signing", "encryption", "master", "secret", "client", "app",
-                             "auth", "license", "service", "account", "subscription", "webhook"})
+                             "auth", "license", "service", "account", "subscription", "webhook", "storage", "shared"})
 _TOKEN = re.compile(r"[A-Za-z0-9+/_\-]{16,}={0,2}")
-# Structural line-level skips: templating, data URIs, SRI / lock-file hashes, Go module sums.
-_ENTROPY_SKIP_LINE = re.compile(r"(?i)(\$\{|\{\{|base64,|\bsha(?:1|256|384|512)-|\bintegrity\b|\bh1:)")
 # Placeholder words are checked against the candidate VALUE only, never the whole line (a comment saying
-# "latest" or "contest" must not hide a real key).
+# "latest", "contest" or "integrity" must not hide a real key).
 _PLACEHOLDER = re.compile(r"(?i)(example|sample|placeholder|changeme|your[_-]|xxxx|dummy|fake|redacted|lorem|"
-                          r"00000|12345|abcdef|aaaa|^test|_test_|<[a-z_]+>)")
+                          r"00000|12345|abcdef|aaaa|^test|_test_|^sha(?:1|256|384|512)-)")
+# Context immediately before the value that marks it as not-a-literal: templating, data URI, Go module sum.
+_VALUE_CONTEXT_SKIP = re.compile(r"(\$\{|\{\{|base64,|\bh1:)\s*$")
 _HEXONLY = re.compile(r"^[0-9a-fA-F]+$")
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+# lowercase paths and slugs (`emails/password_reset_v2`, `my-app-tls-cert-2024`): references, not secrets
+_SLUG = re.compile(r"^/?[a-z0-9]+(?:[/._\-][a-z0-9]+){2,}/?$|^/?[a-z0-9._\-]*/[a-z0-9._\-/]*$")
 
 
 def _split_ident(name: str) -> list[str]:
@@ -122,23 +134,27 @@ def _split_ident(name: str) -> list[str]:
     return [w for w in re.split(r"[_\-]+", name.lower()) if w]
 
 
+def _is_secret_ident(name: str | None) -> bool:
+    words = _split_ident(name or "")
+    if not words:
+        return False
+    last = words[-1]
+    return last in _SECRET_WORDS or (last == "key" and len(words) > 1 and words[-2] in _KEY_QUALIFIERS)
+
+
 def _secret_name(prefix: str) -> bool:
-    """Is the text immediately before a value an assignment to a secret-like name?"""
-    if _AUTH_SCHEME.search(prefix):          # "Authorization: Bearer <value>"
-        return True
-    m = _ASSIGN_LHS.search(prefix)
+    """Is the text immediately before a value a binding to a secret-like name? Only the last 120 characters
+    are examined, so the cost per token is bounded however long the line is."""
+    m = _BIND.search(prefix[-120:])
     if not m:
         return False
-    words = _split_ident(m.group(1))
-    if any(w in _SECRET_WORDS for w in words):
-        return True
-    return any(w == "key" and i > 0 and words[i - 1] in _KEY_QUALIFIERS for i, w in enumerate(words)) or \
-        any(w in ("apikey", "accesskey", "privatekey", "secretkey", "clientsecret", "authtoken") for w in words)
+    names = [g for g in m.groups() if g]
+    return not names or any(_is_secret_ident(n) for n in names)    # no names => the Authorization-scheme form
 
 
 def _in_url(line: str, start: int) -> bool:
     """Does the token at `start` sit inside a URL (or a path that is part of one)?"""
-    head = line[:start]
+    head = line[max(0, start - 300):start]
     word_start = max(head.rfind(c) for c in " \t'\"(<>=,`") + 1
     return "://" in head[word_start:] or head[word_start:].startswith("www.")
 
@@ -162,21 +178,26 @@ def _shannon(s: str) -> float:
 def _entropy_findings(rel: str, lineno: int, line: str) -> list[Finding]:
     """Generic high-entropy secret detection (gitleaks / trufflehog style), for keys from providers we have no
     explicit pattern for. Two triggers:
-      1. a random-looking value assigned to a secret-like name (`api_key = "…"`, `"password": "…"`);
+      1. a random-looking value bound to a secret-like name (`api_key = "…"`, `"password": "…"`, `ENV TOKEN …`);
       2. a standalone, very-high-entropy base62/base64 run of 40+ characters (not hex, not in a URL, not a cert).
     """
-    if _ENTROPY_SKIP_LINE.search(line):
-        return []
     for m in _TOKEN.finditer(line):
         tok = m.group(0)
-        if len(tok) < 20 or len(tok) > 200 or _PLACEHOLDER.search(tok) or _UUID.match(tok):
+        if len(tok) < 20 or len(tok) > 200 or _PLACEHOLDER.search(tok) or _UUID.match(tok) or _SLUG.match(tok):
             continue
         has_upper = any(c.isupper() for c in tok)
         has_lower = any(c.islower() for c in tok)
         has_digit = any(c.isdigit() for c in tok)
+        if not has_digit:
+            continue                       # every trigger needs a digit; words and identifiers are skipped cheaply
         ent = _shannon(tok)
-        mixed = has_upper and has_lower and has_digit        # base64/base62-like, not a plain word or hex hash
-        if _secret_name(line[:m.start()]) and ent >= 3.5 and (has_digit or mixed):
+        if ent < 3.5:
+            continue
+        before = line[max(0, m.start() - 120):m.start()]
+        if _VALUE_CONTEXT_SKIP.search(before):
+            continue
+        mixed = has_upper and has_lower                   # base64/base62-like, not a plain word or hex hash
+        if _secret_name(before):
             reason = "token assigned to a secret-like name"
         elif (mixed and ent >= 4.2 and len(tok) >= 40 and not _HEXONLY.match(tok) and not tok.startswith("MII")
               and not _in_url(line, m.start())):
@@ -437,6 +458,7 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                         notes.extend(qnotes)
         if tmp is not None:
             for f in findings:
+                f.extra.setdefault("archive_member", f.file)      # stable identity across artifact versions
                 f.file = f"{target.name}!{f.file}"
         if jadx and is_jadx_bundle(target):
             jadx_dir, note = decompile_with_jadx(target, jadx_timeout)
@@ -447,6 +469,7 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                 for p, rel in iter_files(jadx_dir, jadx_ex):
                     count += 1
                     for f in scan_sensitive_names(rel, ignore_rules) + scan_file(p, rel, rules, ignore_rules):
+                        f.extra.setdefault("archive_member", f"decompiled/{f.file}")
                         f.file = f"{target.name}!decompiled/{f.file}"
                         f.extra["decompiled"] = True
                         findings.append(f)
