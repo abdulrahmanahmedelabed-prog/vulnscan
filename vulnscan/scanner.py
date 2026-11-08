@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import math
 import os
 import pathlib
 import re
@@ -29,7 +30,7 @@ SKIP_FILE_GLOBS = (
     "pnpm-lock.yaml", "*.svg", "*.ttf", "*.otf", "*.woff*", "*.png", "*.jpg",
     "*.jpeg", "*.gif", "*.ico", "*.pdf", "*.mp3", "*.wav", "*.mp4", "*.zip",
     "*.gz", "*.bin", "*.so", "*.dylib", "*.dll", "*.class", "*.jar", "*.pyc",
-    "*.wasm", "*.dex", "*.vql",
+    "*.wasm", "*.dex", "*.vql", "go.sum",
 )
 ARCHIVE_EXTS = (".zip", ".jar", ".war", ".ear", ".apk", ".aar", ".whl", ".ipa", ".nupkg",
                 ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz")
@@ -96,6 +97,62 @@ def _excluded(rel: str, excludes: list[str]) -> bool:
     return any(fnmatch.fnmatch(rel, pat) for pat in excludes)
 
 
+_SECRET_KEY = re.compile(r"(?i)(secret|token|passwd|password|pwd|api[_-]?key|apikey|access[_-]?key|client[_-]?secret|"
+                         r"auth|credential|private[_-]?key|encryption[_-]?key|signing[_-]?key)")
+_TOKEN = re.compile(r"[A-Za-z0-9+/_\-]{16,}={0,2}")
+_ENTROPY_SKIP = re.compile(r"(?i)(example|sample|placeholder|changeme|your[_-]|xxx+|dummy|test|fake|mock|redacted|"
+                           r"lorem|00000|12345|abcdef|aaaa|\$\{|\{\{|<[a-z_]+>|base64,|sha(?:1|256|384|512)-|integrity|h1:)")
+# strings we must not flag: version/hash-looking content in lock/doc files, base64 of images, etc.
+_HEXONLY = re.compile(r"^[0-9a-fA-F]+$")
+
+
+# Catalogue entry for the entropy detector (it is a function, not a regex Rule, so it is listed explicitly).
+ENTROPY_RULE = {"id": "SEC011", "severity": "high", "cwe": "CWE-798",
+                "title": "High-entropy string (possible secret)", "title_ar": "سلسلة عالية العشوائية (سرّ محتمل)",
+                "advice": "تحقّق: إن كان سرًّا حقيقيًا فأبطله وانقله إلى متغير بيئة أو مدير أسرار."}
+
+
+def _shannon(s: str) -> float:
+    if not s:
+        return 0.0
+    counts: dict = {}
+    for ch in s:
+        counts[ch] = counts.get(ch, 0) + 1
+    n = len(s)
+    return -sum((c / n) * math.log2(c / n) for c in counts.values())
+
+
+def _entropy_findings(rel: str, lineno: int, line: str) -> list[Finding]:
+    """Generic high-entropy secret detection: a random-looking token assigned to a secret-like name, or a
+    standalone very-high-entropy base64 token. Catches keys from providers we have no explicit pattern for."""
+    if _ENTROPY_SKIP.search(line):
+        return []
+    key_here = _SECRET_KEY.search(line) is not None
+    out = []
+    for m in _TOKEN.finditer(line):
+        tok = m.group(0)
+        if len(tok) < 20 or len(tok) > 200:
+            continue
+        has_upper = any(c.isupper() for c in tok)
+        has_lower = any(c.islower() for c in tok)
+        has_digit = any(c.isdigit() for c in tok)
+        ent = _shannon(tok)
+        mixed = has_upper and has_lower and has_digit        # base64/base62-like, not a plain word or hex hash
+        if key_here and ent >= 3.5 and (has_digit or mixed) and len(tok) >= 20:
+            reason = "token assigned to a secret-like name"
+        elif mixed and ent >= 4.2 and len(tok) >= 40 and not _HEXONLY.match(tok):
+            reason = "standalone high-entropy token"
+        else:
+            continue
+        out.append(Finding("SEC011", "high", "High-entropy string (possible secret)",
+                           "سلسلة عالية العشوائية (سرّ محتمل)", rel, lineno, line.strip()[:200],
+                           "تحقّق: إن كان سرًّا حقيقيًا فأبطله وانقله إلى متغير بيئة أو مدير أسرار. "
+                           "إن كان قيمة مشروعة (تجزئة، معرّف) فاستثنِ السطر بـ # nosec.",
+                           "CWE-798", extra={"entropy": round(ent, 2), "why": reason}))
+        break   # one per line is enough
+    return out
+
+
 def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set[str]) -> list[Finding]:
     findings: list[Finding] = []
     if any(fnmatch.fnmatch(path.name, g) for g in SKIP_FILE_GLOBS):
@@ -125,12 +182,17 @@ def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set
     for lineno, line in enumerate(text.splitlines(), 1):
         if len(line) > MAX_LINE_LEN or SUPPRESS.search(line):
             continue
+        line_hits = 0
         for rule in applicable:
             if rule.pattern.search(line) and not (rule.skip and rule.skip.search(line)):
+                line_hits += 1
                 findings.append(Finding(
                     rule_id=rule.id, severity=rule.severity, title=rule.title, title_ar=rule.title_ar,
                     file=rel, line=lineno, snippet=line.strip()[:200], advice=rule.advice, cwe=rule.cwe,
                 ))
+        # generic entropy check only if no explicit secret rule already matched this line
+        if not line_hits and "SEC011" not in ignore_rules:
+            findings.extend(_entropy_findings(rel, lineno, line))
     return findings
 
 

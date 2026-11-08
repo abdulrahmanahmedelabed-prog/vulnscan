@@ -72,6 +72,30 @@ RULES: list[Rule] = [
          _r(r"(?i)\b(postgres(ql)?|mysql|mongodb(\+srv)?|redis|amqp|mssql)://[^:/\s'\"]+:[^@\s'\"]{3,}@"),
          "احذف كلمة المرور من السلسلة واقرأها من متغير بيئة.", "CWE-798",
          skip=_r(r"(?i)(example|localhost|127\.0\.0\.1|\$\{|\{\{|<pass|password@|changeme)")),
+    Rule("SEC007", "critical", "Cloud / service provider token", "رمز مزوّد خدمة سحابية",
+         _r(r"\b(SG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}"           # SendGrid
+            r"|SK[0-9a-fA-F]{32}"                                          # Twilio API key SID
+            r"|AC[0-9a-fA-F]{32}"                                          # Twilio Account SID
+            r"|key-[0-9a-zA-Z]{32}"                                        # Mailgun
+            r"|npm_[A-Za-z0-9]{36}"                                        # npm token
+            r"|pypi-AgEIcHlwaS[A-Za-z0-9_\-]{50,}"                        # PyPI token
+            r"|dop_v1_[a-f0-9]{64}"                                        # DigitalOcean
+            r"|shpat_[a-fA-F0-9]{32}"                                      # Shopify private app
+            r"|sq0atp-[0-9A-Za-z\-_]{22}"                                 # Square
+            r"|EAACEdEose0cBA[0-9A-Za-z]+"                                 # Facebook
+            r"|ya29\.[0-9A-Za-z_\-]{30,}"                                # Google OAuth access
+            r"|[0-9]{8,10}:AA[0-9A-Za-z_\-]{33})\b"),                    # Telegram bot token
+         "أبطل الرمز من لوحة المزوّد فورًا وأصدر غيره، وانقله إلى متغيرات البيئة أو مدير أسرار.", "CWE-798"),
+    Rule("SEC008", "high", "Slack / Discord / Teams webhook URL", "رابط webhook (Slack/Discord/Teams)",
+         _r(r"https://(hooks\.slack\.com/services/[A-Za-z0-9/]+|discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_\-]+|[a-z0-9.]+\.webhook\.office\.com/[A-Za-z0-9/@\-]+)"),
+         "أبطل الرابط (يسمح بالنشر دون مصادقة) وانقله إلى سرّ مُدار.", "CWE-798"),
+    Rule("SEC009", "critical", "GCP service-account key (JSON)", "مفتاح حساب خدمة GCP (JSON)",
+         _r(r'"type"\s*:\s*"service_account"'),
+         "احذف ملف مفتاح حساب الخدمة من المستودع، وأبطله من GCP IAM.", "CWE-798",
+         langs=frozenset({".json"})),
+    Rule("SEC010", "high", "Azure storage account key / connection string", "مفتاح أو سلسلة اتصال Azure Storage",
+         _r(r"(?i)(AccountKey=[A-Za-z0-9+/]{80,}==|DefaultEndpointsProtocol=https;AccountName=)"),
+         "أبطل مفتاح الوصول من Azure وأعد توليده، واستخدم هويات مُدارة.", "CWE-798"),
 
     # -------------------------------------------------------- code execution
     Rule("EXE001", "critical", "eval()/exec() on dynamic input", "تنفيذ كود ديناميكي eval/exec",

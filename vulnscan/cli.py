@@ -10,7 +10,8 @@ from . import __version__
 from .deps import audit_dependencies
 from .external import run_external
 from .model import SEVERITIES, SEVERITY_RANK, Finding, sort_findings
-from .report import render_console, render_html, render_json, render_markdown, summary_counts
+from .report import render_console, render_html, render_json, render_markdown, render_sarif, summary_counts
+from .baseline import apply_baseline, save_baseline
 from .rules import RULES
 from .scanner import scan_path
 from .web import WebUnreachable, scan_site
@@ -31,13 +32,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("target", nargs="?", help="مسار مجلد/ملف/أرشيف، أو عنوان http(s):// للفحص السلبي، أو «ui» لتشغيل الواجهة الرسومية")
     p.add_argument("--authorized", action="store_true",
                    help="أقرّ بأنني مخوَّل بفحص هذا الهدف (إلزامي لفحص عناوين الويب)")
-    p.add_argument("-f", "--format", choices=("console", "markdown", "json", "html"), default="console")
+    p.add_argument("-f", "--format", choices=("console", "markdown", "json", "html", "sarif"), default="console",
+                   help="صيغة التقرير؛ sarif للتكامل مع GitHub Code Scanning وVS Code")
     p.add_argument("-o", "--output", help="اكتب التقرير إلى هذا الملف بدلًا من الشاشة")
     p.add_argument("--all-formats", metavar="PREFIX", help="اكتب PREFIX.md و PREFIX.json و PREFIX.html معًا")
     p.add_argument("--exclude", action="append", default=[], metavar="GLOB", help="استثنِ مسارات (يمكن تكراره)")
     p.add_argument("--ignore-rule", action="append", default=[], metavar="ID", help="تجاهل قاعدة بمعرّفها")
     p.add_argument("--min-severity", choices=SEVERITIES, default="info", help="اعرض هذه الخطورة فما فوق فقط")
     p.add_argument("--fail-on", choices=SEVERITIES, help="أعد رمز خروج 1 إذا وُجدت نتيجة بهذه الخطورة أو أعلى (لـ CI)")
+    p.add_argument("--baseline", metavar="FILE", help="قارن مع خط أساس: اعرض النتائج الجديدة فقط (النتائج المعروفة تُكتم)")
+    p.add_argument("--write-baseline", metavar="FILE", help="احفظ بصمات النتائج الحالية في خط أساس ثم اخرج (لتبنّي الأداة على كود قائم)")
     p.add_argument("--no-deps", action="store_true", help="لا تستعلم OSV.dev عن ثغرات الاعتماديات (دون إنترنت)")
     p.add_argument("--no-external", action="store_true", help="لا تشغّل bandit/semgrep/gitleaks/npm حتى لو كانت مثبّتة")
     p.add_argument("--deep", action="store_true", help="فحص ويب أعمق: تحليل HTML وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)")
@@ -73,9 +77,11 @@ def ui_main(argv: list[str]) -> int:
 
 
 def _list_rules() -> str:
-    lines = [f"{len(RULES)} قاعدة مدمجة:", ""]
+    lines = [f"{len(RULES) + 1} قاعدة مدمجة:", ""]
     for r in sorted(RULES, key=lambda r: (SEVERITY_RANK[r.severity], r.id)):
         lines.append(f"{r.id:<8} {r.severity:<9} {r.cwe:<9} {r.title_ar} — {r.title}")
+    from .scanner import ENTROPY_RULE as e
+    lines.append(f"{e['id']:<8} {e['severity']:<9} {e['cwe']:<9} {e['title_ar']} — {e['title']} (إنتروبيا شانون)")
     from .taint import TAINT_RULES
     lines += ["", f"{len(TAINT_RULES)} قاعدة تدفق بيانات وAPEX (12 لغة منها PL/SQL، مدركة للأنواع، عبر الملفات):", ""]
     for t in sorted(TAINT_RULES, key=lambda t: (SEVERITY_RANK[t["severity"]], t["id"])):
@@ -151,15 +157,25 @@ def main(argv: list[str] | None = None) -> int:
     findings = [f for f in findings if SEVERITY_RANK[f.severity] <= SEVERITY_RANK[args.min_severity]]
     findings = sort_findings(findings)
 
+    if args.write_baseline:
+        n = save_baseline(findings, args.write_baseline)
+        print(f"حُفظ خط الأساس: {n} بصمة في {args.write_baseline}. الفحوص القادمة مع --baseline ستعرض الجديد فقط.")
+        return 0
+    if args.baseline:
+        findings, suppressed, size = apply_baseline(findings, args.baseline)
+        notes = list(notes) + ([f"خط الأساس: كُتمت {suppressed} نتيجة معروفة من أصل {size}؛ تُعرض النتائج الجديدة فقط."]
+                               if size else ["خط الأساس غير موجود أو فارغ؛ كل النتائج تُعرض كجديدة."])
+
     renderers = {"console": lambda: render_console(findings, target, files, notes, color=not args.no_color and args.output is None),
                  "markdown": lambda: render_markdown(findings, target, files, notes),
                  "json": lambda: render_json(findings, target, files, notes),
-                 "html": lambda: render_html(findings, target, files, notes)}
+                 "html": lambda: render_html(findings, target, files, notes),
+                 "sarif": lambda: render_sarif(findings, target, files, notes)}
     if args.all_formats:
-        for ext, fn in (("md", render_markdown), ("json", render_json), ("html", render_html)):
+        for ext, fn in (("md", render_markdown), ("json", render_json), ("html", render_html), ("sarif", render_sarif)):
             pathlib.Path(f"{args.all_formats}.{ext}").write_text(fn(findings, target, files, notes), encoding="utf-8")
         print(render_console(findings, target, files, notes, color=not args.no_color))
-        print(f"\nكُتبت التقارير: {args.all_formats}.md / .json / .html")
+        print(f"\nكُتبت التقارير: {args.all_formats}.md / .json / .html / .sarif")
     else:
         text = renderers[args.format]()
         if args.output:

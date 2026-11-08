@@ -6,7 +6,11 @@ import html
 import json
 from datetime import datetime, timezone
 
-from .model import SEVERITIES, SEVERITY_AR, Finding, sort_findings
+from . import __version__
+from .model import (SARIF_LEVEL, SECURITY_SEVERITY, SEVERITIES, SEVERITY_AR, Finding,
+                    assign_fingerprints, sort_findings)
+
+REPO_URL = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan"
 
 COLORS = {"critical": "\033[1;97;41m", "high": "\033[1;31m", "medium": "\033[1;33m",
           "low": "\033[1;36m", "info": "\033[1;37m"}
@@ -147,3 +151,65 @@ code{{direction:ltr;unicode-bidi:embed;font-size:.85em}}\n.flow{{margin:.4rem 0 
 <table><thead><tr><th>الخطورة</th><th>القاعدة</th><th>الثغرة</th><th>الموضع</th><th>الإصلاح</th></tr></thead>
 <tbody>{''.join(rows) or '<tr><td colspan=5>✔ لا نتائج</td></tr>'}</tbody></table>
 </body></html>"""
+
+
+def render_sarif(findings: list[Finding], target: str, files: int, notes: list[str]) -> str:
+    """SARIF 2.1.0 — the OASIS standard consumed by GitHub Code Scanning, VS Code's SARIF viewer,
+    Azure DevOps and others. Rules carry CWE tags and a GitHub security-severity; each result carries
+    a stable partialFingerprint so the platform can track an issue across commits."""
+    findings = sort_findings(findings)
+    assign_fingerprints(findings)
+    rules: dict[str, dict] = {}
+    results = []
+    for f in findings:
+        if f.rule_id not in rules:
+            props = {"security-severity": SECURITY_SEVERITY.get(f.severity, "0")}
+            tags = ["security", f.source]
+            if f.cwe:
+                tags.append(f.cwe.lower().replace("cwe-", "external/cwe/cwe-"))
+            props["tags"] = tags
+            rule = {"id": f.rule_id, "name": f.rule_id,
+                    "shortDescription": {"text": f.title or f.rule_id},
+                    "fullDescription": {"text": f.title_ar or f.title or f.rule_id},
+                    "helpUri": f.extra.get("url") or f"{REPO_URL}#{f.rule_id}",
+                    "help": {"text": f.advice or ""},
+                    "defaultConfiguration": {"level": SARIF_LEVEL.get(f.severity, "warning")},
+                    "properties": props}
+            if f.cwe:
+                rule["relationships"] = [{"target": {"id": f.cwe, "toolComponent": {"name": "CWE"}}}]
+            rules[f.rule_id] = rule
+        region = {"startLine": max(1, f.line)} if f.line else {"startLine": 1}
+        result = {
+            "ruleId": f.rule_id,
+            "level": SARIF_LEVEL.get(f.severity, "warning"),
+            "message": {"text": f"{f.title}: {f.snippet}".strip(": ") or f.rule_id},
+            "locations": [{"physicalLocation": {
+                "artifactLocation": {"uri": f.file.replace("\\", "/")},
+                "region": region}}],
+            "partialFingerprints": {"vulnscan/v1": f.fingerprint()},
+            "properties": {"severity": f.severity, "title_ar": f.title_ar, "advice": f.advice},
+        }
+        path = f.extra.get("path")
+        if path:   # a data-flow finding: emit the source→sink trail as a SARIF codeFlow
+            locs = [{"location": {"physicalLocation": {
+                "artifactLocation": {"uri": str(st.get("file", f.file)).replace("\\", "/")},
+                "region": {"startLine": max(1, int(st.get("line", 1) or 1))}},
+                "message": {"text": str(st.get("text", ""))}}} for st in path]
+            result["codeFlows"] = [{"threadFlows": [{"locations": locs}]}]
+        results.append(result)
+    sarif = {
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [{
+            "tool": {"driver": {
+                "name": "vulnscan",
+                "fullName": "vulnscan (كاشِف) security scanner",
+                "version": __version__,
+                "informationUri": REPO_URL,
+                "rules": list(rules.values()),
+            }},
+            "results": results,
+            "properties": {"target": target, "filesScanned": files, "notes": notes},
+        }],
+    }
+    return json.dumps(sarif, ensure_ascii=False, indent=2)

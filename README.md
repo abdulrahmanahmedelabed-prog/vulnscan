@@ -419,15 +419,51 @@ vulnscan https://my-site.example --authorized
 
 # عرض القواعد
 vulnscan --list-rules .
+
+# SARIF لـ GitHub Code Scanning وVS Code
+vulnscan . -f sarif -o vulnscan.sarif
+
+# تبنّي الأداة على كود قائم: احفظ الموجود اليوم، ثم اعرض الجديد فقط
+vulnscan . --write-baseline .vulnscan-baseline.json
+vulnscan . --baseline .vulnscan-baseline.json --fail-on high
 ```
+
+### التكامل مع GitHub Code Scanning (SARIF)
+
+```yaml
+permissions:
+  security-events: write   # يلزم لرفع SARIF
+# ...
+- run: pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan && vulnscan . --no-deps -f sarif -o vulnscan.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: vulnscan.sarif
+```
+
+تظهر النتائج في تبويب Security ومباشرة على أسطر طلبات الدمج، مع درجة خطورة رقمية وCWE ومسار تدفق البيانات
+(من المصدر إلى نقطة الخطر). كل نتيجة تحمل بصمة ثابتة لا تتغير بتحريك السطر أو إعادة تنسيقه، فلا تتكرر الإنذارات.
+
+### خط الأساس (Baseline)
+
+على كود قائم فيه مئات النتائج القديمة، احفظ بصماتها مرة واحدة بـ `--write-baseline` واحفظ الملف في المستودع
+(لا يحوي كودًا، بصمات فقط). بعدها `--baseline` يكتم المعروف ويعرض **الجديد فقط**، و`--fail-on` يُفشل البناء
+على الجديد وحده. البصمة = القاعدة + الملف + المقتطف بلا مسافات، فتصمد أمام إزاحة الأسطر وإعادة التنسيق.
+
+### كشف الأسرار
+
+أنماط مزوّدين محددة (AWS وGitHub وSlack وStripe وGoogle وSendGrid وTwilio وMailgun وnpm وPyPI وDigitalOcean
+وShopify وSquare وFacebook وTelegram، وروابط Webhook، ومفاتيح حساب خدمة GCP، ومفاتيح Azure Storage)،
+إضافة إلى **كشف بالعشوائية (إنتروبيا شانون)** على نهج gitleaks وtrufflehog يلتقط مفاتيح مزوّدين لا نمط لهم،
+مع تجاهل التجزئات السداسية وقيم الأمثلة وبيانات base64 للصور وتجزئات integrity.
 
 ### الخيارات
 
 | الخيار | الوصف |
 |---|---|
-| `-f console\|markdown\|json\|html` | صيغة التقرير |
+| `-f console\|markdown\|json\|html\|sarif` | صيغة التقرير (sarif لـ GitHub Code Scanning وVS Code) |
+| `--baseline FILE` / `--write-baseline FILE` | اعرض الجديد فقط مقارنة بخط أساس / احفظ خط الأساس |
 | `-o FILE` | كتابة التقرير إلى ملف |
-| `--all-formats PREFIX` | كتابة `PREFIX.md` و `PREFIX.json` و `PREFIX.html` |
+| `--all-formats PREFIX` | كتابة `PREFIX.md` و `PREFIX.json` و `PREFIX.html` و `PREFIX.sarif` |
 | `--min-severity LEVEL` | عرض هذه الخطورة فما فوق |
 | `--fail-on LEVEL` | رمز خروج 1 عند وجود نتيجة بهذه الخطورة أو أعلى |
 | `--exclude GLOB` | استثناء مسارات (يُكرَّر) |
@@ -477,6 +513,7 @@ vulnscan — ./my-project  (156 ملفًا مفحوصًا، 37 نتيجة)
 | فحص ويب سلبي (ترويسات/CSP/TLS/شهادة/مسارات مكشوفة) | ✅ | ❌ | ❌ | محدود (SaaS) | ❌ | ❌ | ❌ |
 | واجهة رسومية محلية | ✅ بلا خادم خارجي | ❌ (SaaS) | ✅ (تحتاج خادم وقاعدة بيانات) | SaaS | على GitHub | ❌ | ❌ |
 | التقرير مرتّب حسب الخطورة | ✅ أساسًا | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| مخرجات SARIF وخط أساس (الجديد فقط) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (SARIF) | ✅ |
 | مقارنة فحصين (ما أُصلح/ما استجد) | ✅ | في SaaS | ✅ | ✅ | ✅ | ❌ | ❌ |
 | يعمل دون إنترنت | ✅ (عدا OSV) | ✅ محليًا | ✅ | ❌ | ✅ CLI | ✅ | ✅ (بعد تنزيل DB) |
 | الاعتماديات | **صفر** (Python فقط) | ثنائي + قواعد | Java + DB | حساب Snyk | CodeQL CLI | pip | ثنائي Go |

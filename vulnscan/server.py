@@ -195,6 +195,8 @@ class Handler(BaseHTTPRequestHandler):
             rules = [{"id": r.id, "severity": r.severity, "title": r.title, "title_ar": r.title_ar,
                       "cwe": r.cwe, "advice": r.advice,
                       "langs": sorted(r.langs) if r.langs else ["*"]} for r in RULES]
+            from .scanner import ENTROPY_RULE
+            rules.append({**ENTROPY_RULE, "langs": ["*"]})
             rules += [{**t, "langs": [".py .js .ts (تدفق بيانات)"]} for t in TAINT_RULES]
             from .vql import catalogue
             rules += [{**q, "langs": ["VQL"]} for q in catalogue()]
