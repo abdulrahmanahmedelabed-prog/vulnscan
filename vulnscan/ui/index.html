@@ -182,6 +182,7 @@
         <div class="field"><label data-i18n="set.exclude">مسارات مستثناة (سطر لكل نمط)</label><textarea name="exclude" class="input mono" rows="4" dir="ltr"></textarea></div>
         <div class="field"><label data-i18n="set.ignore">قواعد متجاهَلة (معرّف لكل سطر)</label><textarea name="ignore_rules" class="input mono" rows="3" dir="ltr"></textarea></div>
         <div class="field"><label data-i18n="set.webTimeout">مهلة طلب الويب بالثواني (يُعاد الطلب الأول مرة بمهلة مضاعفة)</label><input name="web_timeout" type="number" min="5" max="120" class="input" dir="ltr"></div>
+        <div class="field"><label data-i18n="set.webDelay">تأخير بين طلبات الزحف بالثواني (ألطف على الخادم وجدار الحماية)</label><input name="web_delay" type="number" min="0" max="10" step="0.1" class="input" dir="ltr"></div>
         <div class="field"><label data-i18n="set.authTargets">عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)</label><textarea name="authorized_targets" class="input mono" rows="3" dir="ltr"></textarea></div>
         <label class="check"><input type="checkbox" name="use_osv"> <span data-i18n="set.osv">الاستعلام من OSV.dev عن ثغرات الاعتماديات (يحتاج إنترنت)</span></label>
         <label class="check"><input type="checkbox" name="use_external"> <span data-i18n="set.external">دمج نتائج الأدوات الخارجية المثبّتة</span> <small id="ext-tools" class="muted"></small></label>

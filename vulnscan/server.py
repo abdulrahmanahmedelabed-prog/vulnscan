@@ -51,10 +51,11 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
             deep = bool(scan.get("deep"))
             crawl = bool(scan.get("crawl"))
             timeout = float(settings.get("web_timeout") or 20)
-            findings, extra = scan_site(target, timeout=timeout, deep=deep, crawl=crawl)   # raises WebUnreachable -> status "error"
-            files = 1
+            delay = float(settings.get("web_delay", 0.5))
+            # raises WebUnreachable -> status "error"
+            findings, extra, files = scan_site(target, timeout=timeout, deep=deep, crawl=crawl, delay=delay)
             if crawl:
-                notes.append("فحص ويب سلبي مع زحف على صفحات النطاق نفسه.")
+                notes.append(f"فحص ويب سلبي مع زحف على {files} صفحة من النطاق نفسه (طلب كل {delay:g} ثانية).")
             else:
                 notes.append("فحص ويب سلبي أعمق: تحليل الصفحة ومسارات مكشوفة شائعة." if deep else "فحص ويب سلبي: طلب واحد فقط.")
             if extra:

@@ -14,6 +14,7 @@ DEFAULT_SETTINGS = {
     "theme": "auto",
     "min_severity": "info",
     "web_timeout": 20,
+    "web_delay": 0.5,
     "exclude": ["tests/*", "**/test_*", "**/*.test.*"],
     "ignore_rules": [],
     "use_osv": True,

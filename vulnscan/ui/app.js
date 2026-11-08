@@ -14,13 +14,13 @@ const I18N = {
     'scan.authorize': 'أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه', 'scan.deep': 'فحص أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)', 'scan.crawl': 'زحف على صفحات الموقع وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)', 'scan.legal': 'فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.', 'scan.viewResults': 'عرض النتائج',
     'scan.running': 'جارٍ الفحص…', 'scan.done': 'اكتمل الفحص', 'scan.failed': 'فشل الفحص', 'scan.needAuth': 'يجب تأكيد الصلاحية أولًا', 'scan.selected': 'ملف محدد', 'scan.uploading': 'جارٍ الرفع…',
     'find.title': 'النتائج', 'find.sub': 'مرتبة من الأعلى خطورة إلى الأقل. اضغط على أي نتيجة لعرض التفاصيل وطريقة الإصلاح.', 'find.search': 'ابحث في الملف أو القاعدة أو النص…', 'find.allSources': 'كل المصادر',
-    'find.none': 'لا نتائج مطابقة.', 'find.flow': 'مسار التدفق (من المصدر إلى نقطة الخطر)', 'set.models': 'مجلد نماذج إضافية لمحرّك تدفق البيانات (JSON: مصادر، نقاط خطر، مُعقّمات)', 'set.queries': 'مجلد استعلامات VQL إضافية (لغة استعلام تصريحية فوق قاعدة بيانات البرنامج)', 'find.files': 'ملفًا مفحوصًا', 'find.advice': 'طريقة الإصلاح', 'find.snippet': 'المقتطف', 'find.ref': 'المرجع',
+    'find.none': 'لا نتائج مطابقة.', 'find.flow': 'مسار التدفق (من المصدر إلى نقطة الخطر)', 'set.models': 'مجلد نماذج إضافية لمحرّك تدفق البيانات (JSON: مصادر، نقاط خطر، مُعقّمات)', 'set.queries': 'مجلد استعلامات VQL إضافية (لغة استعلام تصريحية فوق قاعدة بيانات البرنامج)', 'find.files': 'ملفًا مفحوصًا', 'find.pages': 'صفحة مفحوصة', 'find.onPages': 'ظهرت في {n} صفحة', 'find.advice': 'طريقة الإصلاح', 'find.snippet': 'المقتطف', 'find.ref': 'المرجع',
     'rep.title': 'التقارير', 'rep.sub': 'سجل كل الفحوصات، تنزيل التقارير، ومقارنة فحصين لمعرفة ما أُصلح وما استجد.', 'rep.compare': 'مقارنة فحصين', 'rep.compareBtn': 'قارن', 'rep.fixed': '✅ أُصلحت (اختفت)', 'rep.new': '🆕 جديدة (ظهرت)',
     'rep.target': 'الهدف', 'rep.date': 'التاريخ', 'rep.status': 'الحالة', 'rep.total': 'الإجمالي', 'rep.actions': 'إجراءات', 'rep.delete': 'حذف', 'rep.view': 'عرض', 'rep.nothing': 'لا شيء',
     'rules.title': 'القواعد المدمجة', 'rules.search': 'ابحث في القواعد…', 'rules.count': 'قاعدة', 'rules.id': 'المعرّف', 'rules.sev': 'الخطورة', 'rules.name': 'الثغرة', 'rules.langs': 'الملفات', 'rules.advice': 'الإصلاح',
     'set.title': 'الإعدادات', 'set.sub': 'تُحفظ على هذا الجهاز وتُطبَّق على كل الفحوصات القادمة.', 'set.minSev': 'أدنى خطورة تُعرض', 'set.failOn': 'إفشال CI عند خطورة', 'set.exclude': 'مسارات مستثناة (سطر لكل نمط)',
     'set.ignore': 'قواعد متجاهَلة (معرّف لكل سطر)', 'set.authTargets': 'عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)', 'set.osv': 'الاستعلام من OSV.dev عن ثغرات الاعتماديات (يحتاج إنترنت)',
-    'set.external': 'دمج نتائج الأدوات الخارجية المثبّتة', 'set.jadx': 'فك تجميع APK / JAR / AAR / DEX بواسطة jadx وفحص الكود الناتج', 'set.jadxLibs': 'فحص مكتبات الطرف الثالث داخل الكود المفكوك أيضًا (نتائج أكثر وضجيج أكثر)', 'set.jadxTimeout': 'مهلة jadx بالثواني', 'set.jadxOn': 'jadx مثبّت ✓', 'set.jadxOff': 'jadx غير مثبّت — ثبّته من github.com/skylot/jadx ليُفكّ الكود الثنائي', 'scan.jadxOn': 'jadx مثبّت: سيُفكّ تجميع APK/JAR/AAR/DEX ويُفحص الكود الناتج أيضًا.', 'scan.jadxOff': 'jadx غير مثبّت: تُفحص الملفات النصية داخل APK/JAR فقط. ثبّت jadx (يحتاج Java) لفك تجميع الكود.', 'set.keep': 'عدد الفحوصات المحفوظة', 'set.webTimeout': 'مهلة طلب الويب بالثواني (يُعاد الطلب الأول مرة بمهلة مضاعفة)', 'set.save': 'حفظ', 'set.saved': 'تم الحفظ ✓', 'set.home': 'مجلد البيانات', 'set.none': 'لا توجد أدوات مثبّتة',
+    'set.external': 'دمج نتائج الأدوات الخارجية المثبّتة', 'set.jadx': 'فك تجميع APK / JAR / AAR / DEX بواسطة jadx وفحص الكود الناتج', 'set.jadxLibs': 'فحص مكتبات الطرف الثالث داخل الكود المفكوك أيضًا (نتائج أكثر وضجيج أكثر)', 'set.jadxTimeout': 'مهلة jadx بالثواني', 'set.jadxOn': 'jadx مثبّت ✓', 'set.jadxOff': 'jadx غير مثبّت — ثبّته من github.com/skylot/jadx ليُفكّ الكود الثنائي', 'scan.jadxOn': 'jadx مثبّت: سيُفكّ تجميع APK/JAR/AAR/DEX ويُفحص الكود الناتج أيضًا.', 'scan.jadxOff': 'jadx غير مثبّت: تُفحص الملفات النصية داخل APK/JAR فقط. ثبّت jadx (يحتاج Java) لفك تجميع الكود.', 'set.keep': 'عدد الفحوصات المحفوظة', 'set.webTimeout': 'مهلة طلب الويب بالثواني (يُعاد الطلب الأول مرة بمهلة مضاعفة)', 'set.webDelay': 'تأخير بين طلبات الزحف بالثواني (ألطف على الخادم وجدار الحماية)', 'set.save': 'حفظ', 'set.saved': 'تم الحفظ ✓', 'set.home': 'مجلد البيانات', 'set.none': 'لا توجد أدوات مثبّتة',
     status: {running: 'جارٍ', done: 'مكتمل', error: 'خطأ'},
   },
   en: {
@@ -35,13 +35,13 @@ const I18N = {
     'scan.authorize': 'I own this site or have written permission to test it', 'scan.deep': 'Deeper scan: analyze the page and probe common exposed paths (a few extra requests)', 'scan.crawl': 'Crawl the site pages and scan them (for apps like Moodle and university portals)', 'scan.legal': 'Testing systems without permission may be illegal.', 'scan.viewResults': 'View findings',
     'scan.running': 'Scanning…', 'scan.done': 'Scan complete', 'scan.failed': 'Scan failed', 'scan.needAuth': 'Please confirm authorization first', 'scan.selected': 'file(s) selected', 'scan.uploading': 'Uploading…',
     'find.title': 'Findings', 'find.sub': 'Ordered from highest to lowest severity. Click a finding for details and remediation.', 'find.search': 'Search file, rule or text…', 'find.allSources': 'All sources',
-    'find.none': 'No matching findings.', 'find.flow': 'Flow path (source to sink)', 'set.models': 'Extra models folder for the data-flow engine (JSON: sources, sinks, sanitizers)', 'set.queries': 'Extra VQL queries folder (declarative query language over the program database)', 'find.files': 'files scanned', 'find.advice': 'Remediation', 'find.snippet': 'Snippet', 'find.ref': 'Reference',
+    'find.none': 'No matching findings.', 'find.flow': 'Flow path (source to sink)', 'set.models': 'Extra models folder for the data-flow engine (JSON: sources, sinks, sanitizers)', 'set.queries': 'Extra VQL queries folder (declarative query language over the program database)', 'find.files': 'files scanned', 'find.pages': 'pages scanned', 'find.onPages': 'seen on {n} pages', 'find.advice': 'Remediation', 'find.snippet': 'Snippet', 'find.ref': 'Reference',
     'rep.title': 'Reports', 'rep.sub': 'Scan history, report downloads, and a diff between two scans.', 'rep.compare': 'Compare two scans', 'rep.compareBtn': 'Compare', 'rep.fixed': '✅ Fixed (gone)', 'rep.new': '🆕 New (appeared)',
     'rep.target': 'Target', 'rep.date': 'Date', 'rep.status': 'Status', 'rep.total': 'Total', 'rep.actions': 'Actions', 'rep.delete': 'Delete', 'rep.view': 'View', 'rep.nothing': 'Nothing',
     'rules.title': 'Built-in rules', 'rules.search': 'Search rules…', 'rules.count': 'rules', 'rules.id': 'ID', 'rules.sev': 'Severity', 'rules.name': 'Issue', 'rules.langs': 'Files', 'rules.advice': 'Remediation',
     'set.title': 'Settings', 'set.sub': 'Saved on this machine and applied to every new scan.', 'set.minSev': 'Minimum severity shown', 'set.failOn': 'Fail CI at severity', 'set.exclude': 'Excluded paths (one glob per line)',
     'set.ignore': 'Ignored rules (one ID per line)', 'set.authTargets': 'Authorized web targets (one per line)', 'set.osv': 'Query OSV.dev for vulnerable dependencies (needs internet)',
-    'set.external': 'Merge installed external scanners', 'set.jadx': 'Decompile APK / JAR / AAR / DEX with jadx and scan the output', 'set.jadxLibs': 'Also scan third-party libraries inside decompiled code (more findings, more noise)', 'set.jadxTimeout': 'jadx timeout (seconds)', 'set.jadxOn': 'jadx installed ✓', 'set.jadxOff': 'jadx not installed — get it from github.com/skylot/jadx to decompile bytecode', 'scan.jadxOn': 'jadx installed: APK/JAR/AAR/DEX will be decompiled and the code scanned too.', 'scan.jadxOff': 'jadx not installed: only text files inside APK/JAR are scanned. Install jadx (needs Java) to decompile code.', 'set.keep': 'Scans to keep', 'set.webTimeout': 'Web request timeout in seconds (the first request is retried once with double the timeout)', 'set.save': 'Save', 'set.saved': 'Saved ✓', 'set.home': 'Data folder', 'set.none': 'none installed',
+    'set.external': 'Merge installed external scanners', 'set.jadx': 'Decompile APK / JAR / AAR / DEX with jadx and scan the output', 'set.jadxLibs': 'Also scan third-party libraries inside decompiled code (more findings, more noise)', 'set.jadxTimeout': 'jadx timeout (seconds)', 'set.jadxOn': 'jadx installed ✓', 'set.jadxOff': 'jadx not installed — get it from github.com/skylot/jadx to decompile bytecode', 'scan.jadxOn': 'jadx installed: APK/JAR/AAR/DEX will be decompiled and the code scanned too.', 'scan.jadxOff': 'jadx not installed: only text files inside APK/JAR are scanned. Install jadx (needs Java) to decompile code.', 'set.keep': 'Scans to keep', 'set.webTimeout': 'Web request timeout in seconds (the first request is retried once with double the timeout)', 'set.webDelay': 'Delay between crawl requests in seconds (gentler on the server and its firewall)', 'set.save': 'Save', 'set.saved': 'Saved ✓', 'set.home': 'Data folder', 'set.none': 'none installed',
     status: {running: 'Running', done: 'Done', error: 'Error'},
   },
 };
@@ -192,7 +192,7 @@ async function watchScan(id) {
     if (s.status === 'running') { $('#scan-status-title').textContent = `${t('scan.running')} ${s.files_scanned ? '(' + s.files_scanned + ')' : ''}`; return setTimeout(poll, 700); }
     $('#scan-spinner').classList.add('hidden');
     if (s.status === 'error') { $('#scan-status-title').textContent = `${t('scan.failed')}: ${s.error}`; return; }
-    $('#scan-status-title').textContent = `${t('scan.done')} — ${s.files_scanned} ${t('find.files')}`;
+    $('#scan-status-title').textContent = `${t('scan.done')} — ${s.files_scanned} ${t(s.kind === 'url' ? 'find.pages' : 'find.files')}`;
     setHTML($('#scan-status-tiles'), tiles(s.summary));
     $('#scan-status-open').href = `#findings/${s.id}`;
     $('#scan-status-result').classList.remove('hidden');
@@ -218,7 +218,7 @@ async function loadFindings(arg) {
   const sources = [...new Set(cur.findings.map((f) => f.source))];
   setHTML($('#source-filter'), `<option value="">${t('find.allSources')}</option>` + sources.map((s) => `<option>${esc(s)}</option>`).join(''));
   ['md', 'json', 'html'].forEach((x) => { $(`#dl-${x}`).href = `/api/scans/${chosen}/report.${x}`; });
-  setHTML($('#findings-notes'), [`${cur.files_scanned} ${t('find.files')} · ${fmtDate(cur.finished_at)}`, ...cur.notes].map((n) => `<div>ℹ ${esc(n)}</div>`).join(''));
+  setHTML($('#findings-notes'), [`${cur.files_scanned} ${t(cur.kind === 'url' ? 'find.pages' : 'find.files')} · ${fmtDate(cur.finished_at)}`, ...cur.notes].map((n) => `<div>ℹ ${esc(n)}</div>`).join(''));
   renderFindings();
 }
 function renderFindings() {
@@ -230,9 +230,9 @@ function renderFindings() {
   list.forEach((f, i) => {
     if (f.severity !== last) { last = f.severity; html += `<div class="sev-head">${badge(f.severity)} <span>${list.filter((x) => x.severity === f.severity).length}</span></div>`; }
     const loc = f.line ? `${f.file}:${f.line}` : f.file;
-    html += `<div class="finding ${f.severity}" data-i="${i}"><div class="head"><code>${esc(f.rule_id)}</code><b>${esc(lang === 'ar' ? f.title_ar : f.title)}</b>${f.cwe ? `<small class="muted">${esc(f.cwe)}</small>` : ''}<small class="muted">${esc(f.source)}</small>${f.extra && f.extra.decompiled ? '<small class="badge info">jadx</small>' : ''}</div>
+    html += `<div class="finding ${f.severity}" data-i="${i}"><div class="head"><code>${esc(f.rule_id)}</code><b>${esc(lang === 'ar' ? f.title_ar : f.title)}</b>${f.cwe ? `<small class="muted">${esc(f.cwe)}</small>` : ''}<small class="muted">${esc(f.source)}</small>${f.extra && f.extra.decompiled ? '<small class="badge info">jadx</small>' : ''}${f.extra && f.extra.page_count > 1 ? `<small class="badge info">${t('find.onPages').replace('{n}', f.extra.page_count)}</small>` : ''}</div>
       <div class="loc">${esc(loc)}</div>
-      <div class="body"><div class="muted">${esc(lang === 'ar' ? f.title : f.title_ar)}</div>${f.snippet ? `<div><b>${t('find.snippet')}</b><pre>${esc(f.snippet)}</pre></div>` : ''}<div class="advice"><b>💡 ${t('find.advice')}:</b> ${esc(f.advice)}</div>${f.extra && f.extra.path ? `<div><b>${t('find.flow')}</b><ol class="flow">${f.extra.path.map((st) => `<li><code>${esc(st.file)}:${st.line}</code> ${esc(st.text)}</li>`).join('')}</ol></div>` : ''}${f.extra && f.extra.url ? `<p><b>${t('find.ref')}:</b> <a href="${esc(f.extra.url)}" target="_blank" rel="noopener">${esc(f.extra.url)}</a></p>` : ''}</div></div>`;
+      <div class="body"><div class="muted">${esc(lang === 'ar' ? f.title : f.title_ar)}</div>${f.snippet ? `<div><b>${t('find.snippet')}</b><pre>${esc(f.snippet)}</pre></div>` : ''}<div class="advice"><b>💡 ${t('find.advice')}:</b> ${esc(f.advice)}</div>${f.extra && f.extra.path ? `<div><b>${t('find.flow')}</b><ol class="flow">${f.extra.path.map((st) => `<li><code>${esc(st.file)}:${st.line}</code> ${esc(st.text)}</li>`).join('')}</ol></div>` : ''}${f.extra && f.extra.url ? `<p><b>${t('find.ref')}:</b> <a href="${esc(f.extra.url)}" target="_blank" rel="noopener">${esc(f.extra.url)}</a></p>` : ''}${f.extra && f.extra.pages && f.extra.pages.length > 1 ? `<details><summary class="muted">${t('find.onPages').replace('{n}', f.extra.pages.length)}</summary><ul class="mono" dir="ltr">${f.extra.pages.slice(0, 50).map((u) => `<li>${esc(u)}</li>`).join('')}</ul></details>` : ''}</div></div>`;
   });
   setHTML($('#findings-list'), html);
   $$('#findings-list .finding').forEach((el) => el.onclick = () => el.classList.toggle('open'));
@@ -277,7 +277,7 @@ function renderRules() {
 async function loadSettings() {
   const [s, meta] = await Promise.all([api('/api/settings'), api('/api/meta')]);
   const f = $('#settings-form');
-  f.min_severity.value = s.min_severity; f.web_timeout.value = s.web_timeout || 20; f.fail_on.value = s.fail_on; f.keep_scans.value = s.keep_scans;
+  f.min_severity.value = s.min_severity; f.web_timeout.value = s.web_timeout || 20; f.web_delay.value = s.web_delay != null ? s.web_delay : 0.5; f.fail_on.value = s.fail_on; f.keep_scans.value = s.keep_scans;
   f.exclude.value = s.exclude.join('\n'); f.ignore_rules.value = s.ignore_rules.join('\n'); f.authorized_targets.value = s.authorized_targets.join('\n');
   f.use_osv.checked = !!s.use_osv; f.use_external.checked = !!s.use_external;
   f.use_jadx.checked = !!s.use_jadx; f.jadx_include_libs.checked = !!s.jadx_include_libs; f.jadx_timeout.value = s.jadx_timeout;
@@ -289,7 +289,7 @@ async function loadSettings() {
 }
 $('#settings-form').onsubmit = async (e) => {
   e.preventDefault(); const f = e.target; const lines = (v) => v.split('\n').map((x) => x.trim()).filter(Boolean);
-  await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, web_timeout: Math.min(120, Math.max(5, +f.web_timeout.value || 20)), fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
+  await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, web_timeout: Math.min(120, Math.max(5, +f.web_timeout.value || 20)), web_delay: Math.min(10, Math.max(0, +f.web_delay.value || 0)), fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
     exclude: lines(f.exclude.value), ignore_rules: lines(f.ignore_rules.value), authorized_targets: lines(f.authorized_targets.value), use_osv: f.use_osv.checked, use_external: f.use_external.checked,
     use_jadx: f.use_jadx.checked, jadx_include_libs: f.jadx_include_libs.checked, jadx_timeout: +f.jadx_timeout.value,
     models_dir: f.models_dir.value.trim(), queries_dir: f.queries_dir.value.trim()})});

@@ -15,6 +15,7 @@ from __future__ import annotations
 import http.client
 import re
 import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -55,10 +56,30 @@ EXPOSED_PATHS = [
      "أضف /.well-known/security.txt لتسهيل الإبلاغ عن الثغرات (غيابه ليس ثغرة).", "__absent__"),
     ("/robots.txt", "info", "robots.txt reveals sensitive paths", "robots.txt يكشف مسارات حساسة",
      "لا تضع مسارات إدارية حساسة في robots.txt؛ فهو عام.", "__robots__"),
+    ("/.env.bak", "critical", "Exposed .env backup", "نسخة احتياطية من .env مكشوفة",
+     "احذف ملفات النسخ الاحتياطي من جذر الويب وأبطل أي أسرار.", r"(?im)^[A-Z0-9_]{3,}\s*="),
+    ("/backup.sql", "high", "Exposed database backup", "نسخة احتياطية لقاعدة البيانات مكشوفة",
+     "أزل ملفات .sql من جذر الويب؛ قد تحوي بيانات حساسة.", r"(?i)(insert into|create table|dump)"),
+    ("/.git/config", "high", "Exposed .git/config", "ملف .git/config مكشوف",
+     "امنع الوصول إلى مجلد .git من خادم الويب.", r"\[core\]"),
+    ("/wp-config.php.bak", "critical", "Exposed wp-config backup", "نسخة احتياطية من wp-config مكشوفة",
+     "احذف النسخ الاحتياطية وأبطل بيانات قاعدة البيانات.", r"DB_PASSWORD"),
+    ("/.htaccess", "medium", "Exposed .htaccess", "ملف .htaccess مكشوف",
+     "امنع تقديم ملفات .htaccess من خادم الويب.", r"(?i)(RewriteRule|AuthType|Require)"),
+    ("/config.php.bak", "high", "Exposed PHP config backup", "نسخة احتياطية من config.php مكشوفة",
+     "احذف النسخ الاحتياطية من جذر الويب.", r"(?i)(password|db_|define\()"),
+    ("/.aws/credentials", "critical", "Exposed AWS credentials", "بيانات اعتماد AWS مكشوفة",
+     "أبطل المفاتيح فورًا وأزل الملف من جذر الويب.", r"aws_access_key_id"),
+    ("/actuator/env", "high", "Spring Boot actuator env exposed", "نقطة Spring actuator/env مكشوفة",
+     "قيّد نقاط actuator الحساسة أو عطّلها في الإنتاج.", r"(?i)(propertySources|systemEnvironment)"),
+    ("/swagger-ui/index.html", "low", "API docs (Swagger UI) exposed", "واجهة توثيق API (Swagger) مكشوفة",
+     "قيّد الوصول إلى توثيق API في الإنتاج إن لم يكن عامًا بقصد.", r"(?i)swagger"),
 ]
 MAX_BODY = 600_000
 DEFAULT_TIMEOUT = 20.0
-USER_AGENT = "Mozilla/5.0 (compatible; vulnscan/0.1; passive security posture check)"
+DEFAULT_DELAY = 0.5          # seconds between requests while crawling: gentle on the server and its WAF
+# Honest identification: the scanner says what it is, like a respectful defensive crawler. It does not hide.
+USER_AGENT = "Mozilla/5.0 (compatible; vulnscan/0.4; +https://github.com/abdulrahmanahmedelabed-prog/vulnscan passive security posture check)"
 
 
 class WebUnreachable(Exception):
@@ -245,12 +266,9 @@ def _analyze_html(html: str, parsed, label: str) -> list[Finding]:
                                "سكربت خارجي بلا تحقق سلامة (SRI)", label, 0, src[:120],
                                "أضف السمة integrity (SRI) للسكربتات الخارجية.", "CWE-353", source="web"))
             break
-    # Outdated jQuery (very common and easy to read from the URL).
-    jq = re.search(r"jquery[-/](\d+)\.(\d+)[.\d]*(?:\.min)?\.js", html, re.I)
-    if jq and int(jq.group(1)) < 3:
-        out.append(Finding("WEB054", "medium", f"Outdated jQuery {jq.group(1)}.{jq.group(2)}",
-                           f"إصدار jQuery قديم {jq.group(1)}.{jq.group(2)}", label, 0, jq.group(0),
-                           "حدّث jQuery إلى 3.x أو أحدث (إصدارات 1.x/2.x بها XSS معروفة).", "CWE-1104", source="web"))
+    # Outdated front-end libraries with known-vulnerable versions, read from the script URL.
+    for f in _library_findings(html, label):
+        out.append(f)
     # Directory listing.
     if re.search(r"<title>\s*Index of /", html, re.I):
         out.append(Finding("WEB055", "medium", "Directory listing enabled", "عرض فهرس المجلدات مفعّل",
@@ -259,6 +277,53 @@ def _analyze_html(html: str, parsed, label: str) -> list[Finding]:
     if re.search(r"(Traceback \(most recent call last\)|Warning: .*on line \d+|Exception in thread|at [\w.$]+\([\w.]+\.java:\d+\))", html):
         out.append(Finding("WEB056", "medium", "Stack trace / debug output in response", "أثر استثناء أو تصحيح في الاستجابة",
                            label, 0, "stack trace", "عطّل عرض الأخطاء التفصيلية في الإنتاج.", "CWE-209", source="web"))
+    return out
+
+
+# (library, regex capturing version, "version is vulnerable" test, severity, advice-ar, cwe)
+_LIBS = [
+    ("jQuery", re.compile(r"jquery[-/.](\d+)\.(\d+)(?:\.(\d+))?", re.I),
+     lambda v: v < (3, 5, 0), "medium",
+     "حدّث jQuery إلى 3.5 أو أحدث (إصدارات أقدم بها XSS معروفة: CVE-2020-11022/11023 وأقدم).", "CWE-1104"),
+    ("jQuery UI", re.compile(r"jquery[-.]?ui[-/.](\d+)\.(\d+)(?:\.(\d+))?", re.I),
+     lambda v: v < (1, 13, 2), "medium",
+     "حدّث jQuery UI إلى 1.13.2 أو أحدث (XSS في إصدارات أقدم).", "CWE-79"),
+    ("AngularJS", re.compile(r"angular(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
+     lambda v: v[0] == 1, "medium",
+     "AngularJS 1.x انتهى دعمه ولا يتلقى تصحيحات أمان؛ انتقل إلى إطار مدعوم.", "CWE-1104"),
+    ("Bootstrap", re.compile(r"bootstrap[-/.](\d+)\.(\d+)(?:\.(\d+))?", re.I),
+     lambda v: v < (3, 4, 1) or (v[0] == 4 and v < (4, 3, 1)), "medium",
+     "حدّث Bootstrap (XSS في tooltip/popover قبل 3.4.1 و4.3.1: CVE-2019-8331).", "CWE-79"),
+    ("Lodash", re.compile(r"lodash(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
+     lambda v: v < (4, 17, 21), "medium",
+     "حدّث Lodash إلى 4.17.21 (تلويث prototype في إصدارات أقدم).", "CWE-1321"),
+    ("Moment.js", re.compile(r"moment(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
+     lambda v: v < (2, 29, 4), "low",
+     "حدّث Moment.js إلى 2.29.4 (ReDoS/path traversal في إصدارات أقدم).", "CWE-400"),
+    ("Handlebars", re.compile(r"handlebars(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
+     lambda v: v < (4, 7, 7), "high",
+     "حدّث Handlebars إلى 4.7.7 (تلويث prototype وتنفيذ قوالب: CVE-2019-20920).", "CWE-1321"),
+    ("DOMPurify", re.compile(r"(?:dom)?purify(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
+     lambda v: v < (2, 4, 0), "high",
+     "حدّث DOMPurify إلى 2.4.0 أو أحدث (تجاوزات تعقيم معروفة في إصدارات أقدم).", "CWE-79"),
+]
+
+
+def _library_findings(html: str, label: str) -> list[Finding]:
+    out, seen = [], set()
+    for name, pat, vulnerable, sev, advice, cwe in _LIBS:
+        m = pat.search(html)
+        if not m:
+            continue
+        parts = tuple(int(g) for g in m.groups() if g is not None)
+        parts = (parts + (0, 0, 0))[:3]
+        if name in seen or not vulnerable(parts):
+            continue
+        seen.add(name)
+        ver = ".".join(str(x) for x in parts)
+        out.append(Finding("WEB054", sev, f"Outdated {name} {ver} (known vulnerabilities)",
+                           f"مكتبة {name} قديمة {ver} (ثغرات معروفة)", label, 0, m.group(0)[:120],
+                           advice, cwe, source="web"))
     return out
 
 
@@ -377,25 +442,31 @@ def _same_origin_links(html: str, base_url: str, origin) -> list:
 
 
 def scan_site(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False,
-              crawl: bool = False, max_pages: int = 20, max_depth: int = 2) -> tuple:
+              crawl: bool = False, max_pages: int = 20, max_depth: int = 2,
+              delay: float = DEFAULT_DELAY) -> tuple:
     """Scan a web app. Always scans the entry URL (headers, TLS, HTML, platform).
 
     With ``crawl`` it also follows same-origin links breadth-first, up to
     ``max_pages`` pages and ``max_depth`` deep, running the per-page HTML checks
     on each so multi-page apps (a university portal, Moodle, APEX) are covered.
-    Still fully passive and gated on authorization by the caller.
+    A ``delay`` between requests keeps the crawl gentle on the server (and keeps
+    it below the rate that triggers a web application firewall). Fully passive
+    and gated on authorization by the caller. Returns ``(findings, note, pages)``.
     """
     findings, err = scan_url(url, timeout=timeout, deep=deep)
     if err or not crawl:
-        return findings, err
+        return _group(findings), err, 1
     failed: list[str] = []
     origin = urllib.parse.urlparse(url)
     seen = {origin._replace(fragment="").geturl()}
     frontier = [(url, 0)]
-    pages = 1
-    while frontier and pages < max_pages:
+    fetched = 1                                   # the entry page already fetched by scan_url
+    while frontier and fetched < max_pages:
         page_url, depth = frontier.pop(0)
+        if delay:
+            time.sleep(delay)                     # throttle: one request every `delay` seconds
         status, headers, body, e = _get(page_url, timeout, read_body=True)
+        fetched += 1
         if status is None:
             failed.append(page_url)
             continue
@@ -404,7 +475,6 @@ def scan_site(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False,
             continue
         html = body.decode("utf-8", "replace")
         if depth > 0:
-            pages += 1
             label = urllib.parse.urlparse(page_url).path or "/"
             for f in _analyze_html(html, urllib.parse.urlparse(page_url), label):
                 f.extra["page"] = page_url
@@ -414,17 +484,40 @@ def scan_site(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False,
                 if link not in seen:
                     seen.add(link)
                     frontier.append((link, depth + 1))
-    uniq, keys = [], set()
-    for f in findings:
-        k = (f.rule_id, f.file, f.snippet)
-        if k not in keys:
-            keys.add(k)
-            uniq.append(f)
     note = None
     if failed:
         shown = "، ".join(urllib.parse.urlparse(u).path or "/" for u in failed[:5])
         note = f"تعذّر جلب {len(failed)} صفحة أثناء الزحف فلم تُفحص: {shown}{' …' if len(failed) > 5 else ''}"
-    return uniq, note
+    return _group(findings), note, fetched
+
+
+def _group(findings: list[Finding]) -> list[Finding]:
+    """Collapse the same issue seen on many pages into one finding that lists where it occurred.
+
+    A site-wide problem (a missing header, a form posting over HTTP in a shared layout) otherwise repeats
+    on every crawled page and inflates the counts. Keyed by (rule, snippet); the page list goes in extra.
+    """
+    out: list[Finding] = []
+    by_key: dict = {}
+    for f in findings:
+        key = (f.rule_id, f.title_ar, f.snippet)
+        page = f.extra.get("page")
+        if key in by_key:
+            g = by_key[key]
+            if page:
+                g.extra.setdefault("pages", []).append(page)
+            continue
+        by_key[key] = f
+        if page:
+            f.extra.setdefault("pages", []).append(page)
+        out.append(f)
+    for f in out:
+        pages = f.extra.get("pages")
+        if pages:
+            uniq_pages = list(dict.fromkeys(pages))
+            f.extra["pages"] = uniq_pages
+            f.extra["page_count"] = len(uniq_pages)
+    return out
 
 
 def _tls_checks(host: str, port: int, label: str, timeout: float) -> list[Finding]:

@@ -43,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--deep", action="store_true", help="فحص ويب أعمق: تحليل HTML وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)")
     p.add_argument("--crawl", action="store_true", help="زحف على صفحات الموقع من نفس النطاق وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)")
     p.add_argument("--max-pages", type=int, default=20, metavar="N", help="أقصى عدد صفحات عند الزحف (الافتراضي 20)")
+    p.add_argument("--delay", type=float, default=0.5, metavar="SEC", help="تأخير بين طلبات الزحف بالثواني (الافتراضي 0.5؛ ألطف على الخادم)")
     p.add_argument("--max-depth", type=int, default=2, metavar="N", help="أقصى عمق للزحف (الافتراضي 2)")
     p.add_argument("--timeout", type=float, default=20.0, metavar="SEC",
                    help="مهلة كل طلب ويب بالثواني (الافتراضي 20؛ يُعاد الطلب الأول مرة بمهلة مضاعفة)")
@@ -94,8 +95,8 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]]:
         if not args.authorized:
             raise SystemExit("فحص عنوان ويب يتطلب --authorized (تأكيد أنك مخوَّل بفحص هذا الهدف).")
         try:
-            findings, err = scan_site(target, timeout=args.timeout, deep=args.deep, crawl=args.crawl,
-                                      max_pages=args.max_pages, max_depth=args.max_depth)
+            findings, err, pages = scan_site(target, timeout=args.timeout, deep=args.deep, crawl=args.crawl,
+                                             max_pages=args.max_pages, max_depth=args.max_depth, delay=args.delay)
         except WebUnreachable as e:
             print(f"✖ {e}", file=sys.stderr)
             return 2

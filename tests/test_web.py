@@ -145,13 +145,14 @@ def test_platform_detection(moodle):
 
 def test_crawl_reaches_other_pages(moodle):
     from vulnscan.web import scan_site
-    single, _ = scan_site(moodle, crawl=False)
-    crawled, _ = scan_site(moodle, crawl=True, max_pages=10, max_depth=2)
+    single, _, pages1 = scan_site(moodle, crawl=False, delay=0)
+    crawled, _, pages = scan_site(moodle, crawl=True, max_pages=10, max_depth=2, delay=0)
     # The insecure form only exists on /course, so only the crawl finds it.
     assert not any(f.rule_id == "WEB051" for f in single)
     assert any(f.rule_id == "WEB051" for f in crawled)
+    assert pages1 == 1 and pages >= 2               # the entry page plus at least one crawled page
     # A crawled finding records which page it came from.
-    assert any(f.extra.get("page") for f in crawled)
+    assert any(f.extra.get("pages") or f.extra.get("page") for f in crawled)
 
 
 def test_crawl_skips_external_and_logout(moodle):
@@ -213,3 +214,59 @@ def test_windows_error_messages_are_explained_and_retried(monkeypatch):
     with pytest.raises(web.WebUnreachable):
         web.scan_site("https://www.example.edu/", timeout=5)
     assert calls == [5, 10]                     # the Windows timeout is recognised as transient: retried with double timeout
+
+
+def test_vulnerable_library_versions_are_flagged():
+    from vulnscan.web import _analyze_html
+    import urllib.parse
+    p = urllib.parse.urlparse("https://x/")
+    html = ('<script src="/js/jquery-1.12.4.min.js"></script>'
+            '<script src="/js/bootstrap-3.3.7.js"></script>'
+            '<script src="/vendor/handlebars.min.js?v=4.0.5"></script>')
+    ids = {(f.rule_id, f.title) for f in _analyze_html(html, p, "x")}
+    titles = " ".join(t for _, t in ids)
+    assert "jQuery 1.12.4" in titles and "Bootstrap 3.3.7" in titles and "Handlebars 4.0.5" in titles
+    # a current version is not flagged
+    ok = _analyze_html('<script src="/js/jquery-3.7.1.min.js"></script>', p, "x")
+    assert not [f for f in ok if "jQuery" in f.title]
+
+
+def _hdrs(d):
+    import email.message
+    m = email.message.Message()
+    for k, v in d.items():
+        m[k] = v
+    return m
+
+
+def test_crawl_groups_repeated_findings_and_counts_pages(monkeypatch):
+    from vulnscan import web
+    pages = {
+        "https://site/": b'<html><a href="/a">a</a><a href="/b">b</a><form action="http://site/x"></form></html>',
+        "https://site/a": b'<html><form action="http://site/x"></form></html>',
+        "https://site/b": b'<html><form action="http://site/x"></form></html>',
+    }
+
+    def fake_get(url, timeout, read_body=False, retries=0):
+        body = pages.get(url.rstrip("/") if url != "https://site/" else url, pages["https://site/"])
+        return 200, _hdrs({"content-type": "text/html"}), body, None
+    monkeypatch.setattr(web, "_get", fake_get)
+    findings, note, count = web.scan_site("https://site/", crawl=True, max_pages=10, delay=0)
+    forms = [f for f in findings if f.rule_id == "WEB051"]
+    assert len(forms) == 1                                  # the same HTTP form on 3 pages -> one grouped finding
+    assert forms[0].extra.get("page_count", 1) >= 2
+    assert count >= 3                                       # entry + /a + /b counted
+
+
+def test_crawl_delay_throttles_requests(monkeypatch):
+    from vulnscan import web
+    slept = []
+    monkeypatch.setattr(web.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(web, "_get", lambda *a, **k: (200, _hdrs({"content-type": "text/html"}), b'<a href="/p">p</a>', None))
+    web.scan_site("https://site/", crawl=True, max_pages=3, delay=0.5)
+    assert slept and all(abs(x - 0.5) < 1e-9 for x in slept)
+
+
+def test_user_agent_identifies_the_scanner_and_does_not_impersonate():
+    from vulnscan.web import USER_AGENT
+    assert "vulnscan" in USER_AGENT.lower()                 # honest identification, no stealth
