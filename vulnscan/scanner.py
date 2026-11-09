@@ -454,6 +454,85 @@ def is_archive(path: pathlib.Path) -> bool:
     return path.is_file() and path.name.lower().endswith(ARCHIVE_EXTS)
 
 
+# Pattern rules for injection sinks (eval, shell, SQL, deserialization, …) flag the dangerous CALL whatever its
+# argument. Where the data-flow engine analyzed the line, it decides instead: a real injection is reported by the
+# data-flow rule with its source→sink path; the pattern hit is an audit lead, shown only with --audit (the same
+# split as CodeQL's default vs. security-extended suites and Semgrep's audit rules).
+AUDIT_WHEN_DATAFLOW = frozenset({
+    "EXE001", "EXE002", "EXE003", "EXE004", "EXE005", "EXE006", "EXE007",
+    "INJ001", "INJ002", "INJ003", "INJ004", "INJ006", "INJ007", "INJ008",
+    "DES001", "DES002", "DES003", "DES004", "DES005",
+    "vql/subprocess-shell-true-dynamic", "vql/sql-built-with-format",
+})   # yaml.load without a Loader stays on: it is unsafe API misuse whatever the data (PyYAML >= 6 rejects it)
+
+
+def apply_audit_profile(findings: list[Finding], projects, audit: bool) -> list[Finding]:
+    """Default profile: drop a pattern injection hit when the data-flow engine analyzed its line and found that the
+    dangerous call's argument comes neither from an untrusted source (that is reported by the data-flow rule, with
+    its path) nor from a parameter of the enclosing function (a wrapper like `def run(cmd): os.system(cmd)` stays
+    reported: its callers control the argument). --audit keeps every hit, marked as an audit lead."""
+    analyzed: dict[str, set] = {}
+    trees: dict = {}
+    param_reach: set = set()        # (path, line) of sinks reachable from a parameter of their function
+    for proj in projects or ():
+        for summ in (getattr(proj, "summaries", {}) or {}).values():
+            for entries in list(summ.get("sink_params", {}).values()) + list(summ.get("sink_fields", {}).values()):
+                for e in entries:
+                    if len(e) >= 3:
+                        param_reach.add((e[1], e[2]))
+        diags = getattr(proj, "diagnostics", {}) or {}
+        for f in getattr(proj, "files", {}).values():
+            path = f.get("path") if isinstance(f, dict) else None
+            if path:
+                d = diags.get(path) or {}
+                analyzed[path] = {ln for ln, _ in d.get("lines", [])}     # skipped lines
+                trees[path] = f.get("tree")
+    bound_cache: dict = {}
+    out = []
+    for f in findings:
+        if f.rule_id in AUDIT_WHEN_DATAFLOW and f.file in analyzed and f.line not in analyzed[f.file] \
+                and (f.file, f.line) not in param_reach and _all_names_known(trees.get(f.file), f.line, bound_cache):
+            if not audit:
+                continue
+            f.extra["audit"] = True
+            f.extra["audit_note"] = "audit lead: no untrusted source was traced to this call by data-flow analysis"
+        out.append(f)
+    return out
+
+
+def _all_names_known(tree, line: int, cache: dict) -> bool:
+    """True when every variable read on `line` is defined somewhere the analysis saw (assigned, a parameter,
+    imported, a def/class). A free / global name of unknown origin keeps the pattern finding."""
+    import ast as _ast
+    if tree is None:
+        return False
+    key = id(tree)
+    if key not in cache:
+        bound, by_line = set(), {}
+        for n in _ast.walk(tree):
+            if isinstance(n, _ast.Name):
+                if isinstance(n.ctx, (_ast.Store, _ast.Del)):
+                    bound.add(n.id)
+                elif getattr(n, "lineno", None):
+                    by_line.setdefault(n.lineno, set()).add(n.id)
+            elif isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
+                bound.add(n.name)
+            elif isinstance(n, _ast.arg):
+                bound.add(n.arg)
+            elif isinstance(n, (_ast.Import, _ast.ImportFrom)):
+                for a in n.names:
+                    bound.add((a.asname or a.name).split(".")[0])
+            elif isinstance(n, _ast.ExceptHandler) and n.name:
+                bound.add(n.name)
+        cache[key] = (bound, by_line)
+    bound, by_line = cache[key]
+    names = by_line.get(line)
+    if not names:
+        return False                      # nothing on that line the analysis saw: keep the pattern hit
+    import builtins
+    return all(n in bound or hasattr(builtins, n) or n in ("self", "cls", "this") for n in names)
+
+
 def frontend_notes(projects) -> list[str]:
     """What the language frontends could not parse: one note per file with skipped statements, so nothing is dropped silently."""
     out: list[str] = []
@@ -473,7 +552,8 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
               ignore_rules: set[str] | None = None, rules: list[Rule] | None = None,
               jadx: bool = True, jadx_timeout: int = 600, jadx_include_libs: bool = False,
               notes: list[str] | None = None, models_dirs: list[str] | None = None,
-              query_paths: list[str] | None = None, queries: bool = True) -> tuple[list[Finding], int]:
+              query_paths: list[str] | None = None, queries: bool = True,
+              audit: bool = False) -> tuple[list[Finding], int]:
     """Scan a directory, a single file or an archive. Returns (findings, files_scanned).
 
     For APK/JAR/AAR/DEX bundles, when ``jadx`` is True and the jadx CLI is
@@ -539,6 +619,7 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                     findings.extend(f for f in qf if f.rule_id not in ignore_rules)
                     if notes is not None:
                         notes.extend(qnotes)
+                findings = apply_audit_profile(findings, projects, audit)
         if tmp is not None:
             for f in findings:
                 f.extra.setdefault("archive_member", f.file)      # stable identity across artifact versions

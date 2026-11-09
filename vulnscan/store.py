@@ -20,6 +20,7 @@ DEFAULT_SETTINGS = {
     "use_osv": True,
     "use_external": True,
     "use_jadx": True,
+    "audit": False,
     "models_dir": "",
     "queries_dir": "",
     "jadx_timeout": 600,

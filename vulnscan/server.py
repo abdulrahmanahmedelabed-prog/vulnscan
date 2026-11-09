@@ -67,6 +67,7 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
             findings, files = scan_path(path, settings.get("exclude") or [], set(settings.get("ignore_rules") or []),
                                         jadx=bool(settings.get("use_jadx", True)), jadx_timeout=int(settings.get("jadx_timeout") or 600),
                                         jadx_include_libs=bool(settings.get("jadx_include_libs")), notes=notes,
+                                        audit=bool(settings.get("audit")),
                                         models_dirs=[settings["models_dir"]] if settings.get("models_dir") else None,
                                         query_paths=[settings["queries_dir"]] if settings.get("queries_dir") else None)
             scan["files_scanned"] = files

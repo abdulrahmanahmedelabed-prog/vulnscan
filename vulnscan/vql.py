@@ -702,6 +702,8 @@ class Query:
             # no conjunct could make progress: unbound variables remain -> no solutions
             return
 
+        join_index: dict = {}       # (relation, field) -> {value: [rows]} built once per clause
+
         def rec(i, env):
             if i == len(rel_vars):
                 solve(env, list(conjuncts))
@@ -712,6 +714,33 @@ class Query:
                 raise QueryError(f"unknown relation {rel}")
             bound_after = set(env) | {var}
             ready = [c for c in conjuncts if self._vars_in(c, set()) <= bound_after and not (self._vars_in(c, set()) & free)]
+            # hash join: `var.f = <expression over variables bound earlier>` selects rows by index, not by scan
+            for c in ready:
+                if c[0] == "cmp" and c[1] == "=":
+                    for a, b in ((c[2], c[3]), (c[3], c[2])):
+                        if isinstance(a, tuple) and a[0] == "field" and a[1] == var and \
+                                not (self._vars_in(b, set()) & bound_after - set(env)) and var not in self._vars_in(b, set()):
+                            key = (rel, a[2])
+                            if key not in join_index:
+                                idx: dict = {}
+                                for r in rows:
+                                    v = r.get(a[2], "") if isinstance(r, dict) else ""
+                                    try:
+                                        idx.setdefault(v, []).append(r)
+                                    except TypeError:          # unhashable value: give up on the index
+                                        idx = None
+                                        break
+                                join_index[key] = idx
+                            idx = join_index[key]
+                            if idx is not None:
+                                try:
+                                    rows = idx.get(self._val(b, env), [])
+                                except TypeError:
+                                    pass
+                                break
+                    else:
+                        continue
+                    break
             for row in rows:
                 env[var] = row
                 if all(self._bool(c, env) for c in ready):

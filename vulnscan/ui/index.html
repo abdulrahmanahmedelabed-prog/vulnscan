@@ -186,6 +186,7 @@
         <div class="field"><label data-i18n="set.authTargets">عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)</label><textarea name="authorized_targets" class="input mono" rows="3" dir="ltr"></textarea></div>
         <label class="check"><input type="checkbox" name="use_osv"> <span data-i18n="set.osv">الاستعلام من OSV.dev عن ثغرات الاعتماديات (يحتاج إنترنت)</span></label>
         <label class="check"><input type="checkbox" name="use_external"> <span data-i18n="set.external">دمج نتائج الأدوات الخارجية المثبّتة</span> <small id="ext-tools" class="muted"></small></label>
+        <label class="check"><input type="checkbox" name="audit"> <span data-i18n="set.audit">ملف التدقيق: اعرض أيضًا كل استدعاء خطر لم يُثبت تحليل التدفق وصول مدخل إليه (أشمل، وإنذارات أكثر)</span></label>
         <label class="check"><input type="checkbox" name="use_jadx"> <span data-i18n="set.jadx">فك تجميع APK / JAR / AAR / DEX بواسطة jadx وفحص الكود الناتج</span> <small id="jadx-state" class="muted"></small></label>
         <label class="check"><input type="checkbox" name="jadx_include_libs"> <span data-i18n="set.jadxLibs">فحص مكتبات الطرف الثالث داخل الكود المفكوك أيضًا (نتائج أكثر وضجيج أكثر)</span></label>
         <div class="field"><label data-i18n="set.jadxTimeout">مهلة jadx بالثواني</label><input type="number" name="jadx_timeout" class="input" min="30" max="7200"></div>

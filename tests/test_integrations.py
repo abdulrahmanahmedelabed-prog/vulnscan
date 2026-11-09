@@ -476,4 +476,60 @@ def test_python_parser_overflow_does_not_abort_scan(tmp_path):
     (tmp_path / "notes.py").write_text("a " * 1500 + "\n")
     (tmp_path / "app.py").write_text('import os\ndef f(request):\n    os.system(request.GET["c"])\n')
     ids = {f.rule_id for f in scan_path(tmp_path, [], set())[0]}
-    assert "EXE004" in ids and any(i.startswith("DF") for i in ids)
+    assert any(i.startswith("DF") for i in ids)          # app.py is still analyzed
+
+
+# ---------------------------------------------------------------- flow-sensitive refinement and audit profile
+
+def _flow_ids(tmp_path, code, audit=False):
+    (tmp_path / "app.py").write_text(code)
+    return {(f.rule_id, f.line) for f in scan_path(tmp_path, [], set(), audit=audit)[0]}
+
+
+def test_flow_dead_branch_and_strong_update(tmp_path):
+    code = ("from flask import request\nimport os\n"
+            "@app.route('/a')\ndef a():\n"
+            "    param = request.args.get('x')\n"
+            "    num = 86\n"
+            "    if 7 * 42 - num > 200:\n"
+            "        bar = 'safe'\n"
+            "    else:\n"
+            "        bar = param\n"
+            "    os.system(bar)\n"                          # line 11: dead-branch taint only
+            "    v = param\n"
+            "    v = 'constant'\n"
+            "    os.system(v)\n"                            # line 14: overwritten
+            "    w = 'ok' if 3 > 5 else param\n"
+            "    os.system(w)\n"                            # line 16: IfExp takes the tainted side
+            "    m = {}\n    m['a'] = param\n    m['b'] = 'safe'\n"
+            "    os.system(m['b'])\n"                       # line 20: other key
+            "    os.system(m['a'])\n")                      # line 21: tainted key
+    hits = {ln for rid, ln in _flow_ids(tmp_path, code) if rid.startswith("DF")}
+    assert 11 not in hits and 14 not in hits and 20 not in hits
+    assert 16 in hits and 21 in hits
+
+
+def test_flow_keeps_real_flows_through_loops_and_try(tmp_path):
+    code = ("from flask import request\nimport os\n"
+            "@app.route('/a')\ndef a():\n"
+            "    acc = ''\n"
+            "    for part in request.args.getlist('p'):\n"
+            "        acc += part\n"
+            "    try:\n"
+            "        x = acc\n"
+            "    except Exception:\n"
+            "        x = ''\n"
+            "    os.system(x)\n")
+    assert any(rid.startswith("DF") and ln == 12 for rid, ln in _flow_ids(tmp_path, code))
+
+
+def test_audit_profile_gates_pattern_hits(tmp_path):
+    code = ("import os\n"
+            "def handler():\n"
+            "    cmd = 'ls -l'\n"
+            "    os.system(cmd + ' /tmp')\n"            # constant command: not an injection
+            "def wrapper(cmd):\n"
+            "    os.system('echo ' + cmd)\n")           # wrapper: callers control cmd -> kept
+    default = _flow_ids(tmp_path, code)
+    assert ("EXE004", 4) not in default and ("EXE004", 6) in default
+    assert ("EXE004", 4) in _flow_ids(tmp_path, code, audit=True)

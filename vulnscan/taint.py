@@ -37,6 +37,7 @@ import json
 import pathlib
 import re
 
+from . import flow as _flow
 from .model import Finding
 
 MAX_PASSES = 16
@@ -50,7 +51,7 @@ CFAMILY = {".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".cs": "csharp", 
            ".rs": "rust", ".swift": "swift", ".rb": "ruby", ".rake": "ruby"}
 CFAMILY_LANGS = ("java", "kotlin", "csharp", "go", "php", "cpp", "rust", "swift", "ruby")
 MODELS_DIR = pathlib.Path(__file__).parent / "models"
-CONTAINER_WRITES = {"append", "extend", "insert", "add", "update", "put", "setdefault"}
+CONTAINER_WRITES = {"append", "extend", "insert", "add", "update", "put", "setdefault", "set", "setProperty", "__setitem__"}
 ARG_INJECTION = ("DF009", "medium", "Tainted data reaches a subprocess argument",
                  "بيانات غير موثوقة تصل إلى وسيط لأمر خارجي",
                  "تحقّق من الوسيط بقائمة بيضاء، وارفض القيم التي تبدأ بـ -، ولا تمرّر مسارات غير مُطبَّعة.",
@@ -180,7 +181,7 @@ def _exits(stmts: list) -> bool:
 
 
 class _Env:
-    __slots__ = ("tainted", "types", "inst", "elem", "funcs")
+    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk")
 
     def __init__(self):
         self.tainted: dict = {}   # var -> origin  (kind, label, trail)
@@ -188,6 +189,8 @@ class _Env:
         self.inst: dict = {}      # var -> {field: origin}
         self.elem: set = set()    # vars tainted only through a non-head container element
         self.funcs: dict = {}     # var -> function qual (h = helper / partial)
+        self.consts: dict = {}    # var -> known constant at this point (flow refinement only)
+        self.dk: dict = {}        # var -> ({const key: origin}, other-keys origin) (flow refinement only)
 
 
 def _step(path, line, text):
@@ -199,7 +202,51 @@ def _trail(o):
 
 
 def _with_step(o, step):
-    return (o[0], o[1], _trail(o) + (step,))
+    return (o[0], o[1], _trail(o) + (step,)) + tuple(o[3:])
+
+
+def _safe_for(o) -> frozenset:
+    """CWEs this origin was escaped for (context-specific sanitizers), e.g. html.escape -> XSS only."""
+    return o[3] if len(o) > 3 else frozenset()
+
+
+def _unsafe_for(o, si) -> bool:
+    """Does taint origin `o` still matter for sink `si`? False when it was escaped for that sink's CWE."""
+    return bool(o) and (not si or si[5] not in _safe_for(o))
+
+
+# What a context-specific sanitizer neutralizes, recognised by naming conventions shared across languages.
+# A sanitizer that matches none of these (int(), parseInt, uuid.UUID, len, hash …) converts the value to
+# something inert and is universal. Order matters: the first match wins.
+_XSS = ("CWE-79", "CWE-80", "CWE-116")
+_SANITIZER_CONTEXTS = [
+    (re.compile(r"(?i)shell|shlex|escapeshell|shellwords"), ("CWE-78", "CWE-88")),
+    (re.compile(r"(?i)sql|real_escape|addslashes|quote_ident|identifier|enquote|dbms_assert|quote_string|"
+                r"quote_column|quote_table|connection\.quote|mysql.*escape|pg.*escape|escape_?literal"), ("CWE-89", "CWE-564")),
+    (re.compile(r"(?i)ldap|filter_chars|fordn\b"), ("CWE-90",)),
+    (re.compile(r"(?i)xpath"), ("CWE-643",)),
+    (re.compile(r"(?i)^re\.escape$|(^|\.)escape_?regex|quotemeta|regex\.escape|preg_quote"), ("CWE-625", "CWE-730", "CWE-1333")),
+    (re.compile(r"(?i)javascript|jsescape|js_?string|forjs"), ("CWE-94", "CWE-95") + _XSS),
+    (re.compile(r"(?i)json\.dumps|json\.stringify|^repr$|^ascii$"), ("CWE-94", "CWE-95")),   # does not escape < >
+    # component encoders also encode '/' (and so defeat ../ traversal); encodeURI / urllib quote() keep '/'
+    (re.compile(r"(?i)encodeuricomponent|quote_plus|queryescape|pathescape|rawurlencode|^urlencode$|"
+                r"urlencoder\.encode|urlencode$|encodeurlparameter|topercentencoding|curl_easy_escape"),
+     ("CWE-113", "CWE-93", "CWE-22", "CWE-23", "CWE-36", "CWE-73") + _XSS),
+    (re.compile(r"(?i)(^|[._])(url|uri)|url_?(en|de)code|encodeuri|urlescape|^quote$|\.quote$|percent|http_build_query"),
+     ("CWE-113", "CWE-93") + _XSS),
+    (re.compile(r"(?i)basename|secure_filename|getname$|filepath\.base|path\.base|^base$|lastpathcomponent|"
+                r"(^|\.)filename$|(^|\.)stem$"), ("CWE-22", "CWE-23", "CWE-36", "CWE-73")),
+    (re.compile(r"(?i)html|xml|escape|sanitize|purify|bleach|strip_tags|markup|he\.encode|forhtml|encode_text|"
+                r"encode_safe|askama"), _XSS),
+]
+
+
+def sanitizer_context(name: str):
+    """frozenset of CWEs a sanitizer neutralizes, or None when it is universal (value conversion)."""
+    for rx, cwes in _SANITIZER_CONTEXTS:
+        if rx.search(name):
+            return frozenset(cwes)
+    return None
 
 
 class Project:
@@ -561,10 +608,26 @@ class Project:
         return None
 
     def _is_sanitizer(self, canon: str) -> bool:
-        hit = self._sanitizer_cache.get(canon)
-        if hit is None:
-            hit = self._sanitizer_cache[canon] = any(_name_matches(canon, s) for s in self.m["sanitizers"])
-        return hit
+        """Universal sanitizer (the value becomes inert for every sink)."""
+        return self._sanitizer_kind(canon) == "all"
+
+    def _sanitizer_kind(self, canon: str):
+        """None: not a sanitizer. "all": universal. frozenset: the CWEs it escapes for (context-specific)."""
+        key = ("kind", canon)
+        if key in self._sanitizer_cache:
+            return self._sanitizer_cache[key]
+        # the most specific model name wins (shlex.quote over a bare `quote`), independent of set order
+        matches = [s for s in self.m["sanitizers"] if _name_matches(canon, s)]
+        name = max(matches, key=lambda s: (s.count("."), len(s), s)) if matches else None
+        kind = None
+        if name is not None:
+            if name in {"stored_db_read", "stored_db_config"}:
+                kind = "all"
+            else:
+                ctx = sanitizer_context(name)
+                kind = "all" if ctx is None else ctx
+        self._sanitizer_cache[key] = kind
+        return kind
 
     # ---------------------------------------------------------------- sinks
     def _sink_info(self, mod: str, call: ast.Call):
@@ -703,6 +766,13 @@ class Project:
             return None
         return min(origins, key=lambda o: self._ORIGIN_RANK.get(o[0], 9))
 
+    def _sink_taint(self, mod, cls, node, env, si):
+        """The most significant origin of `node` that still matters for sink `si` (context-escaped ones don't)."""
+        origins = [o for o in self._taints(mod, cls, node, env) if _unsafe_for(o, si)]
+        if not origins:
+            return None
+        return min(origins, key=lambda o: self._ORIGIN_RANK.get(o[0], 9))
+
     def _taints(self, mod, cls, node, env) -> list:
         """All taint origins of an expression: a + b carries both a's and b's origins, so a parameter
         concatenated with a field still reaches the sink summary as a parameter flow."""
@@ -714,6 +784,10 @@ class Project:
                 out.extend(self._taints(mod, cls, v, env))
             return out
         if isinstance(node, ast.IfExp):
+            if env.consts or isinstance(node.test, ast.Constant):
+                t = _flow.fold(node.test, env.consts)
+                if t is not _flow._MISSING:
+                    return self._taints(mod, cls, node.body if t else node.orelse, env)
             return self._taints(mod, cls, node.body, env) + self._taints(mod, cls, node.orelse, env)
         if isinstance(node, ast.JoinedStr):
             out = []
@@ -741,6 +815,12 @@ class Project:
             return ("source", src, ())
         if isinstance(node, ast.Name):
             return env.tainted.get(node.id)
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in env.dk:
+            m, other = env.dk[node.value.id]
+            key = _flow.fold(node.slice, env.consts)
+            if key is not _flow._MISSING and _flow._hashable(key):
+                return m.get(key, other)
+            return next((v for v in list(m.values()) + [other] if v), None)
         if isinstance(node, (ast.Subscript, ast.Starred, ast.Await)):
             return self._taint(mod, cls, node.value, env)
         if isinstance(node, ast.Attribute):
@@ -770,13 +850,22 @@ class Project:
             return self._taint(mod, cls, recv, env)
         if isinstance(node, ast.Call):
             canon = self._canon(mod, node.func)
-            if self._is_sanitizer(canon):
+            skind = self._sanitizer_kind(canon)
+            if skind == "all":
+                return None
+            if skind:
+                # escaped for one context only: still tainted for every other kind of sink
+                for a in list(node.args) + [k.value for k in node.keywords] + \
+                        ([node.func.value] if isinstance(node.func, ast.Attribute) else []):
+                    o = self._taint(mod, cls, a, env)
+                    if o:
+                        return (o[0], o[1], _trail(o), _safe_for(o) | skind)
                 return None
             if isinstance(node.func, ast.Attribute) and node.func.attr == "keys" and not node.args \
                     and isinstance(node.func.value, ast.Name):
                 o = env.tainted.get(node.func.value.id)
                 if o and o[0] == "param":                 # keys of a parameter: their own origin (see _map_args)
-                    return ("param", o[1] + ".keys", _trail(o))
+                    return ("param", o[1] + ".keys", _trail(o)) + tuple(o[3:])
             callees, ctor = self._callees(mod, cls, node, env)
             if ctor:
                 return None
@@ -789,7 +878,7 @@ class Project:
                     if summ["source_return"]:
                         o = summ["source_return"]
                         return ("retsource", self.gfuncs[q]["name"], _trail(o) + (
-                            _step(self.gfuncs[q]["path"], summ["ret_line"], f"return من {self.gfuncs[q]['name']}()"),))
+                            _step(self.gfuncs[q]["path"], summ["ret_line"], f"return من {self.gfuncs[q]['name']}()"),)) + tuple(o[3:])
                     mapping = self._map_args(node, q)
                     for pname in summ["ret_params"]:
                         arg = mapping.get(pname)
@@ -947,6 +1036,36 @@ class Project:
                             changed = True
         return env
 
+    def _flow_at(self, mod, cls, fn, env, node):
+        """The environment that holds at `node` according to the flow-sensitive refinement (see flow.py), or
+        None when `node` is in code proven unreachable. Falls back to `env` wherever the refinement has no
+        state for the node, so it can only remove taint, never add it."""
+        if not getattr(self, "flow_refine", True):
+            return env
+        cache = self.__dict__.setdefault("_flow_cache", {})
+        hit = cache.get(id(env))
+        if hit is None or hit[0] is not env:
+            try:
+                fi = _flow.FlowInterpreter(self, mod, cls, fn, env).run()
+            except (RecursionError, MemoryError, ValueError, TypeError, AttributeError, KeyError):
+                fi = None
+            hit = (env, fi)
+            cache[id(env)] = hit
+        fi = hit[1]
+        if fi is None:
+            return env
+        st = fi.snap.get(id(node))
+        if st is not None:
+            return fi.env_for(st)
+        if fi.dead:
+            parents = self._parents(fn)
+            n = node
+            while n is not None:
+                if id(n) in fi.dead:
+                    return None
+                n = parents.get(n)
+        return env
+
     def _calls(self, fn: ast.AST):
         key = id(fn)
         hit = self._calls_cache.get(key)
@@ -1041,6 +1160,7 @@ class Project:
         changed, passes = True, 0
         while changed and passes < MAX_PASSES:
             changed, passes = False, passes + 1
+            self.__dict__["_flow_cache"] = {}
             for q, info in self.gfuncs.items():
                 mod, fn, cls, path = info["mod"], info["node"], info["cls"], info["path"]
                 summ = self.summaries[q]
@@ -1055,7 +1175,8 @@ class Project:
                     new["ret_type"] = rt
                 for node in _scope_nodes(fn):
                     if isinstance(node, ast.Return) and node.value is not None:
-                        o = self._taint(mod, cls, node.value, env)
+                        renv = self._flow_at(mod, cls, fn, env, node)
+                        o = self._taint(mod, cls, node.value, renv) if renv is not None else None
                         if o and o[0] in {"source", "retsource"} and not new["source_return"]:
                             new["source_return"] = o
                             new["ret_line"] = node.lineno
@@ -1100,7 +1221,10 @@ class Project:
                     hit = self._attr_sink(node)
                     if hit:
                         si, value = hit
-                        for o in self._taints(mod, cls, value, env):
+                        aenv = self._flow_at(mod, cls, fn, env, node)
+                        for o in (self._taints(mod, cls, value, aenv) if aenv is not None else []):
+                            if not _unsafe_for(o, si):
+                                continue
                             if o[0] in {"param", "field"} and not self._suppressed(path, node.lineno):
                                 lst = (new["sink_params"] if o[0] == "param" else new["sink_fields"]).setdefault(o[1], [])
                                 if (si, path, node.lineno) not in lst:
@@ -1120,10 +1244,13 @@ class Project:
             if entry not in lst:
                 lst.append(entry)
 
+        env = self._flow_at(mod, cls, fn, env, call)
+        if env is None:
+            return                                  # unreachable code
         si = self._sink(mod, cls, call, env)
         if si and not self._suppressed(path, call.lineno):
             for arg in self._sink_args(si, call):
-                origins = self._taints(mod, cls, arg, env)
+                origins = [o for o in self._taints(mod, cls, arg, env) if _unsafe_for(o, si)]
                 if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
                     for o in origins:
                         record(o, (si, path, call.lineno))
@@ -1152,7 +1279,8 @@ class Project:
                 if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
                     for o in origins:
                         for e in entries:
-                            record(o, e)
+                            if _unsafe_for(o, e[0]):
+                                record(o, e)
             if is_self:
                 for fld, entries in summ["sink_fields"].items():
                     for e in entries:
@@ -1228,14 +1356,18 @@ class Project:
         scopes = [(i["mod"], i["cls"], i["node"], i["path"]) for i in self.gfuncs.values()]
         for mod, file in self.files.items():
             scopes.append((mod, None, file["tree"], file["path"]))
+        self.__dict__["_flow_cache"] = {}
         for mod, cls, fn, path in scopes:
-            env = self._env(mod, cls, fn, path, seed_params=False, entry=True)
+            fenv = self._env(mod, cls, fn, path, seed_params=False, entry=True)
             is_entry = self._is_entry(mod, cls, fn)
             for call in self._calls(fn):
+                env = self._flow_at(mod, cls, fn, fenv, call)
+                if env is None:
+                    continue                        # unreachable code
                 si = self._sink(mod, cls, call, env)
                 if si:
                     for arg in self._sink_args(si, call):
-                        o = self._taint(mod, cls, arg, env)
+                        o = self._sink_taint(mod, cls, arg, env, si)
                         if o and o[0] in {"source", "retsource"} \
                                 and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
                             self._emit(si, path, call.lineno, o, None, None)
@@ -1257,10 +1389,11 @@ class Project:
                         arg = mapping.get(pname)
                         if arg is None:
                             continue
-                        o = self._taint(mod, cls, arg, env)
+                        live = [e for e in entries if any(_unsafe_for(x, e[0]) for x in self._taints(mod, cls, arg, env))]
+                        o = self._sink_taint(mod, cls, arg, env, live[0][0]) if live else None
                         if o and o[0] in {"source", "retsource"} \
                                 and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
-                            self._emit(entries[0][0], path, call.lineno, o, name, entries[0])
+                            self._emit(live[0][0], path, call.lineno, o, name, live[0])
                             done = True
                             break
                     if done:
@@ -1275,7 +1408,8 @@ class Project:
                 hit = self._attr_sink(node)
                 if hit:
                     si, value = hit
-                    o = self._taint(mod, cls, value, env)
+                    env = self._flow_at(mod, cls, fn, fenv, node)
+                    o = self._sink_taint(mod, cls, value, env, si) if env is not None else None
                     if o and o[0] in {"source", "retsource"} and not self._guarded(mod, fn, node, self._tainted_names_in(value, env)):
                         self._emit(si, path, node.lineno, o, None, None)
             # reflected output from an entry point: `return tainted`
@@ -1285,7 +1419,8 @@ class Project:
                         v = node.value
                         if isinstance(v, ast.Call) and any(_name_matches(self._canon(mod, v.func), s) for s in self.m["safe_return_calls"]):
                             continue
-                        o = self._taint(mod, cls, v, env)
+                        env = self._flow_at(mod, cls, fn, fenv, node)
+                        o = self._sink_taint(mod, cls, v, env, REFLECTED_RETURN) if env is not None else None
                         if o and o[0] in {"source", "retsource"} \
                                 and not self._guarded(mod, fn, node, self._tainted_names_in(v, env)):
                             self._emit(REFLECTED_RETURN, path, node.lineno, o, None, None)

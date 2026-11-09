@@ -52,7 +52,7 @@ def test_static_and_meta(server):
 def test_scan_path_and_reports(server, tmp_path):
     proj = tmp_path / "p"
     proj.mkdir()
-    (proj / "a.py").write_text("import pickle\npickle.loads(b'x')\n")
+    (proj / "a.py").write_text("import pickle\npickle.loads(data)\n")
     call(server, "/api/settings", "POST", {"use_osv": False, "use_external": False})
     status, body = call(server, "/api/scan", "POST", {"target": str(proj)})
     assert status == 202
@@ -94,7 +94,7 @@ def test_upload_archive_and_loose_files(server, tmp_path):
     call(server, "/api/settings", "POST", {"use_osv": False, "use_external": False})
     zpath = tmp_path / "b.zip"
     with zipfile.ZipFile(zpath, "w") as zf:
-        zf.writestr("src/a.py", "import pickle\npickle.loads(b'x')\n")
+        zf.writestr("src/a.py", "import pickle\npickle.loads(data)\n")
     body, ctype = _multipart([("b.zip", zpath.read_bytes())])
     status, resp = call(server, "/api/upload", "POST", body, {"Content-Type": ctype}, raw=True)
     assert status == 202

@@ -56,6 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--query", action="append", default=[], metavar="PATH",
                    help="ملف أو مجلد استعلامات VQL إضافية (لغة استعلام تصريحية فوق قاعدة بيانات البرنامج)")
     p.add_argument("--no-queries", action="store_true", help="لا تشغّل استعلامات VQL المدمجة")
+    p.add_argument("--audit", action="store_true",
+                   help="ملف التدقيق: اعرض أيضًا كل استدعاء خطر (eval/shell/SQL/pickle…) لم يُثبت تحليل التدفق وصول مدخل إليه")
     p.add_argument("--no-jadx", action="store_true", help="لا تفكّ تجميع APK/JAR/AAR/DEX حتى لو كان jadx مثبّتًا")
     p.add_argument("--jadx-timeout", type=int, default=600, metavar="SEC", help="مهلة jadx بالثواني (الافتراضي 600)")
     p.add_argument("--jadx-include-libs", action="store_true", help="افحص أيضًا مكتبات الطرف الثالث داخل الكود المفكوك")
@@ -120,7 +122,8 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]] |
         raise SystemExit(f"الهدف غير موجود: {target}")
     findings, files = scan_path(path, args.exclude, set(args.ignore_rule), jadx=not args.no_jadx,
                                 jadx_timeout=args.jadx_timeout, jadx_include_libs=args.jadx_include_libs, notes=notes,
-                                models_dirs=args.models, query_paths=args.query, queries=not args.no_queries)
+                                models_dirs=args.models, query_paths=args.query, queries=not args.no_queries,
+                                audit=args.audit)
     if not args.no_deps:
         dep_findings, err = audit_dependencies(path)
         findings.extend(dep_findings)
