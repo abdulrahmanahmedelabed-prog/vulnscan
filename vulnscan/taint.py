@@ -274,7 +274,7 @@ _LOCAL_SOURCE = re.compile(r"(?i)(^|[.\s])(argv|parse_args|parse_known_args|envi
 # something inert and is universal. Order matters: the first match wins.
 _XSS = ("CWE-79", "CWE-80", "CWE-116")
 _SANITIZER_CONTEXTS = [
-    (re.compile(r"(?i)shell|shlex|escapeshell|shellwords"), ("CWE-78", "CWE-88")),
+    (re.compile(r"(?i)shell|shlex|escapeshell|shellwords|encodeforos|forcommand"), ("CWE-78", "CWE-88")),
     (re.compile(r"(?i)sql|real_escape|addslashes|quote_ident|identifier|enquote|dbms_assert|quote_string|"
                 r"quote_column|quote_table|connection\.quote|mysql.*escape|pg.*escape|escape_?literal"), ("CWE-89", "CWE-564")),
     (re.compile(r"(?i)ldap|filter_chars|fordn\b"), ("CWE-90",)),

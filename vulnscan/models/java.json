@@ -59,13 +59,6 @@
         "requestURI"
       ],
       "label": "request.{attr}"
-    },
-    {
-      "kind": "name",
-      "names": [
-        "args"
-      ],
-      "label": "{name}"
     }
   ],
   "entry_points": [
@@ -138,6 +131,12 @@
         "ctx",
         "context"
       ]
+    },
+    {
+      "param_names": [
+        "args"
+      ],
+      "_comment": "main(String[] args): the command-line parameter, not any variable named args"
     }
   ],
   "sinks": [
