@@ -99,39 +99,71 @@ def _excluded(rel: str, excludes: list[str]) -> bool:
 
 # The value must be bound to a secret-like NAME. Supported bindings (the name is checked as a whole identifier,
 # by its LAST word, so `author_id`, `secretName`, `token_env`, `R.id.authButton`, i18n keys and imports do not count):
-#   name = v · name: v · name => v · name := v · name: Type = v · var name Type = v · Type name = v
-#   ("name", v) · define('NAME', v) · setProperty("name", v) · getenv("NAME", v) · ENV NAME v · key="name" value=v
-#   Authorization: Bearer|Basic|Token v
+#   name = v · name: v · name => v · name := v · name: Type = v · name: &'static str = v · var name Type = v
+#   Type name = v · char name[] = v · #define NAME v · ENV NAME v · ("name", v) · define('NAME', v)
+#   key="name" value=v · <name>v</name> · <string name="name">v · Name { get; set; } = v
+#   process.env.NAME || v · NAME ?? v · fetch('NAME') { v } · ${name:v} · Authorization: Bearer|Basic|Token v
+# An optional call wrapper (`String::from(`, `Some(`) and string prefix (b"", r'', @"", f"") may precede the value.
 _NAME = r"(?<![\w.$@\-])([A-Za-z_$@][\w.\-]*)"
+_TYPE = r"(?::\s*&?(?:'\w+\s+)?(?:mut\s+)?[\w.:<>\[\]|?]+\s*)?"
 _BIND = re.compile(r"""(?x)(?:
-      """ + _NAME + r"""['"\]]*\s*(?::\s*[\w.<>\[\]|?]+\s*)?(?:=|:=|=>|:)          # name [: Type] =
-    | """ + _NAME + r"""\s+([\w.<>\[\]*]+)\s*=                                      # Go `name Type =` / C `Type name =`
-    | ['"]""" + _NAME + r"""['"]\s*,                                                 # ("name", value)
-    | \bENV\s+""" + _NAME + r"""\s                                                   # Dockerfile ENV NAME value
-    | \bkey\s*=\s*['"]""" + _NAME + r"""['"]\s+value\s*=                             # <add key="X" value="…">
-    | \b(?:bearer|basic|token)\s                                                     # Authorization scheme
-  )\s*[@]?['"`]?$""", re.I)
+      """ + _NAME + r"""(?:\[\d*\])?['"\]]*\s*""" + _TYPE + r"""(?:=|:=|=>|:)               # name [: Type] =
+    | """ + _NAME + r"""\s+([\w.<>\[\]*]+)(?:\[\d*\])?\s*=                         # Go `name Type =` / C `Type name =`
+    | """ + _NAME + r"""\s*\{\s*(?:get|set|init)\b[^}]*\}\s*=                      # C# auto-property initializer
+    | """ + _NAME + r"""\s*(?:\|\||\?\?|\bor\b)                                    # env lookup with a literal fallback
+    | ['"]""" + _NAME + r"""['"]\s*,                                                # ("name", value)
+    | ['"]""" + _NAME + r"""['"]\s*\)\s*\{                                          # Ruby fetch('NAME') { value }
+    | \$\{""" + _NAME + r""":                                                       # Spring ${name:default}
+    | \#\s*define\s+""" + _NAME + r"""\s                                            # C #define NAME value
+    | \bENV\s+""" + _NAME + r"""\s                                                  # Dockerfile ENV NAME value
+    | \b(?:key|name)\s*=\s*['"]""" + _NAME + r"""['"]\s+[\w:\-]*value\s*=          # key="X" value= / android:name= android:value=
+    | <\w+\s+name\s*=\s*['"]""" + _NAME + r"""['"][^>]*>                            # <string name="api_key">v
+    | <""" + _NAME + r"""(?:\s[^>]*)?>                                               # <password>v</password>
+    | \b(?:bearer|basic|token)\s                                                    # Authorization scheme
+  )\s*(?:[\w.:]+\(\s*)?(?:@|[bBrRuUfF]{1,2})?['"`]?$""", re.I)
 _SECRET_WORDS = frozenset({"secret", "secrets", "token", "password", "passwd", "pwd", "passphrase", "apikey", "auth",
                            "credential", "credentials", "pat", "accesskey", "privatekey", "secretkey", "clientsecret",
                            "authtoken", "pass"})
-_KEY_QUALIFIERS = frozenset({"api", "access", "private", "signing", "encryption", "master", "secret", "client", "app",
-                             "auth", "license", "service", "account", "subscription", "webhook", "storage", "shared"})
+# `<anything>_KEY` is a key (STRIPE_KEY, OPENAI_KEY, api.key) unless the qualifier makes it a data-structure key.
+_NOT_SECRET_KEY = frozenset({"cache", "sort", "primary", "foreign", "partition", "row", "lookup", "hash", "map", "dict",
+                             "index", "group", "react", "unique", "composite", "public", "idempotency", "object",
+                             "translation", "i18n", "locale", "route", "query", "field", "column", "table", "node",
+                             "item", "list", "entry", "event", "message", "storage_path", "dedup", "sharding", "shard",
+                             "redis", "lock", "session_cache", "bucket", "s3", "registry", "label", "tag", "id"})
 _TOKEN = re.compile(r"[A-Za-z0-9+/_\-]{16,}={0,2}")
+_LITERAL = re.compile(r"""(['"`])([^'"`\s]{16,300})\1""")
 # Placeholder words are checked against the candidate VALUE only, never the whole line (a comment saying
-# "latest", "contest" or "integrity" must not hide a real key).
+# "latest" or "contest" must not hide a real key).
 _PLACEHOLDER = re.compile(r"(?i)(example|sample|placeholder|changeme|your[_-]|xxxx|dummy|fake|redacted|lorem|"
                           r"00000|12345|abcdef|aaaa|^test|_test_|^sha(?:1|256|384|512)-)")
-# Context immediately before the value that marks it as not-a-literal: templating, data URI, Go module sum.
-_VALUE_CONTEXT_SKIP = re.compile(r"(\$\{|\{\{|base64,|\bh1:)\s*$")
+# Context immediately before the value that marks it as not-a-literal: templating, data URI, Go module sum,
+# SOPS-encrypted value (`ENC[AES256_GCM,data:…,iv:…]`).
+_VALUE_CONTEXT_SKIP = re.compile(r"(\$\{|\{\{|base64,|\bh1:)\s*$|ENC\[[^\]]*$")
 _HEXONLY = re.compile(r"^[0-9a-fA-F]+$")
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
-# lowercase paths and slugs (`emails/password_reset_v2`, `my-app-tls-cert-2024`): references, not secrets
-_SLUG = re.compile(r"^/?[a-z0-9]+(?:[/._\-][a-z0-9]+){2,}/?$|^/?[a-z0-9._\-]*/[a-z0-9._\-/]*$")
+_SLUG_SHAPE = re.compile(r"^/?[a-z0-9]+(?:[/._\-][a-z0-9]+){2,}/?$|^/?[a-z0-9._\-]*/[a-z0-9._\-/]*$")
+# A secret embedded in a URL's userinfo: scheme://[user]:SECRET@host
+_URL_PASSWORD = re.compile(r"://[^\s:/@'\"]*:([^\s@/'\"]{8,})@[\w.\-]")
+# Multi-line bindings: the secret's name is on the previous line (k8s env, Terraform variable).
+_PREV_NAME = re.compile(r"""^\s*(?:-\s*)?name\s*:\s*['"]?([\w.\-]+)['"]?\s*$|^\s*variable\s+['"]([\w.\-]+)['"]\s*\{""")
+_CTX_VALUE = re.compile(r"""^\s*(?:value|default)\s*[:=]\s*['"]?$""")
+
+
+def _is_slug(tok: str) -> bool:
+    """Lowercase path or kebab/snake slug made of words (`emails/password_reset_v2`, `my-app-tls-cert-2024`). A
+    segment that is long and mixes letters and digits is random, not a word, so the value is not a slug."""
+    if not _SLUG_SHAPE.match(tok):
+        return False
+    return not any(len(seg) >= 10 and re.search(r"[a-z]", seg) and re.search(r"\d", seg)
+                   for seg in re.split(r"[/._\-]+", tok))
 
 
 def _split_ident(name: str) -> list[str]:
-    name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name.split(".")[-1].lstrip("$@"))
-    return [w for w in re.split(r"[_\-]+", name.lower()) if w]
+    name = re.sub(r"[^\w.\-]", "", name)                         # `api_key[]`, `$password`, `@token`
+    name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)      # APIToken -> API_Token, DBPassword -> DB_Password
+    name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)          # apiKey -> api_Key
+    words = [re.sub(r"(?<=[a-z]{3})\d+$", "", w) for w in re.split(r"[_\-.]+", name.lower())]   # SECRET_KEY2 -> key
+    return [w for w in words if w]
 
 
 def _is_secret_ident(name: str | None) -> bool:
@@ -139,13 +171,16 @@ def _is_secret_ident(name: str | None) -> bool:
     if not words:
         return False
     last = words[-1]
-    return last in _SECRET_WORDS or (last == "key" and len(words) > 1 and words[-2] in _KEY_QUALIFIERS)
+    return last in _SECRET_WORDS or (last == "key" and len(words) > 1 and words[-2] not in _NOT_SECRET_KEY)
 
 
-def _secret_name(prefix: str) -> bool:
+def _secret_name(prefix: str, ctx_name: str | None = None) -> bool:
     """Is the text immediately before a value a binding to a secret-like name? Only the last 120 characters
     are examined, so the cost per token is bounded however long the line is."""
-    m = _BIND.search(prefix[-120:])
+    tail = prefix[-120:]
+    if ctx_name and _CTX_VALUE.search(tail) and _is_secret_ident(ctx_name):
+        return True
+    m = _BIND.search(tail)
     if not m:
         return False
     names = [g for g in m.groups() if g]
@@ -175,41 +210,73 @@ def _shannon(s: str) -> float:
     return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
-def _entropy_findings(rel: str, lineno: int, line: str) -> list[Finding]:
+def _looks_random(val: str) -> tuple[bool, float]:
+    if _PLACEHOLDER.search(val) or _UUID.match(val) or _is_slug(val) or "${" in val or "{{" in val:
+        return False, 0.0
+    if not any(c.isdigit() for c in val):
+        return False, 0.0                 # every trigger needs a digit; words and identifiers are skipped cheaply
+    ent = _shannon(val)
+    return ent >= 3.5, ent
+
+
+def _sec011(rel: str, lineno: int, line: str, ent: float, reason: str) -> list[Finding]:
+    return [Finding("SEC011", "high", "High-entropy string (possible secret)",
+                    "سلسلة عالية العشوائية (سرّ محتمل)", rel, lineno, line.strip()[:200],
+                    "تحقّق: إن كان سرًّا حقيقيًا فأبطله وانقله إلى متغير بيئة أو مدير أسرار. "
+                    "إن كان قيمة مشروعة (تجزئة، معرّف) فاستثنِ السطر بـ # nosec.",
+                    "CWE-798", extra={"entropy": round(ent, 2), "why": reason})]
+
+
+def _entropy_findings(rel: str, lineno: int, line: str, ctx_name: str | None = None) -> list[Finding]:
     """Generic high-entropy secret detection (gitleaks / trufflehog style), for keys from providers we have no
-    explicit pattern for. Two triggers:
-      1. a random-looking value bound to a secret-like name (`api_key = "…"`, `"password": "…"`, `ENV TOKEN …`);
-      2. a standalone, very-high-entropy base62/base64 run of 40+ characters (not hex, not in a URL, not a cert).
+    explicit pattern for. Triggers:
+      1. a random-looking value bound to a secret-like name (`api_key = "…"`, `<password>…`, `ENV TOKEN …`);
+         a quoted value is taken whole, so keys with symbols (Django `SECRET_KEY`) are evaluated as one string;
+      2. a password in a URL's userinfo (`redis://:…@host`, `https://user:…@github.com`);
+      3. a standalone, very-high-entropy base62/base64 run of 40+ characters (not hex, not in a URL, not a cert).
+    ``ctx_name`` is a secret name carried over from the previous line (k8s `- name: X` / `value: …`).
     """
+    if "-----BEGIN" in line and "PRIVATE" not in line:
+        return []                         # one-line PEM certificate / public key (private keys have their own rule)
+    # 1a. whole quoted literals bound to a secret name
+    for m in _LITERAL.finditer(line):
+        val = m.group(2)
+        before = line[max(0, m.start() - 120):m.start() + 1]
+        if _VALUE_CONTEXT_SKIP.search(before[:-1]) or not _secret_name(before, ctx_name):
+            continue
+        ok, ent = _looks_random(val)
+        if ok:
+            return _sec011(rel, lineno, line, ent, "token assigned to a secret-like name")
+    # 2. password inside a URL
+    for m in _URL_PASSWORD.finditer(line):
+        ok, ent = _looks_random(m.group(1))
+        if ok or (ent >= 3.0 and len(m.group(1)) >= 12):
+            return _sec011(rel, lineno, line, ent, "password embedded in a URL")
+    # 1b / 3. bare tokens (YAML, .env, properties, XML text, unquoted values)
     for m in _TOKEN.finditer(line):
         tok = m.group(0)
-        if len(tok) < 20 or len(tok) > 200 or _PLACEHOLDER.search(tok) or _UUID.match(tok) or _SLUG.match(tok):
+        if len(tok) < 20 or len(tok) > 200:
             continue
-        has_upper = any(c.isupper() for c in tok)
-        has_lower = any(c.islower() for c in tok)
-        has_digit = any(c.isdigit() for c in tok)
-        if not has_digit:
-            continue                       # every trigger needs a digit; words and identifiers are skipped cheaply
-        ent = _shannon(tok)
-        if ent < 3.5:
+        ok, ent = _looks_random(tok)
+        if not ok:
             continue
         before = line[max(0, m.start() - 120):m.start()]
         if _VALUE_CONTEXT_SKIP.search(before):
             continue
-        mixed = has_upper and has_lower                   # base64/base62-like, not a plain word or hex hash
-        if _secret_name(before):
-            reason = "token assigned to a secret-like name"
-        elif (mixed and ent >= 4.2 and len(tok) >= 40 and not _HEXONLY.match(tok) and not tok.startswith("MII")
-              and not _in_url(line, m.start())):
-            reason = "standalone high-entropy token"
-        else:
-            continue
-        return [Finding("SEC011", "high", "High-entropy string (possible secret)",
-                        "سلسلة عالية العشوائية (سرّ محتمل)", rel, lineno, line.strip()[:200],
-                        "تحقّق: إن كان سرًّا حقيقيًا فأبطله وانقله إلى متغير بيئة أو مدير أسرار. "
-                        "إن كان قيمة مشروعة (تجزئة، معرّف) فاستثنِ السطر بـ # nosec.",
-                        "CWE-798", extra={"entropy": round(ent, 2), "why": reason})]   # one per line is enough
+        if _secret_name(before, ctx_name):
+            return _sec011(rel, lineno, line, ent, "token assigned to a secret-like name")
+        mixed = any(c.isupper() for c in tok) and any(c.islower() for c in tok)
+        if (mixed and ent >= 4.2 and len(tok) >= 40 and not _HEXONLY.match(tok) and not tok.startswith("MII")
+                and not _in_url(line, m.start())):
+            return _sec011(rel, lineno, line, ent, "standalone high-entropy token")
     return []
+
+
+_PEM_BEGIN = re.compile(r"-----BEGIN ((?:[A-Z0-9]+ )*)(CERTIFICATE|PUBLIC KEY|X509 CRL|CERTIFICATE REQUEST|"
+                        r"PGP PUBLIC KEY BLOCK|PGP SIGNATURE|PGP MESSAGE|DH PARAMETERS|EC PARAMETERS)-----")
+_PEM_END = re.compile(r"-----END [A-Z0-9 ]+-----")
+# Encrypted-at-rest secret stores: the values are ciphertext, safe to commit by design.
+_ENCRYPTED_STORE = re.compile(r"(?m)^kind:\s*SealedSecret\b|^sops:\s*$|^\s+mac:\s*ENC\[|ANSIBLE_VAULT;")
 
 
 def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set[str]) -> list[Finding]:
@@ -238,7 +305,21 @@ def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set
     ]
     if not applicable:
         return findings
+    entropy_on = "SEC011" not in ignore_rules and not _ENCRYPTED_STORE.search(text)
+    in_pem = False
+    ctx_name = None
     for lineno, line in enumerate(text.splitlines(), 1):
+        # PEM-armored certificates / public keys: their base64 body is public data, not a secret
+        if _PEM_BEGIN.search(line):
+            in_pem = not _PEM_END.search(line)
+            continue
+        if in_pem:
+            if _PEM_END.search(line):
+                in_pem = False
+            continue
+        prev_ctx = ctx_name                  # a secret name declared on the line just above (k8s env, Terraform)
+        m = _PREV_NAME.search(line)
+        ctx_name = (m.group(1) or m.group(2)) if m else None
         if len(line) > MAX_LINE_LEN or SUPPRESS.search(line):
             continue
         line_hits = 0
@@ -250,8 +331,8 @@ def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set
                     file=rel, line=lineno, snippet=line.strip()[:200], advice=rule.advice, cwe=rule.cwe,
                 ))
         # generic entropy check only if no explicit secret rule already matched this line
-        if not line_hits and "SEC011" not in ignore_rules:
-            findings.extend(_entropy_findings(rel, lineno, line))
+        if not line_hits and entropy_on:
+            findings.extend(_entropy_findings(rel, lineno, line, prev_ctx))
     return findings
 
 

@@ -229,7 +229,7 @@ class Project:
         if tree is None:
             try:
                 tree = ast.parse(text)
-            except (SyntaxError, ValueError):
+            except (SyntaxError, ValueError, MemoryError, RecursionError):   # generated/hostile code: skip the file
                 return False
         file = {"path": path, "tree": tree, "aliases": self._aliases(tree, mod, is_pkg), "funcs": {},
                 "classes": {}, "lines": lines if lines is not None else text.splitlines(), "assign_aliases": []}
@@ -1393,7 +1393,7 @@ def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict |
         for rel, text in groups["python"].items():
             try:
                 tree = ast.parse(text)
-            except (SyntaxError, ValueError):
+            except (SyntaxError, ValueError, MemoryError, RecursionError):   # generated/hostile code: skip the file
                 continue
             entries.append(_Entry(_module_name(rel), rel, text, tree, is_pkg=rel.replace("\\", "/").endswith("__init__.py")))
         proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_MODELS, "python"), entries, config=config)

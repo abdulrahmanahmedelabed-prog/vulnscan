@@ -433,3 +433,48 @@ def test_sarif_apex_virtual_file_points_at_export():
     phys = loc["physicalLocation"]
     assert phys["artifactLocation"]["uri"] == "f100.sql" and "region" not in phys
     assert phys["properties"]["embeddedFile"] == "Static/app.js"
+
+
+# ---------------------------------------------------------------- regressions from the fourth review round
+
+_T4 = "q8Fz" + "3LkP9wXr2TmV7bNc4HdJ6sYe1Ga5"
+
+
+def test_entropy_bindings_round4():
+    t = _T4
+    for line in (f'\tAPIToken = "{t}"', f'var DBPassword = "{t}";', f'String JWTSecret = "{t}";', f'AWSSecretKey: "{t}",',
+                 f'OPENAI_KEY = "{t}"', f"api.key={t}", f"NEXT_PUBLIC_STRIPE_KEY={t}",
+                 f'<meta-data android:name="com.google.android.geo.API_KEY" android:value="{t}"/>',
+                 f'const API_KEY: &str = "{t}";', f"static API_TOKEN: &'static str = \"{t}\";",
+                 f'const char api_key[] = "{t}";', f'#define API_KEY "{t}"', f'let api_key = String::from("{t}");',
+                 f"<password>{t}</password>", f'<string name="api_key">{t}</string>',
+                 "SECRET_KEY = 'django-insecure-x9$2k#m8w4z6p1r5t0v8n2b7c4d9f3w1q7'",
+                 "SECRET_KEY2 = 'z8(9h_1o2x!4k-3m)7q+5w6e*r8t^y0u&i2o#p4a@s6d'",
+                 f'app.secret_key = b"{t}"', f'const API_KEY = process.env.API_KEY || "{t}";',
+                 f"ENV.fetch('API_KEY') {{ '{t}' }}", f'@Value("${{api.key:{t}}}")',
+                 f'public string ApiKey {{ get; set; }} = "{t}";', f'REDIS_URL = "redis://:{t}@localhost:6379/0"'):
+        assert _entropy_findings("a", 1, line), line
+    for line in ('cache_key = "aB3dE5fG7hJ9kL1mN3pQ"', '<string name="app_name">MyApp2024ProdBuildRelease</string>',
+                 "db_password: ENC[AES256_GCM,data:Tr7o1HhFzK3qPwX9vLm2NcB8yJ4dQeR6sUa,iv:Ab3dE5fG7hJ9kL1mN=,type:str]",
+                 "password: ${{ secrets.DB_PASSWORD }}"):
+        assert not _entropy_findings("a", 1, line), line
+
+
+def test_entropy_file_level_round4(tmp_path):
+    t = _T4
+    (tmp_path / "dep.yaml").write_text(f"env:\n  - name: API_KEY\n    value: {t}\n  - name: LOG_LEVEL\n"
+                                       "    value: aB3dE5fG7hJ9kL1mN3pQ5rS\n")
+    (tmp_path / "vars.tf").write_text(f'variable "db_password" {{\n  default = "{t}"\n}}\n')
+    body = "\n".join("MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHCozMxH2Mo" for _ in range(20))
+    (tmp_path / "ca.crt").write_text(f"-----BEGIN CERTIFICATE-----\n{body}\n-----END CERTIFICATE-----\n")
+    (tmp_path / "sealed.yaml").write_text("kind: SealedSecret\nspec:\n  encryptedData:\n"
+                                          "    password: AgBy3i4OJSWK+PiTySYZZA9rO43cGDEq8Hd2kLmN5pQrS7tUvWx\n")
+    hits = sorted((f.file, f.line) for f in scan_path(tmp_path, [], set())[0] if f.rule_id == "SEC011")
+    assert hits == [("dep.yaml", 3), ("vars.tf", 2)]
+
+
+def test_python_parser_overflow_does_not_abort_scan(tmp_path):
+    (tmp_path / "notes.py").write_text("a " * 1500 + "\n")
+    (tmp_path / "app.py").write_text('import os\ndef f(request):\n    os.system(request.GET["c"])\n')
+    ids = {f.rule_id for f in scan_path(tmp_path, [], set())[0]}
+    assert "EXE004" in ids and any(i.startswith("DF") for i in ids)
