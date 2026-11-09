@@ -52,8 +52,10 @@ def load_expected(root: pathlib.Path) -> dict[str, tuple[str, bool, int]]:
 
 
 def run_scan(root: pathlib.Path, out: pathlib.Path) -> list[dict]:
-    code = root / "testcode" if (root / "testcode").is_dir() else root / "src/main/java/org/owasp/benchmark/testcode"
-    subprocess.run([sys.executable, "-m", "vulnscan", str(code), "--no-deps", "--no-external", "--no-jadx",
+    # The whole application is scanned (helpers included), as a user would scan their project; findings are then
+    # attributed to test cases by file name.
+    code = root if (root / "testcode").is_dir() else root / "src/main/java"
+    subprocess.run([sys.executable, "-m", "vulnscan", str(code), "--exclude", "*.html", "--exclude", "results/*", "--no-deps", "--no-external", "--no-jadx",
                     "-f", "json", "-o", str(out)], check=False, stdout=subprocess.DEVNULL)
     return json.loads(out.read_text(encoding="utf-8"))["findings"]
 

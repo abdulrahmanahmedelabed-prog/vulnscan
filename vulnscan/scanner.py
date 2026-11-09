@@ -281,6 +281,11 @@ _PEM_END = re.compile(r"-----END [A-Z0-9 ]+-----")
 _ENCRYPTED_STORE = re.compile(r"(?m)^kind:\s*SealedSecret\b|^sops:\s*$|^\s+mac:\s*ENC\[|ANSIBLE_VAULT;")
 
 
+def _line(text: str, lineno: int) -> str:
+    lines = text.splitlines()
+    return lines[lineno - 1] if 0 < lineno <= len(lines) else ""
+
+
 def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set[str]) -> list[Finding]:
     findings: list[Finding] = []
     if any(fnmatch.fnmatch(path.name, g) for g in SKIP_FILE_GLOBS):
@@ -307,6 +312,14 @@ def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set
     ]
     if not applicable:
         return findings
+    if path.suffix.lower() == ".py":
+        try:
+            import ast as _ast
+            from . import semantic
+            findings.extend(f for f in semantic.check_python(rel, _ast.parse(text), ignore_rules)
+                            if not SUPPRESS.search(_line(text, f.line)))
+        except (SyntaxError, ValueError, MemoryError, RecursionError):
+            pass
     entropy_on = "SEC011" not in ignore_rules and not _ENCRYPTED_STORE.search(text)
     in_pem = False
     ctx_name = None

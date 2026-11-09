@@ -51,6 +51,8 @@ CFAMILY = {".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".cs": "csharp", 
            ".rs": "rust", ".swift": "swift", ".rb": "ruby", ".rake": "ruby"}
 CFAMILY_LANGS = ("java", "kotlin", "csharp", "go", "php", "cpp", "rust", "swift", "ruby")
 MODELS_DIR = pathlib.Path(__file__).parent / "models"
+_KEYED_READS = {"get", "getOrDefault", "getFirst", "getLast", "peek", "peekFirst", "peekLast", "element", "first", "last",
+                "getProperty", "getAttribute"}
 CONTAINER_WRITES = {"append", "extend", "insert", "add", "update", "put", "setdefault", "set", "setProperty", "__setitem__"}
 ARG_INJECTION = ("DF009", "medium", "Tainted data reaches a subprocess argument",
                  "بيانات غير موثوقة تصل إلى وسيط لأمر خارجي",
@@ -67,7 +69,7 @@ def load_models(extra_dirs=(), base=None, language="python") -> dict:
     """Merge the built-in models for a language with every *.json in the given directories."""
     m = {"attr_sources": [], "call_sources": [], "name_sources": [], "prefix_sources": [], "entry_decorators": set(),
          "view_bases": set(), "view_methods": set(), "request_params": {"request", "req", "self"},
-         "sinks": [], "attr_sinks": [], "sanitizers": set(), "safe_return_calls": set(), "validators": set(),
+         "sinks": [], "attr_sinks": [], "store_sinks": [], "sanitizers": set(), "safe_return_calls": set(), "validators": set(),
          "language": language}
     paths = [base or DEFAULT_MODELS]
     for d in extra_dirs or ():
@@ -106,7 +108,13 @@ def load_models(extra_dirs=(), base=None, language="python") -> dict:
             m["sinks"].append((k["rule"], k.get("severity", "high"), k.get("title", k["rule"]), k.get("title_ar", k.get("title", k["rule"])),
                                k.get("advice", ""), k.get("cwe", ""), k.get("label", k["rule"]), list(k.get("args", [0])),
                                bool(k.get("shell", False)), list(k.get("names", [])),
-                               frozenset(x.lower() for x in k.get("kwargs", []))))
+                               frozenset(x.lower() for x in k.get("kwargs", [])),
+                               re.compile(k["receiver"]) if k.get("receiver") else None))
+        for st in data.get("store_sinks", []):
+            # `session[key] = value`: writing untrusted data into a trusted store (trust boundary violation)
+            m["store_sinks"].append(((st["rule"], st.get("severity", "medium"), st.get("title", st["rule"]),
+                                      st.get("title_ar", st.get("title", st["rule"])), st.get("advice", ""), st.get("cwe", ""),
+                                      st.get("label", st["rule"]), [0], False), set(st.get("roots", []))))
         m["sanitizers"] |= set(data.get("sanitizers", []))
         m["safe_return_calls"] |= set(data.get("safe_return_calls", []))
         m["validators"] |= set(data.get("validators", []))
@@ -191,6 +199,14 @@ class _Env:
         self.funcs: dict = {}     # var -> function qual (h = helper / partial)
         self.consts: dict = {}    # var -> known constant at this point (flow refinement only)
         self.dk: dict = {}        # var -> ({const key: origin}, other-keys origin) (flow refinement only)
+
+
+_SHAPE_CHECKS = {"startswith", "endswith", "isalnum", "isalpha", "isdigit", "isdecimal", "isnumeric", "isidentifier",
+                 "isascii", "fullmatch", "startsWith", "endsWith", "matches"}
+
+
+def _names(expr) -> set:
+    return {n.id for n in ast.walk(expr) if isinstance(n, ast.Name)} if expr is not None else set()
 
 
 def _step(path, line, text):
@@ -640,6 +656,9 @@ class Project:
         if canon:
             for entry in self.m["sinks"]:
                 if any(_name_matches(canon, n) for n in entry[9]):
+                    rx = entry[11] if len(entry) > 11 else None
+                    if rx is not None and not (isinstance(call.func, ast.Attribute) and rx.search(_dotted(call.func.value) or "")):
+                        continue                        # e.g. `search` is LDAP only on a connection-like receiver
                     res = entry[:9] + entry[10:11]      # drop the name list, keep the named-argument set at index 9
                     break
         self._sink_cache[key] = (call, res)
@@ -668,12 +687,20 @@ class Project:
                 for si, attrs in self.m["attr_sinks"]:
                     if tgt.attr in attrs:
                         return si, node.value
+            if isinstance(tgt, ast.Subscript) and self.m.get("store_sinks"):
+                base = _dotted(tgt.value) or ""
+                for si, roots in self.m["store_sinks"]:
+                    if base in roots or base.split(".")[-1] in roots:
+                        # both the key and the value cross the boundary
+                        return si, ast.Tuple(elts=[tgt.slice, node.value], ctx=ast.Load())
         return None
 
     @staticmethod
     def _sink_args(si, call) -> list:
         """Argument expressions a sink inspects: positional indices plus named arguments (PL/SQL `p_sql => x`, Python kw)."""
-        out = [call.args[i] for i in si[7] if i < len(call.args)]
+        out = [call.args[i] for i in si[7] if isinstance(i, int) and i < len(call.args)]
+        if "self" in si[7] and isinstance(call.func, ast.Attribute):
+            out.append(call.func.value)         # the receiver itself is the dangerous value (pathlib: p.read_text())
         kws = si[9] if len(si) > 9 else ()
         if kws:
             out.extend(k.value for k in call.keywords if k.arg and k.arg.lower() in kws)
@@ -861,6 +888,22 @@ class Project:
                     if o:
                         return (o[0], o[1], _trail(o), _safe_for(o) | skind)
                 return None
+            f = node.func
+            if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in env.dk \
+                    and f.attr in _KEYED_READS:
+                m, other = env.dk[f.value.id]
+                if f.attr in ("getFirst", "peek", "peekFirst", "element", "first"):
+                    key = 0
+                elif f.attr in ("getLast", "peekLast", "last"):
+                    key = -1
+                else:
+                    key = _flow.fold(node.args[0], env.consts) if node.args else _flow._MISSING
+                if key is not _flow._MISSING and _flow._hashable(key):
+                    hit = m.get(key, other) if key in m else other
+                    if hit is None and len(node.args) > 1:            # dict.get(key, default) / getOrDefault
+                        return self._taint(mod, cls, node.args[1], env)
+                    return hit
+                return next((v for v in list(m.values()) + [other] if v), None)
             if isinstance(node.func, ast.Attribute) and node.func.attr == "keys" and not node.args \
                     and isinstance(node.func.value, ast.Name):
                 o = env.tainted.get(node.func.value.id)
@@ -1095,9 +1138,33 @@ class Project:
         return parents
 
     def _validated(self, mod, test, positive: bool) -> set:
+        """Names a condition validates on the path where it is `positive` (True) or not.
+
+        Recognised checks: allow-lists (`x in ALLOWED`, `x == c`), validator calls, string-shape checks
+        (`x.startswith/endswith/isalnum/isdigit/fullmatch …`), and deny-list rejections taken on the path
+        where they are False (`if '..' in x: return`). Bare truthiness / None / length checks validate nothing."""
         if not positive:
             if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
                 return self._validated(mod, test.operand, True)
+            if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or):
+                # all parts are False on this path: every rejection held
+                return set().union(*[self._validated(mod, v, False) for v in test.values])
+            if isinstance(test, ast.Compare) and len(test.ops) == 1:
+                op = test.ops[0]
+                if isinstance(op, ast.In) and isinstance(test.left, ast.Constant) and isinstance(test.left.value, str):
+                    return _names(test.comparators[0])          # rejected: a forbidden substring is present
+                if isinstance(op, ast.NotIn):
+                    return _names(test.left) if isinstance(test.left, ast.Name) else set()   # x not in ALLOWED -> exit
+                if isinstance(op, ast.NotEq) and isinstance(test.left, ast.Name) and isinstance(test.comparators[0], ast.Constant):
+                    return {test.left.id}
+                if isinstance(op, (ast.Gt, ast.GtE, ast.NotEq)) and isinstance(test.left, ast.Call) \
+                        and isinstance(test.left.func, ast.Attribute) and test.left.func.attr in ("find", "index", "count", "indexOf"):
+                    return _names(test.left.func.value)          # x.find('..') != -1 -> exit
+            if isinstance(test, ast.Call):
+                fname = self._canon(mod, test.func).split(".")[-1]
+                if fname in ("search", "match", "findall", "contains", "matches", "test") and test.args:
+                    return set().union(*[_names(a) for a in test.args[1:]]) | \
+                        (_names(test.func.value) if isinstance(test.func, ast.Attribute) and fname in ("contains", "matches") else set())
             return set()
         if isinstance(test, ast.BoolOp):
             parts = [self._validated(mod, v, True) for v in test.values]
@@ -1109,6 +1176,9 @@ class Project:
             if isinstance(test.left, ast.Name) and any(isinstance(op, (ast.In, ast.Eq)) for op in test.ops):
                 out.add(test.left.id)
             return out
+        if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and test.func.attr in _SHAPE_CHECKS:
+            # x.isalnum() / x.startswith(p) validate x; re.fullmatch(p, x) / pat.fullmatch(x) validate x
+            return _names(test.func.value) | set().union(*[_names(a) for a in test.args])
         if isinstance(test, ast.Call):
             fname = self._canon(mod, test.func).split(".")[-1]
             names = {n.id for a in list(test.args) + [k.value for k in test.keywords] for n in ast.walk(a) if isinstance(n, ast.Name)}
@@ -1855,7 +1925,8 @@ def _catalogue() -> list[dict]:
     for path in sorted(MODELS_DIR.glob("*.json")):
         if path.stem not in ("python", "javascript"):
             entries += load_models((), path, path.stem)["sinks"]
-    for e in entries + [ARG_INJECTION + (None,), REFLECTED_RETURN + (None,)]:
+    stores = [si for si, _ in load_models()["store_sinks"]]
+    for e in entries + stores + [ARG_INJECTION + (None,), REFLECTED_RETURN + (None,)]:
         if e[0] in seen:
             continue
         seen.add(e[0])

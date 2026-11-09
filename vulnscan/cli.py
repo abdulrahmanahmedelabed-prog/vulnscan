@@ -79,11 +79,14 @@ def ui_main(argv: list[str]) -> int:
 
 
 def _list_rules() -> str:
-    lines = [f"{len(RULES) + 1} قاعدة مدمجة:", ""]
+    lines = [f"{len(RULES) + 4} قاعدة مدمجة:", ""]
     for r in sorted(RULES, key=lambda r: (SEVERITY_RANK[r.severity], r.id)):
         lines.append(f"{r.id:<8} {r.severity:<9} {r.cwe:<9} {r.title_ar} — {r.title}")
     from .scanner import ENTROPY_RULE as e
+    from .semantic import CATALOGUE as SEM
     lines.append(f"{e['id']:<8} {e['severity']:<9} {e['cwe']:<9} {e['title_ar']} — {e['title']} (إنتروبيا شانون)")
+    for r in SEM:
+        lines.append(f"{r['id']:<8} {r['severity']:<9} {r['cwe']:<9} {r['title_ar']} — {r['title']}")
     from .taint import TAINT_RULES
     lines += ["", f"{len(TAINT_RULES)} قاعدة تدفق بيانات وAPEX (12 لغة منها PL/SQL، مدركة للأنواع، عبر الملفات):", ""]
     for t in sorted(TAINT_RULES, key=lambda t: (SEVERITY_RANK[t["severity"]], t["id"])):

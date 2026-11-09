@@ -171,7 +171,7 @@ RULES: list[Rule] = [
 
     # --------------------------------------------------------- crypto / TLS
     Rule("CRY001", "medium", "Weak hash (MD5/SHA1)", "تجزئة ضعيفة MD5/SHA1",
-         _r(r"(?i)\b(hashlib\.(md5|sha1)|MessageDigest\.getInstance\s*\(\s*[\"'](MD5|SHA-?1)[\"']|crypto\.createHash\s*\(\s*[\"'](md5|sha1)[\"']|\bmd5\s*\(|\bsha1\s*\(|md5\.New\(|sha1\.New\(|Digest::(MD5|SHA1))"),
+         _r(r"(?i)\b(hashlib\.(md5|sha1)\b|hashlib\.new\s*\(\s*[\"'](md5|sha1|md4|md2)[\"']|MessageDigest\.getInstance\s*\(\s*[\"'](MD5|SHA-?1)[\"']|crypto\.createHash\s*\(\s*[\"'](md5|sha1)[\"']|\bmd5\s*\(|\bsha1\s*\(|md5\.New\(|sha1\.New\(|Digest::(MD5|SHA1))"),
          "استخدم SHA-256 أو أقوى، ولكلمات المرور bcrypt/argon2.", "CWE-328", CODE,
          skip=_r(r"(?i)(checksum|etag|cache|fingerprint|integrity|usedforsecurity\s*=\s*False)")),
     Rule("CRY002", "high", "TLS certificate verification disabled", "تعطيل التحقق من شهادة TLS",
@@ -192,6 +192,15 @@ RULES: list[Rule] = [
          "ولّد IV/salt عشوائيًا لكل عملية وخزّنه مع النص المشفر.", "CWE-329", CODE),
 
     # --------------------------------------------------------- network/cfg
+    Rule("XXE001", "high", "XML parser with external entities enabled (XXE)", "محلل XML مع تفعيل الكيانات الخارجية (XXE)",
+         _r(r"(?i)(feature_external_[gp]es\s*,\s*(True|1)\b|resolve_entities\s*=\s*True|load_dtd\s*=\s*True|"
+            r"no_network\s*=\s*False|external-(general|parameter)-entities[\"']\s*,\s*true|"
+            r"disallow-doctype-decl[\"']\s*,\s*false|setExpandEntityReferences\s*\(\s*true|"
+            r"FEATURE_SECURE_PROCESSING\s*,\s*false|IS_SUPPORTING_EXTERNAL_ENTITIES\s*,\s*(true|Boolean\.TRUE)|"
+            r"LIBXML_NOENT|libxml_disable_entity_loader\s*\(\s*false|DtdProcessing\s*=\s*DtdProcessing\.Parse|"
+            r"XmlResolver\s*=\s*new\s+XmlUrlResolver|ProhibitDtd\s*=\s*false)"),
+         "عطّل الكيانات الخارجية وDTD: لا تفعّل feature_external_ges/resolve_entities، واستخدم defusedxml في Python، "
+         "وفي Java فعّل disallow-doctype-decl.", "CWE-611", CODE),
     Rule("NET001", "low", "Cleartext HTTP URL", "رابط HTTP غير مشفّر",
          _r(r"['\"`]http://[^'\"`\s]+"),
          "استخدم https://.", "CWE-319", CODE | CONFIG | frozenset({".html", ".plist"}),

@@ -35,7 +35,27 @@
         "remote_addr",
         "user_agent",
         "get_json",
-        "get_data"
+        "get_data",
+        "query_string",
+        "base_url",
+        "url_root",
+        "host_url",
+        "environ",
+        "view_args",
+        "authorization",
+        "if_match",
+        "origin",
+        "host",
+        "access_route",
+        "content_type",
+        "mimetype",
+        "get_body",
+        "text",
+        "content",
+        "query",
+        "match_info",
+        "post",
+        "raw_body"
       ],
       "label": "request.{attr}"
     },
@@ -457,9 +477,15 @@
         0
       ],
       "names": [
-        "xpath",
+        "XPathEvaluator",
+        "elementpath.Selector",
+        "elementpath.iter_select",
+        "elementpath.select",
         "etree.XPath",
-        "lxml.etree.XPath"
+        "etree.XPathEvaluator",
+        "lxml.etree.XPath",
+        "lxml.etree.XPathEvaluator",
+        "xpath"
       ],
       "title": "Tainted data reaches an XPath query",
       "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
@@ -491,6 +517,57 @@
       "title": "Tainted data written to a log unsanitized",
       "title_ar": "بيانات غير موثوقة تُكتب في السجل دون تنقية",
       "advice": "أزل أسطر جديدة وأحرف التحكم من المدخلات قبل تسجيلها (حقن سجلات)."
+    },
+    {
+      "rule": "DF014",
+      "severity": "high",
+      "cwe": "CWE-90",
+      "label": "LDAP filter (ldap3)",
+      "title": "Tainted data reaches an LDAP search filter",
+      "title_ar": "بيانات غير موثوقة تصل إلى مرشّح LDAP",
+      "advice": "هرّب القيم بـ ldap.filter.escape_filter_chars.",
+      "names": [
+        "search"
+      ],
+      "args": [
+        1
+      ],
+      "kwargs": [
+        "search_filter"
+      ],
+      "receiver": "(?i)(^|[._])(conn|connection|ldap|ld|server_conn)\\w*$"
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح (resolve + is_relative_to).",
+      "label": "file path (pathlib)",
+      "names": [
+        "read_text",
+        "read_bytes",
+        "write_text",
+        "write_bytes",
+        "unlink",
+        "rmdir",
+        "mkdir",
+        "touch",
+        "iterdir",
+        "open",
+        "exists",
+        "is_file",
+        "is_dir",
+        "stat",
+        "rename",
+        "symlink_to",
+        "glob",
+        "rglob"
+      ],
+      "args": [
+        "self"
+      ]
     }
   ],
   "sanitizers": [
@@ -567,5 +644,22 @@
     "check",
     "verify",
     "in_whitelist"
+  ],
+  "store_sinks": [
+    {
+      "rule": "DF025",
+      "severity": "medium",
+      "cwe": "CWE-501",
+      "label": "server-side session",
+      "title": "Untrusted data stored in the session (trust boundary violation)",
+      "title_ar": "بيانات غير موثوقة تُخزَّن في الجلسة (تجاوز حدود الثقة)",
+      "advice": "لا تضع مدخلات المستخدم في الجلسة كقيم موثوقة؛ تحقّق منها بقائمة بيضاء أولًا، ولا تجعلها مفتاحًا.",
+      "roots": [
+        "session",
+        "flask.session",
+        "request.session",
+        "self.request.session"
+      ]
+    }
   ]
 }

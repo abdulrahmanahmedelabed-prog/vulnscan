@@ -198,7 +198,9 @@ class Handler(BaseHTTPRequestHandler):
                       "cwe": r.cwe, "advice": r.advice,
                       "langs": sorted(r.langs) if r.langs else ["*"]} for r in RULES]
             from .scanner import ENTROPY_RULE
+            from .semantic import CATALOGUE as SEM
             rules.append({**ENTROPY_RULE, "langs": ["*"]})
+            rules += [{**r, "advice": "", "langs": [".py"]} for r in SEM]
             rules += [{**t, "langs": [".py .js .ts (تدفق بيانات)"]} for t in TAINT_RULES]
             from .vql import catalogue
             rules += [{**q, "langs": ["VQL"]} for q in catalogue()]

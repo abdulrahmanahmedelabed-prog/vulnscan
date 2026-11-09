@@ -101,6 +101,23 @@ def _fold(node, consts):
         if t is _MISSING:
             return _MISSING
         return _fold(node.body if t else node.orelse, consts)
+    if isinstance(node, ast.Subscript):
+        base = _fold(node.value, consts)
+        if isinstance(base, (str, bytes, tuple)):
+            if isinstance(node.slice, ast.Slice):
+                lo = _fold(node.slice.lower, consts) if node.slice.lower else None
+                hi = _fold(node.slice.upper, consts) if node.slice.upper else None
+                st = _fold(node.slice.step, consts) if node.slice.step else None
+                if _MISSING in (lo, hi, st):
+                    return _MISSING
+                return base[lo:hi:st]
+            idx = _fold(node.slice, consts)
+            if isinstance(idx, int):
+                return base[idx]
+        return _MISSING
+    if isinstance(node, (ast.Tuple,)) :
+        vals = tuple(_fold(e, consts) for e in node.elts)
+        return _MISSING if _MISSING in vals else vals
     return _MISSING
 
 
@@ -116,18 +133,22 @@ def _too_big(a, b) -> bool:
 class State:
     """Abstract state at one program point."""
 
-    __slots__ = ("tainted", "consts", "dk")
+    __slots__ = ("tainted", "consts", "dk", "lk")
 
-    def __init__(self, tainted=None, consts=None, dk=None):
+    def __init__(self, tainted=None, consts=None, dk=None, lk=None):
         self.tainted: dict = tainted if tainted is not None else {}   # name -> origin
         self.consts: dict = consts if consts is not None else {}      # name -> python constant
         self.dk: dict = dk if dk is not None else {}                  # name -> ({const key: origin|None}, other origin|None)
+        self.lk: dict = lk if lk is not None else {}                  # name -> [origin|None, ...] (list, known length)
 
     def copy(self) -> "State":
-        return State(dict(self.tainted), dict(self.consts), {k: (dict(m), o) for k, (m, o) in self.dk.items()})
+        return State(dict(self.tainted), dict(self.consts), {k: (dict(m), o) for k, (m, o) in self.dk.items()},
+                     {k: list(v) for k, v in self.lk.items()})
 
     def same(self, other: "State") -> bool:
         return (set(self.tainted) == set(other.tainted) and self.consts == other.consts
+                and {k: tuple(bool(x) for x in v) for k, v in self.lk.items()} ==
+                {k: tuple(bool(x) for x in v) for k, v in other.lk.items()}
                 and {k: (set(k2 for k2, v in m.items() if v), bool(o)) for k, (m, o) in self.dk.items()}
                 == {k: (set(k2 for k2, v in m.items() if v), bool(o)) for k, (m, o) in other.dk.items()})
 
@@ -149,7 +170,12 @@ def join(a: State | None, b: State | None) -> State | None:
             vb = mb.get(key, ob)
             m[key] = va or vb
         dk[name] = (m, oa or ob)
-    return State(tainted, consts, dk)
+    lk = {}
+    for name in set(a.lk) & set(b.lk):
+        la, lb = a.lk[name], b.lk[name]
+        if len(la) == len(lb):
+            lk[name] = [x or y for x, y in zip(la, lb)]
+    return State(tainted, consts, dk, lk)
 
 
 class _Exit(Exception):
@@ -179,7 +205,9 @@ class FlowInterpreter:
         env = copy.copy(self.base)
         env.tainted = st.tainted
         env.consts = st.consts
-        env.dk = st.dk
+        env.dk = dict(st.dk)
+        for name, elems in st.lk.items():         # a list of known length reads like a dict with int keys
+            env.dk[name] = ({i: o for i, o in enumerate(elems)} | {i - len(elems): o for i, o in enumerate(elems)}, None)
         return env
 
     def taint(self, expr, st: State):
@@ -234,6 +262,18 @@ class FlowInterpreter:
             return self.block(s.body, st)
         if s.__class__.__name__ == "Match":
             self.record_header(s, st)
+            subj = fold(s.subject, st.consts)
+            if subj is not _MISSING:
+                for i, case in enumerate(s.cases):
+                    hit = _case_matches(case, subj, st.consts)
+                    if hit is None:
+                        break                          # undecidable pattern: fall back to every case
+                    if hit:
+                        self.mark_dead([c2 for c in s.cases[:i] + s.cases[i + 1:] for c2 in c.body])
+                        return self.block(case.body, st)
+                else:
+                    self.mark_dead([c2 for c in s.cases for c2 in c.body])
+                    return st                          # no case matches
             out = None
             for case in s.cases:
                 out = join(out, self.block(case.body, st.copy()))
@@ -360,6 +400,13 @@ class FlowInterpreter:
                 st.dk[tgt.id] = ({}, None)
             else:
                 st.dk.pop(tgt.id, None)
+            if isinstance(value, ast.List) and not any(isinstance(e, ast.Starred) for e in value.elts):
+                st.lk[tgt.id] = [self.taint(e, st) for e in value.elts]
+            elif isinstance(value, ast.Call) and isinstance(value.func, (ast.Name, ast.Attribute)) and not value.args \
+                    and (value.func.id if isinstance(value.func, ast.Name) else value.func.attr) in _NEW_LIST:
+                st.lk[tgt.id] = []
+            else:
+                st.lk.pop(tgt.id, None)
             return st
         if isinstance(tgt, ast.Subscript) and isinstance(tgt.value, ast.Name):
             name = tgt.value.id
@@ -422,6 +469,35 @@ class FlowInterpreter:
             return st
         name = f.value.id
         args = list(call.args) + [k.value for k in call.keywords]
+        if name in st.lk:
+            st = st.copy()
+            elems = st.lk[name]
+            if f.attr in ("append", "add", "push", "addLast", "offer", "offerLast") and len(args) == 1:
+                elems.append(self.taint(args[0], st))
+            elif f.attr in ("insert", "add") and len(args) == 2 and isinstance(fold(args[0], st.consts), int):
+                elems.insert(fold(args[0], st.consts), self.taint(args[1], st))
+            elif f.attr in ("addFirst", "appendleft", "unshift", "offerFirst") and len(args) == 1:
+                elems.insert(0, self.taint(args[0], st))
+            elif f.attr in ("pop", "remove", "removeFirst", "removeLast", "shift", "poll", "pollFirst", "pollLast", "popleft") \
+                    and len(args) <= 1:
+                idx = fold(args[0], st.consts) if args else (0 if f.attr in ("removeFirst", "shift", "poll", "pollFirst", "popleft")
+                                                              else -1 if f.attr in ("pop", "removeLast", "pollLast") else _MISSING)
+                if isinstance(idx, int) and not isinstance(idx, bool) and elems and -len(elems) <= idx < len(elems) \
+                        and not (f.attr == "remove" and not isinstance(args[0], ast.Constant)):
+                    elems.pop(idx)
+                else:
+                    st.lk.pop(name)                    # remove(value) / unknown index: forget the layout
+            elif f.attr in ("clear",):
+                st.lk[name] = []
+            elif f.attr in ("extend", "addAll", "sort", "reverse", "set", "__setitem__"):
+                st.lk.pop(name)
+            if name in st.lk:
+                live = next((o for o in st.lk[name] if o), None)
+                if live:
+                    st.tainted[name] = live
+                else:
+                    st.tainted.pop(name, None)
+            return st
         if f.attr in ("update",) and name in st.dk and args and isinstance(args[0], ast.Dict) \
                 and all(isinstance(k, ast.Constant) for k in args[0].keys):
             st = st.copy()
@@ -454,6 +530,33 @@ class FlowInterpreter:
         return st
 
 
+_NEW_LIST = {"list", "ArrayList", "LinkedList", "deque", "ArrayDeque", "Vector", "Stack", "Array", "newArrayList"}
+
+
+def _case_matches(case, subj, consts):
+    """True / False if a match-case pattern decides on a constant subject; None if it cannot tell."""
+    if case.guard is not None:
+        return None
+    return _pat(case.pattern, subj, consts)
+
+
+def _pat(p, subj, consts):
+    k = p.__class__.__name__
+    if k == "MatchValue":
+        v = fold(p.value, consts)
+        return None if v is _MISSING else subj == v
+    if k == "MatchSingleton":
+        return subj is p.value
+    if k == "MatchAs":
+        return True if p.pattern is None else _pat(p.pattern, subj, consts)
+    if k == "MatchOr":
+        res = [_pat(x, subj, consts) for x in p.patterns]
+        if any(r is True for r in res):
+            return True
+        return None if any(r is None for r in res) else False
+    return None
+
+
 def _set(st: State, name, origin, const):
     if origin:
         st.tainted[name] = origin
@@ -464,6 +567,7 @@ def _set(st: State, name, origin, const):
     else:
         st.consts.pop(name, None)
     st.dk.pop(name, None)
+    st.lk.pop(name, None)
 
 
 def _hashable(v) -> bool:
