@@ -9,3 +9,4 @@ vulnscan-report.*
 build/
 dist/
 *.egg-info/
+dist-download/
