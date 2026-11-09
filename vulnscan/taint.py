@@ -69,7 +69,7 @@ def load_models(extra_dirs=(), base=None, language="python") -> dict:
     """Merge the built-in models for a language with every *.json in the given directories."""
     m = {"attr_sources": [], "call_sources": [], "name_sources": [], "prefix_sources": [], "entry_decorators": set(),
          "view_bases": set(), "view_methods": set(), "request_params": {"request", "req", "self"},
-         "sinks": [], "attr_sinks": [], "store_sinks": [], "sanitizers": set(), "safe_return_calls": set(), "validators": set(),
+         "sinks": [], "attr_sinks": [], "store_sinks": [], "sanitizers": set(), "user_sanitizers": set(), "safe_return_calls": set(), "validators": set(),
          "language": language}
     paths = [base or DEFAULT_MODELS]
     for d in extra_dirs or ():
@@ -116,6 +116,8 @@ def load_models(extra_dirs=(), base=None, language="python") -> dict:
                                       st.get("title_ar", st.get("title", st["rule"])), st.get("advice", ""), st.get("cwe", ""),
                                       st.get("label", st["rule"]), [0], False), set(st.get("roots", []))))
         m["sanitizers"] |= set(data.get("sanitizers", []))
+        if path != paths[0]:                   # declared by the user in their own model files: taken at its word
+            m["user_sanitizers"] |= set(data.get("sanitizers", []))
         m["safe_return_calls"] |= set(data.get("safe_return_calls", []))
         m["validators"] |= set(data.get("validators", []))
     return m
@@ -284,7 +286,7 @@ _SANITIZER_CONTEXTS = [
     (re.compile(r"(?i)json\.dumps|json\.stringify|^repr$|^ascii$"), ("CWE-94", "CWE-95")),   # does not escape < >
     # component encoders also encode '/' (and so defeat ../ traversal); encodeURI / urllib quote() keep '/'
     (re.compile(r"(?i)encodeuricomponent|quote_plus|queryescape|pathescape|rawurlencode|^urlencode$|"
-                r"urlencoder\.encode|urlencode$|encodeurlparameter|topercentencoding|curl_easy_escape"),
+                r"urlencoder\.encode|urlencode$|encodeurlparameter|topercentencoding|curl_easy_escape|encodeforurl|forurl$|foruricomponent"),
      ("CWE-113", "CWE-93", "CWE-22", "CWE-23", "CWE-36", "CWE-73") + _XSS),
     (re.compile(r"(?i)(^|[._])(url|uri)|url_?(en|de)code|encodeuri|urlescape|^quote$|\.quote$|percent|http_build_query"),
      ("CWE-113", "CWE-93") + _XSS),
@@ -300,6 +302,8 @@ def sanitizer_context(name: str):
     for rx, cwes in _SANITIZER_CONTEXTS:
         if rx.search(name):
             return frozenset(cwes)
+    if re.search(r"(?i)encode|escape|quote|sanitiz|clean|purif", name):
+        return frozenset(_XSS + ("CWE-113", "CWE-93"))   # an escaper of unknown context: output encoding at most
     return None
 
 
@@ -688,7 +692,7 @@ class Project:
         name = max(matches, key=lambda s: (s.count("."), len(s), s)) if matches else None
         kind = None
         if name is not None:
-            if name in {"stored_db_read", "stored_db_config"}:
+            if name in {"stored_db_read", "stored_db_config"} or name in self.m.get("user_sanitizers", ()):
                 kind = "all"
             else:
                 ctx = sanitizer_context(name)
