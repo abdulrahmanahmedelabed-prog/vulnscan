@@ -1,3 +1,213 @@
+<p align="center">
+  <img src="docs/logo.svg" alt="Kashif · كاشِف — vulnscan" width="520">
+</p>
+
+<p align="center">
+  <b>English</b> | <a href="#arabic">العربية</a>
+  &nbsp;·&nbsp; <a href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/">Website</a>
+  &nbsp;·&nbsp; <a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest">Download</a>
+</p>
+
+<a id="english"></a>
+
+# Kashif (vulnscan) — open-source SAST with real dataflow analysis
+
+**Kashif** (كاشِف, "the revealer") is a dependency-free static application security testing tool written in
+Python. `vulnscan` is the name of the command and the package. It scans source code, archives, Android apps
+and (passively) websites, and produces a report ordered from **critical to info**, from the command line or
+from a **local web UI** in English and Arabic.
+
+| Dashboard | Findings with remediation |
+|---|---|
+| ![](docs/screenshots/dashboard.png) | ![](docs/screenshots/findings.png) |
+
+> **Authorization first:** scan only what you own or are authorized in writing to test. Scanning other
+> people's systems without permission may be illegal. Web targets require the `--authorized` flag.
+
+## What it does
+
+- **Dataflow (taint) analysis in 12 languages** — Python, JavaScript/TypeScript, Java, Kotlin, C#, Go, PHP,
+  C/C++, Rust, Swift, Ruby and PL/SQL. Untrusted input is tracked across functions, classes and files, and
+  every finding carries the full source → sink path.
+- **Precision features** — flow-sensitive analysis with constant folding and dead-branch pruning;
+  context-sensitive (k=2) points-to analysis; context-specific sanitizers (`html.escape` protects HTML only,
+  not SQL or a shell); second-order (stored) injection through database tables.
+- **Rules** — 74 built-in pattern/semantic rules, 46 dataflow + APEX rules and 11 built-in VQL queries
+  (VQL is Kashif's declarative query language over the program database).
+- **Oracle APEX & ORDS** — APEX application exports, plug-ins and PL/SQL packages.
+- **Secrets** — provider-specific patterns plus entropy-based detection.
+- **Dependency CVEs** — via [OSV.dev](https://osv.dev) for common lockfiles (optional; the only feature that
+  needs the network).
+- **Archives & Android** — zip, tar.gz, whl, APK, JAR, AAR, DEX; with [jadx](https://github.com/skylot/jadx)
+  installed, bytecode is decompiled and analyzed.
+- **Passive web scanning** — security headers, CSP, TLS, cookies, commonly exposed paths, and a crawl with
+  rate limiting and an honest User-Agent. No payloads, no form submission.
+- **Outputs** — console, Markdown, JSON, HTML and SARIF 2.1.0 (validated against the OASIS schema; works with
+  GitHub Code Scanning and the VS Code SARIF viewer), with stable fingerprints.
+
+## Install
+
+### Download a binary (nothing else needed)
+
+Get the file for your platform from the
+[latest release](https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest):
+
+| Platform | File |
+|---|---|
+| Windows x64 | [`vulnscan-windows.exe`](https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-windows.exe) — double-click to open the web UI |
+| Linux x86-64 (Ubuntu 22.04+, Debian 12, RHEL 9+) | [`vulnscan-linux`](https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-linux) |
+| macOS Apple Silicon | [`vulnscan-macos-arm64`](https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-macos-arm64) |
+| macOS Intel | [`vulnscan-macos-x86_64`](https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-macos-x86_64) |
+
+```bash
+# Linux
+chmod +x vulnscan-linux
+./vulnscan-linux                    # opens the web UI
+./vulnscan-linux ./project --fail-on high
+
+# macOS: the binary is not notarized by Apple. Remove the quarantine flag once
+# (or right-click the file > Open on first launch):
+chmod +x vulnscan-macos-arm64
+xattr -d com.apple.quarantine vulnscan-macos-arm64
+./vulnscan-macos-arm64
+```
+
+**Verify the download.** Every release ships `SHA256SUMS.txt`, a CycloneDX SBOM (`vulnscan-sbom.cdx.json`)
+and signed SLSA build provenance:
+
+```bash
+sha256sum -c SHA256SUMS.txt --ignore-missing
+gh attestation verify vulnscan-linux --repo abdulrahmanahmedelabed-prog/vulnscan
+```
+
+### Install with pip (Python 3.10+)
+
+```bash
+pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan
+```
+
+Kashif has **zero runtime dependencies**. You can also run it from a clone with `python -m vulnscan`.
+
+## Quick start
+
+```bash
+vulnscan ./my-project                         # colored console report
+vulnscan ./my-project --all-formats report    # report.md / .json / .html / .sarif
+vulnscan app.apk -f html -o report.html       # archives and APKs
+vulnscan . --fail-on high --exclude "tests/*" # CI gate
+vulnscan . --no-deps --no-external            # fully offline
+vulnscan https://my-site.example --authorized # passive web scan of a site you own
+vulnscan ui                                   # web UI on http://127.0.0.1:8765
+```
+
+The web UI (dashboard, scan, findings, reports, rules, settings) listens on 127.0.0.1 only; data is stored in
+`~/.vulnscan` (or `VULNSCAN_HOME`).
+
+## CI and GitHub Code Scanning (SARIF)
+
+```yaml
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF
+steps:
+  - uses: actions/checkout@v4
+  - uses: actions/setup-python@v5
+    with: { python-version: "3.12" }
+  - run: pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan
+  - run: vulnscan . --no-deps -f sarif -o vulnscan.sarif
+  - uses: github/codeql-action/upload-sarif@v3
+    if: always()
+    with:
+      sarif_file: vulnscan.sarif
+```
+
+Findings appear in the Security tab and inline on pull requests, with a numeric severity, CWE and the dataflow
+path. Fingerprints are stable across line shifts and reformatting, so alerts are not duplicated.
+
+### Baseline: report only what's new
+
+```bash
+vulnscan . --write-baseline .vulnscan-baseline.json          # once; commit the file (fingerprints only)
+vulnscan . --baseline .vulnscan-baseline.json --fail-on high # later: new findings only
+```
+
+### Audit profile
+
+`--audit` additionally lists every dangerous call (eval, shell, SQL, pickle, …) that dataflow analysis could
+not prove is reached by untrusted input — useful for manual security reviews where you want the whole attack
+surface, not just proven flows.
+
+## Accuracy: OWASP Benchmark
+
+Measured on the [OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/BenchmarkPython) v0.1
+(1,230 test cases). Score = mean over categories of TPR − FPR (Youden's J). **Overall: 79.3%.**
+
+| Category | TPR % | FPR % | Score % |
+|---|---:|---:|---:|
+| cmdi (command injection) | 100.0 | 42.9 | 57.1 |
+| codeinj (code injection) | 100.0 | 6.1 | 93.9 |
+| deserialization | 100.0 | 2.8 | 97.2 |
+| hash (weak hashing) | 100.0 | 0.0 | 100.0 |
+| ldapi (LDAP injection) | 100.0 | 7.7 | 92.3 |
+| pathtraver (path traversal) | 92.3 | 29.1 | 63.2 |
+| redirect (open redirect) | 100.0 | 47.6 | 52.4 |
+| securecookie | 100.0 | 0.0 | 100.0 |
+| sqli (SQL injection) | 100.0 | 0.0 | 100.0 |
+| trustbound (trust boundary) | 100.0 | 31.6 | 68.4 |
+| weakrand (weak randomness) | 100.0 | 0.0 | 100.0 |
+| xpathi (XPath injection) | 76.5 | 20.0 | 56.5 |
+| xss (cross-site scripting) | 100.0 | 36.2 | 63.8 |
+| xxe (XML external entities) | 100.0 | 35.0 | 65.0 |
+| **Overall** | | | **79.3** |
+
+Reproduce it with one command:
+
+```bash
+git clone --depth 1 https://github.com/OWASP-Benchmark/BenchmarkPython && python bench/score_owasp.py BenchmarkPython
+```
+
+The engine is never tuned to benchmark files: no test-case names, paths or expected results are encoded in
+it. Java results: coming in the next update.
+
+## Languages and targets
+
+| Target | Coverage |
+|---|---|
+| Dataflow (taint) | Python, JavaScript/TypeScript, Java, Kotlin, C#, Go, PHP, C/C++, Rust, Swift, Ruby, PL/SQL |
+| Oracle | APEX application exports, plug-ins, PL/SQL packages, ORDS |
+| Android / JVM | APK, JAR, AAR, DEX (decompiled with jadx when installed) |
+| Config & CI | Dockerfile, docker-compose, GitHub Actions, AndroidManifest, iOS plist, config files |
+| Web (passive) | headers, CSP, TLS, cookies, exposed paths, rate-limited crawl (`--authorized` required) |
+
+## Limitations
+
+- Static analysis finds common patterns and flows; it does not replace human review or penetration testing.
+- False positives and misses happen. Suppress a reviewed line with `# nosec` or `// vulnscan: ignore`, or a
+  rule with `--ignore-rule`.
+- Compared with Semgrep, SonarQube, Snyk Code or CodeQL, Kashif has far fewer rules and library models, no IDE
+  plugins and much less real-world tuning. Its strengths are running fully locally with zero dependencies,
+  Arabic output, Oracle APEX, archives/APKs and passive web checks in one tool.
+- Without jadx, APK/JAR contents are scanned as text only; decompiled code may differ from the original source.
+- The web scan is passive only: no active testing of any kind.
+
+## Security policy
+
+Please report vulnerabilities in Kashif privately via GitHub's
+[private vulnerability reporting](https://github.com/abdulrahmanahmedelabed-prog/vulnscan/security/advisories/new);
+see [SECURITY.md](SECURITY.md). All GitHub Actions in this repository are pinned by commit SHA, an OpenSSF
+Scorecard workflow runs on the repository, and every release ships checksums, an SBOM and signed SLSA
+provenance.
+
+## License
+
+[MIT](LICENSE).
+
+---
+
+<a id="arabic"></a>
+
+<p dir="rtl"><a href="#english">English</a> | <b>العربية</b></p>
+
 # كاشِف (vulnscan) — فاحص ثغرات مستقل لأي برنامج
 
 > **كاشِف** هو الاسم العربي للأداة؛ و`vulnscan` هو اسم الأمر والحزمة التقني.
@@ -353,8 +563,10 @@ python -m vulnscan /path/to/project
 
 | النظام | الملف |
 |---|---|
-| ويندوز | `vulnscan-windows.exe` — انقر مرّتين لفتح الواجهة |
+| ويندوز x64 | `vulnscan-windows.exe` — انقر مرّتين لفتح الواجهة |
 | لينكس x86-64 | `vulnscan-linux` — Ubuntu 22.04 وDebian 12 وRHEL 9 أو أحدث |
+| macOS (Apple Silicon) | `vulnscan-macos-arm64` |
+| macOS (Intel) | `vulnscan-macos-x86_64` |
 
 على لينكس:
 
@@ -364,8 +576,21 @@ chmod +x vulnscan-linux
 ./vulnscan-linux ./project --fail-on high   # سطر الأوامر
 ```
 
-كل إصدار يرفق `SHA256SUMS.txt` للتحقق من سلامة الملفين (`sha256sum -c SHA256SUMS.txt --ignore-missing`).
-على macOS استخدم التشغيل بنقرة واحدة أدناه (يحتاج Python 3).
+على macOS: الملف غير موثَّق (notarized) من Apple، فأزل علامة الحجر مرة واحدة قبل أول تشغيل
+(أو انقر على الملف بالزر الأيمن ← Open):
+
+```bash
+chmod +x vulnscan-macos-arm64
+xattr -d com.apple.quarantine vulnscan-macos-arm64
+./vulnscan-macos-arm64
+```
+
+كل إصدار يرفق `SHA256SUMS.txt` للتحقق من سلامة الملفات (`sha256sum -c SHA256SUMS.txt --ignore-missing`)،
+وقائمة مكوّنات CycloneDX ‏(`vulnscan-sbom.cdx.json`)، ومصدر بناء SLSA موقَّعًا يُتحقَّق منه بـ:
+
+```bash
+gh attestation verify vulnscan-linux --repo abdulrahmanahmedelabed-prog/vulnscan
+```
 
 النسخة تُبنى آليًا عبر GitHub Actions بواسطة PyInstaller من ملف `vulnscan.spec`، وتتضمن الواجهة كاملة.
 لبنائها محليًا: `pip install pyinstaller` ثم `pyinstaller --clean --noconfirm vulnscan.spec` (الناتج في `dist/`).

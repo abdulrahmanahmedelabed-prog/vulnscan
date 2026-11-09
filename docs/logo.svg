@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 128" width="520" height="128" role="img" aria-label="Kashif · كاشِف — vulnscan">
+  <title>Kashif · كاشِف — vulnscan</title>
+  <style>
+    .w{fill:#0f172a;font-family:Inter,"Segoe UI",Helvetica,Arial,sans-serif;font-weight:800}
+    .a{fill:#0f172a;font-family:"IBM Plex Sans Arabic","Segoe UI","Noto Sans Arabic",Tahoma,sans-serif;font-weight:700}
+    .s{fill:#0e7490;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:600}
+    .d{fill:#22d3ee}
+    @media (prefers-color-scheme: dark){.w,.a{fill:#e8eef6}.s{fill:#67e8f9}}
+  </style>
+  <defs>
+    <linearGradient id="kd-g" x1="12" y1="4" x2="52" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#0891b2"/>
+    </linearGradient>
+    <clipPath id="kd-lens"><circle cx="29" cy="28" r="9"/></clipPath>
+  </defs>
+  <g transform="translate(8 8) scale(1.75)">
+    <path d="M32 3 55 11v19c0 14.6-9.6 26-23 31C18.6 56 9 44.6 9 30V11z" fill="url(#kd-g)"/>
+    <path d="M32 3 9 11v19c0 14.6 9.6 26 23 31V3z" fill="#ffffff" fill-opacity=".08"/>
+    <circle cx="29" cy="28" r="9" fill="#0b1220"/>
+    <g clip-path="url(#kd-lens)">
+      <rect x="18" y="25.5" width="22" height="3.2" fill="#a78bfa"/>
+      <rect x="18" y="21" width="22" height="1.4" fill="#22d3ee" opacity=".55"/>
+    </g>
+    <circle cx="29" cy="28" r="10.5" fill="none" stroke="#f0fdff" stroke-width="4"/>
+    <path d="M36.8 35.8 44 43" stroke="#f0fdff" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <text class="w" x="136" y="72" font-size="54" letter-spacing="-1">Kashif</text>
+  <circle class="d" cx="324" cy="56" r="5"/>
+  <text class="a" x="344" y="72" font-size="50">كاشِف</text>
+  <text class="s" x="138" y="108" font-size="20">vulnscan · open-source SAST</text>
+</svg>
