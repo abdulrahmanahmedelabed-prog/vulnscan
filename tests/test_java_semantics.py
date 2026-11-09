@@ -70,3 +70,20 @@ def test_session_and_xpath_sinks(tmp_path):
             '    xp.evaluate("/a[@id=\'" + param + "\']", null);')
     cwes = {cwe for _, cwe in _scan(tmp_path, body)}
     assert "CWE-501" in cwes and "CWE-643" in cwes
+
+
+def test_new_expression_keeps_its_call_chain_and_array_elements():
+    out = _py("class T { void f() { String b = new Test().doSomething(r, p); String s = new StringBuilder().append(x).toString();"
+              " String[] q = new String[]{param, \"x\"}; } }")
+    assert "Test().doSomething(r, p)" in out and "StringBuilder().append(x).toString()" in out and "[param, 'x']" in out
+
+
+def test_flow_through_inner_class_method(tmp_path):
+    (tmp_path / "T.java").write_text(
+        "import javax.servlet.http.*;\npublic class T extends HttpServlet {\n"
+        "  public void doPost(HttpServletRequest request, HttpServletResponse response) throws Exception {\n"
+        "    String param = request.getParameter(\"p\");\n    String bar = new Test().doSomething(request, param);\n"
+        "    Runtime.getRuntime().exec(\"ls \" + bar);\n  }\n"
+        "  private class Test {\n    public String doSomething(HttpServletRequest request, String param) {\n"
+        "      String bar = param;\n      return bar;\n    }\n  }\n}\n")
+    assert any(f.rule_id == "DF002" and f.line == 6 for f in scan_path(tmp_path, [], set())[0])

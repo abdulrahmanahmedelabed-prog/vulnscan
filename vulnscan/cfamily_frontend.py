@@ -1866,7 +1866,8 @@ class Parser:
         if t.kind == "id" and (t.val in ("typeof", "sizeof", "await", "new", "clone", "not", "yield", "throw", "delete", "mut", "box", "co_await")
                                or (t.val == "print" and self.lang == "php")):
             if t.val == "new":
-                return self.parse_new()
+                # `new Test().doSomething(x)` / `new StringBuilder().append(a).toString()`: keep the postfix chain
+                return self.parse_postfix(base=self.parse_new())
             if t.val == "yield" and self.lang == "ruby":
                 self.i += 1
                 args, kws = self.parse_ruby_command_args() if self.ruby_arg_start() else ([], [])
@@ -1904,6 +1905,10 @@ class Parser:
         if self.at("("):   # C# target-typed new(...)
             return self.parse_call(_name("_new", line), line)
         target = self.parse_postfix(no_call=True)
+        if isinstance(target, ast.Subscript):     # `new T[]{a, b}` / `new T[n]`: the brackets are the array type
+            if self.at("{"):
+                return self.parse_array_literal()
+            return _mk(ast.List, line, elts=[], ctx=ast.Load())
         if self.at("<"):
             self.skip_balanced("<", ">")
         if self.at("["):   # array creation
@@ -1934,8 +1939,8 @@ class Parser:
         self.eat("}")
         return _mk(ast.List, line, elts=elts, ctx=ast.Load())
 
-    def parse_postfix(self, no_call=False):
-        e = self.parse_primary()
+    def parse_postfix(self, no_call=False, base=None):
+        e = self.parse_primary() if base is None else base
         while True:
             t = self.t
             if t.kind == "punct" and t.val in (".", "->", "::", "?.", "?->", "&.") and not (t.val == "." and self.lang == "php") \
