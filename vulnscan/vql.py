@@ -703,6 +703,7 @@ class Query:
             return
 
         join_index: dict = {}       # (relation, field) -> {value: [rows]} built once per clause
+        prefiltered: dict = {}      # level -> rows of that relation passing its single-variable conditions
 
         def rec(i, env):
             if i == len(rel_vars):
@@ -741,9 +742,24 @@ class Query:
                     else:
                         continue
                     break
+            checks = ready
+            if rows is db.get(rel):
+                # filter pushdown: conditions on this variable alone are evaluated once per row of the
+                # relation, not once per combination of outer rows
+                local = [c for c in ready if self._vars_in(c, set()) <= {var}]
+                if local:
+                    if i not in prefiltered:
+                        keep = []
+                        for row in rows:
+                            env[var] = row
+                            if all(self._bool(c, env) for c in local):
+                                keep.append(row)
+                        prefiltered[i] = keep
+                    rows = prefiltered[i]
+                    checks = [c for c in ready if not any(c is lc for lc in local)]
             for row in rows:
                 env[var] = row
-                if all(self._bool(c, env) for c in ready):
+                if all(self._bool(c, env) for c in checks):
                     rec(i + 1, env)
             env.pop(var, None)
             if i == 0:

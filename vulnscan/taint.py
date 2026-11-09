@@ -290,6 +290,7 @@ class Project:
         self.gfuncs: dict[str, dict] = {}
         self.classes: dict[str, dict] = {}
         self.simple_funcs: dict[str, list] = {}
+        self._by_mod: dict = {}     # (index id, short name, module) -> quals: O(1) same-module lookups
         self.simple_methods: dict[str, list] = {}
         self.simple_classes: dict[str, list] = {}
         self.summaries: dict[str, dict] = {}
@@ -341,6 +342,7 @@ class Project:
                                         "tainted_fields": {}, "ctor_param_fields": {}}
                     file["classes"][child.name] = cq
                     self.simple_classes.setdefault(child.name, []).append(cq)
+                    self._by_mod.setdefault((id(self.simple_classes), child.name, mod), []).append(cq)
                     visit(child, cq, parent_func)
                 elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     if cls_qual:
@@ -351,6 +353,7 @@ class Project:
                         q = f"{mod}::{child.name}"
                         file["funcs"][child.name] = q
                         self.simple_funcs.setdefault(child.name, []).append(q)
+                        self._by_mod.setdefault((id(self.simple_funcs), child.name, mod), []).append(q)
                     self.gfuncs[q] = {"node": child, "mod": mod, "name": child.name, "cls": cls_qual, "path": path,
                                       "enclosing": ([parent_func] + self.gfuncs[parent_func]["enclosing"]) if parent_func else []}
                     visit(child, None, q)
@@ -410,6 +413,12 @@ class Project:
             return None
         hint = modhint.lstrip(".")
         if hint:
+            exact = self._by_mod.get((id(index), name, hint))
+            if exact:
+                return exact[0]
+            if len(cands) > 64:              # large projects: suffix matches only among modules sharing the last part
+                tail = hint.split(".")[-1]
+                cands = [q for q in cands if q.split("::")[0].split(".")[-1] == tail or hint.endswith(q.split("::")[0])]
             best = [q for q in cands if q.split("::")[0].endswith(hint) or hint.endswith(q.split("::")[0])]
             if best:
                 return best[0]
@@ -442,7 +451,7 @@ class Project:
                 return q
         cands = self.simple_classes.get(short)
         if cands:
-            same = [q for q in cands if q.split("::")[0] == mod]
+            same = self._by_mod.get((id(self.simple_classes), short, mod))
             if same:
                 return same[0]
             if len(cands) == 1:
@@ -474,7 +483,7 @@ class Project:
                 return q
         cands = self.simple_funcs.get(short)
         if cands:
-            same = [q for q in cands if q.split("::")[0] == mod]
+            same = self._by_mod.get((id(self.simple_funcs), short, mod))
             if same:
                 return same[0]
             if len(cands) == 1:
