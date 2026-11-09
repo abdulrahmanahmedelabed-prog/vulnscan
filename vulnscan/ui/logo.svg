@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Kashif">
+  <title>Kashif</title>
+  <defs>
+    <linearGradient id="ks-g" x1="12" y1="4" x2="52" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#0891b2"/>
+    </linearGradient>
+    <clipPath id="ks-lens"><circle cx="29" cy="28" r="9"/></clipPath>
+  </defs>
+  <path d="M32 3 55 11v19c0 14.6-9.6 26-23 31C18.6 56 9 44.6 9 30V11z" fill="url(#ks-g)"/>
+  <path d="M32 3 9 11v19c0 14.6 9.6 26 23 31V3z" fill="#ffffff" fill-opacity=".08"/>
+  <circle cx="29" cy="28" r="9" fill="#0b1220"/>
+  <g clip-path="url(#ks-lens)">
+    <rect x="18" y="25.5" width="22" height="3.2" fill="#a78bfa"/>
+    <rect x="18" y="21" width="22" height="1.4" fill="#22d3ee" opacity=".55"/>
+  </g>
+  <circle cx="29" cy="28" r="10.5" fill="none" stroke="#f0fdff" stroke-width="4"/>
+  <path d="M36.8 35.8 44 43" stroke="#f0fdff" stroke-width="5" stroke-linecap="round"/>
+</svg>

@@ -19,7 +19,7 @@ a{color:var(--accent);text-decoration:none}
 .app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
 .sidebar{background:var(--panel);border-inline-end:1px solid var(--border);padding:20px 14px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
 .brand{display:flex;align-items:center;gap:10px;padding:6px 10px 18px}
-.brand .logo{font-size:26px}.brand b{display:block;font-size:18px}.brand small{color:var(--muted)}
+.brand .logo{font-size:26px;line-height:0}.brand .logo img{display:block;width:32px;height:32px}.empty-icon img{display:inline-block}.brand b{display:block;font-size:18px}.brand small{color:var(--muted)}
 nav{display:flex;flex-direction:column;gap:4px}
 nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:var(--text);font-weight:500}
 nav a:hover{background:color-mix(in srgb,var(--accent) 10%,transparent)}
