@@ -58,7 +58,8 @@ td.feat{font-weight:700}
 .col-us{background:rgba(34,211,238,.08)}
 th.col-us{background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(8,145,178,.18));color:var(--text)}
 .note{color:var(--muted);font-size:14px;margin-top:14px}
-.dl{display:grid;grid-template-columns:minmax(0,420px);justify-content:center;gap:18px}
+.dl{display:grid;grid-template-columns:repeat(2,minmax(0,380px));justify-content:center;gap:18px}
+.dl code{display:block;background:#0a1322;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-top:10px;direction:ltr;text-align:left;color:#9ff0ff;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;overflow:auto}
 .dl .card{text-align:center}
 .dl .os{font-size:40px}
 .footer{border-top:1px solid var(--border);padding:30px 0;color:var(--muted);text-align:center}
@@ -81,7 +82,8 @@ th.col-us{background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(8,145,178,
   <h1>افحص <span class="grad">أي برنامج</span> واعرف ثغراته<br>من الأعلى خطورة إلى الأقل</h1>
   <p class="lead">أداة مفتوحة المصدر تفحص الكود والأرشيفات وتطبيقات APK والمواقع، وتُخرج تقريرًا مرتّبًا بالخطورة مع طريقة الإصلاح — بواجهة رسومية محلية ونسخة تعمل بنقرة واحدة.</p>
   <div class="cta">
-    <a class="btn primary" href="#download">⬇ حمّل نسخة Windows</a>
+    <a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-windows.exe" download>⬇ Windows</a>
+    <a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-linux" download>⬇ Linux</a>
   </div>
   <div class="badges"><span>Python خالص · بلا اعتماديات</span><span>عربي / English</span><span>يعمل دون إنترنت</span><span>رخصة MIT</span></div>
   <div class="shot"><img src="img/dashboard.png" alt="لوحة تحكم vulnscan"></div>
@@ -91,21 +93,24 @@ th.col-us{background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(8,145,178,
   <h2 class="title">كل ما تحتاجه في أداة واحدة</h2>
   <p class="sub">من الأسرار المضمّنة إلى ثغرات الاعتماديات وأمان المواقع.</p>
   <div class="grid">
-    <div class="card"><div class="ic">🧬</div><h3>فحص متعدد اللغات</h3><p>أكثر من 65 قاعدة تغطي Python وJavaScript وDart وJava/Kotlin وGo وPHP وC وملفات Docker وCI والموبايل.</p></div>
+    <div class="card"><div class="ic">🧬</div><h3>فحص متعدد اللغات</h3><p>70 قاعدة أنماط وتدفق بيانات لـ 12 لغة، تغطي Python وJavaScript وDart وJava/Kotlin وGo وPHP وC وملفات Docker وCI والموبايل.</p></div>
     <div class="card"><div class="ic">🗄️</div><h3>Oracle APEX والمساعد الذكي</h3><p>يحلّل ملفات تصدير APEX والإضافات وحزم PL/SQL وJava المخزّنة، ويكشف حقن SQL والاستبدال النصي وXSS وحقن تعليمات المساعد الذكي وتنفيذ مخرجاته، مع الإشارة إلى الصفحة والمكوّن.</p></div>
     <div class="card"><div class="ic">📦</div><h3>أرشيفات و APK</h3><p>ارفع zip أو apk أو jar أو tar.gz، ومع jadx يُفكّ تجميع كود APK/JAR ويُفحص.</p></div>
     <div class="card"><div class="ic">🌐</div><h3>فحص المواقع</h3><p>ترويسات الأمان، CSP، الكوكيز، TLS والشهادة، ومع الوضع العميق المسارات المكشوفة الشائعة.</p></div>
     <div class="card"><div class="ic">🧩</div><h3>ثغرات الاعتماديات</h3><p>استعلام OSV.dev عن ثغرات CVE المعروفة في requirements وpackage-lock وpubspec وgo.mod وغيرها.</p></div>
     <div class="card"><div class="ic">📊</div><h3>لوحة تحكم وتقارير</h3><p>بطاقات الخطورة، مخططات، مقارنة فحصين لمعرفة ما أُصلح وما استجد، وتنزيل Markdown/JSON/HTML.</p></div>
+    <div class="card"><div class="ic">🛡️</div><h3>GitHub Code Scanning (SARIF)</h3><p>تقرير SARIF 2.1.0 تظهر نتائجه في تبويب Security وعلى أسطر طلبات الدمج وفي VS Code، مع درجة الخطورة وCWE ومسار البيانات من المصدر إلى الخطر.</p></div>
+    <div class="card"><div class="ic">📌</div><h3>الجديد فقط (خط الأساس)</h3><p>احفظ نتائج اليوم مرة واحدة، فيعرض كل فحص بعدها ما استجد فقط ويُفشل CI عليه وحده. البصمات ثابتة رغم إزاحة الأسطر وإعادة التنسيق وتغيّر إصدار APK.</p></div>
+    <div class="card"><div class="ic">🔑</div><h3>كشف الأسرار</h3><p>مفاتيح AWS وGitHub وStripe وSlack وSendGrid وTwilio وTelegram وGCP وAzure وغيرها، وكشف بالعشوائية يلتقط مفاتيح بلا نمط معروف دون إغراقك بالتجزئات والمعرّفات.</p></div>
     <div class="card"><div class="ic">🔌</div><h3>يدمج أدواتك</h3><p>إن وُجدت، يدمج نتائج Semgrep وBandit وgitleaks وnpm audit في لوحة واحدة فوقها.</p></div>
   </div>
 </section>
 
 <section class="wrap">
   <h2 class="title">ثلاث خطوات</h2>
-  <p class="sub">بلا تثبيت معقّد. نزّل النسخة الجاهزة أو شغّلها من المصدر.</p>
+  <p class="sub">بلا تثبيت معقّد. نزّل النسخة الجاهزة لويندوز أو لينكس، أو شغّلها من المصدر.</p>
   <div class="steps">
-    <div class="step"><h3>حمّل وشغّل</h3><p>نزّل <b>vulnscan-windows.exe</b> وانقر مرّتين، فتفتح الواجهة تلقائيًا.</p><code>vulnscan-windows.exe</code></div>
+    <div class="step"><h3>حمّل وشغّل</h3><p>على ويندوز انقر <b>vulnscan-windows.exe</b> مرّتين. على لينكس اجعله قابلًا للتنفيذ ثم شغّله، فتفتح الواجهة تلقائيًا.</p><code>chmod +x vulnscan-linux &amp;&amp; ./vulnscan-linux</code></div>
     <div class="step"><h3>اختر الهدف</h3><p>مجلد مشروع، أو اسحب برنامجًا مضغوطًا أو APK، أو أدخل عنوان موقع تملكه.</p><code>drag &amp; drop · /path · https://…</code></div>
     <div class="step"><h3>اقرأ التقرير</h3><p>نتائج مرتبة بالخطورة مع المقتطف وطريقة الإصلاح، وتصدير بصيغ متعددة.</p><code>critical → high → … → info</code></div>
   </div>
@@ -127,12 +132,14 @@ th.col-us{background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(8,145,178,
       <tr><td class="feat">ثغرات المساعد الذكي</td><td class="col-us yes">✓ حقن التعليمات وتنفيذ مخرجات النموذج</td><td class="part">محدود</td><td class="part">محدود</td><td class="part">محدود</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
       <tr><td class="feat">عدد اللغات (تدفق بيانات)</td><td class="col-us yes">12 لغة: Python، JS/TS، Java، Kotlin، C#، Go، PHP، C/C++، Rust، Swift، Ruby، PL/SQL</td><td>30+</td><td>30+</td><td>15+</td><td>10+</td><td>Python</td><td>—</td></tr>
       <tr><td class="feat">يُبلّغ عمّا لم يُحلّله</td><td class="col-us yes">✓ كل عبارة متخطّاة بسطرها</td><td class="part">غير معلن</td><td class="part">غير معلن</td><td class="part">غير معلن</td><td class="part">سجلّ استخراج</td><td class="no">✗</td><td class="no">✗</td></tr>
-      <tr><td class="feat">كشف الأسرار</td><td class="col-us yes">✓</td><td class="part">محدود</td><td class="part">مدفوع</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="yes">✓</td></tr>
+      <tr><td class="feat">مخرجات SARIF لـ GitHub Code Scanning</td><td class="col-us yes">✓ مع مسار تدفق البيانات وبصمات ثابتة</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td class="feat">خط أساس (عرض الجديد فقط)</td><td class="col-us yes">✓ محليًا بلا خادم</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="part">✓ baseline</td><td class="part">ignore</td></tr>
+      <tr><td class="feat">كشف الأسرار</td><td class="col-us yes">✓ أنماط مزوّدين + عشوائية</td><td class="part">محدود</td><td class="part">مدفوع</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="yes">✓</td></tr>
       <tr><td class="feat">ثغرات الاعتماديات (CVE)</td><td class="col-us yes">✓ OSV</td><td class="yes">✓</td><td class="part">محدود</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="yes">✓</td></tr>
       <tr><td class="feat">فحص أرشيف / APK / JAR</td><td class="col-us yes">✓ + jadx</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="part">صور</td></tr>
       <tr><td class="feat">فحص ويب (ترويسات/CSP/TLS/مسارات)</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="part">SaaS</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
       <tr><td class="feat">واجهة رسومية محلية</td><td class="col-us yes">✓ بلا خادم</td><td class="no">SaaS</td><td class="part">خادم+DB</td><td class="no">SaaS</td><td class="part">GitHub</td><td class="no">✗</td><td class="no">✗</td></tr>
-      <tr><td class="feat">نسخة exe بنقرة واحدة</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="part">ثنائي</td></tr>
+      <tr><td class="feat">نسخة جاهزة Windows / Linux</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="part">ثنائي</td></tr>
       <tr><td class="feat">مقارنة فحصين</td><td class="col-us yes">✓</td><td class="part">SaaS</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
       <tr><td class="feat">يعمل دون إنترنت</td><td class="col-us yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
       <tr><td class="feat">تحليل تدفق البيانات</td><td class="col-us yes">مدرك للأنواع عبر الملفات، نماذج كبيانات، حواجز تحقق، ومسار تدفق كامل في كل نتيجة</td><td class="yes">✓ Pro</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓ قوي</td><td class="part">AST</td><td class="no">✗</td></tr>
@@ -141,15 +148,17 @@ th.col-us{background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(8,145,178,
       <tr><td class="feat">السعر</td><td class="col-us yes">مجاني MIT</td><td class="part">مجاني/مدفوع</td><td class="part">مجاني/مدفوع</td><td class="part">محدود/مدفوع</td><td class="part">للمفتوح</td><td class="yes">مجاني</td><td class="yes">مجاني</td></tr>
     </tbody>
   </table></div>
-  <p class="note">الصدق المهني: كاشِف يضاهي الأدوات الكبرى في عمق التحليل — points-to حسّاس للسياق (k=2) وحسّاس للتدفق، ولغة استعلام VQL بأصناف وتجميعات واستدعاء ذاتي، و11 لغة — وحده يُبلّغ عن كل عبارة لم يستطع تحليلها بدل أن يتجاهلها بصمت. ما تتفوّق فيه تلك الأدوات هو اتّساع النماذج الجاهزة للمكتبات، وتكاملات IDE ومراجعة الطلبات، وسنوات من الضبط. كاشِف خفيف ومحلي وبلا اعتماديات، ويعمل منفردًا أو يدمج نتائج semgrep/bandit بجانبه.</p>
+  <p class="note">الصدق المهني: كاشِف يضاهي الأدوات الكبرى في عمق التحليل — points-to حسّاس للسياق (k=2) وحسّاس للتدفق، ولغة استعلام VQL بأصناف وتجميعات واستدعاء ذاتي، و12 لغة — وحده يُبلّغ عن كل عبارة لم يستطع تحليلها بدل أن يتجاهلها بصمت. ما تتفوّق فيه تلك الأدوات هو اتّساع النماذج الجاهزة للمكتبات، وتكاملات IDE ومراجعة الطلبات، وسنوات من الضبط. كاشِف خفيف ومحلي وبلا اعتماديات، ويعمل منفردًا أو يدمج نتائج semgrep/bandit بجانبه.</p>
 </section>
 
 <section id="download" class="wrap">
   <h2 class="title">حمّل الآن</h2>
-  <p class="sub">نسخة ويندوز جاهزة، يبدأ التحميل مباشرة عند الضغط. على macOS ولينكس شغّل المشروع عبر Python 3.</p>
+  <p class="sub">نسختان جاهزتان بلا تثبيت، يبدأ التحميل مباشرة عند الضغط. على macOS شغّل المشروع عبر Python 3.</p>
   <div class="dl">
-    <div class="card"><div class="os">🪟</div><h3>Windows</h3><p>vulnscan-windows.exe · v0.5.0</p><p style="margin-top:12px"><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-windows.exe" download>تحميل exe</a></p></div>
+    <div class="card"><div class="os">🪟</div><h3>Windows</h3><p>vulnscan-windows.exe · v0.6.1</p><p style="margin-top:12px"><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-windows.exe" download>تحميل exe</a></p><code>vulnscan-windows.exe</code></div>
+    <div class="card"><div class="os">🐧</div><h3>Linux</h3><p>vulnscan-linux · v0.6.1 · x86-64</p><p style="margin-top:12px"><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-linux" download>تحميل للينكس</a></p><code>chmod +x vulnscan-linux<br>./vulnscan-linux<br>./vulnscan-linux ./project -f sarif -o out.sarif</code><p style="margin-top:8px;font-size:13px">السطر الثاني يفتح الواجهة، والثالث يفحص من سطر الأوامر. يعمل على <span dir="ltr">Ubuntu 22.04</span> و<span dir="ltr">Debian 12</span> و<span dir="ltr">RHEL 9</span> أو أحدث.</p></div>
   </div>
+  <p class="sub" style="margin-top:14px">تحقّق من سلامة الملف: <a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
   <div class="legal">⚠️ افحص فقط ما تملكه أو ما لديك تصريح كتابي بفحصه. فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.</div>
 </section>
 

@@ -347,15 +347,25 @@ cd vulnscan
 python -m vulnscan /path/to/project
 ```
 
-## نسخة exe جاهزة (بلا تثبيت Python)
+## نسخ جاهزة (بلا تثبيت Python)
 
 نزّل الملف من [صفحة الإصدارات](https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest):
 
 | النظام | الملف |
 |---|---|
 | ويندوز | `vulnscan-windows.exe` — انقر مرّتين لفتح الواجهة |
+| لينكس x86-64 | `vulnscan-linux` — Ubuntu 22.04 وDebian 12 وRHEL 9 أو أحدث |
 
-حاليًا تُنشر نسخة ويندوز فقط. على macOS ولينكس استخدم التشغيل بنقرة واحدة أدناه (يحتاج Python 3).
+على لينكس:
+
+```bash
+chmod +x vulnscan-linux
+./vulnscan-linux                       # يفتح الواجهة
+./vulnscan-linux ./project --fail-on high   # سطر الأوامر
+```
+
+كل إصدار يرفق `SHA256SUMS.txt` للتحقق من سلامة الملفين (`sha256sum -c SHA256SUMS.txt --ignore-missing`).
+على macOS استخدم التشغيل بنقرة واحدة أدناه (يحتاج Python 3).
 
 النسخة تُبنى آليًا عبر GitHub Actions بواسطة PyInstaller من ملف `vulnscan.spec`، وتتضمن الواجهة كاملة.
 لبنائها محليًا: `pip install pyinstaller` ثم `pyinstaller --clean --noconfirm vulnscan.spec` (الناتج في `dist/`).

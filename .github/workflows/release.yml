@@ -1,4 +1,4 @@
-name: Build Windows executable
+name: Build executables
 
 on:
   push:
@@ -6,16 +6,28 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "انشر النسخة في إصدار بهذا الوسم (اتركه فارغًا لبناء دون نشر)"
+        description: "انشر النسخ في إصدار بهذا الوسم (اتركه فارغًا لبناء دون نشر)"
         type: string
-        default: "v0.5.0"
+        default: "v0.6.1"
 
 permissions:
   contents: write
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            built: dist/vulnscan.exe
+            artifact: vulnscan-windows.exe
+          # Ubuntu 22.04 (glibc 2.35) so the binary also runs on older distributions
+          # (Debian 12, RHEL/Rocky 9, Ubuntu 22.04+), not only on the newest.
+          - os: ubuntu-22.04
+            built: dist/vulnscan
+            artifact: vulnscan-linux
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,10 +35,22 @@ jobs:
           python-version: "3.12"
       - run: pip install pyinstaller
       - run: pyinstaller --clean --noconfirm vulnscan.spec
-      - name: Smoke test (the binary starts, serves the UI, then stops)
+      - name: Smoke test — CLI (version, rules, a scan with SARIF and a baseline)
         shell: bash
         run: |
-          dist/vulnscan.exe ui --no-browser --port 8799 &
+          set -e
+          B="${{ matrix.built }}"
+          "$B" --version
+          "$B" --list-rules > /dev/null
+          mkdir -p smoke && printf 'import os\ndef f(request):\n    os.system(request.GET["c"])\n' > smoke/app.py
+          "$B" smoke --no-deps --no-external -f sarif -o smoke.sarif
+          grep -q '"ruleId": "DF' smoke.sarif
+          "$B" smoke --no-deps --no-external --write-baseline smoke-base.json
+          "$B" smoke --no-deps --no-external --baseline smoke-base.json --fail-on low
+      - name: Smoke test — UI (the binary serves the dashboard, then stops)
+        shell: bash
+        run: |
+          "${{ matrix.built }}" ui --no-browser --port 8799 &
           PID=$!
           OK=
           for i in $(seq 1 40); do
@@ -37,38 +61,55 @@ jobs:
           done
           kill $PID 2>/dev/null || true
           test "$OK" = 1
-      - name: Name the binary
+      - name: Name the binary per platform
         shell: bash
-        run: cp dist/vulnscan.exe vulnscan-windows.exe
+        run: |
+          cp "${{ matrix.built }}" "${{ matrix.artifact }}"
+          chmod +x "${{ matrix.artifact }}" || true
       - uses: actions/upload-artifact@v4
         with:
-          name: vulnscan-windows.exe
-          path: vulnscan-windows.exe
-      - name: Publish to release
-        # On a tag push, or on a manual run when a tag name is given, create/update
-        # the release and attach the Windows binary. softprops/action-gh-release
-        # creates the tag from the current commit when it does not yet exist.
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
-        uses: softprops/action-gh-release@v2
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  publish:
+    # One job publishes both binaries after both builds succeed, so the release never
+    # carries one platform without the other and the prune step cannot race a build.
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          files: vulnscan-windows.exe
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd out
+          chmod +x vulnscan-linux
+          sha256sum vulnscan-windows.exe vulnscan-linux > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          files: |
+            out/vulnscan-windows.exe
+            out/vulnscan-linux
+            out/SHA256SUMS.txt
           body_path: CHANGELOG.md
           make_latest: true
           fail_on_unmatched_files: true
-
-      - name: Prune other release assets
-        # Keep only the Windows binary; remove anything left from earlier runs
-        # (old macOS/Linux builds or mis-named assets).
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+      - name: Prune stray release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-        shell: bash
         run: |
+          keep=" vulnscan-windows.exe vulnscan-linux SHA256SUMS.txt "
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | while read -r name; do
-            if [ "$name" != "vulnscan-windows.exe" ]; then
-              echo "removing asset: $name"; gh release delete-asset "$TAG" "$name" -y --repo "$GITHUB_REPOSITORY" || true
-            fi
+            case "$keep" in
+              *" $name "*) ;;
+              *) echo "removing stray asset: $name"; gh release delete-asset "$TAG" "$name" -y --repo "$GITHUB_REPOSITORY" || true ;;
+            esac
           done
