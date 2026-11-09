@@ -28,7 +28,7 @@ jobs:
           - os: ubuntu-22.04
             built: dist/vulnscan
             artifact: vulnscan-linux
-          # macOS: Apple Silicon natively, Intel with an x86-64 Python under Rosetta on the same runner image.
+          # macOS: Apple Silicon natively, Intel by running the x86-64 slice of Python under Rosetta.
           # PyInstaller ad-hoc signs the binary (required on arm64). Apple notarization needs the owner's
           # Developer ID certificate, so these binaries are not notarized (see README for first launch).
           - os: macos-latest
@@ -39,6 +39,8 @@ jobs:
             built: dist/vulnscan
             artifact: vulnscan-macos-x86_64
             arch: x64
+            # the x64 Python on this runner is universal: force its x86-64 slice so PyInstaller builds for Intel
+            run_as: arch -x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -48,8 +50,8 @@ jobs:
         with:
           python-version: "3.12"
           architecture: ${{ matrix.arch || '' }}
-      - run: pip install pyinstaller==6.22.3
-      - run: pyinstaller --clean --noconfirm vulnscan.spec
+      - run: ${{ matrix.run_as }} python -m pip install pyinstaller==6.22.3
+      - run: ${{ matrix.run_as }} python -m PyInstaller --clean --noconfirm vulnscan.spec
       - name: Smoke test — CLI (version, rules, a scan with SARIF and a baseline)
         shell: bash
         run: |
