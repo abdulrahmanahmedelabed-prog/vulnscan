@@ -68,3 +68,13 @@ def test_map_reads_keep_precision(tmp_path):
         "    d = {}\n    d['bar'] = bar\n    return '{0[bar]}'.format(d)\n")
     got = {(f.rule_id, f.line) for f in scan_path(tmp_path, [], set())[0]}
     assert not {g for g in got if g[0].startswith("DF")}, got
+
+
+def test_helper_returning_list_element_keeps_precision(tmp_path):
+    """`return lst[1]` hands an element to the caller; it is not a write into the list."""
+    (tmp_path / "app.py").write_text(
+        "import os\nfrom flask import Flask, request\napp = Flask(__name__)\n"
+        "def pick(p):\n    lst = ['safe', p, 'moresafe']\n    lst.pop(0)\n    bar = lst[1]\n    return bar\n"
+        "@app.route('/x')\ndef x():\n    os.system(pick(request.args['c']))\n")
+    got = {(f.rule_id, f.line) for f in scan_path(tmp_path, [], set())[0]}
+    assert not {g for g in got if g[0].startswith("DF")}, got

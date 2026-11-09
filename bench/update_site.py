@@ -1,9 +1,9 @@
 """Write OWASP Benchmark results into the landing page, so the published numbers are exactly what the scorer measured.
 
 Usage:
-    python bench/score_owasp.py BenchmarkPython --json py.json
-    python bench/score_owasp.py BenchmarkJava --json java.json
-    python bench/update_site.py py.json java.json            # rewrites the BENCH block in site/index.html
+    python bench/score_owasp.py BenchmarkPython --json py.json      # also writes py.score.json
+    python bench/score_owasp.py BenchmarkJava --json java.json      # also writes java.score.json
+    python bench/update_site.py py.score.json java.score.json      # rewrites the BENCH block in site/index.html
 """
 
 from __future__ import annotations

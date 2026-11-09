@@ -982,6 +982,9 @@ def _escaping(fn, include_passed: bool = True) -> set:
         if (isinstance(p, ast.Call) and n in p.args) or isinstance(p, (ast.keyword, ast.Starred)):
             passed.add(x)                             # handed to a function: escapes, but is not stored anywhere here
             continue
+        if isinstance(p, (ast.Return, ast.Yield, ast.YieldFrom)):
+            called.add(x)                             # handed to the caller: nothing here can write through it later
+            continue
         if isinstance(p, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
             called.add(x)                             # put in a literal: aliased there, no slot of x is written
             continue

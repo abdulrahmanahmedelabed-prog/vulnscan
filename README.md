@@ -140,34 +140,40 @@ surface, not just proven flows.
 ## Accuracy: OWASP Benchmark
 
 Measured on the [OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/BenchmarkPython) v0.1
-(1,230 test cases). Score = mean over categories of TPR − FPR (Youden's J). **Overall: 79.3%.**
+(1,230 test cases) and the [OWASP Benchmark for Java](https://github.com/OWASP-Benchmark/BenchmarkJava) v1.2
+(2,740 test cases). Score = mean over categories of TPR − FPR (Youden's J), the official OWASP method.
+**Python: 74.0% · Java: 73.1%.**
 
-| Category | TPR % | FPR % | Score % |
-|---|---:|---:|---:|
-| cmdi (command injection) | 100.0 | 42.9 | 57.1 |
-| codeinj (code injection) | 100.0 | 6.1 | 93.9 |
-| deserialization | 100.0 | 2.8 | 97.2 |
-| hash (weak hashing) | 100.0 | 0.0 | 100.0 |
-| ldapi (LDAP injection) | 100.0 | 7.7 | 92.3 |
-| pathtraver (path traversal) | 92.3 | 29.1 | 63.2 |
-| redirect (open redirect) | 100.0 | 47.6 | 52.4 |
-| securecookie | 100.0 | 0.0 | 100.0 |
-| sqli (SQL injection) | 100.0 | 0.0 | 100.0 |
-| trustbound (trust boundary) | 100.0 | 31.6 | 68.4 |
-| weakrand (weak randomness) | 100.0 | 0.0 | 100.0 |
-| xpathi (XPath injection) | 76.5 | 20.0 | 56.5 |
-| xss (cross-site scripting) | 100.0 | 36.2 | 63.8 |
-| xxe (XML external entities) | 100.0 | 35.0 | 65.0 |
-| **Overall** | | | **79.3** |
+| Category | Py TPR % | Py FPR % | Py score | Java TPR % | Java FPR % | Java score |
+|---|---:|---:|---:|---:|---:|---:|
+| cmdi (command injection) | 100.0 | 42.9 | 57.1 | 100.0 | 24.8 | 75.2 |
+| codeinj (code injection) | 100.0 | 45.5 | 54.5 | — | — | — |
+| crypto (weak cipher) | — | — | — | 100.0 | 0.0 | 100.0 |
+| deserialization (deserialization) | 100.0 | 8.3 | 91.7 | — | — | — |
+| hash (weak hashing) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
+| ldapi (LDAP injection) | 100.0 | 7.7 | 92.3 | 100.0 | 37.5 | 62.5 |
+| pathtraver (path traversal) | 92.3 | 46.6 | 45.7 | 82.7 | 33.3 | 49.4 |
+| redirect (open redirect) | 100.0 | 47.6 | 52.4 | — | — | — |
+| securecookie (insecure cookie) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
+| sqli (SQL injection) | 100.0 | 0.0 | 100.0 | 96.0 | 35.8 | 60.2 |
+| trustbound (trust boundary) | 100.0 | 36.8 | 63.2 | 85.5 | 34.9 | 50.7 |
+| weakrand (weak randomness) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
+| xpathi (XPath injection) | 76.5 | 20.0 | 56.5 | 100.0 | 15.0 | 85.0 |
+| xss (cross-site scripting) | 100.0 | 43.1 | 56.9 | 47.6 | 26.8 | 20.8 |
+| xxe (XML external entities) | 100.0 | 35.0 | 65.0 | — | — | — |
+| **Overall** | | | **74.0** | | | **73.1** |
 
-Reproduce it with one command:
+Each suite is scanned whole, as one application (the Python repository, the Java `src/main` tree), with the
+default profile. Reproduce either with one command:
 
 ```bash
 git clone --depth 1 https://github.com/OWASP-Benchmark/BenchmarkPython && python bench/score_owasp.py BenchmarkPython
+git clone --depth 1 https://github.com/OWASP-Benchmark/BenchmarkJava && python bench/score_owasp.py BenchmarkJava
 ```
 
 The engine is never tuned to benchmark files: no test-case names, paths or expected results are encoded in
-it. Java results: coming in the next update.
+it. The weakest categories (path traversal, XSS, redirects) are where values need deeper tracking; that gap is
+reported as measured.
 
 ## Languages and targets
 
@@ -737,6 +743,17 @@ vulnscan — ./my-project  (156 ملفًا مفحوصًا، 37 نتيجة)
 
 تقرير Markdown يبدأ بملخص تنفيذي وجدول أعداد، ثم «أهم ما يجب إصلاحه أولًا»، ثم كل النتائج مجمّعة حسب الخطورة
 مع المعرّف و CWE والموضع والمقتطف وطريقة الإصلاح. تقرير JSON يحمل الحقول نفسها لدمجه في أدوات أخرى.
+
+## الدقة: OWASP Benchmark
+
+نقيس كاشِف على مجموعتي OWASP Benchmark الرسميتين بمقياس OWASP نفسه (متوسط معدّل الإيجابيات الصحيحة ناقص معدّل
+الإيجابيات الكاذبة لكل فئة): **Python ‏74.0%** (1,230 حالة) و**Java ‏73.1%**
+(2,740 حالة). تُفحص كل مجموعة كاملة كتطبيق واحد بالملف الافتراضي، ولا يحوي المحرّك أي اسم أو مسار أو نتيجة من
+ملفات الاختبار. الجدول الكامل لكل فئة في القسم الإنجليزي أعلاه وفي صفحة الهبوط، وتعيد إنتاجه بأمر واحد:
+
+```bash
+git clone --depth 1 https://github.com/OWASP-Benchmark/BenchmarkJava && python bench/score_owasp.py BenchmarkJava
+```
 
 ## مقارنة مع الأدوات العالمية
 

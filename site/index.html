@@ -668,24 +668,41 @@ vulnscan ./project -f sarif -o out.sarif</div></div>
    shown on the page is computed from this block (mean of `score`).
    ====================================================================== */
 const BENCH = {
-  suite: "OWASP Benchmark for Python v0.1",
-  cases: 1230,
-  categories: [
-    { id: "cmdi",            tpr: 100.0, fpr: 42.9, score:  57.1 },
-    { id: "codeinj",         tpr: 100.0, fpr:  6.1, score:  93.9 },
-    { id: "deserialization", tpr: 100.0, fpr:  2.8, score:  97.2 },
-    { id: "hash",            tpr: 100.0, fpr:  0.0, score: 100.0 },
-    { id: "ldapi",           tpr: 100.0, fpr:  7.7, score:  92.3 },
-    { id: "pathtraver",      tpr:  92.3, fpr: 29.1, score:  63.2 },
-    { id: "redirect",        tpr: 100.0, fpr: 47.6, score:  52.4 },
-    { id: "securecookie",    tpr: 100.0, fpr:  0.0, score: 100.0 },
-    { id: "sqli",            tpr: 100.0, fpr:  0.0, score: 100.0 },
-    { id: "trustbound",      tpr: 100.0, fpr: 31.6, score:  68.4 },
-    { id: "weakrand",        tpr: 100.0, fpr:  0.0, score: 100.0 },
-    { id: "xpathi",          tpr:  76.5, fpr: 20.0, score:  56.5 },
-    { id: "xss",             tpr: 100.0, fpr: 36.2, score:  63.8 },
-    { id: "xxe",             tpr: 100.0, fpr: 35.0, score:  65.0 }
-  ]
+  python: {
+    suite: "OWASP Benchmark for Python v0.1", repo: "BenchmarkPython", cases: 1230,
+    categories: [
+      { id: "cmdi",            tpr: 100.0, fpr: 42.9, score:  57.1 },
+      { id: "codeinj",         tpr: 100.0, fpr: 45.5, score:  54.5 },
+      { id: "deserialization", tpr: 100.0, fpr:  8.3, score:  91.7 },
+      { id: "hash",            tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "ldapi",           tpr: 100.0, fpr:  7.7, score:  92.3 },
+      { id: "pathtraver",      tpr:  92.3, fpr: 46.6, score:  45.7 },
+      { id: "redirect",        tpr: 100.0, fpr: 47.6, score:  52.4 },
+      { id: "securecookie",    tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "sqli",            tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "trustbound",      tpr: 100.0, fpr: 36.8, score:  63.2 },
+      { id: "weakrand",        tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "xpathi",          tpr:  76.5, fpr: 20.0, score:  56.5 },
+      { id: "xss",             tpr: 100.0, fpr: 43.1, score:  56.9 },
+      { id: "xxe",             tpr: 100.0, fpr: 35.0, score:  65.0 }
+    ]
+  },
+  java: {
+    suite: "OWASP Benchmark for Java v1.2", repo: "BenchmarkJava", cases: 2740,
+    categories: [
+      { id: "cmdi",            tpr: 100.0, fpr: 24.8, score:  75.2 },
+      { id: "crypto",          tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "hash",            tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "ldapi",           tpr: 100.0, fpr: 37.5, score:  62.5 },
+      { id: "pathtraver",      tpr:  82.7, fpr: 33.3, score:  49.4 },
+      { id: "securecookie",    tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "sqli",            tpr:  96.0, fpr: 35.8, score:  60.2 },
+      { id: "trustbound",      tpr:  85.5, fpr: 34.9, score:  50.7 },
+      { id: "weakrand",        tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "xpathi",          tpr: 100.0, fpr: 15.0, score:  85.0 },
+      { id: "xss",             tpr:  47.6, fpr: 26.8, score:  20.8 }
+    ]
+  }
 };
 /* ==================== end of benchmark data ==================== */
 
@@ -694,8 +711,8 @@ const STAMPED_VERSION = "__VERSION__";
 const REPO = "abdulrahmanahmedelabed-prog/vulnscan";
 
 const CAT = {
-  en: { cmdi:"Command injection", codeinj:"Code injection", deserialization:"Insecure deserialization", hash:"Weak hashing", ldapi:"LDAP injection", pathtraver:"Path traversal", redirect:"Open redirect", securecookie:"Insecure cookie", sqli:"SQL injection", trustbound:"Trust boundary violation", weakrand:"Weak randomness", xpathi:"XPath injection", xss:"Cross-site scripting", xxe:"XML external entities" },
-  ar: { cmdi:"حقن الأوامر", codeinj:"حقن الكود", deserialization:"فك تسلسل غير آمن", hash:"تجزئة ضعيفة", ldapi:"حقن LDAP", pathtraver:"اجتياز المسارات", redirect:"إعادة توجيه مفتوحة", securecookie:"كوكي غير آمن", sqli:"حقن SQL", trustbound:"تجاوز حدود الثقة", weakrand:"عشوائية ضعيفة", xpathi:"حقن XPath", xss:"البرمجة عبر المواقع (XSS)", xxe:"كيانات XML الخارجية (XXE)" }
+  en: { cmdi:"Command injection", crypto:"Weak cipher", codeinj:"Code injection", deserialization:"Insecure deserialization", hash:"Weak hashing", ldapi:"LDAP injection", pathtraver:"Path traversal", redirect:"Open redirect", securecookie:"Insecure cookie", sqli:"SQL injection", trustbound:"Trust boundary violation", weakrand:"Weak randomness", xpathi:"XPath injection", xss:"Cross-site scripting", xxe:"XML external entities" },
+  ar: { cmdi:"حقن الأوامر", crypto:"تشفير ضعيف", codeinj:"حقن الكود", deserialization:"فك تسلسل غير آمن", hash:"تجزئة ضعيفة", ldapi:"حقن LDAP", pathtraver:"اجتياز المسارات", redirect:"إعادة توجيه مفتوحة", securecookie:"كوكي غير آمن", sqli:"حقن SQL", trustbound:"تجاوز حدود الثقة", weakrand:"عشوائية ضعيفة", xpathi:"حقن XPath", xss:"البرمجة عبر المواقع (XSS)", xxe:"كيانات XML الخارجية (XXE)" }
 };
 
 const I18N = {
