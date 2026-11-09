@@ -901,7 +901,7 @@ _INNER_RETURNING = {"setdefault", "get", "pop", "getOrDefault", "computeIfAbsent
                     "peekFirst", "peekLast", "poll", "popleft", "first", "last", "__getitem__", "at", "find"}
 
 
-def _escaping(fn) -> set:
+def _escaping(fn, include_passed: bool = True) -> set:
     """Names whose container may be reached some other way than through the name itself, so their layout must
     not be tracked: passed to functions, stored, returned, put in literals, aliased by any expression, captured by
     nested functions, or whose elements are taken out (`opts = conf["opts"]`, `d.setdefault(k, []).append(x)`)."""
@@ -918,6 +918,31 @@ def _escaping(fn) -> set:
         for ch in ast.iter_child_nodes(n):
             stack.append((ch, n))
     out = set()
+    taken: list = []        # (container, names bound to one of its elements): escapes only if that element is mutated
+    mutated: set = set()    # names written through: x.append(…), x[k] = …, x.f = …
+    passed: set = set()     # names passed as call arguments (a callee may mutate them, e.g. fill(buf, x))
+    called: set = set()     # names used as the receiver of a non-container method or attribute
+    stored: list = []       # (name, containers it was stored in)
+    for n in parents:
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) \
+                and n.func.attr in _ALL_CONTAINER_METHODS and n.func.attr not in _READ_ONLY:
+            mutated.add(n.func.value.id)
+        elif isinstance(n, (ast.Subscript, ast.Attribute)) and isinstance(n.ctx, (ast.Store, ast.Del)) \
+                and isinstance(n.value, ast.Name):
+            mutated.add(n.value.id)
+
+    def bound_names(use):
+        tg = use.targets if isinstance(use, ast.Assign) else [use.target]
+        return [t.id for t in tg if isinstance(t, ast.Name)] if all(isinstance(t, ast.Name) for t in tg) else None
+
+    def take(x, use):
+        """`y = x[k]` / `y = x.get(k)`: x escapes when y is later used as a container (or bound in another way)."""
+        names = bound_names(use) if isinstance(use, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) else None
+        if names is None:
+            out.add(x)
+        else:
+            taken.append((x, names))
+
     for d in nested:                                   # captured by a closure / lambda
         out.update(x.id for x in ast.walk(d) if isinstance(x, ast.Name))
     for n, p in parents.items():
@@ -931,17 +956,22 @@ def _escaping(fn) -> set:
             if isinstance(gp, ast.Call) and gp.func is p and p.attr in _ALL_CONTAINER_METHODS:
                 if p.attr in _INNER_RETURNING:
                     use = parents.get(gp)
-                    if isinstance(use, (ast.Attribute, ast.Assign, ast.AnnAssign, ast.NamedExpr)) or \
-                            (isinstance(use, ast.Subscript) and use.value is gp):
-                        out.add(x)                    # the inner container is taken out and may be mutated
+                    if isinstance(use, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                        take(x, use)                  # the inner container may be taken out and mutated
+                    elif isinstance(use, ast.Attribute) or (isinstance(use, ast.Subscript) and use.value is gp):
+                        out.add(x)
                 continue
-            out.add(x)
+            called.add(x)                             # x.method(…) / x.attr: escapes, but writes no container slot
             continue
+        if isinstance(p, ast.Subscript) and p.slice is n:
+            continue                                  # used as an index / key: read only
         if isinstance(p, ast.Subscript) and p.value is n:
             gp = parents.get(p)
-            if isinstance(p.ctx, ast.Load) and (isinstance(gp, (ast.Attribute, ast.Assign, ast.AnnAssign, ast.NamedExpr))
-                                                or (isinstance(gp, ast.Subscript) and gp.value is p)):
-                out.add(x)                            # element taken out / nested access: may alias a sub-container
+            if isinstance(p.ctx, ast.Load):
+                if isinstance(gp, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and getattr(gp, "value", None) is p:
+                    take(x, gp)                       # element taken out: may alias a sub-container
+                elif isinstance(gp, ast.Attribute) or (isinstance(gp, ast.Subscript) and gp.value is p):
+                    out.add(x)                        # nested access x[k].append(…) / x[a][b]
             continue
         if isinstance(p, ast.Compare) or (isinstance(p, (ast.For, ast.AsyncFor, ast.comprehension)) and p.iter is n):
             continue                                  # `k in x`, iteration: reads only
@@ -949,8 +979,39 @@ def _escaping(fn) -> set:
             continue                                  # len(x), str(x) …
         if isinstance(p, ast.FormattedValue) or isinstance(p, ast.BinOp):
             continue
+        if (isinstance(p, ast.Call) and n in p.args) or isinstance(p, (ast.keyword, ast.Starred)):
+            passed.add(x)                             # handed to a function: escapes, but is not stored anywhere here
+            continue
+        if isinstance(p, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
+            called.add(x)                             # put in a literal: aliased there, no slot of x is written
+            continue
+        if isinstance(p, ast.Assign) and p.value is n and p.targets and all(
+                isinstance(t, (ast.Subscript, ast.Attribute)) and _root_name(t) for t in p.targets):
+            called.add(x)                             # d[k] = x / o.f = x / flask.session[k] = x: aliased there
+            stored.append((x, [_root_name(t) for t in p.targets]))
+            continue
         out.add(x)
-    return out
+    local = _assigned(body) | {a.arg for a in ast.walk(fn.args) if isinstance(a, ast.arg)} \
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) else _assigned(body)
+    changed = True
+    while changed:                                    # an element bound to a name that is mutated or stored elsewhere
+        changed = False
+        # stored in a local container that is itself written through (module objects such as flask.session are
+        # not containers of this function)
+        holders = {y for y, roots in stored if any(r in out and r in local for r in roots)}
+        for x, names in taken:
+            if x not in out and any(y in mutated or y in out or y in holders for y in names):
+                out.add(x)
+                changed = True
+    out |= called
+    return out | passed if include_passed else out
+
+
+def _root_name(node):
+    """`a.b[c].d` -> "a"; None when the chain does not start at a plain name."""
+    while isinstance(node, (ast.Attribute, ast.Subscript)):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
 
 
 def _rebound_elsewhere(fn) -> set:

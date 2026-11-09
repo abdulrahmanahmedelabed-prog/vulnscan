@@ -187,6 +187,8 @@ it. Java results: coming in the next update.
 - Compared with Semgrep, SonarQube, Snyk Code or CodeQL, Kashif has far fewer rules and library models, no IDE
   plugins and much less real-world tuning. Its strengths are running fully locally with zero dependencies,
   Arabic output, Oracle APEX, archives/APKs and passive web checks in one tool.
+- Not modelled yet: validation done by form libraries (WTForms `validate_on_submit()` and similar), reflection
+  and dynamic dispatch through strings, and values that flow through files or databases outside the scanned code.
 - Without jadx, APK/JAR contents are scanned as text only; decompiled code may differ from the original source.
 - The web scan is passive only: no active testing of any kind.
 
@@ -778,6 +780,8 @@ python -m pytest -q
 
 - الفحص الثابت بالقواعد يكشف الأنماط الشائعة ولا يغني عن مراجعة بشرية أو اختبار اختراق.
 - قد تظهر إنذارات كاذبة؛ استخدم `--ignore-rule` أو كتم السطر بعد التحقق.
+- غير منمذج بعد: التحقق الذي تجريه مكتبات النماذج (مثل `validate_on_submit()` في WTForms)، والاستدعاء عبر الانعكاس
+  (reflection) وأسماء الدوال النصية، والقيم التي تمرّ عبر ملفات أو قواعد بيانات خارج الكود المفحوص.
 - بدون jadx تُفحص محتويات APK/JAR النصية فقط؛ ومع jadx يُفحص الكود المفكوك وهو كود مُعاد توليده قد يختلف عن المصدر الأصلي.
 - فحص الويب سلبي بالكامل (طلب واحد) ولا يُجري أي اختبار نشط.
 

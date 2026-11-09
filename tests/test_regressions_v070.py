@@ -44,3 +44,27 @@ def test_safe_counterparts_stay_quiet(tmp_path):
     got = {(f.file, f.rule_id, f.line) for f in scan_path(tmp_path, [], set())[0]}
     assert not {g for g in got if g[1] in ("DF005", "DF010")}, got
     assert not {g for g in got if g[0] == "dead.js" and g[1] == "DF002"}, got
+
+
+def test_list_layout_survives_element_reads(tmp_path):
+    """Reading an element into a variable (`bar = lst[1]`) or passing it to a call does not make the list's layout
+    unknown; only mutating that element does. And a pattern finding on a string handed to eval() stays gated."""
+    (tmp_path / "app.py").write_text(
+        "import os\nfrom flask import Flask, request\napp = Flask(__name__)\n@app.route('/x')\ndef x():\n"
+        "    param = request.form.get('p')\n    lst = ['safe', param, 'moresafe']\n    lst.pop(0)\n"
+        "    bar = lst[1]\n    os.system(bar)\n    eval(bar)\n")
+    got = {(f.rule_id, f.line) for f in scan_path(tmp_path, [], set())[0]}
+    assert not {g for g in got if g[0].startswith(("DF", "EXE"))}, got
+
+
+def test_map_reads_keep_precision(tmp_path):
+    """An element read out of a map and then used as a key, put in a list literal, stored in the session or passed
+    to a call is not a write into the map: the safe key's constant value is kept."""
+    (tmp_path / "app.py").write_text(
+        "import flask\nimport lxml.etree\nfrom flask import Flask, request\napp = Flask(__name__)\n"
+        "@app.route('/x')\ndef x():\n    m = {}\n    m['a'] = 'a-Value'\n    m['b'] = request.form.get('p')\n"
+        "    bar = m['a']\n    flask.session[bar] = '1'\n    flask.session['k'] = bar\n"
+        "    q = ''.join(['/E[@id=', bar, ']'])\n    root = lxml.etree.parse('f.xml')\n    root.xpath(q)\n"
+        "    d = {}\n    d['bar'] = bar\n    return '{0[bar]}'.format(d)\n")
+    got = {(f.rule_id, f.line) for f in scan_path(tmp_path, [], set())[0]}
+    assert not {g for g in got if g[0].startswith("DF")}, got

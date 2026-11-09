@@ -533,6 +533,55 @@ def apply_audit_profile(findings: list[Finding], projects, audit: bool) -> list[
     return out
 
 
+_CONTAINER_CTORS = {"list", "dict", "set", "bytearray", "deque", "defaultdict", "OrderedDict", "Counter", "ChainMap",
+                    "SimpleNamespace", "array"}
+_MUTATORS = {"append", "extend", "insert", "add", "update", "setdefault", "appendleft", "extendleft", "push", "put",
+             "__setitem__", "remove", "pop", "popitem", "clear", "discard", "sort", "reverse"}
+
+
+def _container_like(fn) -> set:
+    """Names in `fn` that may hold a mutable container: bound to a container literal, comprehension or constructor,
+    taken out of another value (`opts = conf["opts"]`, `x = obj.items`), mutated in place (`x.append(…)`, `x[k] = …`,
+    `x.attr = …`), or bound by unpacking / iteration / with / parameters."""
+    import ast as _ast
+    out = set()
+    a = getattr(fn, "args", None)
+    if a is not None:
+        out |= {x.arg for x in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if x is not None}
+    for n in _ast.walk(fn):
+        if isinstance(n, (_ast.Assign, _ast.AnnAssign, _ast.NamedExpr)) and getattr(n, "value", None) is not None:
+            v = n.value
+            tgts = n.targets if isinstance(n, _ast.Assign) else [n.target]
+            mutable = isinstance(v, (_ast.List, _ast.Dict, _ast.Set, _ast.ListComp, _ast.DictComp, _ast.SetComp,
+                                     _ast.Subscript, _ast.Attribute, _ast.Name, _ast.Starred, _ast.IfExp, _ast.BoolOp,
+                                     _ast.Await, _ast.Yield, _ast.YieldFrom)) or \
+                (isinstance(v, _ast.Call) and _call_tail(v) in _CONTAINER_CTORS)
+            if isinstance(v, _ast.Subscript) and isinstance(v.slice, _ast.Slice):
+                mutable = False                  # a slice is a fresh copy
+            for t in tgts:
+                if not isinstance(t, _ast.Name):
+                    out.update(x.id for x in _ast.walk(t) if isinstance(x, _ast.Name))   # unpacking, x[k] = …
+                elif mutable:
+                    out.add(t.id)
+        elif isinstance(n, (_ast.For, _ast.AsyncFor, _ast.comprehension)):
+            out.update(x.id for x in _ast.walk(n.target) if isinstance(x, _ast.Name))
+        elif isinstance(n, _ast.withitem) and n.optional_vars is not None:
+            out.update(x.id for x in _ast.walk(n.optional_vars) if isinstance(x, _ast.Name))
+        elif isinstance(n, _ast.Call) and isinstance(n.func, _ast.Attribute) and isinstance(n.func.value, _ast.Name) \
+                and n.func.attr in _MUTATORS:
+            out.add(n.func.value.id)
+        elif isinstance(n, (_ast.Subscript, _ast.Attribute)) and isinstance(n.ctx, (_ast.Store, _ast.Del)) \
+                and isinstance(n.value, _ast.Name):
+            out.add(n.value.id)
+    return out
+
+
+def _call_tail(call) -> str:
+    import ast as _ast
+    f = call.func
+    return f.id if isinstance(f, _ast.Name) else f.attr if isinstance(f, _ast.Attribute) else ""
+
+
 def _all_names_known(tree, line: int, cache: dict) -> bool:
     """True only when every value read on `line` comes from a plain assignment or a parameter of the enclosing
     function, i.e. a definition the flow-sensitive dataflow analysis actually evaluates. Globals, imported values,
@@ -581,7 +630,11 @@ def _all_names_known(tree, line: int, cache: dict) -> bool:
                 stack.extend(_ast.iter_child_nodes(n))
             try:
                 from .flow import _escaping
-                bad |= _escaping(fn)        # aliased / captured / stored: dataflow may not see every write
+                # aliased / captured / stored containers: a write through another name may be invisible to the
+                # dataflow analysis. Strings and numbers cannot be changed through an alias, so only names that
+                # hold (or are used as) a container count.
+                # (a container handed to a call is modelled by the flow analysis: the callee may store into it)
+                bad |= _escaping(fn, include_passed=False) & _container_like(fn)
             except Exception:  # noqa: BLE001 - be conservative: keep the pattern finding
                 good = set()
             lo = getattr(fn, "lineno", 1)

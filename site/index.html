@@ -177,6 +177,10 @@ html[lang="ar"] h3{letter-spacing:0;font-weight:600}
 .score-card .big{font-size:72px;font-weight:800;letter-spacing:-.04em;line-height:1;margin:6px 0 4px;direction:ltr;unicode-bidi:isolate;display:inline-block}
 .score-card .big small{font-size:36px;color:var(--muted);font-weight:700}
 .score-card p{color:var(--muted);font-size:14.5px;margin:10px 0 0}
+.suite-tabs{display:inline-flex;border:1px solid var(--line2);border-radius:10px;padding:3px;background:var(--bg2);margin-bottom:16px}
+.suite-tabs button{all:unset;cursor:pointer;padding:5px 14px;border-radius:7px;font-size:13.5px;font-weight:600;color:var(--muted);line-height:1.4}
+.suite-tabs button[aria-selected="true"]{background:var(--line2);color:var(--text)}
+.suite-tabs button:focus-visible{outline:2px solid var(--accent)}
 .score-card .k2{color:var(--dim);font-size:13px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
 html[lang="ar"] .score-card .k2{letter-spacing:0;text-transform:none}
 .term{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:12.5px;color:#bfeaf3;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left;margin:12px 0 0;line-height:1.7}
@@ -451,16 +455,20 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;color:var(--dim);fon
     </div>
     <div class="acc">
       <div class="score-card">
+        <div class="suite-tabs" role="tablist" data-i18n-attr="aria-label:acc.suites">
+          <button type="button" role="tab" data-suite="python" aria-selected="true">Python</button>
+          <button type="button" role="tab" data-suite="java" aria-selected="false">Java</button>
+        </div>
         <div class="k2" data-i18n="acc.overall">Overall score</div>
-        <div class="big"><span data-bench="overall">79.3</span><small>%</small></div>
-        <p data-i18n-html="acc.def">OWASP Benchmark for Python v0.1 · <span data-bench="cases">1,230</span> test cases. Score = mean over categories of true-positive rate minus false-positive rate (Youden's J).</p>
-        <div class="term"><span class="pr">$ </span>git clone --depth 1 https://github.com/OWASP-Benchmark/BenchmarkPython
-<span class="pr">$ </span>python bench/score_owasp.py BenchmarkPython</div>
+        <div class="big"><span data-bench="overall">—</span><small>%</small></div>
+        <p data-i18n-html="acc.def">OWASP Benchmark · <span data-bench="cases"></span> test cases. Score = mean over categories of true-positive rate minus false-positive rate (Youden's J).</p>
+        <div class="term"><span class="pr">$ </span>git clone --depth 1 https://github.com/OWASP-Benchmark/<span data-bench="repo">BenchmarkPython</span>
+<span class="pr">$ </span>python bench/score_owasp.py <span data-bench="repo">BenchmarkPython</span></div>
       </div>
       <div>
         <div class="tbl-wrap">
           <table class="bench">
-            <caption class="sr" data-i18n="acc.caption">OWASP Benchmark for Python results per category</caption>
+            <caption class="sr" data-i18n="acc.caption">OWASP Benchmark results per category</caption>
             <thead><tr><th data-i18n="acc.th.cat">Category</th><th class="num">TPR</th><th class="num">FPR</th><th data-i18n-html="acc.th.score">Score <bdi>(TPR − FPR)</bdi></th></tr></thead>
             <tbody id="bench-body"></tbody>
           </table>
@@ -468,7 +476,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;color:var(--dim);fon
         <div class="notes">
           <div class="note"><svg class="ic"><use href="#i-info"/></svg><span data-i18n="acc.n1">The engine is never tuned to benchmark files: no test-case names, paths or expected results are encoded anywhere. Rules model real library APIs.</span></div>
           <div class="note"><svg class="ic"><use href="#i-info"/></svg><span data-i18n="acc.n2">Where false-positive rates are high (command injection, redirects, XSS), the gap is honest: those cases need deeper value tracking, and that is where we are working next.</span></div>
-          <div class="note"><svg class="ic"><use href="#i-info"/></svg><span data-i18n="acc.n3">Java results: coming in the next update.</span></div>
+          <div class="note"><svg class="ic"><use href="#i-info"/></svg><span data-i18n="acc.n3">Each suite is scanned whole, as one application (the Python repository, the Java src/main tree), exactly as you would scan your own code.</span></div>
         </div>
       </div>
     </div>
@@ -720,11 +728,12 @@ en: {
   "acc.eyebrow":"Accuracy","acc.h2":"Measured in public. Reproducible with one command.",
   "acc.sub":"We score Kashif on the OWASP Benchmark and publish every category — the weak ones included.",
   "acc.overall":"Overall score",
-  "acc.def":"OWASP Benchmark for Python v0.1 · <span data-bench=\"cases\"></span> test cases. Score = mean over categories of true-positive rate minus false-positive rate (Youden's J).",
-  "acc.caption":"OWASP Benchmark for Python results per category","acc.th.cat":"Category","acc.th.score":"Score <bdi>(TPR − FPR)</bdi>",
+  "acc.def":"{suite} · <span data-bench=\"cases\"></span> test cases. Score = mean over categories of true-positive rate minus false-positive rate (Youden's J).",
+  "acc.suites":"Benchmark suite",
+  "acc.caption":"OWASP Benchmark results per category","acc.th.cat":"Category","acc.th.score":"Score <bdi>(TPR − FPR)</bdi>",
   "acc.n1":"The engine is never tuned to benchmark files: no test-case names, paths or expected results are encoded anywhere. Rules model real library APIs.",
   "acc.n2":"Where false-positive rates are high (command injection, redirects, XSS), the gap is honest: those cases need deeper value tracking, and that is where we are working next.",
-  "acc.n3":"Java results: coming in the next update.",
+  "acc.n3":"Each suite is scanned whole, as one application (the Python repository, the Java src/main tree), exactly as you would scan your own code.",
   "int.eyebrow":"Integrations","int.h2":"Fits the pipeline you already have.",
   "int.sub":"Upload SARIF to GitHub Code Scanning and findings appear in the Security tab and inline on pull requests, with severity, CWE and the dataflow path.",
   "copy":"Copy","copied":"Copied",
@@ -765,7 +774,7 @@ en: {
   "faq.eyebrow":"FAQ","faq.h2":"Questions, answered.",
   "q1":"Is it free?","a1":"Yes. Kashif is open source under the MIT license — free for personal and commercial use, with no paid tier.",
   "q2":"Does it upload my code?","a2":"No. Everything runs locally and the web UI listens on 127.0.0.1 only. The one optional network feature is the OSV.dev dependency lookup, which sends package names and versions — never source code. Turn it off with --no-deps.",
-  "q3":"How accurate is it?","a3":"On the OWASP Benchmark for Python it scores {overall}% (mean of TPR − FPR over {ncat} categories), and you can reproduce that with one command. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review.",
+  "q3":"How accurate is it?","a3":"On the OWASP Benchmark it scores {overall_py}% for Python and {overall_java}% for Java (mean of TPR − FPR per category), and you can reproduce both with one command. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review.",
   "q4":"Which languages does it support?","a4":"Dataflow analysis for Python, JavaScript/TypeScript, Java, Kotlin, C#, Go, PHP, C/C++, Rust, Swift, Ruby and PL/SQL, plus Oracle APEX exports, Android APK/JAR (via jadx), configuration, containers, CI files and passive web scanning.",
   "q5":"How do I report a security issue in Kashif?","a5":"Please use GitHub's private vulnerability reporting, as described in SECURITY.md. Do not open a public issue.",
   "final.h2":"Start scanning in a minute.","final.p":"Download a binary, point it at a project, and read a report ordered from critical to info.",
@@ -801,11 +810,12 @@ ar: {
   "acc.eyebrow":"الدقة","acc.h2":"نقيسها علنًا، وتعيد إنتاجها بأمر واحد.",
   "acc.sub":"نقيس كاشِف على OWASP Benchmark وننشر كل فئة — بما فيها الفئات الأضعف.",
   "acc.overall":"النتيجة الإجمالية",
-  "acc.def":"<bdi>OWASP Benchmark for Python v0.1</bdi> · <span data-bench=\"cases\"></span> حالة اختبار. النتيجة = متوسط (معدّل الإيجابيات الصحيحة − معدّل الإيجابيات الكاذبة) على الفئات (مؤشّر يودن J).",
-  "acc.caption":"نتائج OWASP Benchmark لـ Python لكل فئة","acc.th.cat":"الفئة","acc.th.score":"النتيجة <bdi>(TPR − FPR)</bdi>",
+  "acc.def":"<bdi>{suite}</bdi> · <span data-bench=\"cases\"></span> حالة اختبار. النتيجة = متوسط (معدّل الإيجابيات الصحيحة − معدّل الإيجابيات الكاذبة) على الفئات (مؤشّر يودن J).",
+  "acc.suites":"مجموعة الاختبار",
+  "acc.caption":"نتائج OWASP Benchmark لكل فئة","acc.th.cat":"الفئة","acc.th.score":"النتيجة <bdi>(TPR − FPR)</bdi>",
   "acc.n1":"المحرّك لا يُضبط أبدًا على ملفات الاختبار: لا أسماء حالات ولا مسارات ولا نتائج متوقعة مضمّنة في أي مكان. القواعد تنمذج واجهات مكتبات حقيقية.",
   "acc.n2":"حيث ترتفع الإيجابيات الكاذبة (حقن الأوامر، إعادة التوجيه، XSS) فالفجوة حقيقية: هذه الحالات تحتاج تتبّعًا أعمق للقيم، وهو ما نعمل عليه تاليًا.",
-  "acc.n3":"نتائج Java: قريبًا في التحديث القادم.",
+  "acc.n3":"تُفحص كل مجموعة كاملة كتطبيق واحد (مستودع Python، وشجرة src/main في Java)، تمامًا كما تفحص كودك.",
   "int.eyebrow":"التكامل","int.h2":"يندمج في خط العمل الذي تستخدمه.",
   "int.sub":"ارفع تقرير SARIF إلى GitHub Code Scanning فتظهر النتائج في تبويب Security وعلى أسطر طلبات الدمج، مع الخطورة وCWE ومسار تدفق البيانات.",
   "copy":"نسخ","copied":"نُسخ",
@@ -846,7 +856,7 @@ ar: {
   "faq.eyebrow":"أسئلة شائعة","faq.h2":"أسئلة وأجوبة.",
   "q1":"هل هو مجاني؟","a1":"نعم. كاشِف مفتوح المصدر برخصة MIT — مجاني للاستخدام الشخصي والتجاري، ولا توجد نسخة مدفوعة.",
   "q2":"هل يرفع الكود الخاص بي؟","a2":"لا. كل شيء يعمل محليًا، والواجهة تستمع على 127.0.0.1 فقط. الميزة الشبكية الوحيدة الاختيارية هي استعلام OSV.dev عن الاعتماديات، وترسل أسماء الحزم وإصداراتها فقط — لا الكود أبدًا. عطّلها بـ ‎--no-deps.",
-  "q3":"ما مدى دقته؟","a3":"على OWASP Benchmark لـ Python يحقق {overall}% (متوسط TPR − FPR على {ncat} فئة)، ويمكنك إعادة إنتاج ذلك بأمر واحد. وككل محلّل ساكن قد يُخطئ إيجابًا أو يفوّت ثغرات؛ فاعتبر نتائجه طبقة أولى قوية لا بديلًا عن المراجعة.",
+  "q3":"ما مدى دقته؟","a3":"على OWASP Benchmark يحقق {overall_py}% في Python و{overall_java}% في Java (متوسط TPR − FPR لكل فئة)، ويمكنك إعادة إنتاج النتيجتين بأمر واحد. وككل محلّل ساكن قد يُخطئ إيجابًا أو يفوّت ثغرات؛ فاعتبر نتائجه طبقة أولى قوية لا بديلًا عن المراجعة.",
   "q4":"ما اللغات المدعومة؟","a4":"تحليل تدفق البيانات لـ Python وJavaScript/TypeScript وJava وKotlin وC# وGo وPHP وC/C++ وRust وSwift وRuby وPL/SQL، إضافة إلى ملفات تصدير Oracle APEX وتطبيقات أندرويد APK/JAR (عبر jadx) والإعدادات والحاويات وملفات CI وفحص الويب السلبي.",
   "q5":"كيف أبلّغ عن ثغرة في كاشِف نفسه؟","a5":"استخدم الإبلاغ الخاص عن الثغرات في GitHub كما هو موضّح في SECURITY.md، ولا تفتح Issue عامًا.",
   "final.h2":"ابدأ الفحص خلال دقيقة.","final.p":"نزّل الملف، ووجّهه إلى مشروعك، واقرأ تقريرًا مرتّبًا من الحرج إلى المعلوماتي.",
@@ -866,18 +876,26 @@ ar: {
     return I18N.en[key];
   }
   function fmt1(x) { return x.toFixed(1); }
-  var overall = BENCH.categories.reduce(function (s, c) { return s + c.score; }, 0) / BENCH.categories.length;
+  state.suite = "python";
+  function overallOf(id) {
+    var cats = BENCH[id].categories;
+    return cats.reduce(function (s, c) { return s + c.score; }, 0) / cats.length;
+  }
 
   function fill(s) {
-    return String(s).replace("{overall}", fmt1(overall)).replace("{ncat}", BENCH.categories.length);
+    return String(s).replace("{suite}", BENCH[state.suite].suite)
+      .replace("{overall_py}", fmt1(overallOf("python"))).replace("{overall_java}", fmt1(overallOf("java")));
   }
 
   function renderBench() {
     var nf = new Intl.NumberFormat(state.lang === "ar" ? "ar-EG-u-nu-latn" : "en-US");
-    document.querySelectorAll('[data-bench="overall"]').forEach(function (el) { el.textContent = fmt1(overall); });
-    document.querySelectorAll('[data-bench="cases"]').forEach(function (el) { el.textContent = nf.format(BENCH.cases); });
+    var suite = BENCH[state.suite];
+    document.querySelectorAll('[data-bench="overall"]').forEach(function (el) { el.textContent = fmt1(overallOf(state.suite)); });
+    document.querySelectorAll('[data-bench="cases"]').forEach(function (el) { el.textContent = nf.format(suite.cases); });
+    document.querySelectorAll('[data-bench="repo"]').forEach(function (el) { el.textContent = suite.repo; });
+    document.querySelectorAll(".suite-tabs button").forEach(function (b) { b.setAttribute("aria-selected", String(b.dataset.suite === state.suite)); });
     var body = document.getElementById("bench-body");
-    var rows = BENCH.categories.slice().sort(function (a, b) { return b.score - a.score || a.id.localeCompare(b.id); });
+    var rows = suite.categories.slice().sort(function (a, b) { return b.score - a.score || a.id.localeCompare(b.id); });
     body.innerHTML = "";
     rows.forEach(function (c) {
       var tr = document.createElement("tr");
@@ -929,6 +947,14 @@ ar: {
     b.addEventListener("click", function () {
       apply(b.dataset.lang);
       try { localStorage.setItem("kashif-lang", state.lang); } catch (e) {}
+    });
+  });
+
+  /* benchmark suite tabs */
+  document.querySelectorAll(".suite-tabs button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      state.suite = BENCH[b.dataset.suite] ? b.dataset.suite : "python";
+      apply(state.lang);
     });
   });
 

@@ -111,6 +111,12 @@
  "r2_py__django_url_param.py": [
   "DF005:4"
  ],
+ "r2_py__element_alias_mutation.py": [
+  "EXE004:11",
+  "EXE004:17",
+  "DF002:22",
+  "EXE004:30"
+ ],
  "r2_py__helper_two_params.py": [
   "DF004:33",
   "DF004:34",
