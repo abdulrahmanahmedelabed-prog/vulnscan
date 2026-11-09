@@ -253,8 +253,20 @@ def _safe_for(o) -> frozenset:
 
 
 def _unsafe_for(o, si) -> bool:
-    """Does taint origin `o` still matter for sink `si`? False when it was escaped for that sink's CWE."""
-    return bool(o) and (not si or si[5] not in _safe_for(o))
+    """Does taint origin `o` still matter for sink `si`? False when it was escaped for that sink's CWE, or when a
+    LOCAL source (command line, environment, console) names a file: the operator choosing a path is the program's
+    function, not a traversal (CodeQL's default threat model likewise leaves local sources out)."""
+    if not o:
+        return False
+    if si and si[5] in _PATH_CWES and o[0] in ("source", "retsource") and _LOCAL_SOURCE.search(str(o[1])):
+        return False
+    return not si or si[5] not in _safe_for(o)
+
+
+_PATH_CWES = frozenset({"CWE-22", "CWE-23", "CWE-36", "CWE-73"})
+_LOCAL_SOURCE = re.compile(r"(?i)(^|[.\s])(argv|parse_args|parse_known_args|environ|getenv|env\.get|input|raw_input|stdin|"
+                           r"getpass|click\.prompt|prompt|System\.getenv|System\.getProperty|process\.argv|process\.env|"
+                           r"nextLine|CommandLine|GetCommandLineArgs|GetEnvironmentVariable|os\.Args|flag\.)\b")
 
 
 # What a context-specific sanitizer neutralizes, recognised by naming conventions shared across languages.

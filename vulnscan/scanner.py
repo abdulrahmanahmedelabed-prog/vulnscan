@@ -312,12 +312,20 @@ def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set
     ]
     if not applicable:
         return findings
+    doc_lines: set = set()          # lines of Python docstrings: prose / examples, not executed code
     if path.suffix.lower() == ".py":
         try:
             import ast as _ast
             from . import semantic
-            findings.extend(f for f in semantic.check_python(rel, _ast.parse(text), ignore_rules)
+            tree = _ast.parse(text)
+            findings.extend(f for f in semantic.check_python(rel, tree, ignore_rules)
                             if not SUPPRESS.search(_line(text, f.line)))
+            for n in _ast.walk(tree):
+                if isinstance(n, (_ast.Module, _ast.ClassDef, _ast.FunctionDef, _ast.AsyncFunctionDef)) and n.body \
+                        and isinstance(n.body[0], _ast.Expr) and isinstance(n.body[0].value, _ast.Constant) \
+                        and isinstance(n.body[0].value.value, str):
+                    d = n.body[0]
+                    doc_lines.update(range(d.lineno, (d.end_lineno or d.lineno) + 1))
         except (SyntaxError, ValueError, MemoryError, RecursionError):
             pass
     entropy_on = "SEC011" not in ignore_rules and not _ENCRYPTED_STORE.search(text)
@@ -339,6 +347,8 @@ def scan_file(path: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set
             continue
         line_hits = 0
         for rule in applicable:
+            if lineno in doc_lines and not rule.id.startswith("SEC"):
+                continue                    # code examples in docstrings are not code (secrets still count)
             if rule.pattern.search(line) and not (rule.skip and rule.skip.search(line)):
                 line_hits += 1
                 findings.append(Finding(

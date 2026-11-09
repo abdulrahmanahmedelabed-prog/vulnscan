@@ -4,6 +4,8 @@ import pathlib
 import stat
 import zipfile
 
+import sys
+
 import pytest
 
 from vulnscan.scanner import JADX_LIB_EXCLUDES, decompile_with_jadx, jadx_available, scan_path
@@ -29,6 +31,8 @@ exit 0
 
 @pytest.fixture
 def stub_jadx(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        pytest.skip("the jadx stub is a POSIX shell script (real jadx on Windows is jadx.bat, found via PATHEXT)")
     bindir = tmp_path / "bin"
     bindir.mkdir()
     exe = bindir / "jadx"

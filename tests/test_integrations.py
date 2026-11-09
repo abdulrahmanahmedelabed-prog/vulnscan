@@ -225,10 +225,14 @@ def _sarif_of(tmp_path, files):
 
 
 def test_sarif_uris_are_percent_encoded(tmp_path):
-    doc = _sarif_of(tmp_path, {"my dir/app 1.py": "eval(input())\n", "مجلد/ملف.py": "eval(input())\n",
-                               "a#b%20.py": "eval(input())\n", "fix:eval.py": "eval(input())\n"})
+    import sys
+    files = {"my dir/app 1.py": "eval(input())\n", "مجلد/ملف.py": "eval(input())\n", "a#b%20.py": "eval(input())\n"}
+    if sys.platform != "win32":
+        files["fix:eval.py"] = "eval(input())\n"            # ':' is not allowed in Windows file names
+    doc = _sarif_of(tmp_path, files)
     uris = {r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for r in doc["runs"][0]["results"]}
-    assert "my%20dir/app%201.py" in uris and "a%23b%2520.py" in uris and "fix%3Aeval.py" in uris
+    assert "my%20dir/app%201.py" in uris and "a%23b%2520.py" in uris
+    assert sys.platform == "win32" or "fix%3Aeval.py" in uris
     assert any(u.startswith("%D9%85") for u in uris)          # Arabic, UTF-8 percent-encoded
     assert all(" " not in u and "#" not in u for u in uris)
     assert doc["runs"][0]["originalUriBaseIds"]["%SRCROOT%"]["uri"].startswith("file:///")
@@ -541,3 +545,21 @@ def test_dataflow_finding_carries_full_path(tmp_path):
         "    host = request.args.get('host')\n    cmd = 'ping -c 1 ' + host\n    os.system(cmd)\n    return 'ok'\n")
     df = [f for f in scan_path(tmp_path, [], set())[0] if f.rule_id == "DF002"]
     assert df and [s["line"] for s in df[0].extra["path"]] == [6, 7, 8]
+
+
+def test_local_sources_naming_files_are_not_traversal(tmp_path):
+    (tmp_path / "cli.py").write_text(
+        "import argparse, os, sys\nfrom flask import request\n"
+        "def main():\n    a = argparse.ArgumentParser().parse_args()\n    open(a.output, 'w')\n"
+        "    open(os.environ.get('APP_HOME', '.') + '/x', 'w')\n    os.system(sys.argv[1])\n"
+        "@app.route('/d')\ndef d():\n    open('/srv/' + request.args['f'])\n")
+    hits = {(f.rule_id, f.line) for f in scan_path(tmp_path, [], set())[0] if f.rule_id.startswith("DF")}
+    assert not any(ln in (5, 6) for _, ln in hits)          # operator-chosen paths
+    assert any(ln == 7 for _, ln in hits)                    # command execution from argv is still reported
+    assert any(ln == 10 for _, ln in hits)                   # web input into a path is traversal
+
+
+def test_docstring_examples_are_not_code(tmp_path):
+    (tmp_path / "m.py").write_text('"""Example: os.system(cmd) and eval(x) and pickle.loads(d)."""\n'
+                                   'def f():\n    """Do not call os.system(user) here."""\n    return 1\n')
+    assert not scan_path(tmp_path, [], set())[0]

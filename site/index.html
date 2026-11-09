@@ -907,7 +907,8 @@ ar: {
     root.dir = state.lang === "ar" ? "rtl" : "ltr";
     document.title = t("title");
     document.querySelectorAll("[data-i18n]").forEach(function (el) { el.textContent = fill(t(el.getAttribute("data-i18n"))); });
-    document.querySelectorAll("[data-i18n-html]").forEach(function (el) { el.innerHTML = fill(t(el.getAttribute("data-i18n-html"))); });
+    // the page's own translation strings (constants in this file), never user input  // vulnscan: ignore
+    document.querySelectorAll("[data-i18n-html]").forEach(function (el) { el.innerHTML = fill(t(el.getAttribute("data-i18n-html"))); });  // vulnscan: ignore
     document.querySelectorAll("[data-i18n-attr]").forEach(function (el) {
       el.getAttribute("data-i18n-attr").split(";").forEach(function (pair) {
         var p = pair.split(":"); if (p.length === 2) el.setAttribute(p[0].trim(), t(p[1].trim()));
