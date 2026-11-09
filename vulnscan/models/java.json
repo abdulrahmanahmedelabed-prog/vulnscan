@@ -146,7 +146,8 @@
       "cwe": "CWE-78",
       "label": "shell command",
       "args": [
-        0
+        0,
+        1
       ],
       "names": [
         "Runtime.getRuntime.exec",
