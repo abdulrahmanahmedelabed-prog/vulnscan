@@ -502,14 +502,16 @@ class FlowInterpreter:
             elems = st.lk[name]
             if f.attr in ("append", "add", "push", "addLast", "offer", "offerLast") and len(args) == 1:
                 elems.append(self.taint(args[0], st))
-            elif f.attr in ("insert", "add") and len(args) == 2 and isinstance(fold(args[0], st.consts), int):
-                elems.insert(fold(args[0], st.consts), self.taint(args[1], st))
+            elif f.attr in ("insert", "add") and len(args) == 2 and isinstance(fold(args[0], st.consts), (int, float)):
+                elems.insert(int(fold(args[0], st.consts)), self.taint(args[1], st))
             elif f.attr in ("addFirst", "appendleft", "unshift", "offerFirst") and len(args) == 1:
                 elems.insert(0, self.taint(args[0], st))
             elif f.attr in ("pop", "remove", "removeFirst", "removeLast", "shift", "poll", "pollFirst", "pollLast", "popleft") \
                     and len(args) <= 1:
                 idx = fold(args[0], st.consts) if args else (0 if f.attr in ("removeFirst", "shift", "poll", "pollFirst", "popleft")
                                                               else -1 if f.attr in ("pop", "removeLast", "pollLast") else _MISSING)
+                if isinstance(idx, float) and idx.is_integer():
+                    idx = int(idx)                     # C-family frontends give numeric literals as floats
                 if isinstance(idx, int) and not isinstance(idx, bool) and elems and -len(elems) <= idx < len(elems) \
                         and not (f.attr == "remove" and not isinstance(args[0], ast.Constant)):
                     elems.pop(idx)
@@ -526,6 +528,20 @@ class FlowInterpreter:
                 else:
                     st.tainted.pop(name, None)
             return st
+        if f.attr in ("put", "setProperty", "set", "__setitem__", "Add", "putIfAbsent") and name in st.dk and len(args) == 2:
+            key = fold(args[0], st.consts)
+            if key is not _MISSING and _hashable(key):
+                st = st.copy()
+                m, other = st.dk[name]
+                if f.attr == "putIfAbsent" and m.get(key):
+                    return st
+                m[key] = self.taint(args[1], st)       # strong update of one known key
+                live = next((v for v in list(m.values()) + [other] if v), None)
+                if live:
+                    st.tainted[name] = live
+                else:
+                    st.tainted.pop(name, None)
+                return st
         if f.attr in ("update",) and name in st.dk and args and isinstance(args[0], ast.Dict) \
                 and all(isinstance(k, ast.Constant) for k in args[0].keys):
             st = st.copy()
@@ -606,8 +622,14 @@ def _hashable(v) -> bool:
         return False
 
 
+_NEW_MAP = {"dict", "HashMap", "LinkedHashMap", "TreeMap", "Hashtable", "ConcurrentHashMap", "Properties", "Map",
+            "OrderedDict", "defaultdict", "Dictionary", "SortedDictionary", "mutableMapOf", "hashMapOf"}
+
+
 def _is_empty_dict_call(call: ast.Call) -> bool:
-    return isinstance(call.func, ast.Name) and call.func.id == "dict" and not call.args and not call.keywords
+    f = call.func
+    name = f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
+    return name in _NEW_MAP and not call.keywords and (not call.args or name == "defaultdict")
 
 
 def _is_param(fn, name) -> bool:

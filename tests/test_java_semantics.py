@@ -87,3 +87,21 @@ def test_flow_through_inner_class_method(tmp_path):
         "  private class Test {\n    public String doSomething(HttpServletRequest request, String param) {\n"
         "      String bar = param;\n      return bar;\n    }\n  }\n}\n")
     assert any(f.rule_id == "DF002" and f.line == 6 for f in scan_path(tmp_path, [], set())[0])
+
+
+def test_java_collections_keep_their_layout(tmp_path):
+    (tmp_path / "T.java").write_text(
+        "import javax.servlet.http.*;\npublic class T extends HttpServlet {\n"
+        "  public void doPost(HttpServletRequest request, HttpServletResponse response) throws Exception {\n"
+        "    String param = request.getParameter(\"p\");\n"
+        "    java.util.HashMap<String, Object> map = new java.util.HashMap<String, Object>();\n"
+        "    map.put(\"keyA\", \"a_Value\");\n    map.put(\"keyB\", param);\n"
+        "    java.util.List<String> l = new java.util.ArrayList<String>();\n"
+        "    l.add(\"safe\");\n    l.add(param);\n    l.add(\"moresafe\");\n    l.remove(0);\n"
+        "    java.sql.Statement st = null;\n"
+        "    st.execute(\"S \" + (String) map.get(\"keyA\"));\n"     # line 14: safe key
+        "    st.execute(\"S \" + (String) map.get(\"keyB\"));\n"     # line 15: tainted key
+        "    st.execute(\"S \" + l.get(1));\n"                       # line 16: 'moresafe'
+        "    st.execute(\"S \" + l.get(0));\n  }\n}\n")              # line 17: param
+    lines = {f.line for f in scan_path(tmp_path, [], set())[0] if f.rule_id == "DF004"}
+    assert lines == {15, 17}
