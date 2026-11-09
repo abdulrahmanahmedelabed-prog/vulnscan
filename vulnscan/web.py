@@ -336,17 +336,20 @@ def _probe_paths(parsed, timeout: float) -> list[Finding]:
         text = body.decode("utf-8", "replace") if body else ""
         if sig == "__absent__":
             if status != 200:
-                out.append(Finding("WEB060", sev, title, title_ar, label, 0, path, advice, "CWE-200", source="web"))
+                out.append(Finding("WEB060", sev, title, title_ar, label, 0, path, advice, "CWE-200", source="web",
+                                   extra={"page": base + path}))
             continue
         if sig == "__robots__":
             if status == 200:
                 hits = [l for l in text.splitlines() if re.match(r"(?i)\s*disallow", l) and re.search(r"(admin|internal|private|backup|secret|config|db|sql)", l, re.I)]
                 if hits:
-                    out.append(Finding("WEB061", sev, title, title_ar, label, 0, hits[0][:120], advice, "CWE-200", source="web"))
+                    out.append(Finding("WEB061", sev, title, title_ar, label, 0, hits[0][:120], advice, "CWE-200", source="web",
+                                       extra={"page": base + path}))
             continue
         ctype = (headers.get("content-type", "") if headers else "").lower()
         if status == 200 and "text/html" not in ctype and (sig is None or re.search(sig, text)):
-            out.append(Finding("WEB062", sev, title, title_ar, label, 0, f"{path} → HTTP 200", advice, "CWE-538", source="web"))
+            out.append(Finding("WEB062", sev, title, title_ar, label, 0, f"{path} → HTTP 200", advice, "CWE-538", source="web",
+                               extra={"page": base + path}))
     return out
 
 
@@ -409,12 +412,13 @@ def detect_platform(blob: str, label: str, deep: bool, parsed, timeout: float) -
                 if status == 200 and path.endswith((".bak", "-dist", "-dist.php", ".log", "/.env", ".txt")) and "text/html" not in ctype:
                     out.append(Finding("WEB082", "high", f"{name}: sensitive file exposed {path}",
                                        f"{name}: ملف حساس مكشوف {path}", label, 0, f"{path} -> HTTP 200",
-                                       "امنع الوصول إلى هذا الملف من خادم الويب.", "CWE-538", source="web"))
+                                       "امنع الوصول إلى هذا الملف من خادم الويب.", "CWE-538", source="web",
+                                       extra={"page": base + path}))
                 elif status == 200 and re.search(r"(?i)(login|admin|sign in|user)", text[:4000]):
                     out.append(Finding("WEB083", "info", f"{name}: admin/login page reachable {path}",
                                        f"{name}: صفحة إدارة أو دخول متاحة {path}", label, 0, f"{path} -> HTTP 200",
                                        "قيّد الوصول إلى لوحات الإدارة (شبكة داخلية أو مصادقة قوية وحدّ للمحاولات).",
-                                       "CWE-284", source="web"))
+                                       "CWE-284", source="web", extra={"page": base + path}))
         break
     return out
 

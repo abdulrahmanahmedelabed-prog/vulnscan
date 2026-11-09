@@ -162,6 +162,26 @@ def _uri(path: str) -> str:
     return urllib.parse.quote(path.replace("\\", "/"), safe="/")
 
 
+def _norm_url(url: str) -> str:
+    """A fetched URL as a valid RFC 3986 URI: percent-encode what needs it, keep existing %XX escapes."""
+    parts = urllib.parse.urlsplit(url)
+    safe = "/%:@!$&'()*+,;=-._~"
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, urllib.parse.quote(parts.path, safe=safe),
+                                    urllib.parse.quote(parts.query, safe=safe + "?"),
+                                    urllib.parse.quote(parts.fragment, safe=safe + "?")))
+
+
+def _file_location(path: str, line: int, base_id: str, target: str) -> dict:
+    """physicalLocation for a source finding. APEX exports expose embedded files as virtual paths
+    (`f100.sql!Static/app.js`) whose lines count from the decoded file, not the export: point at the real
+    export file, without a region, and name the embedded file in the location's properties."""
+    if "!" in path and not (pathlib.Path(target) / path).exists():
+        real, virtual = path.split("!", 1)
+        return {"artifactLocation": {"uri": _uri(real), "uriBaseId": base_id},
+                "properties": {"embeddedFile": virtual, "embeddedLine": max(1, line or 1)}}
+    return {"artifactLocation": {"uri": _uri(path), "uriBaseId": base_id}, "region": {"startLine": max(1, line or 1)}}
+
+
 def _root_uri(target: str) -> str:
     try:
         p = pathlib.Path(target).resolve()
@@ -210,12 +230,11 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
         if f.source == "web" and web_base is not None:
             # a web finding has no source file: point at the exact page that was fetched (already a valid URL),
             # falling back to the scanned URL itself; no line region
-            pages = f.extra.get("pages") or []
-            page_url = f.extra.get("page") or (pages[0] if pages else None) or target
-            phys = {"artifactLocation": {"uri": page_url}}
+            # (a grouped finding raised on the entry page keeps the entry URL; extra.pages lists the others)
+            page_url = f.extra.get("page") or target
+            phys = {"artifactLocation": {"uri": _norm_url(page_url)}}
         else:
-            phys = {"artifactLocation": {"uri": _uri(member or f.file), "uriBaseId": base_id},
-                    "region": {"startLine": max(1, f.line or 1)}}
+            phys = _file_location(member or f.file, f.line, base_id, target)
         result = {
             "ruleId": f.rule_id,
             "level": SARIF_LEVEL.get(f.severity, "warning"),
@@ -226,9 +245,8 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
         }
         path = f.extra.get("path")
         if path:   # a data-flow finding: emit the source→sink trail as a SARIF codeFlow
-            locs = [{"location": {"physicalLocation": {
-                "artifactLocation": {"uri": _uri(str(st.get("file") or member or f.file)), "uriBaseId": base_id},
-                "region": {"startLine": max(1, int(st.get("line", 1) or 1))}},
+            locs = [{"location": {"physicalLocation": _file_location(
+                str(st.get("file") or member or f.file), int(st.get("line", 1) or 1), base_id, target),
                 "message": {"text": str(st.get("text", ""))}}} for st in path]
             result["codeFlows"] = [{"threadFlows": [{"locations": locs}]}]
         results.append(result)

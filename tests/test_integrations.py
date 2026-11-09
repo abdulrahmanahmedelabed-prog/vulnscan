@@ -399,3 +399,37 @@ def test_server_scan_fingerprints_unique(tmp_path):
     run_scan(store, scan, {"use_osv": False, "use_external": False, "use_jadx": False}, False)
     fps = [f["fingerprint"] for f in store.get_scan(scan["id"])["findings"]]
     assert len(fps) == 2 and len(set(fps)) == 2
+
+
+# ---------------------------------------------------------------- regressions from the third review round
+
+def test_sarif_web_urls_encoded_and_probe_locations():
+    probe = Finding("WEB062", "high", "Exposed .git", "ع", "h", 0, "/.git/config → HTTP 200", "a", source="web",
+                    extra={"page": "http://h/.git/config"})
+    entry = Finding("WEB051", "high", "Form over HTTP", "ع", "h", 0, "x", "a", source="web",
+                    extra={"pages": ["http://h/sub/p.html"]})
+    doc = json.loads(render_sarif([probe, entry], "http://h/?q={x}|^", 1, []))
+    uris = {r["ruleId"]: r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+            for r in doc["runs"][0]["results"]}
+    assert uris == {"WEB062": "http://h/.git/config", "WEB051": "http://h/?q=%7Bx%7D%7C%5E"}
+
+
+def test_web_fingerprint_digit_and_query_handling():
+    def ck(name):
+        return Finding("WEB021", "medium", f"Cookie without HttpOnly flag: {name}", "ع", "h", 0, f"{name}=v",
+                       "a", source="web").fingerprint()
+    assert ck("sid1") != ck("sid2")
+
+    def js(url):
+        return Finding("WEB053", "low", "External script without SRI", "ع", "h", 0, url, "a",
+                       source="web").fingerprint()
+    assert js("https://cdn.x/app.js?v=1699") == js("https://cdn.x/app.js?v=1700")
+    assert js("https://cdn.x/app.js") != js("https://cdn.x/other.js")
+
+
+def test_sarif_apex_virtual_file_points_at_export():
+    f = Finding("DF001", "high", "DOM XSS", "ع", "f100.sql!Static/app.js", 3, "innerHTML = h", "a")
+    loc = json.loads(render_sarif([f], "/nonexistent", 1, []))["runs"][0]["results"][0]["locations"][0]
+    phys = loc["physicalLocation"]
+    assert phys["artifactLocation"]["uri"] == "f100.sql" and "region" not in phys
+    assert phys["properties"]["embeddedFile"] == "Static/app.js"
