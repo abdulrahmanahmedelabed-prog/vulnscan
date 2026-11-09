@@ -623,12 +623,25 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                         pass
             findings.extend(scan_project_hygiene(root, ignore_rules))
             if py_sources:  # whole-project cross-file data-flow (taint) analysis: Python + JS/TS, then VQL queries
-                projects, flows = taint.analyze_project_full(py_sources, models_dirs, config_values)
+                try:
+                    projects, flows = taint.analyze_project_full(py_sources, models_dirs, config_values)
+                except (RecursionError, MemoryError) as e:   # never lose the pattern findings to one hostile file
+                    projects, flows = [], []
+                    if notes is not None:
+                        notes.append(f"تعذّر تحليل تدفق البيانات ({type(e).__name__})؛ عُرضت نتائج القواعد فقط — "
+                                     f"dataflow analysis failed, pattern results only")
                 findings.extend(f for f in flows if f.rule_id not in ignore_rules)
                 if notes is not None:
                     notes.extend(frontend_notes(projects))
+                    deep = sorted({p for proj in projects for p in getattr(proj, "too_deep", [])})
+                    if deep:
+                        notes.append(f"ملفات متداخلة بعمق غير طبيعي (مولَّدة أو عدائية) استُثنيت من تحليل التدفق: {', '.join(deep[:5])}"
+                                     f"{' …' if len(deep) > 5 else ''} — too deeply nested for dataflow analysis")
                 if queries or query_paths:
-                    qf, qnotes = vql.run_queries(projects, flows, query_paths, builtin=queries)
+                    try:
+                        qf, qnotes = vql.run_queries(projects, flows, query_paths, builtin=queries)
+                    except (RecursionError, MemoryError):
+                        qf, qnotes = [], ["تعذّر تشغيل استعلامات VQL — VQL queries failed"]
                     findings.extend(f for f in qf if f.rule_id not in ignore_rules)
                     if notes is not None:
                         notes.extend(qnotes)

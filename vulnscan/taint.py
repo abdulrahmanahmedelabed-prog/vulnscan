@@ -130,6 +130,21 @@ def _name_matches(canon: str, name: str) -> bool:
     return canon.split(".")[-1] == name
 
 
+MAX_AST_DEPTH = 150   # far beyond hand-written code; protects every recursive analysis from hostile nesting
+
+
+def too_deep(tree, limit: int = MAX_AST_DEPTH) -> bool:
+    """Iterative depth check (no recursion): True when the syntax tree nests deeper than `limit`."""
+    stack = [(tree, 0)]
+    while stack:
+        node, d = stack.pop()
+        if d > limit:
+            return True
+        for ch in ast.iter_child_nodes(node):
+            stack.append((ch, d + 1))
+    return False
+
+
 def _dotted(node: ast.AST) -> str:
     if isinstance(node, ast.Name):
         return node.id
@@ -270,6 +285,7 @@ class Project:
         self.m = models or load_models()
         self.files: dict[str, dict] = {}
         self.diagnostics: dict[str, dict] = {}   # rel path -> frontend parse diagnostics (skipped statements)
+        self.too_deep: list[str] = []             # files left out of dataflow: nesting too deep to analyze safely
         self.field_precise_locals = False         # PL/SQL: `rec.col := v` taints the field, not the whole record
         self.gfuncs: dict[str, dict] = {}
         self.classes: dict[str, dict] = {}
@@ -294,6 +310,9 @@ class Project:
                 tree = ast.parse(text)
             except (SyntaxError, ValueError, MemoryError, RecursionError):   # generated/hostile code: skip the file
                 return False
+        if too_deep(tree):
+            self.too_deep.append(path)         # generated / hostile nesting: the recursive analyses would overflow
+            return False
         file = {"path": path, "tree": tree, "aliases": self._aliases(tree, mod, is_pkg), "funcs": {},
                 "classes": {}, "lines": lines if lines is not None else text.splitlines(), "assign_aliases": []}
         self.files[mod] = file
