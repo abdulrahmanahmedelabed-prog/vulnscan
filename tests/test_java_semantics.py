@@ -13,7 +13,7 @@ def _py(src):
 
 def test_arithmetic_operators_are_preserved():
     out = _py("class T { void f() { int a = 7 * 18 - 4 / 2 % 3; int b = a << 2 | 1 & 6 ^ 5; } }")
-    assert "7.0 * 18.0" in out and " - " in out and " / " in out and " % " in out
+    assert "7 * 18" in out and " - " in out and " / " in out and " % " in out
     assert " << " in out and " | " in out and " & " in out and " ^ " in out
 
 

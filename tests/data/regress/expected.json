@@ -71,6 +71,69 @@
   "EXE001",
   "INJ001"
  ],
+ "r2_java__builder_field.java": [
+  "DF002:15"
+ ],
+ "r2_java__switch_expr_arrow.java": [
+  "DF002:6"
+ ],
+ "r2_java__switch_expr_colon_yield.java": [
+  "DF002:9"
+ ],
+ "r2_java__switch_expr_yield.java": [
+  "DF004:13"
+ ],
+ "r2_js__helper_two_params.js": [
+  "DF004:9"
+ ],
+ "r2_js__switch_incdec_coercion.js": [
+  "DF002:7",
+  "DF002:13",
+  "DF002:19",
+  "DF002:21",
+  "DF002:23",
+  "DF002:28"
+ ],
+ "r2_php__heredoc_shortecho.php": [
+  "DF004:6",
+  "DF013:8"
+ ],
+ "r2_php__interpolation.php": [
+  "DF013:3",
+  "DF013:4"
+ ],
+ "r2_php__operators_mysqli.php": [
+  "DF005:4",
+  "DF013:7",
+  "DF004:14",
+  "DF004:17"
+ ],
+ "r2_py__django_url_param.py": [
+  "DF005:4"
+ ],
+ "r2_py__helper_two_params.py": [
+  "DF004:33",
+  "DF004:34",
+  "DF004:35",
+  "DF002:36"
+ ],
+ "r2_py__permissive_regex.py": [
+  "DF005:10",
+  "DF005:16"
+ ],
+ "r2_py__setter_builder.py": [
+  "DF002:24",
+  "DF002:27"
+ ],
+ "r2_py__ssrf_shadowed_base.py": [
+  "DF010:8"
+ ],
+ "r2_py__tornado_cmd.py": [
+  "DF003:8"
+ ],
+ "r2_py__tornado_xss.py": [
+  "DF013:6"
+ ],
  "sanit_java__Concat.java": [
   "DF013"
  ],

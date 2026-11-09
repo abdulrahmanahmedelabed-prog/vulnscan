@@ -449,9 +449,10 @@ def decompile_with_jadx(bundle: pathlib.Path, timeout: int = 600) -> tuple[pathl
     if not exe:
         return None, "jadx غير مثبّت؛ لم يُفكّ تجميع الكود الثنائي (فُحصت الملفات النصية فقط)."
     out = pathlib.Path(tempfile.mkdtemp(prefix="vulnscan-jadx-"))
-    cmd = [exe, "-q", "--no-debug-info", "-d", str(out), str(bundle)]
+    # absolute paths: a file named "-x.apk" can never be read by jadx as an option
+    cmd = [exe, "-q", "--no-debug-info", "-d", str(out.resolve()), str(bundle.resolve())]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # nosec - absolute paths, no shell
     except subprocess.TimeoutExpired:
         shutil.rmtree(out, ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
         return None, f"jadx تجاوز المهلة ({timeout} ثانية)؛ جرّب مهلة أكبر."
@@ -578,6 +579,11 @@ def _all_names_known(tree, line: int, cache: dict) -> bool:
                 elif isinstance(n, _ast.ExceptHandler) and n.name:
                     good.add(n.name)
                 stack.extend(_ast.iter_child_nodes(n))
+            try:
+                from .flow import _escaping
+                bad |= _escaping(fn)        # aliased / captured / stored: dataflow may not see every write
+            except Exception:  # noqa: BLE001 - be conservative: keep the pattern finding
+                good = set()
             lo = getattr(fn, "lineno", 1)
             hi = max(getattr(fn, "end_lineno", None) or lo,
                      max((getattr(x, "end_lineno", None) or getattr(x, "lineno", lo) or lo for x in _ast.walk(fn)), default=lo))

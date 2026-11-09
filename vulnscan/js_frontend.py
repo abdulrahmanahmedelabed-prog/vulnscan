@@ -43,6 +43,32 @@ TOKEN_RE = re.compile(r"""
 """, re.S | re.X)
 
 
+
+def _strip_switch_breaks(stmts) -> bool:
+    """Replace the switch's own `break`s (not those of nested loops / switches) with pass; True if any was found."""
+    found = False
+    for i, st in enumerate(stmts):
+        if isinstance(st, ast.Break):
+            stmts[i] = _mk(ast.Pass, getattr(st, "lineno", 0))
+            found = True
+        elif isinstance(st, (ast.For, ast.While, ast.AsyncFor, ast.Match, ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)):
+            continue
+        else:
+            for field in ("body", "orelse", "finalbody"):
+                block = getattr(st, field, None)
+                if isinstance(block, list) and block and _strip_switch_breaks(block):
+                    found = True
+            for h in getattr(st, "handlers", []) or []:
+                if _strip_switch_breaks(h.body):
+                    found = True
+    return found
+
+
+def _ends(stmts) -> bool:
+    return bool(stmts) and isinstance(stmts[-1], (ast.Return, ast.Raise, ast.Continue, ast.Break))
+
+
 class Tok:
     __slots__ = ("kind", "val", "line", "nl_before")
 
@@ -204,6 +230,8 @@ def resolve_specifier(spec: str, cur_mod: str) -> str:
         spec = spec[:-6]
     return spec.replace("/", ".")
 
+
+_JS_BINOP = {"+": ast.Add, "-": ast.Sub, "*": ast.Mult, "/": ast.Div, "%": ast.Mod}   # others: never folded
 
 class Parser:
     def __init__(self, src: str, rel: str = "file.js"):
@@ -377,6 +405,12 @@ class Parser:
                 subj = self.parse_expression()
                 self.eat(")")
                 self.eat("{")
+                subj = self.untuple(subj)
+                start = self.i
+                try:
+                    return [self.parse_case_switch(subj, line)]
+                except Exception:  # noqa: BLE001 - unusual layout: fall back to "any case may run"
+                    self.i = start
                 body = []
                 while not self.at("}") and self.t.kind != "eof":
                     if self.at_kw("case"):
@@ -389,7 +423,10 @@ class Parser:
                     else:
                         body.extend(self.parse_statement())
                 self.eat("}")
-                return [_mk(ast.If, line, test=subj, body=body or [_mk(ast.Pass, line)], orelse=[])]
+                _strip_switch_breaks(body)
+                # the subject is evaluated, then any (or no) case may run: never a foldable test
+                return [_mk(ast.Expr, line, value=subj),
+                        _mk(ast.If, line, test=_name("__switch_case__", line), body=body or [_mk(ast.Pass, line)], orelse=[])]
             if v in ("break", "continue"):
                 self.i += 1
                 self.skip_semi()
@@ -404,6 +441,53 @@ class Parser:
         expr = self.parse_expression()
         self.skip_semi()
         return self.expr_statement(expr, line)
+
+    def parse_case_switch(self, subj, line):
+        """`switch (x) { case A: …; break; case B: case C: …; default: … }` as a match statement with one case per
+        label group and fall-through bodies copied in; the switch's own `break`s become `pass`."""
+        groups = []                     # [labels (None = default), stmts, ends_with_break]
+        while not self.at("}"):
+            if self.t.kind == "eof":
+                raise ValueError("unterminated switch")
+            if self.at_kw("case") or self.at_kw("default"):
+                is_default = self.at_kw("default")
+                self.i += 1
+                labels = None if is_default else [self.untuple(self.parse_expression())]
+                self.eat(":")
+                if groups and not groups[-1][1] and groups[-1][0] is not None and labels is not None:
+                    groups[-1][0].extend(labels)
+                else:
+                    groups.append([labels, [], False])
+                continue
+            if not groups:
+                raise ValueError("statement before first case")
+            if self.at_kw("break") and (self.peek().val in (";", "}") or self.peek().line != self.t.line):
+                self.i += 1
+                self.skip_semi()
+                groups[-1][2] = True
+                continue
+            groups[-1][1].extend(self.parse_statement())
+        if not groups:
+            raise ValueError("empty switch")
+        self.eat("}")
+        for g in groups:
+            if _strip_switch_breaks(g[1]):
+                g[2] = True
+        cases = []
+        for gi, (labels, stmts, brk) in enumerate(groups):
+            body = list(stmts)
+            j = gi
+            while not groups[j][2] and j + 1 < len(groups) and not _ends(groups[j][1]):
+                j += 1
+                body.extend(groups[j][1])
+            if labels is None:
+                pattern = ast.MatchAs(pattern=None, name=None)
+            else:
+                pats = [ast.MatchValue(value=lab) for lab in labels]
+                pattern = pats[0] if len(pats) == 1 else ast.MatchOr(patterns=pats)
+            cases.append(ast.match_case(pattern=pattern, guard=None, body=body or [_mk(ast.Pass, line)]))
+        cases.sort(key=lambda c: isinstance(c.pattern, ast.MatchAs) and c.pattern.pattern is None)
+        return _mk(ast.Match, line, subject=subj, cases=cases)
 
     def expr_statement(self, expr, line) -> list:
         # assignments are parsed into a marker tuple by parse_assignment
@@ -452,7 +536,11 @@ class Parser:
                 return [_mk(ast.Assign, line, targets=[target], value=value)]
             return [_mk(ast.Expr, line, value=value)]
         self.set_store(target)
-        return [_mk(ast.AugAssign, line, target=target, op=ast.Add(), value=value)]
+        node = _mk(ast.AugAssign, line, target=target, op=_JS_BINOP.get(op[:-1], ast.Add)() if op in
+                   ("+=", "-=", "*=", "/=", "%=") else ast.Add(), value=value)
+        if op not in ("+=", "-=", "*=", "/=", "%="):
+            node.op = ast.MatMult() if op not in ("&&=", "||=", "??=") else ast.Add()   # never fold; keep the taint
+        return [node]
 
     def set_store(self, n):
         if isinstance(n, (ast.Name, ast.Attribute, ast.Subscript)):
@@ -998,7 +1086,7 @@ class Parser:
             self.i += 1
             right = self.parse_assignment()
             left = self.untuple(left)
-            return ("assign", left, "=" if t.val == "=" else "+=", right, t.line)
+            return ("assign", left, t.val, right, t.line)
         return left
 
     def is_arrow_start(self) -> bool:
@@ -1090,12 +1178,18 @@ class Parser:
             line = t.line
             if op in ("&&", "||", "??"):
                 left = _mk(ast.BoolOp, line, op=ast.And() if op == "&&" else ast.Or(), values=[left, right])
+                left.nullish = op == "??"
             elif op in ("==", "!=", "===", "!==", "<", ">", "<=", ">=", "instanceof", "in"):
                 pyop = {"==": ast.Eq(), "===": ast.Eq(), "!=": ast.NotEq(), "!==": ast.NotEq(), "<": ast.Lt(), ">": ast.Gt(),
                         "<=": ast.LtE(), ">=": ast.GtE(), "instanceof": ast.Is(), "in": ast.In()}[op]
                 left = _mk(ast.Compare, line, left=left, ops=[pyop], comparators=[right])
+                left.eq_mode = "loose"           # also keeps `<` from comparing across types
             else:
-                left = _mk(ast.BinOp, line, left=left, op=ast.Add() if op == "+" else ast.BitOr(), right=right)
+                left = _mk(ast.BinOp, line, left=left, op=_JS_BINOP.get(op, ast.MatMult)(), right=right)
+                if op != "+":
+                    left.numeric_only = True     # JS arithmetic coerces strings to numbers
+                if op == "%":
+                    left.int_div = "trunc"       # JS % keeps the dividend's sign
         return left
 
     def looks_like_generic_call(self) -> bool:
@@ -1122,7 +1216,15 @@ class Parser:
             operand = self.untuple(self.parse_unary())
             if t.val == "!":
                 return _mk(ast.UnaryOp, line, op=ast.Not(), operand=operand)
-            return operand
+            if t.val in ("++", "--") and isinstance(operand, (ast.Name, ast.Attribute, ast.Subscript)):
+                return ("assign", operand, "+=" if t.val == "++" else "-=", _const(1, line), line)
+            if t.val == "-":
+                return _mk(ast.UnaryOp, line, op=ast.USub(), operand=operand)
+            if t.val == "~":
+                return _mk(ast.UnaryOp, line, op=ast.Invert(), operand=operand)
+            plus = _mk(ast.BinOp, line, left=_const(0, line), op=ast.Add(), right=operand)   # unary + is ToNumber
+            plus.numeric_only = True
+            return plus
         if t.kind == "id" and t.val in ("typeof", "void", "delete"):
             self.i += 1
             return self.untuple(self.parse_unary())
@@ -1160,8 +1262,10 @@ class Parser:
                 e = self.parse_call(self.untuple(e), t.line)
             elif t.val == "<" and self.looks_like_generic_call():
                 self.skip_balanced("<", ">")
-            elif t.val in ("++", "--"):
+            elif t.val in ("++", "--") and not t.nl_before:
                 self.i += 1
+                if isinstance(e, (ast.Name, ast.Attribute, ast.Subscript)):
+                    return ("assign", e, "+=" if t.val == "++" else "-=", _const(1, t.line), t.line)
             elif t.val == "!":
                 self.i += 1  # TS non-null
             else:

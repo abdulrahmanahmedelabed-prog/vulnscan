@@ -55,7 +55,13 @@
         "query",
         "match_info",
         "post",
-        "raw_body"
+        "raw_body",
+        "arguments",
+        "query_arguments",
+        "body_arguments",
+        "uri",
+        "path_args",
+        "path_kwargs"
       ],
       "label": "request.{attr}"
     },
@@ -104,6 +110,21 @@
       ],
       "label": "{name}() — HTTP response",
       "_comment": "data received from another server is untrusted"
+    },
+    {
+      "kind": "call",
+      "names": [
+        "self.get_argument",
+        "self.get_arguments",
+        "self.get_query_argument",
+        "self.get_query_arguments",
+        "self.get_body_argument",
+        "self.get_body_arguments",
+        "self.get_cookie",
+        "self.decode_argument"
+      ],
+      "label": "{name}()",
+      "_comment": "Tornado RequestHandler accessors"
     }
   ],
   "entry_points": [
@@ -467,6 +488,24 @@
       "title": "Tainted data reflected into an HTTP response",
       "title_ar": "بيانات غير موثوقة تُعاد في استجابة HTTP (XSS انعكاسي)",
       "advice": "هرّب المخرجات (html.escape / markupsafe) أو استخدم قوالب تُهرِّب تلقائيًا."
+    },
+    {
+      "rule": "DF013",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "label": "HTTP response body (reflected XSS)",
+      "args": [
+        0
+      ],
+      "names": [
+        "write",
+        "finish"
+      ],
+      "title": "Tainted data reflected into an HTTP response",
+      "title_ar": "بيانات غير موثوقة تُعاد في استجابة HTTP (XSS انعكاسي)",
+      "advice": "هرّب المخرجات (html.escape / markupsafe) أو استخدم قوالب تُهرِّب تلقائيًا.",
+      "receiver": "^self$",
+      "_comment": "Tornado RequestHandler.write / finish"
     },
     {
       "rule": "DF014",

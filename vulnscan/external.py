@@ -67,8 +67,9 @@ def run_external(root: pathlib.Path, tools: list[str] | None = None) -> tuple[li
             except (ValueError, KeyError):
                 pass
     if "gitleaks" in tools and shutil.which("gitleaks"):
-        rep = root / ".vulnscan-gitleaks.json"
-        _run(["gitleaks", "detect", "--no-git", "--source", ".", "--report-format", "json", "--report-path", str(rep), "--exit-code", "0"], root)
+        rep = root.resolve() / ".vulnscan-gitleaks.json"   # absolute: the value can never look like an option
+        _run(["gitleaks", "detect", "--no-git", "--source", ".", "--report-format", "json", "--report-path", str(rep),  # nosec - absolute path under the user's own scan root
+              "--exit-code", "0"], root)
         if rep.exists():
             try:
                 for r in json.loads(rep.read_text() or "[]"):

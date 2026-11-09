@@ -1,5 +1,5 @@
 {
-  "_comment": "PHP models (superglobals, Laravel/Symfony request objects, PDO/mysqli).",
+  "_comment": "PHP models (superglobals, Laravel/Symfony request objects, PDO/mysqli). Procedural mysqli_*/pg_*/oci_*/odbc_* take the connection first, so the SQL is a later argument.",
   "sources": [
     {
       "kind": "name",
@@ -190,22 +190,12 @@
       ],
       "names": [
         "mysql_query",
-        "mysqli_query",
-        "mysqli_multi_query",
-        "mysqli_real_query",
-        "mysqli_prepare",
         "mysqli::query",
         "query",
         "multi_query",
         "real_query",
         "prepare",
         "exec",
-        "pg_query",
-        "pg_send_query",
-        "pg_prepare",
-        "sqlite_query",
-        "oci_parse",
-        "odbc_exec",
         "db_query",
         "$pdo->query",
         "$pdo->exec",
@@ -231,6 +221,59 @@
       "title": "Tainted data reaches a SQL query",
       "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
       "advice": "استخدم PDO::prepare مع معاملات مرتبطة بدل تركيب النص."
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "title": "Tainted data reaches a SQL query",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
+      "advice": "استخدم PDO::prepare مع معاملات مرتبطة بدل تركيب النص.",
+      "args": [
+        1
+      ],
+      "names": [
+        "mysqli_query",
+        "mysqli_multi_query",
+        "mysqli_real_query",
+        "mysqli_prepare",
+        "pg_send_query",
+        "oci_parse",
+        "odbc_exec"
+      ]
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "title": "Tainted data reaches a SQL query",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
+      "advice": "استخدم PDO::prepare مع معاملات مرتبطة بدل تركيب النص.",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "pg_query",
+        "sqlite_query"
+      ]
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "title": "Tainted data reaches a SQL query",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
+      "advice": "استخدم PDO::prepare مع معاملات مرتبطة بدل تركيب النص.",
+      "args": [
+        2
+      ],
+      "names": [
+        "pg_prepare"
+      ]
     },
     {
       "rule": "DF005",

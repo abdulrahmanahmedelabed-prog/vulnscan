@@ -53,7 +53,8 @@ CFAMILY_LANGS = ("java", "kotlin", "csharp", "go", "php", "cpp", "rust", "swift"
 MODELS_DIR = pathlib.Path(__file__).parent / "models"
 _KEYED_READS = {"get", "getOrDefault", "getFirst", "getLast", "peek", "peekFirst", "peekLast", "element", "first", "last",
                 "getProperty", "getAttribute"}
-CONTAINER_WRITES = {"append", "extend", "insert", "add", "update", "put", "setdefault", "set", "setProperty", "__setitem__"}
+CONTAINER_WRITES = {"append", "extend", "insert", "add", "update", "put", "setdefault", "set", "setProperty", "__setitem__",
+                    "push", "addAll", "putAll", "appendleft", "unshift", "Add", "AddRange", "write", "concat"}
 ARG_INJECTION = ("DF009", "medium", "Tainted data reaches a subprocess argument",
                  "بيانات غير موثوقة تصل إلى وسيط لأمر خارجي",
                  "تحقّق من الوسيط بقائمة بيضاء، وارفض القيم التي تبدأ بـ -، ولا تمرّر مسارات غير مُطبَّعة.",
@@ -255,7 +256,9 @@ class _Env:
 
 
 _CONFINEMENT = {"is_relative_to", "isRelativeTo"}
-_PERMISSIVE_RE = re.compile(r"(?<!\\)\.[*+]|\\S[*+]|\[\^[^\]]*\][*+]|\\W|\(\?s\)")
+# patterns that accept (almost) any text: `.*`, `.{1,64}`, `\S+`, `[^x]+`, `[\s\S]*`, `[\w\W]` …, `\W`, `(?s)`
+_PERMISSIVE_RE = re.compile(r"(?<!\\)\.(?:[*+]|\{\d*,?\d*\})|\\S(?:[*+]|\{)|\[\^[^\]]*\](?:[*+]|\{)|\\W|\(\?s\)"
+                            r"|\[(?:[^\]]*?)(?:\\s[^\]]*\\S|\\S[^\]]*\\s|\\w[^\]]*\\W|\\W[^\]]*\\w|\\d[^\]]*\\D|\\D[^\]]*\\d)")
 _NOT_VALIDATION = {"startswith", "endswith", "starts_with", "ends_with", "str_starts_with", "str_ends_with", "exists",
                    "fileexists", "file_exists", "isset", "empty", "isempty", "isnullorempty", "isnullorwhitespace", "is_dir",
                    "is_file", "strpos", "str_contains", "isascii", "isblank", "notempty", "notnull", "isnotempty"}
@@ -280,6 +283,29 @@ def _with_step(o, step):
     return (o[0], o[1], _trail(o) + (step,)) + tuple(o[3:])
 
 
+_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "cmd", "cmd.exe", "powershell", "powershell.exe", "pwsh"}
+_SHELL_FLAGS = {"-c", "-lc", "-ec", "-xc", "/c", "/C", "/k", "/K", "-Command", "-command"}
+
+
+def _shell_launcher(elts) -> bool:
+    """["sh", "-c", script] / ["cmd", "/c", line]: the third element is a whole command line, not one argument."""
+    if len(elts) < 3 or not all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in elts[:2]):
+        return False
+    return elts[0].value.replace("\\", "/").rsplit("/", 1)[-1] in _SHELLS and elts[1].value in _SHELL_FLAGS
+
+
+def _origin_params(o) -> set:
+    """Parameters a "param" origin stands for: its own and any others merged into the same value (o[4])."""
+    if not o or o[0] != "param":
+        return set()
+    return {o[1]} | set(o[4] if len(o) > 4 else ())
+
+
+def _with_params(o, names) -> tuple:
+    extra = frozenset((set(o[4]) if len(o) > 4 else set()) | (set(names) - {o[1]}))
+    return (o[0], o[1], _trail(o), _safe_for(o), extra) + tuple(o[5:])
+
+
 def _safe_for(o) -> frozenset:
     """CWEs this origin was escaped for (context-specific sanitizers), e.g. html.escape -> XSS only."""
     return o[3] if len(o) > 3 else frozenset()
@@ -287,19 +313,25 @@ def _safe_for(o) -> frozenset:
 
 def _unsafe_for(o, si) -> bool:
     """Does taint origin `o` still matter for sink `si`? False when it was escaped for that sink's CWE, or when a
-    LOCAL source (command line, environment, console) names a file: the operator choosing a path is the program's
-    function, not a traversal (CodeQL's default threat model likewise leaves local sources out)."""
+    LOCAL source (command line, environment, console) names a file or a URL: the operator choosing what to open or
+    fetch is the program's function, not an attack (CodeQL's default threat model likewise leaves local sources out)."""
     if not o:
-        return False
-    if si and si[5] in _PATH_CWES and o[0] in ("source", "retsource") and _LOCAL_SOURCE.search(str(o[1])):
         return False
     return not si or si[5] not in _safe_for(o)
 
 
 _PATH_CWES = frozenset({"CWE-22", "CWE-23", "CWE-36", "CWE-73"})
-_LOCAL_SOURCE = re.compile(r"(?i)(^|[.\s])(argv|parse_args|parse_known_args|environ|getenv|env\.get|input|raw_input|stdin|"
-                           r"getpass|click\.prompt|prompt|System\.getenv|System\.getProperty|process\.argv|process\.env|"
-                           r"nextLine|CommandLine|GetCommandLineArgs|GetEnvironmentVariable|os\.Args|flag\.)\b")
+# What the operator's own input (command line, environment, console) may legitimately choose: which file to open
+# and which URL to fetch are the program's function, not an attack on it.
+_LOCAL_SAFE_CWES = _PATH_CWES | {"CWE-918"}
+# Local sources (the operator's own command line, environment, console): naming a file is the program's
+# function, so they are "safe for" path sinks. Matched on canonical source names, never on labels or helpers.
+_LOCAL_SOURCE_NAMES = frozenset({
+    "sys.argv", "os.environ", "os.getenv", "os.environ.get", "getenv", "input", "raw_input", "sys.stdin.read",
+    "sys.stdin.readline", "getpass.getpass", "click.prompt", "argparse.ArgumentParser.parse_args",
+    "process.argv", "process.env", "System.getenv", "System.getProperty", "os.Args", "Environment.GetCommandLineArgs",
+    "Environment.GetEnvironmentVariable", "CommandLine.arguments", "ProcessInfo.processInfo.arguments",
+    "ProcessInfo.processInfo.environment", "ARGV", "ENV", "STDIN", "$argv", "argv", "environ", "std.cin", "cin"})
 
 
 # What a context-specific sanitizer neutralizes, recognised by naming conventions shared across languages.
@@ -425,7 +457,7 @@ class Project:
                     self.classes[cq] = {"node": child, "mod": mod, "name": child.name, "path": path,
                                         "base_names": [_dotted(b) for b in child.bases], "bases": [],
                                         "methods": {}, "subclasses": set(), "field_types": {},
-                                        "tainted_fields": {}, "ctor_param_fields": {}}
+                                        "tainted_fields": {}, "ctor_param_fields": {}, "method_param_fields": {}}
                     file["classes"][child.name] = cq
                     self.simple_classes.setdefault(child.name, []).append(cq)
                     self._by_mod.setdefault((id(self.simple_classes), child.name, mod), []).append(cq)
@@ -658,6 +690,8 @@ class Project:
                 q = self._resolve_function(mod, name)
                 if q:
                     return [q], None
+            if self._container_field(cls, recv):
+                return [], None                 # self.parts.add(x) on a list field is a list write, not Cmd.add
             cands = self.simple_methods.get(f.attr, [])
             if len(cands) == 1:
                 return cands, None
@@ -665,6 +699,32 @@ class Project:
             if len(same) == 1:
                 return same, None
         return [], None
+
+    _CONTAINER_CTORS = {"list", "dict", "set", "frozenset", "tuple", "deque", "defaultdict", "OrderedDict", "Counter",
+                        "ArrayList", "LinkedList", "Vector", "HashMap", "LinkedHashMap", "TreeMap", "Hashtable", "HashSet",
+                        "LinkedHashSet", "TreeSet", "ArrayDeque", "ConcurrentHashMap", "CopyOnWriteArrayList",
+                        "StringBuilder", "StringBuffer", "List", "Dictionary", "HashSet", "Queue", "Stack", "Map", "Set",
+                        "mutableListOf", "mutableMapOf", "mutableSetOf", "arrayListOf", "hashMapOf", "make"}
+
+    def _container_field(self, cls, recv) -> bool:
+        """Is `recv` a `self.<field>` that the class initialises with a collection (`self.parts = []`,
+        `private List<String> parts = new ArrayList<>()`)?"""
+        if not (cls and isinstance(recv, ast.Attribute) and isinstance(recv.value, ast.Name) and recv.value.id == "self"):
+            return False
+        cache = self.__dict__.setdefault("_container_fields", {})
+        if cls not in cache:
+            found = set()
+            node = self.classes.get(cls, {}).get("node")
+            for n in ast.walk(node) if node is not None else ():
+                if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None:
+                    v = n.value
+                    is_coll = isinstance(v, (ast.List, ast.Dict, ast.Set, ast.ListComp, ast.DictComp, ast.SetComp)) or (
+                        isinstance(v, ast.Call) and _dotted(v.func).split(".")[-1] in self._CONTAINER_CTORS)
+                    for t in (n.targets if isinstance(n, ast.Assign) else [n.target]):
+                        if is_coll and isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self":
+                            found.add(t.attr)
+            cache[cls] = found
+        return recv.attr in cache[cls]
 
     # ---------------------------------------------------------------- types
     def _type_of(self, mod, cls, node, env) -> str | None:
@@ -740,6 +800,22 @@ class Project:
                         return label.replace("{name}", canon)
         return None
 
+    def _is_local_source(self, mod, node) -> bool:
+        cur = node.value if isinstance(node, ast.Subscript) else node
+        if isinstance(cur, ast.Call) and isinstance(cur.func, ast.Attribute) and cur.func.attr in ("get", "getenv"):
+            inner = self._canon(mod, cur.func.value)
+            if inner in ("os.environ", "process.env", "ENV"):
+                return True
+        canon = self._canon(mod, cur.func if isinstance(cur, ast.Call) else cur) if isinstance(cur, (ast.Name, ast.Attribute, ast.Call)) else ""
+        if canon in _LOCAL_SOURCE_NAMES:
+            return True
+        if canon.endswith((".parse_args", ".parse_known_args")) and isinstance(cur, ast.Call):
+            # argparse only: Flask-RESTful reqparse.RequestParser().parse_args() reads the HTTP request
+            aliases = (self.files.get(mod) or {}).get("aliases", {})
+            mods = {str(v) for v in aliases.values()}
+            return any("argparse" in m for m in mods) and not any("reqparse" in m or "flask_restful" in m for m in mods)
+        return False
+
     def _is_sanitizer(self, canon: str) -> bool:
         """Universal sanitizer (the value becomes inert for every sink)."""
         return self._sanitizer_kind(canon) == "all"
@@ -797,7 +873,7 @@ class Project:
         if arg is None:
             return False
         if isinstance(arg, (ast.List, ast.Tuple)):
-            return bool(arg.elts) and self._taint(mod, cls, arg.elts[0], env) is None
+            return bool(arg.elts) and self._taint(mod, cls, arg.elts[0], env) is None and not _shell_launcher(arg.elts)
         if isinstance(arg, ast.Name):
             return arg.id in env.elem
         return False
@@ -830,6 +906,19 @@ class Project:
         if kws:
             out.extend(k.value for k in call.keywords if k.arg and k.arg.lower() in kws)
         return out
+
+    def _list_elem_only(self, mod, cls, arg, env) -> bool:
+        """An argv list whose program (element 0) is fixed and not a shell: only its arguments can be tainted."""
+        if isinstance(arg, (ast.List, ast.Tuple)):
+            return bool(arg.elts) and self._taint(mod, cls, arg.elts[0], env) is None and not _shell_launcher(arg.elts)
+        return isinstance(arg, ast.Name) and arg.id in env.elem
+
+    def _at_call_site(self, mod, cls, arg, env, entries) -> list:
+        """Summary sink entries as they apply to the argument passed here: a helper `run(cmd)` that executes its
+        parameter is argument injection, not command injection, when this caller passes ["git", "log", x]."""
+        if not any(e[0][0] == "DF003" and not e[0][8] for e in entries) or not self._list_elem_only(mod, cls, arg, env):
+            return entries
+        return [(ARG_INJECTION,) + tuple(e[1:]) if e[0][0] == "DF003" and not e[0][8] else e for e in entries]
 
     def _sink(self, mod, cls, call, env):
         si = self._sink_info(mod, call)
@@ -886,6 +975,41 @@ class Project:
                     out[fld] = o
         return out
 
+    @staticmethod
+    def _note_param_field(c, method, o, field) -> bool:
+        """Record that `method` stores parameter(s) of origin `o` in self.`field`; True if that is new."""
+        slot = c["method_param_fields"].setdefault(method, {})
+        new = False
+        for pname in _origin_params(o):
+            flds = slot.setdefault(pname, set())
+            if field not in flds:
+                flds.add(field)
+                new = True
+        return new
+
+    def _method_inst_fields(self, mod, cls, call, env) -> dict:
+        """Fields of the receiver that a method call fills from its (tainted) arguments: `d.set(x)` with
+        `def set(self, p): self.s = p` -> {"s": origin of x}."""
+        callees, ctor = self._callees(mod, cls, call, env)
+        if ctor or not callees:
+            return {}
+        out: dict = {}
+        for q in callees:
+            info = self.gfuncs.get(q)
+            if not info or not info["cls"] or info["cls"] not in self.classes:
+                continue
+            pf = self.classes[info["cls"]]["method_param_fields"].get(info["name"], {})
+            if not pf:
+                continue
+            mapping = self._map_args(call, q)
+            for pname, flds in pf.items():
+                arg = mapping.get(pname)
+                o = self._taint(mod, cls, arg, env) if arg is not None else None
+                if o:
+                    for fld in flds:
+                        out.setdefault(fld, o)
+        return out
+
     def _receiver_fields(self, mod, cls, call, env) -> tuple[dict, bool]:
         f = call.func
         if not isinstance(f, ast.Attribute):
@@ -917,9 +1041,40 @@ class Project:
         if not origins:
             return None
         best = min(origins, key=lambda o: self._ORIGIN_RANK.get(o[0], 9))
-        common = frozenset.intersection(*[_safe_for(o) for o in origins])
+        # escaping is merged among origins of the same nature: a parameter or field next to a source is followed
+        # through its own summary, so `home or os.environ.get(...)` keeps the environment's path-safety
+        symbolic = best[0] in ("param", "field")
+        common = frozenset.intersection(*[_safe_for(o) for o in origins if (o[0] in ("param", "field")) == symbolic])
         # escape(a) + b: the merged value is only as escaped as its least-escaped part
-        return best if common == _safe_for(best) else (best[0], best[1], _trail(best), common)
+        out = best if common == _safe_for(best) else (best[0], best[1], _trail(best), common) + tuple(best[4:])
+        if out[0] == "param" and len(origins) > 1:
+            # `table + id`: every parameter that reaches the value, so a summary maps each of them to the return
+            more = set().union(*[_origin_params(o) for o in origins]) - _origin_params(out)
+            if more:
+                out = _with_params(out, more)
+        return out
+
+    def _module_const(self, mod, name):
+        """The value of a module-level name bound exactly once, by a plain top-level assignment, and never rebound
+        anywhere else in the module (a loop, an import, a `global` in a function …); None otherwise."""
+        cache = self.__dict__.setdefault("_modconst_cache", {})
+        key = (mod, name)
+        if key not in cache:
+            tree = (self.files.get(mod) or {}).get("tree")
+            value, binds = None, 0
+            for st in getattr(tree, "body", []):
+                if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name) \
+                        and st.targets[0].id == name:
+                    value, binds = st.value, binds + 1
+                    continue
+                for n in ast.walk(st):
+                    if (isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Store)) \
+                            or (isinstance(n, ast.Global) and name in n.names) \
+                            or (isinstance(n, ast.alias) and (n.asname or n.name) == name):
+                        binds += 2
+                        break
+            cache[key] = value if binds == 1 else None
+        return cache[key]
 
     def _fixed_host_url(self, mod, node) -> bool:
         """`"https://api.example.com/v1/" + x` / f"https://host/{x}" / TEMPLATE.format(id=x): the request can only
@@ -927,11 +1082,10 @@ class Project:
         def const_str(e):
             if isinstance(e, ast.Constant) and isinstance(e.value, str):
                 return e.value
-            if isinstance(e, ast.Name):                       # a module-level constant template
-                for st in getattr((self.files.get(mod) or {}).get("tree"), "body", []):
-                    if isinstance(st, ast.Assign) and any(isinstance(t, ast.Name) and t.id == e.id for t in st.targets) \
-                            and isinstance(st.value, ast.Constant) and isinstance(st.value.value, str):
-                        return st.value.value
+            if isinstance(e, ast.Name) and e.id.isupper():   # a module-level CONSTANT template, never a local
+                v = self._module_const(mod, e.id)
+                if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                    return v.value
             return None
         head = None
         if isinstance(node, ast.JoinedStr) and node.values:
@@ -993,6 +1147,8 @@ class Project:
     def _taint_one(self, mod, cls, node, env):
         src = self._is_source(mod, node)
         if src:
+            if self._is_local_source(mod, node):
+                return ("source", src, (), _LOCAL_SAFE_CWES)
             return ("source", src, ())
         if isinstance(node, ast.Name):
             return env.tainted.get(node.id)
@@ -1116,7 +1272,23 @@ class Project:
                 bases |= {b.split(".")[-1] for b in self.classes[c]["base_names"]}
             if bases & self.m["view_bases"]:
                 return True
+        if not cls and self._is_django_function_view(mod, fn):
+            return True
         return False
+
+    def _is_django_function_view(self, mod, fn) -> bool:
+        """`def view(request, slug)` in a module that imports Django: the parameters after `request` are captured
+        from the URL by the URL configuration (path("<str:slug>/", view))."""
+        params = fn.args.posonlyargs + fn.args.args
+        if len(params) < 2 or params[0].arg != "request":
+            return False
+        key = ("django", mod)
+        cache = self.__dict__.setdefault("_django_mods", {})
+        if key not in cache:
+            al = (self.files.get(mod) or {}).get("aliases", {})
+            cache[key] = any(isinstance(x, str) and (x == "django" or x.startswith("django."))
+                             for v in al.values() for x in (v if isinstance(v, tuple) else (v,)))
+        return cache[key]
 
     def _entry_params(self, mod, cls, fn) -> list[str]:
         if not self._is_entry(mod, cls, fn):
@@ -1158,13 +1330,25 @@ class Project:
                     targets, value = [node.optional_vars], node.context_expr
                 elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
                     c = node.value
-                    if isinstance(c.func, ast.Attribute) and c.func.attr in CONTAINER_WRITES and isinstance(c.func.value, ast.Name):
+                    root = c.func.value if isinstance(c.func, ast.Attribute) else None
+                    while isinstance(root, ast.Call) and isinstance(root.func, ast.Attribute):
+                        root = root.func.value             # sb.append(a).append(x): the write lands in sb
+                    if isinstance(c.func, ast.Attribute) and c.func.attr in CONTAINER_WRITES and isinstance(root, ast.Name):
                         for a in list(c.args) + [k.value for k in c.keywords]:
                             o = self._taint(mod, cls, a, env)
-                            if o and c.func.value.id not in env.tainted:
-                                env.tainted[c.func.value.id] = _with_step(o, _step(path, node.lineno, f"{c.func.value.id}.{c.func.attr}(...)"))
-                                env.elem.add(c.func.value.id)
+                            if o and root.id not in env.tainted:
+                                env.tainted[root.id] = _with_step(o, _step(path, node.lineno, f"{root.id}.{c.func.attr}(...)"))
+                                env.elem.add(root.id)
                                 changed = True
+                    if isinstance(root, ast.Name) and root.id not in {"self", "cls"}:
+                        # obj.setX(x) / builder.add(x).add(y): methods that store a parameter in a field of obj
+                        link = c
+                        while isinstance(link, ast.Call) and isinstance(link.func, ast.Attribute):
+                            for fld, o in self._method_inst_fields(mod, cls, link, env).items():
+                                if fld not in env.inst.setdefault(root.id, {}):
+                                    env.inst[root.id][fld] = _with_step(o, _step(path, node.lineno, f"{root.id}.{link.func.attr}(...)"))
+                                    changed = True
+                            link = link.func.value
                     continue
                 else:
                     continue
@@ -1219,7 +1403,8 @@ class Project:
                         if isinstance(node, ast.AugAssign) or isinstance(value, ast.Dict):
                             elem = True
                         elif isinstance(value, (ast.List, ast.Tuple)):
-                            elem = bool(value.elts) and self._taint(mod, cls, value.elts[0], env) is None
+                            elem = bool(value.elts) and self._taint(mod, cls, value.elts[0], env) is None \
+                                and not _shell_launcher(value.elts)
                         else:
                             elem = False
                     for nm in names:
@@ -1231,7 +1416,8 @@ class Project:
                         elif _safe_for(env.tainted[nm]) - _safe_for(o):
                             # another assignment brings a less-escaped value: keep only what both were escaped for
                             old_o = env.tainted[nm]
-                            env.tainted[nm] = (old_o[0], old_o[1], _trail(old_o), _safe_for(old_o) & _safe_for(o))
+                            env.tainted[nm] = (old_o[0], old_o[1], _trail(old_o), _safe_for(old_o) & _safe_for(o)) \
+                                + tuple(old_o[4:])
                             changed = True
                         elif not elem and nm in env.elem:
                             env.elem.discard(nm)
@@ -1349,6 +1535,13 @@ class Project:
                 # re.fullmatch(p, x) / pat.fullmatch(x) / x.matches(regex): the checked value, not the pattern
                 module_call = isinstance(test.func.value, ast.Name) and test.func.value.id == "re"
                 pat = test.args[0] if (module_call or test.func.attr == "matches") and test.args else None
+                if pat is None and isinstance(test.func.value, ast.Name):
+                    # NAME_RE.fullmatch(x) with a module-level NAME_RE = re.compile("…")
+                    comp = self._module_const(mod, test.func.value.id)
+                    if isinstance(comp, ast.Call) and comp.args and self._canon(mod, comp.func).split(".")[-1] == "compile":
+                        pat = comp.args[0]
+                pat = self._module_const(mod, pat.id) if isinstance(pat, ast.Name) and self._module_const(mod, pat.id) \
+                    is not None else pat
                 if isinstance(pat, ast.Constant) and isinstance(pat.value, str) and _PERMISSIVE_RE.search(pat.value):
                     return set()             # `.+@.+` / `.*` accept almost anything: not validation
                 vals = test.args[1:] if module_call else ([test.func.value] if test.func.attr == "matches" else test.args[:1])
@@ -1431,7 +1624,7 @@ class Project:
                             new["source_return"] = o
                             new["ret_line"] = node.lineno
                         elif o and o[0] == "param":
-                            new["ret_params"].add(o[1])
+                            new["ret_params"].update(_origin_params(o))
                             new["ret_line"] = new["ret_line"] or node.lineno
                         elif o and o[0] == "field":
                             new["ret_fields"].add(o[1])
@@ -1461,10 +1654,25 @@ class Project:
                                 if o and o[0] == "param" and info["name"] == "__init__" and c["ctor_param_fields"].get(o[1]) != tgt.attr:
                                     c["ctor_param_fields"][o[1]] = tgt.attr
                                     changed = True
+                                if o and o[0] == "param" and info["name"] != "__init__":
+                                    changed |= self._note_param_field(c, info["name"], o, tgt.attr)
                                 t = self._type_of(mod, cls, node.value, env)
                                 if t and c["field_types"].get(tgt.attr) != t:
                                     c["field_types"][tgt.attr] = t
                                     changed = True
+                    if cls and isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) \
+                            and isinstance(node.value.func, ast.Attribute) and node.value.func.attr in CONTAINER_WRITES:
+                        # self.parts.append(p) / parts.add(p): the parameter lands in the field
+                        holder = node.value.func.value
+                        if isinstance(holder, ast.Attribute) and isinstance(holder.value, ast.Name) and holder.value.id == "self":
+                            c = self.classes[cls]
+                            for a in list(node.value.args) + [k.value for k in node.value.keywords]:
+                                o = self._taint(mod, cls, a, env)
+                                if o and o[0] == "param":
+                                    changed |= self._note_param_field(c, info["name"], o, holder.attr)
+                                    if info["name"] == "__init__" and o[1] not in c["ctor_param_fields"]:
+                                        c["ctor_param_fields"][o[1]] = holder.attr
+                                        changed = True
                 for call in self._calls(fn):
                     self._absorb_sinks(mod, cls, fn, path, call, env, new)
                 for node in _scope_nodes(fn):
@@ -1527,6 +1735,7 @@ class Project:
                     continue
                 origins = self._taints(mod, cls, arg, env)
                 if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
+                    entries = self._at_call_site(mod, cls, arg, env, entries)
                     for o in origins:
                         for e in entries:
                             if _unsafe_for(o, e[0]):
@@ -1639,6 +1848,7 @@ class Project:
                         arg = mapping.get(pname)
                         if arg is None:
                             continue
+                        entries = self._at_call_site(mod, cls, arg, env, entries)
                         live = [e for e in entries if any(_unsafe_for(x, e[0]) for x in self._taints(mod, cls, arg, env))]
                         o = self._sink_taint(mod, cls, arg, env, live[0][0]) if live else None
                         if o and o[0] in {"source", "retsource"} \

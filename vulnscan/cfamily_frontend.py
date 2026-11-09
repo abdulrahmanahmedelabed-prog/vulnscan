@@ -24,7 +24,7 @@ from __future__ import annotations
 import ast
 import re
 
-from .js_frontend import Tok, _args, _const, _mk, _name  # reuse node helpers
+from .js_frontend import Tok, _args, _const, _ends, _mk, _name, _strip_switch_breaks  # reuse node helpers
 
 LANG_EXTS = {".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".cs": "csharp", ".go": "go", ".php": "php", ".phtml": "php",
              ".c": "cpp", ".h": "cpp", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp",
@@ -41,7 +41,7 @@ TOKEN_RE = re.compile(r"""
     (?P<str>"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`[^`]*`) |
     (?P<num>0[xX][0-9a-fA-F_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d+)?[fFdDlLmMuU]*) |
     (?P<id>\$?[A-Za-z_][\w]*) |
-    (?P<punct>\.\.\.|->|=>|::|\?\.|\?:|!!|\+\+|--|<<=|>>=|<=|>=|==|!=|&&|\|\||\|\|=|&&=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|\?\?|:=|\.\.|&\.|[{}()\[\];,<>+\-*/%&|^!~?:=.@#$\\])
+    (?P<punct>===|!==|<=>|\?\?=|\*\*=|\.=(?!=)|\.\.\.|->|=>|::|\?\.|\?:|!!|\+\+|--|<<=|>>=|<=|>=|==|!=|&&|\|\||\|\|=|&&=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|\?\?|:=|\.\.|&\.|[{}()\[\];,<>+\-*/%&|^!~?:=.@#$\\])
 """, re.S | re.X)
 # Ruby: `#` comments only, symbols (:name), instance variables (@x / @@x), method names ending in ? or !
 RUBY_TOKEN_RE = re.compile(r"""
@@ -83,6 +83,20 @@ STMT_START = {"return", "if", "for", "while", "do", "try", "throw", "switch", "b
               "module", "elsif", "guard", "extension", "protocol", "typedef", "template", "trait", "struct", "enum", "init"}
 
 
+PHP_HEREDOC_RE = re.compile(r"<<<[ \t]*([\"']?)([A-Za-z_]\w*)\1[ \t]*\r?\n(.*?)\r?\n[ \t]*\2\b", re.S)
+
+
+def _php_heredoc_token(m) -> str:
+    """PHP heredoc (interpolating, like "…") / nowdoc (<<<'X', literal, like '…') -> one string literal on one
+    line, followed by the newlines it spanned so later line numbers stay right."""
+    body = m.group(3)
+    if m.group(1) == "'":
+        lit = "'" + body.replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ") + "'"
+    else:
+        lit = '"' + body.replace('"', '\\"').replace("\r", "").replace("\n", "\\n") + '"'
+    return lit + "\n" * m.group(0).count("\n")
+
+
 def tokenize(src: str, lang: str) -> list[Tok]:
     toks: list[Tok] = []
     i, line, n = 0, 1, len(src)
@@ -101,13 +115,15 @@ def tokenize(src: str, lang: str) -> list[Tok]:
         for part in parts:
             if part in ("<?php", "<?", "<?="):
                 keep = True
+                if part == "<?=":
+                    out.append(" echo ")         # `<?= $x ?>` prints its value
                 continue
             if part == "?>":
                 keep = False
                 out.append(";")
                 continue
             out.append(part if keep else "\n" * part.count("\n"))
-        src = "".join(out)
+        src = PHP_HEREDOC_RE.sub(_php_heredoc_token, "".join(out))
         n = len(src)
     while i < n:
         m = regex.match(src, i)
@@ -162,6 +178,24 @@ _BINOP = {"+": ast.Add, ".": ast.Add, "..": ast.Add, "-": ast.Sub, "*": ast.Mult
           ">>>": ast.RShift}
 
 
+def _num_value(text: str):
+    """A numeric literal as int when it is written as an integer (12, 0x1F, 0b101, 10L), else float (1.5, 2e3, 5.0f)."""
+    raw = text.replace("_", "").replace("'", "")
+    is_hex = raw[:2].lower() in ("0x", "0b", "0o")
+    if not is_hex and (re.search(r"[.eE]", raw) or re.search(r"[fFdDmM]$", raw)):
+        try:
+            return float(re.sub(r"[fFdDmM]$", "", raw))
+        except ValueError:
+            return 0
+    try:
+        return int(re.sub(r"[lLuUnN]+$", "", raw), 0)
+    except ValueError:
+        try:
+            return int(re.sub(r"[lLuUnN]+$", "", raw).lstrip("0") or "0")
+        except ValueError:
+            return 0
+
+
 _AUG = {"+=": ast.Add, "-=": ast.Sub, "*=": ast.Mult, "/=": ast.Div, "%=": ast.Mod, "**=": ast.Pow, "&=": ast.BitAnd,
         "|=": ast.BitOr, "^=": ast.BitXor, "<<=": ast.LShift, ">>=": ast.RShift, ">>>=": ast.RShift}
 
@@ -169,30 +203,6 @@ _AUG = {"+=": ast.Add, "-=": ast.Sub, "*=": ast.Mult, "/=": ast.Div, "%=": ast.M
 def _aug_op(op):
     return _AUG.get(op, ast.Add)()       # .=, ??=, ||= … keep the concatenating / propagating meaning
 
-
-def _strip_switch_breaks(stmts) -> bool:
-    """Replace the switch's own `break`s (not those of nested loops / switches) with pass; True if any was found."""
-    found = False
-    for i, st in enumerate(stmts):
-        if isinstance(st, ast.Break):
-            stmts[i] = _mk(ast.Pass, getattr(st, "lineno", 0))
-            found = True
-        elif isinstance(st, (ast.For, ast.While, ast.AsyncFor, ast.Match, ast.FunctionDef, ast.AsyncFunctionDef,
-                             ast.ClassDef)):
-            continue
-        else:
-            for field in ("body", "orelse", "finalbody"):
-                block = getattr(st, field, None)
-                if isinstance(block, list) and block and _strip_switch_breaks(block):
-                    found = True
-            for h in getattr(st, "handlers", []) or []:
-                if _strip_switch_breaks(h.body):
-                    found = True
-    return found
-
-
-def _ends(stmts) -> bool:
-    return bool(stmts) and isinstance(stmts[-1], (ast.Return, ast.Raise, ast.Continue, ast.Break))
 
 class ParseError(Exception):
     pass
@@ -214,6 +224,7 @@ class Parser:
         self.go_structs: dict = {}
         self.no_brace_call = 0           # >0 while parsing an if/for/while/match head: `x {` is a block, not a closure
         self.ruby_locals: set = set()
+        self.yield_targets: list = []   # Java switch expressions being parsed: the temporaries their arms assign
         self.class_fields: dict = {}
         self.in_command_args = 0
         self._swift_static = False
@@ -504,7 +515,9 @@ class Parser:
             if mods and self.t.kind == "eof":
                 return []
             v = self.t.val if self.t.kind == "id" else ""
-            if v in ("class", "struct", "interface", "trait", "record", "enum", "object", "protocol", "union") and self.peek().kind == "id":
+            if v in ("class", "struct", "interface", "trait", "record", "enum", "object", "protocol", "union") and self.peek().kind == "id" \
+                    and not (v == "object" and self.lang != "kotlin") and not (v == "record" and self.lang == "csharp"
+                                                                             and self.peek(2).val in ("=", ";", ")")):
                 return [self.parse_class(decs)]
             # constructor declared with the class name: Foo(int x) { ... }  (Java, C#, C++)
             if self.typed and self.cls_stack and v == self.cls_stack[-1] and self.peek().val == "(" and not self.in_function:
@@ -551,14 +564,35 @@ class Parser:
                 return [_mk(ast.While, line, test=test, body=body, orelse=[])]
             if v == "try":
                 return [self.parse_try()]
+            if v == "yield" and self.yield_targets and self.lang == "java":
+                self.i += 1                     # `yield e;` inside a switch expression: the switch's value
+                value = self.untuple(self.parse_expression())
+                self.end_stmt()
+                return [_mk(ast.Assign, line, targets=[_name(self.yield_targets[-1], line, store=True)], value=value)]
             if v in ("switch", "when", "match"):
+                if self.yield_targets:          # a nested switch statement does not yield to the outer expression
+                    saved, self.yield_targets = self.yield_targets, []
+                    try:
+                        return [self.parse_switch()]
+                    finally:
+                        self.yield_targets = saved
                 return [self.parse_switch()]
+            if self.lang in ("java", "c", "cpp", "csharp", "go", "kotlin", "swift") and self.peek().val == ":" \
+                    and self.peek(2).kind == "id" and self.peek(2).val in ("for", "while", "do", "switch") \
+                    and v not in ("case", "default"):
+                self.i += 2                    # `outer: for (…)`: a statement label
+                return self.parse_statement()
             if v in ("break", "continue", "goto", "fallthrough"):
                 line = self.t.line
                 self.i += 1
-                if self.t.kind == "id" and not self.t.nl_before:
+                labeled = self.t.kind == "id" and not self.t.nl_before
+                if labeled:
                     self.i += 1
                 self.end_stmt()
+                if labeled:
+                    # `break outer;` / `continue outer;`: leaves enclosing loops; the flow analysis joins this state
+                    # into what follows every enclosing loop
+                    return [_mk(ast.Expr, line, value=_mk(ast.Call, line, func=_name("__labeled_exit__", line), args=[], keywords=[]))]
                 if v == "break":
                     return [_mk(ast.Break, line)]
                 if v == "continue":
@@ -1585,7 +1619,12 @@ class Parser:
                         raise ValueError("case without ':'")
                     if arrow_arm:
                         # Java 14+ `case X -> stmt;` / `case X -> { … }`: one arm, never falls through
-                        groups.append([labels, self.parse_statement() if not self.at("{") else self.block(), True])
+                        braced = self.at("{")
+                        arm = self.block() if braced else self.parse_statement()
+                        if self.yield_targets and not braced and len(arm) == 1 and isinstance(arm[0], ast.Expr):
+                            arm = [_mk(ast.Assign, arm[0].lineno, targets=[_name(self.yield_targets[-1], arm[0].lineno, store=True)],
+                                       value=arm[0].value)]           # switch-expression arm: its value
+                        groups.append([labels, arm, True])
                         continue
                     if groups and not groups[-1][1] and groups[-1][0] is not None and labels is not None:
                         groups[-1][0].extend(labels)         # `case A: case B:` share one body
@@ -1599,7 +1638,11 @@ class Parser:
                     self.opt(";")
                     groups[-1][2] = True
                     continue
-                groups[-1][1].extend(self.parse_statement())
+                stmts = self.parse_statement()
+                groups[-1][1].extend(stmts)
+                if self.yield_targets and stmts and isinstance(stmts[-1], ast.Assign) and \
+                        isinstance(stmts[-1].targets[0], ast.Name) and stmts[-1].targets[0].id == self.yield_targets[-1]:
+                    groups[-1][2] = True        # `case A: yield x;` leaves the switch expression
             if not groups:
                 raise ValueError("empty switch")
         except Exception:  # noqa: BLE001 - unusual layout: let the generic parser handle it
@@ -1647,15 +1690,26 @@ class Parser:
             m = self.parse_case_switch(subj, line)
             if m is not None:
                 return m
-        body = []
+        arms: list = [[]]               # one list of statements per arm; a new arm at each case / pattern
         depth = 0
         while not self.at("}") and self.t.kind != "eof":
             if self.at_kw("case") or self.at_kw("default"):
                 self.i += 1
+                label = []
                 while not self.at(":") and not self.at("->") and not self.at("{") and self.t.kind != "eof":
+                    label.append(self.t)
                     self.i += 1
                 if self.at(":") or self.at("->"):
                     self.i += 1
+                if arms[-1]:
+                    arms.append([])
+                # type pattern `case String s ->` / `case Foo f when …`: s is the subject
+                core = [t for t in label]
+                if "when" in [t.val for t in core]:
+                    core = core[:[t.val for t in core].index("when")]
+                if len(core) >= 2 and core[-1].kind == "id" and core[-2].kind in ("id",) or \
+                        (len(core) >= 2 and core[-1].kind == "id" and core[-2].val in (">", "]")):
+                    arms[-1].append(_mk(ast.Assign, line, targets=[_name(core[-1].val, line, store=True)], value=subj))
                 continue
             if self.lang in ("kotlin", "rust") and (self.at(arrow) or self.at("else") or self.at(",")):
                 self.i += 1
@@ -1672,16 +1726,27 @@ class Parser:
                         break
                     self.i += 1
                 if self.opt(arrow):
+                    if arms[-1]:
+                        arms.append([])
                     if self.at("{"):
-                        body.extend(self.block())
+                        arms[-1].extend(self.block())
                     else:
                         e = self.parse_expression()
-                        body.extend(self.expr_statement(e, self.t.line))
+                        arms[-1].extend(self.expr_statement(e, self.t.line))
                     self.opt(",")
                     continue
-            body.extend(self.parse_statement())
+            arms[-1].extend(self.parse_statement())
         self.eat("}")
-        return _mk(ast.If, line, test=subj, body=body or [_mk(ast.Pass, line)], orelse=[])
+        arms = [a for a in arms if a]
+        for a in arms:
+            _strip_switch_breaks(a)
+        if not arms:
+            return _mk(ast.Pass, line)
+        # arms whose patterns were not understood: each one MAY run (never one after another, which would let a
+        # later arm overwrite an earlier arm's value)
+        unknown = ast.MatchValue(value=_mk(ast.Attribute, line, value=_name("__pattern__", line), attr="unknown", ctx=ast.Load()))
+        return _mk(ast.Match, line, subject=subj,
+                   cases=[ast.match_case(pattern=unknown, guard=None, body=a) for a in arms])
 
     # ----------------------------------------------------------- expressions
     def expr_statement(self, expr, line) -> list:
@@ -1831,7 +1896,9 @@ class Parser:
             line = self.t.line
             self.i += 1
             b = self.untuple(self.parse_assignment())
-            return _mk(ast.BoolOp, line, op=ast.Or(), values=[self.untuple(cond), b])
+            node = _mk(ast.BoolOp, line, op=ast.Or(), values=[self.untuple(cond), b])
+            node.nullish = self.lang in ("kotlin", "swift", "csharp")    # Kotlin elvis: null only; PHP ?: is truthiness
+            return node
         return cond
 
     BIN_PREC = {"??": 1, "||": 1, "or": 1, "&&": 2, "and": 2, "|": 3, "^": 4, "&": 5, "==": 6, "!=": 6, "===": 6, "!==": 6,
@@ -1870,20 +1937,32 @@ class Parser:
             self.i += 1 + extra
             if op in ("is", "as", "instanceof"):
                 self.skip_type()
+                # C# `o is string s` / Java 16 `o instanceof String s`: a pattern variable bound to the operand
+                if op in ("is", "instanceof") and self.t.kind == "id" and self.t.val not in _WORD_OPS.get(self.lang, ()) \
+                        and self.t.val not in ("and", "or", "not") and not self.t.nl_before:
+                    var = self.eat()
+                    self.hoisted.append(_mk(ast.Assign, var.line, targets=[_name(var.val, var.line, store=True)],
+                                            value=self.untuple(left)))
                 continue
             right = self.parse_binary(prec + 1)
             left, right = self.untuple(left), self.untuple(right)
             line = t.line
             if op in ("&&", "||", "??", "and", "or"):
                 left = _mk(ast.BoolOp, line, op=ast.And() if op in ("&&", "and") else ast.Or(), values=[left, right])
+                left.nullish = op == "??"
             elif op in ("==", "!=", "===", "!==", "<", ">", "<=", ">=", "in"):
                 pyop = {"==": ast.Eq(), "===": ast.Eq(), "!=": ast.NotEq(), "!==": ast.NotEq(), "<": ast.Lt(), ">": ast.Gt(),
                         "<=": ast.LtE(), ">=": ast.GtE(), "in": ast.In()}[op]
                 left = _mk(ast.Compare, line, left=left, ops=[pyop], comparators=[right])
+                if self.lang == "php":
+                    left.eq_mode = "strict" if op in ("===", "!==") else "loose"
+                elif self.lang == "java" or (self.lang == "kotlin" and op in ("===", "!==")):
+                    left.eq_mode = "ref"           # Java `==` compares string identity, not contents
             else:
                 left = _mk(ast.BinOp, line, left=left, op=_BINOP.get(op, ast.BitOr)(), right=right)
-                if op in ("/", "%") and self.lang != "php":
-                    left.c_int_semantics = True     # integer / and % truncate toward zero in C-family languages
+                if op in ("/", "%") and not (self.lang == "php" and op == "/"):
+                    # integer / and % truncate toward zero in C-family languages (PHP %), floor in Ruby
+                    left.int_div = "floor" if self.lang == "ruby" else "trunc"
         return left
 
     def looks_like_generic(self) -> bool:
@@ -2389,7 +2468,7 @@ class Parser:
             if buf:
                 values.append(_const(buf, tok.line))
                 buf = ""
-            sub = Parser(expr_src, "inline", lang)
+            sub = Parser(("<?php " + expr_src) if lang == "php" else expr_src, "inline", lang)   # PHP code starts at <?php
             sub.mod = self.mod
             sub.ruby_locals = self.ruby_locals
             try:
@@ -2820,11 +2899,7 @@ class Parser:
         line = t.line
         if t.kind == "num":
             self.i += 1
-            try:
-                v = float(re.sub(r"[fFdDlLmMuU_]", "", t.val))
-            except ValueError:
-                v = 0
-            return _const(v, line)
+            return _const(_num_value(t.val), line)
         if t.kind == "istr":
             self.i += 1
             return self.parse_interpolated(t)
@@ -2910,6 +2985,17 @@ class Parser:
                 return self.parse_unary()
         if t.kind == "id":
             v = t.val
+            if v == "switch" and self.lang == "java" and self.peek().val == "(":
+                # `x = switch (m) { case A -> e; default -> { …; yield f; } }`: hoist the switch as a statement whose
+                # arms assign one temporary, and use the temporary as the expression's value
+                tmp = f"__switch_{line}_{self.i}"
+                self.yield_targets.append(tmp)
+                try:
+                    st = self.parse_switch()
+                finally:
+                    self.yield_targets.pop()
+                self.hoisted.append(st)
+                return _name(tmp, line)
             if v == "new":
                 return self.parse_new()
             if v in ("this", "$this", "self", "static") or (v in ("parent", "base") and self.lang in ("php", "csharp")):

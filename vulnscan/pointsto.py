@@ -390,12 +390,7 @@ class PointsTo:
             return self._read(chain, e.id)
         if isinstance(e, ast.Attribute):
             base = self._eval(e.value, mod, cls, chain, path)
-            tmp = self._new()
-            q = self.p._resolve_function(mod, _dotted(e)) if "." in _dotted(e) else None
-            if q:
-                self._emit(("alloc", ("func", None, None, q), tmp))
-            self._emit(("load", base, e.attr, tmp))
-            return tmp
+            return self._attr_from(e, base, mod)
         if isinstance(e, ast.Subscript):
             base = self._eval(e.value, mod, cls, chain, path)
             tmp = self._new()
@@ -464,6 +459,15 @@ class PointsTo:
             return tmp
         return self._new()
 
+    def _attr_from(self, e, base, mod):
+        tmp = self._new()
+        d = _dotted(e)
+        q = self.p._resolve_function(mod, d) if "." in d else None
+        if q:
+            self._emit(("alloc", ("func", None, None, q), tmp))
+        self._emit(("load", base, e.attr, tmp))
+        return tmp
+
     def _eval_call(self, call, mod, cls, chain, path):
         dst = self._new()
         args = [self._eval(a, mod, cls, chain, path) for a in call.args]
@@ -474,7 +478,10 @@ class PointsTo:
             self.node_key[id(call.func)] = (self._cur_scope, func_key)
         elif isinstance(call.func, ast.Attribute):
             recv = self._eval(call.func.value, mod, cls, chain, path)
-            func_key = self._eval(call.func, mod, cls, chain, path)
+            # build the method value from the receiver just evaluated: evaluating call.func again would re-walk
+            # the receiver, doubling the work at every link of a chain (a.b().c().d()… was exponential)
+            func_key = self._attr_from(call.func, recv, mod)
+            self.node_key[id(call.func)] = (self._cur_scope, func_key)
             if call.func.attr in ("append", "add", "insert", "extend", "update", "put", "setdefault"):
                 for an in args:
                     self._emit(("store", recv, "<elem>", an))
