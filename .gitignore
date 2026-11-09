@@ -10,3 +10,6 @@ build/
 dist/
 *.egg-info/
 dist-download/
+.coverage
+coverage.xml
+owasp*.json

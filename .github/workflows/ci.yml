@@ -4,18 +4,70 @@ on:
   push:
   pull_request:
 
+# Least privilege: jobs get read-only access unless they ask for more.
+permissions:
+  contents: read
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python: ["3.10", "3.13"]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e .[dev]
-      - run: python -m pytest -q
-      # Self-scan: the tool must stay clean of high/critical findings.
-      - run: vulnscan . --no-deps --no-external --no-color --exclude "tests/*" --fail-on high
+      - name: Lint
+        run: ruff check vulnscan tests bench
+      - name: Tests with coverage gate
+        run: python -m pytest -q --cov=vulnscan --cov-fail-under=75
+
+  self-scan:
+    # kashif scans its own source: it must stay free of high/critical findings, and the
+    # results are published to GitHub Code Scanning (Security tab) as SARIF.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+      - run: pip install -e .
+      - name: Scan (SARIF)
+        run: vulnscan . --no-deps --no-external --exclude "tests/*" --exclude "bench/*" -f sarif -o vulnscan.sarif
+      - name: Upload to Code Scanning
+        if: github.event_name == 'push'
+        continue-on-error: true   # private repositories without code scanning cannot accept uploads
+        uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9 # v3.39.3
+        with:
+          sarif_file: vulnscan.sarif
+          category: vulnscan-self-scan
+      - name: Gate on high / critical
+        run: vulnscan . --no-deps --no-external --no-color --exclude "tests/*" --exclude "bench/*" --fail-on high
+
+  benchmark:
+    # Accuracy regression gate on the OWASP Benchmark for Python (https://owasp.org/www-project-benchmark/).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+      - run: pip install -e .
+      - run: git clone --depth 1 https://github.com/OWASP-Benchmark/BenchmarkPython.git /tmp/bp
+      - name: Score (fails below the recorded floor)
+        run: python bench/score_owasp.py /tmp/bp --json owasp.json --min-score "$(cat bench/min-score-python.txt)"

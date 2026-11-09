@@ -748,7 +748,7 @@ class Parser:
             while self.t.kind == "id" and self.t.val in ("public", "private", "protected", "readonly", "override"):
                 self.i += 1
                 prop = True
-            rest = self.opt("...")
+            self.opt("...")
             tgt = self.parse_binding_target()
             if self.opt("?"):
                 pass
@@ -831,13 +831,13 @@ class Parser:
             if self.opt(";"):
                 continue
             mdecs = self.parse_decorators() if self.at("@") else []
-            is_async, is_static = False, False
+            is_async, _is_static = False, False
             while self.t.kind == "id" and self.t.val in ("static", "public", "private", "protected", "readonly", "abstract", "override", "declare", "async", "get", "set") \
                     and self.peek().kind in ("id", "str", "num") or (self.t.kind == "id" and self.t.val in ("static", "public", "private", "protected", "readonly", "abstract", "override", "async") and self.peek().val in ("[", "#", "*")):
                 if self.t.val == "async":
                     is_async = True
                 if self.t.val == "static":
-                    is_static = True
+                    pass
                 self.i += 1
             self.opt("*")
             self.opt("#")

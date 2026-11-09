@@ -102,7 +102,6 @@ def build_database(projects, flows) -> dict[str, list[dict]]:
                 return _unparse(node)
 
             # context tracking: which function / class encloses a node
-            stack: list[tuple[str, str]] = []  # (func name, class name)
 
             def visit(node, cur_func, cur_cls):
                 if isinstance(node, ast.ClassDef):
@@ -118,7 +117,6 @@ def build_database(projects, flows) -> dict[str, list[dict]]:
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     fid = nid()
                     qual = f"{cur_cls}.{node.name}" if cur_cls else node.name
-                    cq = f"{mod}::{cur_cls}.{node.name}" if cur_cls else f"{mod}::{node.name}"
                     is_entry = proj._is_entry(mod, f"{mod}::{cur_cls}" if cur_cls else None, node)
                     decs = [proj._canon(mod, d.func if isinstance(d, ast.Call) else d) for d in node.decorator_list]
                     params = [a.arg for a in node.args.posonlyargs + node.args.args + node.args.kwonlyargs]
@@ -655,7 +653,6 @@ class Query:
             if not pending:
                 results.append(dict(env))
                 return
-            progressed = False
             for idx, c in enumerate(pending):
                 rest = pending[:idx] + pending[idx + 1:]
                 vs = self._vars_in(c, set())

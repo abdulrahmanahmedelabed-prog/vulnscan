@@ -142,6 +142,8 @@ _VALUE_CONTEXT_SKIP = re.compile(r"(\$\{|\{\{|base64,|\bh1:)\s*$|ENC\[[^\]]*$")
 _HEXONLY = re.compile(r"^[0-9a-fA-F]+$")
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 _SLUG_SHAPE = re.compile(r"^/?[a-z0-9]+(?:[/._\-][a-z0-9]+){2,}/?$|^/?[a-z0-9._\-]*/[a-z0-9._\-/]*$")
+# A route or file path made of words (`/api/v2/users-list/ProfileSettings2`): base64 has '/' but no word segments.
+_ROUTE_PATH = re.compile(r"^\.{0,2}/|(?:^|/)[a-z]{4,}(?:[-_][a-z0-9]+)*/")
 # A secret embedded in a URL's userinfo: scheme://[user]:SECRET@host
 _URL_PASSWORD = re.compile(r"://[^\s:/@'\"]*:([^\s@/'\"]{8,})@[\w.\-]")
 # Multi-line bindings: the secret's name is on the previous line (k8s env, Terraform variable).
@@ -267,7 +269,7 @@ def _entropy_findings(rel: str, lineno: int, line: str, ctx_name: str | None = N
             return _sec011(rel, lineno, line, ent, "token assigned to a secret-like name")
         mixed = any(c.isupper() for c in tok) and any(c.islower() for c in tok)
         if (mixed and ent >= 4.2 and len(tok) >= 40 and not _HEXONLY.match(tok) and not tok.startswith("MII")
-                and not _in_url(line, m.start())):
+                and not _in_url(line, m.start()) and not _ROUTE_PATH.search(tok)):
             return _sec011(rel, lineno, line, ent, "standalone high-entropy token")
     return []
 

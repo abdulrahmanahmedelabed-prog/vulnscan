@@ -8,10 +8,11 @@ on:
       release_tag:
         description: "انشر النسخ في إصدار بهذا الوسم (اتركه فارغًا لبناء دون نشر)"
         type: string
-        default: "v0.6.1"
+        default: "v0.7.0"
 
+# Read-only by default; only the publish job may write the release and sign provenance.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -29,11 +30,13 @@ jobs:
             artifact: vulnscan-linux
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
-      - run: pip install pyinstaller
+      - run: pip install pyinstaller==6.22.3
       - run: pyinstaller --clean --noconfirm vulnscan.spec
       - name: Smoke test — CLI (version, rules, a scan with SARIF and a baseline)
         shell: bash
@@ -66,7 +69,7 @@ jobs:
         run: |
           cp "${{ matrix.built }}" "${{ matrix.artifact }}"
           chmod +x "${{ matrix.artifact }}" || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
@@ -77,11 +80,17 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write        # create the release and upload assets
+      id-token: write        # sign build provenance (Sigstore, keyless)
+      attestations: write    # store the provenance attestation on GitHub
     env:
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: out
           merge-multiple: true
@@ -91,7 +100,21 @@ jobs:
           chmod +x vulnscan-linux
           sha256sum vulnscan-windows.exe vulnscan-linux > SHA256SUMS.txt
           cat SHA256SUMS.txt
-      - uses: softprops/action-gh-release@v2
+      - name: SBOM (CycloneDX) of the source and its bundled components
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: out/vulnscan-sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Signed SLSA build provenance for both binaries
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: |
+            out/vulnscan-windows.exe
+            out/vulnscan-linux
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ env.TAG }}
           name: ${{ env.TAG }}
@@ -99,6 +122,7 @@ jobs:
             out/vulnscan-windows.exe
             out/vulnscan-linux
             out/SHA256SUMS.txt
+            out/vulnscan-sbom.cdx.json
           body_path: CHANGELOG.md
           make_latest: true
           fail_on_unmatched_files: true
@@ -106,7 +130,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          keep=" vulnscan-windows.exe vulnscan-linux SHA256SUMS.txt "
+          keep=" vulnscan-windows.exe vulnscan-linux SHA256SUMS.txt vulnscan-sbom.cdx.json "
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | while read -r name; do
             case "$keep" in
               *" $name "*) ;;

@@ -6,7 +6,7 @@ import pytest
 
 from vulnscan.cli import main
 from vulnscan.deps import _cvss_score, collect_packages
-from vulnscan.model import SEVERITIES, SEVERITY_RANK, Finding, sort_findings
+from vulnscan.model import SEVERITIES, SEVERITY_RANK, sort_findings
 from vulnscan.report import render_json, render_markdown
 from vulnscan.scanner import scan_path
 

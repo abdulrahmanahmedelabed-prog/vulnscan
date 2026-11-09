@@ -4,7 +4,6 @@ Fake tokens are assembled by concatenation so the test source never contains a l
 real credential (keeps GitHub push protection and other scanners quiet)."""
 
 import json
-import pathlib
 
 from vulnscan.baseline import apply_baseline, load_baseline, save_baseline
 from vulnscan.cli import main

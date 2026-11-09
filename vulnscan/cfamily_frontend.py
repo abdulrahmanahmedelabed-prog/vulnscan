@@ -97,7 +97,7 @@ def tokenize(src: str, lang: str) -> list[Tok]:
     if lang == "php":
         # keep only PHP code regions (<?php ... ?>); HTML outside is ignored
         parts = re.split(r"(<\?(?:php|=)?|\?>)", src)
-        out, keep, lines_so_far = [], False, ""
+        out, keep, _lines_so_far = [], False, ""
         for part in parts:
             if part in ("<?php", "<?", "<?="):
                 keep = True
@@ -2511,7 +2511,7 @@ class Parser:
 
     def parse_ruby_class(self, decs) -> list:
         line = self.t.line
-        kind = self.eat().val
+        self.eat().val
         if self.at("<<"):     # class << self … end : singleton methods, keep as plain statements
             self.i += 1
             self.parse_expression()
