@@ -693,7 +693,13 @@ class Project:
         canon = self._canon(mod, call.func)
         res = None
         if canon:
-            for entry in self.m["sinks"]:
+            # sinks constrained by a receiver pattern are more specific than bare method names: try them first
+            ordered = self.__dict__.get("_sinks_ordered")
+            if ordered is None or ordered[0] is not self.m["sinks"] or ordered[1] != len(self.m["sinks"]):
+                ordered = (self.m["sinks"], len(self.m["sinks"]),
+                           sorted(self.m["sinks"], key=lambda e: 0 if len(e) > 11 and e[11] is not None else 1))
+                self.__dict__["_sinks_ordered"] = ordered
+            for entry in ordered[2]:
                 if any(_name_matches(canon, n) for n in entry[9]):
                     rx = entry[11] if len(entry) > 11 else None
                     if rx is not None and not (isinstance(call.func, ast.Attribute) and rx.search(_receiver_text(call.func.value))):

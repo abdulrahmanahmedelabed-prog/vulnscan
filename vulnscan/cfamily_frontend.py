@@ -152,6 +152,15 @@ def _heredoc_token(m) -> str:
     return '"' + body + '"' + m.group(3) + "\n" * nl
 
 
+
+_BINOP = {"+": ast.Add, ".": ast.Add, "..": ast.Add, "-": ast.Sub, "*": ast.Mult, "/": ast.Div, "%": ast.Mod,
+          "**": ast.Pow, "&": ast.BitAnd, "|": ast.BitOr, "^": ast.BitXor, "<<": ast.LShift, ">>": ast.RShift,
+          ">>>": ast.RShift}
+
+
+def _ends(stmts) -> bool:
+    return bool(stmts) and isinstance(stmts[-1], (ast.Return, ast.Raise, ast.Continue, ast.Break))
+
 class ParseError(Exception):
     pass
 
@@ -1512,6 +1521,61 @@ class Parser:
             handlers.append(_mk(ast.ExceptHandler, line, type=None, name=None, body=[_mk(ast.Pass, line)]))
         return _mk(ast.Try, line, body=body, handlers=handlers, orelse=[], finalbody=final)
 
+    def parse_case_switch(self, subj, line):
+        """C-family `switch (x) { case A: …; break; case B: case C: …; default: … }` as a match statement, one
+        case per label group, with fall-through bodies copied in (Java/C/C#/PHP; Go and Swift do not fall
+        through). Returns None (after rewinding) when the layout is not recognised, so the caller can fall back."""
+        start = self.i
+        groups = []                     # [labels (list of exprs, None = default), stmts, ends_with_break]
+        try:
+            while not self.at("}") and self.t.kind != "eof":
+                if self.at_kw("case") or self.at_kw("default"):
+                    is_default = self.at_kw("default")
+                    self.i += 1
+                    labels = None
+                    if not is_default:
+                        labels = [self.untuple(self.parse_expression())]
+                        while self.opt(","):
+                            labels.append(self.untuple(self.parse_expression()))
+                    if not (self.opt(":") or self.opt("->")):
+                        raise ValueError("case without ':'")
+                    if groups and not groups[-1][1] and groups[-1][0] is not None and labels is not None:
+                        groups[-1][0].extend(labels)         # `case A: case B:` share one body
+                    else:
+                        groups.append([labels, [], False])
+                    continue
+                if not groups:
+                    raise ValueError("statement before first case")
+                if self.at_kw("break"):
+                    self.i += 1
+                    self.opt(";")
+                    groups[-1][2] = True
+                    continue
+                groups[-1][1].extend(self.parse_statement())
+            if not groups:
+                raise ValueError("empty switch")
+        except Exception:  # noqa: BLE001 - unusual layout: let the generic parser handle it
+            self.i = start
+            return None
+        self.eat("}")
+        falls = self.lang in ("java", "c", "cpp", "csharp", "php", "javascript")
+        cases = []
+        for gi, (labels, stmts, brk) in enumerate(groups):
+            body = list(stmts)
+            j = gi
+            while falls and not groups[j][2] and j + 1 < len(groups) and not _ends(groups[j][1]):
+                j += 1
+                body.extend(groups[j][1])               # fall through into the next case
+            if labels is None:
+                pattern = ast.MatchAs(pattern=None, name=None)
+            else:
+                pats = [ast.MatchValue(value=lab) for lab in labels]
+                pattern = pats[0] if len(pats) == 1 else ast.MatchOr(patterns=pats)
+            cases.append(ast.match_case(pattern=pattern, guard=None, body=body or [_mk(ast.Pass, line)]))
+        # Python requires the wildcard last; C-family allows `default` anywhere
+        cases.sort(key=lambda c: isinstance(c.pattern, ast.MatchAs) and c.pattern.pattern is None)
+        return _mk(ast.Match, line, subject=subj, cases=cases)
+
     def parse_switch(self):
         line = self.t.line
         self.i += 1
@@ -1528,6 +1592,10 @@ class Parser:
             self.no_brace_call -= 1
         self.eat("{")
         arrow = "=>" if self.lang == "rust" else "->"
+        if self.lang not in ("kotlin", "rust"):
+            m = self.parse_case_switch(subj, line)
+            if m is not None:
+                return m
         body = []
         depth = 0
         while not self.at("}") and self.t.kind != "eof":
@@ -1728,6 +1796,13 @@ class Parser:
                 break
             if op == "as" and self.lang == "php":
                 break                                   # foreach ($rows as $r): not a cast
+            extra = 0
+            if op in ("<", ">") and self.peek().kind == "punct" and self.peek().val == op:
+                # the lexer splits << and >> (generics: List<List<X>>); two in a row in an expression are a shift
+                extra = 1
+                if op == ">" and self.i + 2 < len(self.toks) and self.toks[self.i + 2].val == ">":
+                    extra = 2
+                op = op * 2
             if op not in self.BIN_PREC or self.BIN_PREC[op] < min_prec:
                 break
             if self.lang == "ruby" and op == "<<" and not self.t.nl_before:
@@ -1739,7 +1814,7 @@ class Parser:
             if op == "<" and self.looks_like_generic():
                 break
             prec = self.BIN_PREC[op]
-            self.i += 1
+            self.i += 1 + extra
             if op in ("is", "as", "instanceof"):
                 self.skip_type()
                 continue
@@ -1753,7 +1828,7 @@ class Parser:
                         "<=": ast.LtE(), ">=": ast.GtE(), "in": ast.In()}[op]
                 left = _mk(ast.Compare, line, left=left, ops=[pyop], comparators=[right])
             else:
-                left = _mk(ast.BinOp, line, left=left, op=ast.Add() if op in ("+", ".", "..") else ast.BitOr(), right=right)
+                left = _mk(ast.BinOp, line, left=left, op=_BINOP.get(op, ast.BitOr)(), right=right)
         return left
 
     def looks_like_generic(self) -> bool:

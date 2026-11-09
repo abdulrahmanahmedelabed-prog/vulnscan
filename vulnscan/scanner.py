@@ -531,11 +531,15 @@ def _all_names_known(tree, line: int, cache: dict) -> bool:
     key = id(tree)
     if key not in cache:
         bound, by_line = set(), {}
+        class_refs = set()       # id() of capitalised names used as a receiver: Runtime.getRuntime(), Math.abs()
+        for n in _ast.walk(tree):
+            if isinstance(n, _ast.Attribute) and isinstance(n.value, _ast.Name) and n.value.id[:1].isupper():
+                class_refs.add(id(n.value))
         for n in _ast.walk(tree):
             if isinstance(n, _ast.Name):
                 if isinstance(n.ctx, (_ast.Store, _ast.Del)):
                     bound.add(n.id)
-                elif getattr(n, "lineno", None):
+                elif getattr(n, "lineno", None) and id(n) not in class_refs:
                     by_line.setdefault(n.lineno, set()).add(n.id)
             elif isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
                 bound.add(n.name)
@@ -549,7 +553,7 @@ def _all_names_known(tree, line: int, cache: dict) -> bool:
         cache[key] = (bound, by_line)
     bound, by_line = cache[key]
     names = by_line.get(line)
-    if not names:
+    if names is None:
         return False                      # nothing on that line the analysis saw: keep the pattern hit
     import builtins
     return all(n in bound or hasattr(builtins, n) or n in ("self", "cls", "this") for n in names)

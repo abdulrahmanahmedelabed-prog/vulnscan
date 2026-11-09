@@ -33,6 +33,13 @@ _CMPOPS = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt, ast
            ast.GtE: operator.ge, ast.Is: operator.is_, ast.IsNot: operator.is_not,
            ast.In: lambda a, b: a in b, ast.NotIn: lambda a, b: a not in b}
 _CONST_TYPES = (int, float, str, bool, type(None), bytes)
+_STR_METHODS = {   # side-effect-free string methods (Python and Java/C#/JS spellings) usable in constant folding
+    "charAt": lambda s, i: s[i], "substring": lambda s, a, b=None: s[a:b], "length": len, "len": len,
+    "toUpperCase": str.upper, "toLowerCase": str.lower, "upper": str.upper, "lower": str.lower, "trim": str.strip,
+    "strip": str.strip, "equals": lambda s, o: s == o, "contains": lambda s, o: o in s, "startsWith": str.startswith,
+    "endsWith": str.endswith, "startswith": str.startswith, "endswith": str.endswith, "indexOf": str.find,
+    "find": str.find, "isEmpty": lambda s: not s, "equalsIgnoreCase": lambda s, o: s.lower() == str(o).lower(),
+}
 
 
 def fold(node: ast.AST, consts: dict):
@@ -114,6 +121,16 @@ def _fold(node, consts):
             idx = _fold(node.slice, consts)
             if isinstance(idx, int):
                 return base[idx]
+        return _MISSING
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _STR_METHODS \
+            and not node.keywords:
+        recv = _fold(node.func.value, consts)
+        if isinstance(recv, str):
+            args = [_fold(a, consts) for a in node.args]
+            if _MISSING in args:
+                return _MISSING
+            args = [int(a) if isinstance(a, float) and a.is_integer() else a for a in args]
+            return _STR_METHODS[node.func.attr](recv, *args)
         return _MISSING
     if isinstance(node, (ast.Tuple,)) :
         vals = tuple(_fold(e, consts) for e in node.elts)
