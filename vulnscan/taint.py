@@ -132,7 +132,7 @@ def _name_matches(canon: str, name: str) -> bool:
     return canon.split(".")[-1] == name
 
 
-MAX_AST_DEPTH = 150   # far beyond hand-written code; protects every recursive analysis from hostile nesting
+MAX_AST_DEPTH = 300   # far beyond hand-written code; protects every recursive analysis from hostile nesting
 
 
 def _receiver_text(node) -> str:
@@ -156,6 +156,31 @@ def too_deep(tree, limit: int = MAX_AST_DEPTH) -> bool:
         for ch in ast.iter_child_nodes(node):
             stack.append((ch, d + 1))
     return False
+
+
+def _prune_too_deep(tree, limit: int = MAX_AST_DEPTH) -> list:
+    """Replace over-deep function bodies / top-level statements with `pass`; returns what was left out."""
+    pruned = []
+
+    def visit(container, depth_offset):
+        body = getattr(container, "body", None)
+        if not isinstance(body, list):
+            return
+        for i, st in enumerate(body):
+            if not too_deep(st, limit - depth_offset):
+                continue
+            if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and isinstance(st, ast.ClassDef):
+                visit(st, depth_offset + 1)
+                if not too_deep(st, limit - depth_offset):
+                    continue
+            name = getattr(st, "name", None) or f"line {getattr(st, 'lineno', '?')}"
+            if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                st.body = [ast.Pass(lineno=st.lineno, col_offset=0)]
+            else:
+                body[i] = ast.Pass(lineno=getattr(st, "lineno", 0), col_offset=0)
+            pruned.append(name)
+    visit(tree, 1)
+    return pruned
 
 
 def _dotted(node: ast.AST) -> str:
@@ -229,8 +254,14 @@ class _Env:
         self.dk: dict = {}        # var -> ({const key: origin}, other-keys origin) (flow refinement only)
 
 
-_SHAPE_CHECKS = {"startswith", "endswith", "isalnum", "isalpha", "isdigit", "isdecimal", "isnumeric", "isidentifier",
-                 "isascii", "fullmatch", "startsWith", "endsWith", "matches"}
+_CONFINEMENT = {"is_relative_to", "isRelativeTo"}
+_PERMISSIVE_RE = re.compile(r"(?<!\\)\.[*+]|\\S[*+]|\[\^[^\]]*\][*+]|\\W|\(\?s\)")
+_NOT_VALIDATION = {"startswith", "endswith", "starts_with", "ends_with", "str_starts_with", "str_ends_with", "exists",
+                   "fileexists", "file_exists", "isset", "empty", "isempty", "isnullorempty", "isnullorwhitespace", "is_dir",
+                   "is_file", "strpos", "str_contains", "isascii", "isblank", "notempty", "notnull", "isnotempty"}
+_MEMBERSHIP = {"contains", "includes", "containskey", "containsvalue", "has", "haskey", "in_array", "array_key_exists",
+               "array_search", "key?", "include?", "member?", "issubset"}
+_SHAPE_CHECKS = {"isalnum", "isalpha", "isdigit", "isdecimal", "isnumeric", "isidentifier", "fullmatch", "matches"}
 
 
 def _names(expr) -> set:
@@ -297,8 +328,32 @@ _SANITIZER_CONTEXTS = [
 ]
 
 
+_JS_CTX = ("CWE-94", "CWE-95") + _XSS
+_REGEX_CTX = ("CWE-625", "CWE-730", "CWE-1333")
+# Exact names whose meaning the naming conventions would get wrong. "none" = not a sanitizer at all.
+_SANITIZER_OVERRIDES = {
+    "realpath": "none", "normalize": "none", "Normalizer.normalize": "none", "Paths.normalize": "none",
+    "os.path.normpath": "none", "normpath": "none", "path.normalize": "none", "filepath.Clean": "none",
+    "Pattern.quote": _REGEX_CTX, "json_encode": _JS_CTX, "esc_js": _JS_CTX, "e": _XSS, "esc_attr": _XSS,
+    "esc_html": _XSS, "wp_kses": _XSS, "Jsoup.clean": _XSS, "xss": _XSS, "filter_var": _XSS, "filter_input": _XSS,
+    "strip_tags": _XSS, "htmlspecialchars": _XSS, "htmlentities": _XSS,
+}
+# escape/quote methods on a database handle quote SQL literals (mysql connection.escape, PDO::quote, knex.raw …)
+_DB_ESCAPE = re.compile(r"(?i)(^|[.$])(connection|conn|con|pool|db|database|mysql|mysqli|pg|pgp|client|pdo|knex|sequelize|"
+                        r"sql|cursor|dbh|link)\.(escape|escapeid|escape_string|real_escape_string|quote|escapeliteral|"
+                        r"escapeidentifier|quote_ident|quote_literal)$")
+
+
 def sanitizer_context(name: str):
-    """frozenset of CWEs a sanitizer neutralizes, or None when it is universal (value conversion)."""
+    """frozenset of CWEs a sanitizer neutralizes, None when it is universal (value conversion), or "none" when
+    the name is not a sanitizer at all (realpath / normalize resolve a path, they do not confine it)."""
+    ov = _SANITIZER_OVERRIDES.get(name) or _SANITIZER_OVERRIDES.get(name.split(".")[-1] if name.count(".") == 0 else name)
+    if ov == "none":
+        return "none"
+    if ov:
+        return frozenset(ov)
+    if _DB_ESCAPE.search(name):
+        return frozenset(("CWE-89", "CWE-564"))
     for rx, cwes in _SANITIZER_CONTEXTS:
         if rx.search(name):
             return frozenset(cwes)
@@ -339,8 +394,12 @@ class Project:
             except (SyntaxError, ValueError, MemoryError, RecursionError):   # generated/hostile code: skip the file
                 return False
         if too_deep(tree):
-            self.too_deep.append(path)         # generated / hostile nesting: the recursive analyses would overflow
-            return False
+            # generated / hostile nesting would overflow the recursive analyses: leave out only the functions or
+            # top-level statements that are too deep, keep analysing the rest of the file
+            pruned = _prune_too_deep(tree)
+            self.too_deep.append(path + (f" ({', '.join(pruned[:3])}{' …' if len(pruned) > 3 else ''})" if pruned else ""))
+            if too_deep(tree):
+                return False
         file = {"path": path, "tree": tree, "aliases": self._aliases(tree, mod, is_pkg), "funcs": {},
                 "classes": {}, "lines": lines if lines is not None else text.splitlines(), "assign_aliases": []}
         self.files[mod] = file
@@ -443,10 +502,11 @@ class Project:
             exact = self._by_mod.get((id(index), name, hint))
             if exact:
                 return exact[0]
+            pool = cands
             if len(cands) > 64:              # large projects: suffix matches only among modules sharing the last part
                 tail = hint.split(".")[-1]
-                cands = [q for q in cands if q.split("::")[0].split(".")[-1] == tail or hint.endswith(q.split("::")[0])]
-            best = [q for q in cands if q.split("::")[0].endswith(hint) or hint.endswith(q.split("::")[0])]
+                pool = [q for q in cands if q.split("::")[0].split(".")[-1] == tail or hint.endswith(q.split("::")[0])]
+            best = [q for q in pool if q.split("::")[0].endswith(hint) or hint.endswith(q.split("::")[0])]
             if best:
                 return best[0]
         return cands[0] if len(cands) == 1 else None
@@ -653,6 +713,8 @@ class Project:
         if isinstance(cur, ast.Call) and isinstance(cur.func, ast.Attribute) \
                 and cur.func.attr in {"get", "getlist", "getall", "get_argument", "getone"}:
             cur = cur.func.value
+        elif isinstance(cur, ast.Call) and isinstance(cur.func, ast.Attribute):
+            cur = cur.func                     # request.get_json() / request.get_data(): a call on a source attribute
         if isinstance(cur, ast.Subscript):
             cur = cur.value
         if isinstance(cur, ast.Attribute):
@@ -695,8 +757,10 @@ class Project:
             if name in {"stored_db_read", "stored_db_config"} or name in self.m.get("user_sanitizers", ()):
                 kind = "all"
             else:
-                ctx = sanitizer_context(name)
-                kind = "all" if ctx is None else ctx
+                # the call's own name first (connection.escape is SQL even when the model only lists `escape`)
+                ctx = sanitizer_context(canon) if (_DB_ESCAPE.search(canon) or canon in _SANITIZER_OVERRIDES) \
+                    else sanitizer_context(name)
+                kind = None if ctx == "none" else "all" if ctx is None else ctx
         self._sanitizer_cache[key] = kind
         return kind
 
@@ -852,10 +916,39 @@ class Project:
         origins = self._taints(mod, cls, node, env)
         if not origins:
             return None
-        return min(origins, key=lambda o: self._ORIGIN_RANK.get(o[0], 9))
+        best = min(origins, key=lambda o: self._ORIGIN_RANK.get(o[0], 9))
+        common = frozenset.intersection(*[_safe_for(o) for o in origins])
+        # escape(a) + b: the merged value is only as escaped as its least-escaped part
+        return best if common == _safe_for(best) else (best[0], best[1], _trail(best), common)
+
+    def _fixed_host_url(self, mod, node) -> bool:
+        """`"https://api.example.com/v1/" + x` / f"https://host/{x}" / TEMPLATE.format(id=x): the request can only
+        go to that host, so tainted path or query parts are not server-side request forgery."""
+        def const_str(e):
+            if isinstance(e, ast.Constant) and isinstance(e.value, str):
+                return e.value
+            if isinstance(e, ast.Name):                       # a module-level constant template
+                for st in getattr((self.files.get(mod) or {}).get("tree"), "body", []):
+                    if isinstance(st, ast.Assign) and any(isinstance(t, ast.Name) and t.id == e.id for t in st.targets) \
+                            and isinstance(st.value, ast.Constant) and isinstance(st.value.value, str):
+                        return st.value.value
+            return None
+        head = None
+        if isinstance(node, ast.JoinedStr) and node.values:
+            head = const_str(node.values[0])
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = node
+            while isinstance(left, ast.BinOp) and isinstance(left.op, ast.Add):
+                left = left.left
+            head = const_str(left)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+            head = const_str(node.func.value)
+        return bool(head) and bool(re.match(r"(?i)^[a-z][a-z0-9+.-]*://[^/{}%?#@]+/", head))
 
     def _sink_taint(self, mod, cls, node, env, si):
         """The most significant origin of `node` that still matters for sink `si` (context-escaped ones don't)."""
+        if si and si[5] == "CWE-918" and self._fixed_host_url(mod, node):
+            return None
         origins = [o for o in self._taints(mod, cls, node, env) if _unsafe_for(o, si)]
         if not origins:
             return None
@@ -1135,6 +1228,11 @@ class Project:
                             if elem:
                                 env.elem.add(nm)
                             changed = True
+                        elif _safe_for(env.tainted[nm]) - _safe_for(o):
+                            # another assignment brings a less-escaped value: keep only what both were escaped for
+                            old_o = env.tainted[nm]
+                            env.tainted[nm] = (old_o[0], old_o[1], _trail(old_o), _safe_for(old_o) & _safe_for(o))
+                            changed = True
                         elif not elem and nm in env.elem:
                             env.elem.discard(nm)
                             changed = True
@@ -1199,37 +1297,42 @@ class Project:
         self._parents_cache[key] = parents
         return parents
 
-    def _validated(self, mod, test, positive: bool) -> set:
+    def _validated(self, mod, test, positive: bool, cwe: str | None = None) -> set:
         """Names a condition validates on the path where it is `positive` (True) or not.
 
-        Recognised checks: allow-lists (`x in ALLOWED`, `x == c`), validator calls, string-shape checks
-        (`x.startswith/endswith/isalnum/isdigit/fullmatch …`), and deny-list rejections taken on the path
-        where they are False (`if '..' in x: return`). Bare truthiness / None / length checks validate nothing."""
+        Real validation only: allow-lists (`x in ALLOWED`, `x == c`, exit on `x not in ALLOWED` / `x != c`),
+        validator calls, whole-value character-class checks (`x.isalnum()`, `x.isdigit()`, `re.fullmatch(p, x)`).
+        A deny-list exit validates only for the sink it actually protects: rejecting `..` guards a file path
+        (CWE-22), nothing else. Prefix/suffix checks (`startswith`, `endswith`) and truthiness / None / length
+        checks validate nothing."""
         if not positive:
             if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
-                return self._validated(mod, test.operand, True)
+                return self._validated(mod, test.operand, True, cwe)
             if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or):
                 # all parts are False on this path: every rejection held
-                return set().union(*[self._validated(mod, v, False) for v in test.values])
+                return set().union(*[self._validated(mod, v, False, cwe) for v in test.values])
             if isinstance(test, ast.Compare) and len(test.ops) == 1:
                 op = test.ops[0]
-                if isinstance(op, ast.In) and isinstance(test.left, ast.Constant) and isinstance(test.left.value, str):
-                    return _names(test.comparators[0])          # rejected: a forbidden substring is present
+                path_sink = cwe in _PATH_CWES
+                if isinstance(op, ast.In) and isinstance(test.left, ast.Constant) and isinstance(test.left.value, str) \
+                        and path_sink and ".." in test.left.value:
+                    return _names(test.comparators[0])          # `if '..' in p: reject` guards a path
                 if isinstance(op, ast.NotIn):
                     return _names(test.left) if isinstance(test.left, ast.Name) else set()   # x not in ALLOWED -> exit
                 if isinstance(op, ast.NotEq) and isinstance(test.left, ast.Name) and isinstance(test.comparators[0], ast.Constant):
                     return {test.left.id}
-                if isinstance(op, (ast.Gt, ast.GtE, ast.NotEq)) and isinstance(test.left, ast.Call) \
-                        and isinstance(test.left.func, ast.Attribute) and test.left.func.attr in ("find", "index", "count", "indexOf"):
-                    return _names(test.left.func.value)          # x.find('..') != -1 -> exit
-            if isinstance(test, ast.Call):
+                if path_sink and isinstance(op, (ast.Gt, ast.GtE, ast.NotEq)) and isinstance(test.left, ast.Call) \
+                        and isinstance(test.left.func, ast.Attribute) and test.left.func.attr in ("find", "index", "count", "indexOf") \
+                        and test.left.args and isinstance(test.left.args[0], ast.Constant) and ".." in str(test.left.args[0].value):
+                    return _names(test.left.func.value)          # p.find('..') != -1 -> exit
+            if isinstance(test, ast.Call) and cwe in _PATH_CWES:
                 fname = self._canon(mod, test.func).split(".")[-1]
-                if fname in ("search", "match", "findall", "contains", "matches", "test") and test.args:
-                    return set().union(*[_names(a) for a in test.args[1:]]) | \
-                        (_names(test.func.value) if isinstance(test.func, ast.Attribute) and fname in ("contains", "matches") else set())
+                if fname in ("contains", "includes") and test.args and isinstance(test.args[0], ast.Constant) \
+                        and ".." in str(test.args[0].value) and isinstance(test.func, ast.Attribute):
+                    return _names(test.func.value)               # p.contains("..") -> exit (Java/JS)
             return set()
         if isinstance(test, ast.BoolOp):
-            parts = [self._validated(mod, v, True) for v in test.values]
+            parts = [self._validated(mod, v, True, cwe) for v in test.values]
             if isinstance(test.op, ast.And):
                 return set().union(*parts)
             return set.intersection(*parts) if parts else set()
@@ -1238,19 +1341,34 @@ class Project:
             if isinstance(test.left, ast.Name) and any(isinstance(op, (ast.In, ast.Eq)) for op in test.ops):
                 out.add(test.left.id)
             return out
+        if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and test.func.attr in _CONFINEMENT \
+                and cwe in _PATH_CWES:
+            return _names(test.func.value)  # p.resolve().is_relative_to(base): the path is confined to base
         if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and test.func.attr in _SHAPE_CHECKS:
-            # x.isalnum() / x.startswith(p) validate x; re.fullmatch(p, x) / pat.fullmatch(x) validate x
-            return _names(test.func.value) | set().union(*[_names(a) for a in test.args])
+            if test.func.attr in ("fullmatch", "matches"):
+                # re.fullmatch(p, x) / pat.fullmatch(x) / x.matches(regex): the checked value, not the pattern
+                module_call = isinstance(test.func.value, ast.Name) and test.func.value.id == "re"
+                pat = test.args[0] if (module_call or test.func.attr == "matches") and test.args else None
+                if isinstance(pat, ast.Constant) and isinstance(pat.value, str) and _PERMISSIVE_RE.search(pat.value):
+                    return set()             # `.+@.+` / `.*` accept almost anything: not validation
+                vals = test.args[1:] if module_call else ([test.func.value] if test.func.attr == "matches" else test.args[:1])
+                return set().union(*[_names(a) for a in vals]) if vals else set()
+            return _names(test.func.value)                      # x.isalnum() / x.isdigit() …
         if isinstance(test, ast.Call):
             fname = self._canon(mod, test.func).split(".")[-1]
-            names = {n.id for a in list(test.args) + [k.value for k in test.keywords] for n in ast.walk(a) if isinstance(n, ast.Name)}
+            if fname.lower().rstrip("?") in _NOT_VALIDATION:
+                return set()                 # prefix / suffix / existence / emptiness checks confine nothing
+            arg_names = {n.id for a in list(test.args) + [k.value for k in test.keywords] for n in ast.walk(a) if isinstance(n, ast.Name)}
+            if fname.lower() in _MEMBERSHIP:
+                return arg_names             # ALLOWED.contains(x) / in_array(x, $allowed): the looked-up value
+            names = set(arg_names)
             if isinstance(test.func, ast.Attribute) and isinstance(test.func.value, ast.Name):
                 names.add(test.func.value.id)
             if fname in self.m["validators"] or any(v in fname for v in ("valid", "safe", "allowed", "check", "verify")):
                 return names
         return set()
 
-    def _guarded(self, mod, fn, call, names: set) -> bool:
+    def _guarded(self, mod, fn, call, names: set, si=None) -> bool:
         """True when every tainted name feeding the sink was validated on the path to it."""
         if not names:
             return False
@@ -1261,14 +1379,14 @@ class Project:
             parent = parents[node]
             if isinstance(parent, ast.If):
                 in_body = any(node is x for x in parent.body)
-                validated |= self._validated(mod, parent.test, positive=in_body)
+                validated |= self._validated(mod, parent.test, positive=in_body, cwe=si[5] if si else None)
             for field in ("body", "orelse", "finalbody"):
                 block = getattr(parent, field, None)
                 if isinstance(block, list) and any(node is x for x in block):
                     idx = next(i for i, x in enumerate(block) if x is node)
                     for prev in block[:idx]:
                         if isinstance(prev, ast.If) and _exits(prev.body) and not prev.orelse:
-                            validated |= self._validated(mod, prev.test, positive=False)
+                            validated |= self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
             node = parent
         return names <= validated
 
@@ -1383,7 +1501,7 @@ class Project:
         if si and not self._suppressed(path, call.lineno):
             for arg in self._sink_args(si, call):
                 origins = [o for o in self._taints(mod, cls, arg, env) if _unsafe_for(o, si)]
-                if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
+                if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
                     for o in origins:
                         record(o, (si, path, call.lineno))
         cb_param = self._callback_param(fn, call)
@@ -1501,7 +1619,7 @@ class Project:
                     for arg in self._sink_args(si, call):
                         o = self._sink_taint(mod, cls, arg, env, si)
                         if o and o[0] in {"source", "retsource"} \
-                                and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
+                                and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
                             self._emit(si, path, call.lineno, o, None, None)
                             break
                 if self._callback_param(fn, call) is not None:
@@ -1524,7 +1642,7 @@ class Project:
                         live = [e for e in entries if any(_unsafe_for(x, e[0]) for x in self._taints(mod, cls, arg, env))]
                         o = self._sink_taint(mod, cls, arg, env, live[0][0]) if live else None
                         if o and o[0] in {"source", "retsource"} \
-                                and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env)):
+                                and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), live[0][0]):
                             self._emit(live[0][0], path, call.lineno, o, name, live[0])
                             done = True
                             break
@@ -1542,7 +1660,7 @@ class Project:
                     si, value = hit
                     env = self._flow_at(mod, cls, fn, fenv, node)
                     o = self._sink_taint(mod, cls, value, env, si) if env is not None else None
-                    if o and o[0] in {"source", "retsource"} and not self._guarded(mod, fn, node, self._tainted_names_in(value, env)):
+                    if o and o[0] in {"source", "retsource"} and not self._guarded(mod, fn, node, self._tainted_names_in(value, env), si):
                         self._emit(si, path, node.lineno, o, None, None)
             # reflected output from an entry point: `return tainted`
             if is_entry:
@@ -1554,7 +1672,7 @@ class Project:
                         env = self._flow_at(mod, cls, fn, fenv, node)
                         o = self._sink_taint(mod, cls, v, env, REFLECTED_RETURN) if env is not None else None
                         if o and o[0] in {"source", "retsource"} \
-                                and not self._guarded(mod, fn, node, self._tainted_names_in(v, env)):
+                                and not self._guarded(mod, fn, node, self._tainted_names_in(v, env), REFLECTED_RETURN):
                             self._emit(REFLECTED_RETURN, path, node.lineno, o, None, None)
         seen, uniq = set(), []
         for f in self.findings:

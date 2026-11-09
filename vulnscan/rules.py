@@ -185,7 +185,7 @@ RULES: list[Rule] = [
            r"getInstance\s*\(\s*[\"'](DES|DESede|TripleDES|RC2|RC4|ARCFOUR|Blowfish)\b"),
          "استخدم AES-GCM أو ChaCha20-Poly1305.", "CWE-327", CODE,
          # an algorithm read from configuration is resolved against the project's real value by CRY101
-         skip=_r(r"getProperty\s*\(|\.get\s*\(\s*[\"'][\w.]*(alg|cipher|transform)", re.I)),
+         skip=_r(r"\.getProperty\s*\(\s*\"[\w.]*\"\s*,\s*\"[^\"]*\"\s*\)")),
     Rule("CRY005", "medium", "Non-cryptographic random for security value", "عشوائية غير آمنة لقيمة حساسة",
          _r(r"(?i)\b(random\.(random|randint|choice|choices|randrange)|Math\.random|rand\(\)|new\s+Random\(\)|Random\(\)\.next)\b.*\b(token|secret|password|salt|nonce|otp|session|key|iv)\b|\b(token|secret|password|salt|nonce|otp|key)\b.*\b(random\.(random|randint|choice|choices|randrange)|Math\.random|rand\(\))"),
          "استخدم مولّدًا مشفّرًا: secrets (Python)، crypto.randomBytes (Node)، Random.secure() (Dart)، SecureRandom (Java).",

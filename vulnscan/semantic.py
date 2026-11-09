@@ -188,7 +188,7 @@ def check_java(rel: str, text: str, config: dict, ignore: set) -> list[Finding]:
     them from the project's own .properties / .yml values first, then the default, then literals in the method."""
     out: list[Finding] = []
     lines = text.splitlines()
-    for start, end in _java_methods(text):
+    for hstart, start, end in _java_methods(text, with_header=True):
         body = text[start:end]
         base = text.count("\n", 0, start)
         values: dict = {}
@@ -211,7 +211,7 @@ def check_java(rel: str, text: str, config: dict, ignore: set) -> list[Finding]:
                 out.append(Finding("CRY101", "medium", f"Weak cipher or mode {alg}{via}", "خوارزمية أو نمط تشفير ضعيف",
                                    rel, ln, src, "استخدم AES-GCM (أو ChaCha20-Poly1305) بمفتاح 128/256 بت ومتجه تهيئة عشوائي.",
                                    "CWE-327"))
-        if "RND001" not in ignore and _J_SECURITY_CTX.search(body):
+        if "RND001" not in ignore and _java_security_context(text[hstart:end]):
             for m in _J_WEAK_RANDOM.finditer(body):
                 ln = base + body.count("\n", 0, m.start()) + 1
                 out.append(Finding("RND001", "medium", "Predictable random value used in a security context",
@@ -233,8 +233,27 @@ _J_METHOD = re.compile(r"(?m)^[ \t]*(?:@\w+(?:\([^)]*\))?\s*)*(?:(?:public|priva
                        r"(?:throws [\w., ]+)?(?::\s*[\w<>?, .]+)?\s*\{")
 
 
-def _java_methods(text: str):
-    """(start, end) offsets of method bodies, by brace matching (strings and comments skipped)."""
+_J_SEC_WORDS = {"token", "secret", "password", "passwd", "pwd", "nonce", "salt", "otp", "csrf", "xsrf", "session", "cookie",
+                "remember", "apikey", "key", "auth", "credential", "reset", "verification", "captcha", "pin", "iv"}
+_J_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _java_security_context(method_text: str) -> bool:
+    """Does the method (signature + body) deal with a security value? Identifiers are split into words, so
+    StringTokenizer / nextToken / hasMoreTokens do not count as a token, while newSessionId() does."""
+    for ident in _J_IDENT.findall(method_text):
+        if ident in ("StringTokenizer", "nextToken", "hasMoreTokens", "countTokens", "keySet", "keys", "getKey",
+                     "KeyEvent", "keyCode", "primaryKey", "hashKey", "sortKey", "cacheKey"):
+            continue
+        words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", ident)).lower().split("_")
+        if _J_SEC_WORDS & set(words):
+            return True
+    return False
+
+
+def _java_methods(text: str, with_header: bool = False):
+    """(start, end) offsets of method bodies, by brace matching (strings and comments skipped); with_header adds
+    the offset where the method's signature starts."""
     spans = []
     for m in _J_METHOD.finditer(text):
         i, depth, n = m.end(), 1, len(text)
@@ -256,5 +275,7 @@ def _java_methods(text: str):
             elif c == "}":
                 depth -= 1
             i += 1
-        spans.append((m.end(), i))
-    return spans or [(0, len(text))]
+        spans.append((m.start(), m.end(), i) if with_header else (m.end(), i))
+    if not spans:
+        return [(0, 0, len(text))] if with_header else [(0, len(text))]
+    return spans

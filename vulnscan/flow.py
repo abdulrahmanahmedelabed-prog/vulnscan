@@ -74,6 +74,12 @@ def _fold(node, consts):
             return _MISSING
         if isinstance(node.op, (ast.Mult, ast.LShift)) and _too_big(a, b):
             return _MISSING
+        if getattr(node, "c_int_semantics", False) and isinstance(node.op, (ast.Div, ast.Mod)):
+            if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() for v in (a, b)) or b == 0:
+                return _MISSING                   # a real floating-point operand: types unknown here, do not fold
+            ia, ib = int(a), int(b)
+            q = abs(ia) // abs(ib) * (1 if (ia >= 0) == (ib >= 0) else -1)     # truncates toward zero
+            return float(q) if isinstance(node.op, ast.Div) else float(ia - q * ib)
         r = _BINOPS[type(node.op)](a, b)
         return r if isinstance(r, _CONST_TYPES) and not (isinstance(r, (str, bytes)) and len(r) > 10_000) else _MISSING
     if isinstance(node, ast.Compare):
@@ -176,7 +182,9 @@ def join(a: State | None, b: State | None) -> State | None:
     if b is None:
         return a.copy()
     tainted = dict(b.tainted)
-    tainted.update(a.tainted)
+    for k, oa in a.tainted.items():
+        ob = b.tainted.get(k)
+        tainted[k] = _merge_origin(oa, ob) if ob else oa
     consts = {k: v for k, v in a.consts.items() if k in b.consts and b.consts[k] == v and type(b.consts[k]) is type(v)}
     dk = {}
     for name in set(a.dk) & set(b.dk):
@@ -195,6 +203,15 @@ def join(a: State | None, b: State | None) -> State | None:
     return State(tainted, consts, dk, lk)
 
 
+def _merge_origin(a, b):
+    """Two origins reaching one name: keep a's trail but only what BOTH were escaped for."""
+    sa = a[3] if len(a) > 3 else frozenset()
+    sb = b[3] if len(b) > 3 else frozenset()
+    if sa == sb:
+        return a
+    return (a[0], a[1], a[2] if len(a) > 2 else (), sa & sb)
+
+
 class _Exit(Exception):
     pass
 
@@ -208,11 +225,21 @@ class FlowInterpreter:
         self.dead: set = set()        # id(stmt) of statements proven unreachable
         self.loop_exits: list = []    # states flowing out of `break` in the innermost loop
         self.loop_conts: list = []
+        self.weak = 0                 # inside a try body with handlers/finally: assignments never drop taint
+        # per-function facts and per-statement node lists are cached on the project (they live as long as the trees)
+        self.cache = proj.__dict__.setdefault("_flow_struct", {})
+        key = ("fn", id(fn))
+        hit = self.cache.get(key)
+        if hit is None or hit[0] is not fn:
+            body = fn.body if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)) else []
+            hit = (fn, _alias_groups(body), _rebound_elsewhere(fn), _assigned(body))
+            self.cache[key] = hit
+        _, self.alias, self.volatile, self.assigned_in_body = hit
 
     # ---------------------------------------------------------------- driver
     def run(self) -> "FlowInterpreter":
         body = self.fn.body if isinstance(self.fn, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)) else []
-        assigned = _assigned(body)
+        assigned = self.assigned_in_body
         # names the function receives from outside (parameters, closure/global taint known to the main engine)
         init = State({n: o for n, o in self.base.tainted.items() if n not in assigned or _is_param(self.fn, n)})
         self.block(body, init)
@@ -232,9 +259,25 @@ class FlowInterpreter:
 
     # ---------------------------------------------------------------- recording
     def record(self, stmt, st: State):
-        for n in _nodes_of(stmt):
+        """Remember the state before the nodes the engine asks about (calls, returns, assignments). One snapshot
+        is shared by all of them: states are never mutated after being recorded (every update copies)."""
+        key = ("rec", id(stmt))
+        hit = self.cache.get(key)
+        if hit is None or hit[0] is not stmt:
+            hit = (stmt, [n for n in _nodes_of(stmt) if isinstance(n, _QUERIED)])
+            self.cache[key] = hit
+        targets = hit[1]
+        if not targets:
+            return
+        shared = None
+        for n in targets:
             prev = self.snap.get(id(n))
-            self.snap[id(n)] = st.copy() if prev is None else join(prev, st)
+            if prev is None:
+                if shared is None:
+                    shared = st.copy()
+                self.snap[id(n)] = shared
+            elif prev is not st:
+                self.snap[id(n)] = join(prev, st)
 
     def mark_dead(self, stmts):
         for s in stmts:
@@ -297,15 +340,16 @@ class FlowInterpreter:
             return join(out, st)               # no case may match
         self.record(s, st)
         if isinstance(s, ast.Assign):
+            pre = st
             for tgt in s.targets:
                 st = self.assign(tgt, s.value, st)
-            return st
+            return self.side_effects(s.value, st) if st is not pre else st
         if isinstance(s, ast.AnnAssign):
-            return self.assign(s.target, s.value, st) if s.value is not None else st
+            return self.side_effects(s.value, self.assign(s.target, s.value, st)) if s.value is not None else st
         if isinstance(s, ast.AugAssign):
-            return self.aug(s, st)
-        if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call):
-            return self.container_write(s.value, st)
+            return self.side_effects(s.value, self.aug(s, st))
+        if isinstance(s, ast.Expr):
+            return self.side_effects(s.value, st)
         if isinstance(s, ast.Delete):
             for t in s.targets:
                 if isinstance(t, ast.Name):
@@ -354,10 +398,15 @@ class FlowInterpreter:
         self.loop_exits, self.loop_conts = [], []
         head = st.copy()
         out = st.copy()                               # zero iterations
-        for _ in range(MAX_LOOP_ITER):
+        converged = False
+        for it in range(MAX_LOOP_ITER + 1):
+            if it == MAX_LOOP_ITER:
+                # not converged: widen every name the loop assigns to what the flow-insensitive engine knows,
+                # forget their constants and layouts, and run the body once more so its sinks see that state
+                head = self.widen(head, self._assigned_cached(s) | (_assigned([s.target]) if not is_while else set()))
             body_in = head.copy()
             if not is_while:
-                body_in = self.assign(s.target, s.iter, body_in)
+                body_in = self.loop_target(s.target, s.iter, body_in)
             body_out = self.block(s.body, body_in)
             for c in self.loop_conts:
                 body_out = join(body_out, c)
@@ -365,20 +414,28 @@ class FlowInterpreter:
             new_head = join(head, body_out)
             out = join(out, body_out)
             if new_head is None or new_head.same(head):
+                converged = True
                 break
             head = new_head
             self.record_header(s, head)
+        if not converged:
+            out = self.widen(out, self._assigned_cached(s)) if out is not None else None
         breaks = self.loop_exits
         self.loop_exits, self.loop_conts = saved
-        if is_while and fold(s.test, st.consts) is not _MISSING and fold(s.test, st.consts):
-            out = None                                 # `while True:` only leaves through break
+        if is_while and isinstance(s.test, ast.Constant) and s.test.value:
+            out = None                                 # literal `while True:` only leaves through break
         out = self.block(s.orelse, out) if out is not None else None
         for b in breaks:
             out = join(out, b)
         return out
 
     def try_(self, s, st: State) -> State | None:
-        after_body = self.block(s.body, st.copy())
+        guarded = bool(s.handlers or s.finalbody)
+        self.weak += guarded                      # an exception can leave the body after ANY statement
+        try:
+            after_body = self.block(s.body, st.copy())
+        finally:
+            self.weak -= guarded
         after_else = self.block(s.orelse, after_body) if after_body is not None else None
         # a handler can start from any point of the body: approximate with the join of entry and exit states
         h_in = join(st, after_body)
@@ -394,6 +451,46 @@ class FlowInterpreter:
             return fin_out if out is not None else None
         return out
 
+    def _assigned_cached(self, loop) -> set:
+        key = ("asg", id(loop))
+        hit = self.cache.get(key)
+        if hit is None or hit[0] is not loop:
+            hit = (loop, _assigned(loop.body))
+            self.cache[key] = hit
+        return hit[1]
+
+    def loop_target(self, tgt, it, st: State) -> State:
+        """Bind a for-loop target: it carries the iterable's taint but is never one constant (`for c in "rw"`)."""
+        o = self.taint(it, st)
+        st = st.copy()
+        for n in ast.walk(tgt):
+            if isinstance(n, ast.Name):
+                _set(st, n.id, self.stepped(o, n.id, it) if o else None, _MISSING)
+        return st
+
+    def widen(self, st: State, names) -> State:
+        st = st.copy()
+        for n in names:
+            o = self.base.tainted.get(n)
+            if o and n not in st.tainted:
+                st.tainted[n] = o
+            st.consts.pop(n, None)
+            st.dk.pop(n, None)
+            st.lk.pop(n, None)
+        return st
+
+    def may_alias(self, name) -> set:
+        return self.alias.get(name, {name})
+
+    def taint_group(self, st: State, name, o) -> None:
+        """A write through `name` is visible through every name that may share its container."""
+        for n in self.may_alias(name):
+            if o and n not in st.tainted:
+                st.tainted[n] = o
+            if n != name:
+                st.dk.pop(n, None)
+                st.lk.pop(n, None)
+
     # ---------------------------------------------------------------- assignments
     def stepped(self, o, name, value):
         """Record the assignment in the origin's trail, so a finding shows the path source -> … -> sink."""
@@ -408,87 +505,130 @@ class FlowInterpreter:
 
     def assign(self, tgt, value, st: State) -> State:
         if isinstance(tgt, ast.Name):
-            o = self.stepped(self.taint(value, st), tgt.id, value)
+            name = tgt.id
+            o = self.stepped(self.taint(value, st), name, value)
             st = st.copy()
             if o:
-                st.tainted[tgt.id] = o
+                st.tainted[name] = o
+            elif not self.weak:
+                st.tainted.pop(name, None)            # (inside a guarded try body the old taint may survive)
+            trackable = name not in self.volatile and len(self.may_alias(name)) == 1
+            c = fold(value, st.consts) if name not in self.volatile else _MISSING
+            if c is not _MISSING and isinstance(c, _CONST_TYPES) and not (self.weak and name in st.tainted):
+                st.consts[name] = c
             else:
-                st.tainted.pop(tgt.id, None)
-            c = fold(value, st.consts)
-            if c is not _MISSING and isinstance(c, _CONST_TYPES):
-                st.consts[tgt.id] = c
-            else:
-                st.consts.pop(tgt.id, None)
-            if isinstance(value, ast.Dict) and all(isinstance(k, ast.Constant) for k in value.keys):
-                st.dk[tgt.id] = ({k.value: self.taint(v, st) for k, v in zip(value.keys, value.values)}, None)
-            elif isinstance(value, ast.Name) and value.id in st.dk:
-                m, other = st.dk[value.id]
-                st.dk[tgt.id] = (dict(m), other)
-            elif isinstance(value, ast.Call) and _is_empty_dict_call(value):
-                st.dk[tgt.id] = ({}, None)
-            else:
-                st.dk.pop(tgt.id, None)
-            if isinstance(value, ast.List) and not any(isinstance(e, ast.Starred) for e in value.elts):
-                st.lk[tgt.id] = [self.taint(e, st) for e in value.elts]
-            elif isinstance(value, ast.Call) and isinstance(value.func, (ast.Name, ast.Attribute)) and not value.args \
-                    and (value.func.id if isinstance(value.func, ast.Name) else value.func.attr) in _NEW_LIST:
-                st.lk[tgt.id] = []
-            else:
-                st.lk.pop(tgt.id, None)
+                st.consts.pop(name, None)
+            st.dk.pop(name, None)
+            st.lk.pop(name, None)
+            if trackable:
+                if isinstance(value, ast.Dict) and all(isinstance(k, ast.Constant) for k in value.keys):
+                    st.dk[name] = ({k.value: self.taint(v, st) for k, v in zip(value.keys, value.values)}, None)
+                elif isinstance(value, ast.Call) and _is_empty_dict_call(value):
+                    st.dk[name] = ({}, None)
+                elif isinstance(value, ast.List) and not any(isinstance(e, ast.Starred) for e in value.elts):
+                    st.lk[name] = [self.taint(e, st) for e in value.elts]
+                elif isinstance(value, ast.Call) and isinstance(value.func, (ast.Name, ast.Attribute)) and not value.args \
+                        and (value.func.id if isinstance(value.func, ast.Name) else value.func.attr) in _NEW_LIST:
+                    st.lk[name] = []
             return st
         if isinstance(tgt, ast.Subscript) and isinstance(tgt.value, ast.Name):
             name = tgt.value.id
             o = self.taint(value, st)
             st = st.copy()
             key = fold(tgt.slice, st.consts)
-            if name in st.dk:
+            if isinstance(key, float) and key.is_integer():
+                key = int(key)
+            if name in st.lk:
+                elems = st.lk[name]
+                if isinstance(key, int) and not isinstance(key, bool) and -len(elems) <= key < len(elems):
+                    elems[key] = o                   # strong update of one known slot
+                else:
+                    st.lk.pop(name)                  # slice / unknown index: the layout is unknown now
+                    self.taint_group(st, name, o)
+            elif name in st.dk:
                 m, other = st.dk[name]
                 if key is not _MISSING and _hashable(key):
                     m[key] = o                       # strong update of one known key
                 elif o:
                     st.dk[name] = (m, o)             # unknown key: may be any key
                     m, other = st.dk[name]
-                if any(m.values()) or other:
-                    st.tainted[name] = next((v for v in list(m.values()) + [other] if v), None)
-                else:
-                    st.tainted.pop(name, None)
-            elif o and name not in st.tainted:
-                st.tainted[name] = o                 # weak update of an untracked container
+            else:
+                self.taint_group(st, name, o)        # weak update of an untracked container
+            self._retaint(st, name)
             st.consts.pop(name, None)
             return st
         if isinstance(tgt, (ast.Tuple, ast.List)):
             if isinstance(value, (ast.Tuple, ast.List)) and len(value.elts) == len(tgt.elts) \
                     and not any(isinstance(e, ast.Starred) for e in tgt.elts + value.elts):
-                pairs = list(zip(tgt.elts, value.elts))
-                vals = [(t, self.taint(v, st), fold(v, st.consts)) for t, v in pairs]
-                st = st.copy()
-                for t, o, c in vals:
-                    if isinstance(t, ast.Name):
-                        _set(st, t.id, o, c)
-                    else:
-                        st = self.assign(t, ast.Constant(value=None) if not o else value, st)
+                for t, v in zip(tgt.elts, value.elts):
+                    st = self.assign(t, v, st)
                 return st
             o = self.taint(value, st)
             st = st.copy()
             for n in ast.walk(tgt):
                 if isinstance(n, ast.Name):
-                    _set(st, n.id, o, _MISSING)
+                    _set(st, n.id, o, _MISSING, keep_taint=bool(self.weak))
             return st
         if isinstance(tgt, ast.Starred):
             return self.assign(tgt.value, value, st)
         return st                                     # attribute targets: handled by the main engine
 
+    def _retaint(self, st: State, name) -> None:
+        """Name-level taint of a container with a known layout = any tainted slot (never dropped in a try body)."""
+        live = None
+        if name in st.lk:
+            live = next((o for o in st.lk[name] if o), None)
+        elif name in st.dk:
+            m, other = st.dk[name]
+            live = next((v for v in list(m.values()) + [other] if v), None)
+        else:
+            return
+        if live:
+            st.tainted[name] = live
+        elif not self.weak:
+            st.tainted.pop(name, None)
+
     def aug(self, s: ast.AugAssign, st: State) -> State:
         if isinstance(s.target, ast.Name):
             name = s.target.id
             o = st.tainted.get(name) or self.taint(s.value, st)
-            c = fold(ast.BinOp(left=ast.Name(id=name, ctx=ast.Load()), op=s.op, right=s.value), st.consts)
+            c = fold(ast.BinOp(left=ast.Name(id=name, ctx=ast.Load()), op=s.op, right=s.value), st.consts) \
+                if name not in self.volatile else _MISSING
             st = st.copy()
             _set(st, name, o, c)
-            st.dk.pop(name, None)
+            if o:
+                self.taint_group(st, name, o)
             return st
         if isinstance(s.target, ast.Subscript):
             return self.assign(s.target, ast.BinOp(left=s.target, op=s.op, right=s.value), st)
+        return st
+
+    def side_effects(self, expr, st: State) -> State:
+        """Mutating calls nested in an expression (`v = lst.pop(0)`, `n = d.update(x) or 1`), and containers
+        handed to another function, which may store any of the other arguments in them (`fill(buf, x)`)."""
+        key = ("calls", id(expr))
+        hit = self.cache.get(key)
+        if hit is None or hit[0] is not expr:
+            hit = (expr, [n for n in ast.walk(expr) if isinstance(n, ast.Call)] if expr is not None else [])
+            self.cache[key] = hit
+        for n in hit[1]:
+            if isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) and n.func.attr not in _READ_ONLY:
+                st = self.container_write(n, st)
+            fname = n.func.id if isinstance(n.func, ast.Name) else n.func.attr if isinstance(n.func, ast.Attribute) else ""
+            if fname in _PURE_CALLS:
+                continue
+            args = list(n.args) + [k.value for k in n.keywords]
+            passed = [a.id for a in args if isinstance(a, ast.Name) and (a.id in st.lk or a.id in st.dk or a.id not in st.consts)]
+            if not passed:
+                continue
+            o = next((self.taint(a, st) for a in args if self.taint(a, st)), None)
+            st = st.copy()
+            for name in passed:
+                if name in st.lk or name in st.dk:
+                    st.lk.pop(name, None)
+                    st.dk.pop(name, None)
+                    if o:
+                        self.taint_group(st, name, o)
         return st
 
     def container_write(self, call: ast.Call, st: State) -> State:
@@ -496,82 +636,94 @@ class FlowInterpreter:
         if not (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)):
             return st
         name = f.value.id
-        args = list(call.args) + [k.value for k in call.keywords]
+        args = list(call.args)
+        kwargs = [k for k in call.keywords]
+        if f.attr in _READ_ONLY:
+            return st
+        st = st.copy()
         if name in st.lk:
-            st = st.copy()
             elems = st.lk[name]
-            if f.attr in ("append", "add", "push", "addLast", "offer", "offerLast") and len(args) == 1:
+            idx_of = (lambda a: (lambda v: int(v) if isinstance(v, float) and v.is_integer() else v)(fold(a, st.consts)))
+            if f.attr in ("append", "add", "push", "addLast", "offer", "offerLast") and len(args) == 1 and not kwargs:
                 elems.append(self.taint(args[0], st))
-            elif f.attr in ("insert", "add") and len(args) == 2 and isinstance(fold(args[0], st.consts), (int, float)):
-                elems.insert(int(fold(args[0], st.consts)), self.taint(args[1], st))
-            elif f.attr in ("addFirst", "appendleft", "unshift", "offerFirst") and len(args) == 1:
+            elif f.attr in ("insert", "add") and len(args) == 2 and isinstance(idx_of(args[0]), int) \
+                    and 0 <= idx_of(args[0]) <= len(elems):
+                elems.insert(idx_of(args[0]), self.taint(args[1], st))
+            elif f.attr in ("addFirst", "appendleft", "unshift", "offerFirst", "push_front") and len(args) == 1:
                 elems.insert(0, self.taint(args[0], st))
             elif f.attr in ("pop", "remove", "removeFirst", "removeLast", "shift", "poll", "pollFirst", "pollLast", "popleft") \
-                    and len(args) <= 1:
-                idx = fold(args[0], st.consts) if args else (0 if f.attr in ("removeFirst", "shift", "poll", "pollFirst", "popleft")
-                                                              else -1 if f.attr in ("pop", "removeLast", "pollLast") else _MISSING)
-                if isinstance(idx, float) and idx.is_integer():
-                    idx = int(idx)                     # C-family frontends give numeric literals as floats
+                    and len(args) <= 1 and not kwargs:
+                idx = idx_of(args[0]) if args else (0 if f.attr in ("removeFirst", "shift", "poll", "pollFirst", "popleft")
+                                                    else -1 if f.attr in ("pop", "removeLast", "pollLast") else _MISSING)
                 if isinstance(idx, int) and not isinstance(idx, bool) and elems and -len(elems) <= idx < len(elems) \
                         and not (f.attr == "remove" and not isinstance(args[0], ast.Constant)):
                     elems.pop(idx)
                 else:
                     st.lk.pop(name)                    # remove(value) / unknown index: forget the layout
-            elif f.attr in ("clear",):
+            elif f.attr == "clear" and not args:
                 st.lk[name] = []
-            elif f.attr in ("extend", "addAll", "sort", "reverse", "set", "__setitem__"):
-                st.lk.pop(name)
-            if name in st.lk:
-                live = next((o for o in st.lk[name] if o), None)
-                if live:
-                    st.tainted[name] = live
-                else:
-                    st.tainted.pop(name, None)
+            else:
+                st.lk.pop(name)                        # extend / set / sort / unknown mutation: layout unknown
+                o = next((self.taint(a, st) for a in args + [k.value for k in kwargs] if self.taint(a, st)), None)
+                self.taint_group(st, name, o)
+            self._retaint(st, name)
             return st
-        if f.attr in ("put", "setProperty", "set", "__setitem__", "Add", "putIfAbsent") and name in st.dk and len(args) == 2:
-            key = fold(args[0], st.consts)
-            if key is not _MISSING and _hashable(key):
-                st = st.copy()
-                m, other = st.dk[name]
-                if f.attr == "putIfAbsent" and m.get(key):
-                    return st
-                m[key] = self.taint(args[1], st)       # strong update of one known key
-                live = next((v for v in list(m.values()) + [other] if v), None)
-                if live:
-                    st.tainted[name] = live
-                else:
-                    st.tainted.pop(name, None)
-                return st
-        if f.attr in ("update",) and name in st.dk and args and isinstance(args[0], ast.Dict) \
-                and all(isinstance(k, ast.Constant) for k in args[0].keys):
-            st = st.copy()
+        if name in st.dk:
             m, other = st.dk[name]
-            for k, v in zip(args[0].keys, args[0].values):
-                m[k.value] = self.taint(v, st)
-            if any(m.values()) or other:
-                st.tainted[name] = next(v for v in list(m.values()) + [other] if v)
-            return st
-        if f.attr in ("append", "extend", "insert", "add", "update", "appendleft", "setdefault", "put", "push", "set",
-                      "setProperty", "__setitem__",
-                      "write", "add_all", "addAll"):
-            o = None
-            for a in args:
-                o = o or self.taint(a, st)
-            if o:
-                st = st.copy()
-                st.tainted.setdefault(name, o)
-                st.consts.pop(name, None)
-                if name in st.dk:
-                    m, other = st.dk[name]
-                    st.dk[name] = (m, other or o)
-            return st
-        if f.attr == "clear":
-            st = st.copy()
-            st.tainted.pop(name, None)
-            if name in st.dk:
+            if f.attr in ("put", "setProperty", "set", "__setitem__", "Add", "putIfAbsent", "setdefault") and len(args) == 2:
+                key = fold(args[0], st.consts)
+                if key is not _MISSING and _hashable(key):
+                    if not (f.attr in ("putIfAbsent", "setdefault") and m.get(key)):
+                        m[key] = self.taint(args[1], st)   # strong update of one known key
+                    self._retaint(st, name)
+                    return st
+            if f.attr == "update" and not args and kwargs and all(k.arg for k in kwargs):
+                for k in kwargs:                       # d.update(a=x): constant keys
+                    m[k.arg] = self.taint(k.value, st)
+                self._retaint(st, name)
+                return st
+            if f.attr == "update" and len(args) == 1 and not kwargs and isinstance(args[0], ast.Dict) \
+                    and all(isinstance(k, ast.Constant) for k in args[0].keys):
+                for k, v in zip(args[0].keys, args[0].values):
+                    m[k.value] = self.taint(v, st)
+                self._retaint(st, name)
+                return st
+            if f.attr in ("clear",) and not args:
                 st.dk[name] = ({}, None)
+                self._retaint(st, name)
+                return st
+            # any other write (update(other), putAll, merge, compute ...): every key may now hold that data
+            o = next((self.taint(a, st) for a in args + [k.value for k in kwargs] if self.taint(a, st)), None)
+            if o:
+                st.dk[name] = ({k: (v or o) for k, v in m.items()}, other or o)
+            if f.attr not in _KNOWN_DICT_WRITES:
+                st.dk.pop(name, None)
+            self.taint_group(st, name, o)
+            self._retaint(st, name)
             return st
+        if f.attr in _CONTAINER_ADDS:
+            o = next((self.taint(a, st) for a in args + [k.value for k in kwargs] if self.taint(a, st)), None)
+            if o:
+                self.taint_group(st, name, o)
+                st.consts.pop(name, None)
+        elif f.attr == "clear" and not args and len(self.may_alias(name)) == 1 and not self.weak:
+            st.tainted.pop(name, None)
         return st
+
+
+_READ_ONLY = {"get", "getOrDefault", "keys", "values", "items", "copy", "index", "count", "size", "isEmpty", "contains",
+              "containsKey", "containsValue", "peek", "peekFirst", "peekLast", "getFirst", "getLast", "toString",
+              "__len__", "__getitem__", "startswith", "endswith", "find", "first", "last", "length", "indexOf",
+              "has", "hasOwnProperty", "includes", "at", "slice", "toArray", "stream", "iterator", "equals", "hashCode",
+              "format", "join", "split", "strip", "lower", "upper", "encode", "decode", "getProperty", "getAttribute"}
+_PURE_CALLS = {"len", "str", "int", "float", "bool", "repr", "print", "isinstance", "type", "id", "hash", "sorted", "list",
+               "tuple", "set", "dict", "min", "max", "sum", "any", "all", "abs", "round", "format", "range", "enumerate",
+               "zip", "map", "filter", "iter", "next", "reversed", "getattr", "hasattr", "valueOf", "toString", "equals",
+               "println", "print_r", "var_dump", "echo", "size", "length", "count", "join", "contains", "startswith"}
+_KNOWN_DICT_WRITES = {"update", "putAll", "merge", "setdefault", "put", "set", "setProperty", "__setitem__", "Add"}
+_CONTAINER_ADDS = {"append", "extend", "insert", "add", "update", "appendleft", "setdefault", "put", "push", "set",
+                   "setProperty", "__setitem__", "addAll", "putAll", "write", "add_all", "offer", "addFirst", "addLast",
+                   "unshift", "merge", "Add", "AddRange"}
 
 
 _NEW_LIST = {"list", "ArrayList", "LinkedList", "deque", "ArrayDeque", "Vector", "Stack", "Array", "newArrayList"}
@@ -601,10 +753,10 @@ def _pat(p, subj, consts):
     return None
 
 
-def _set(st: State, name, origin, const):
+def _set(st: State, name, origin, const, keep_taint: bool = False):
     if origin:
         st.tainted[name] = origin
-    else:
+    elif not keep_taint:
         st.tainted.pop(name, None)
     if const is not _MISSING and isinstance(const, _CONST_TYPES):
         st.consts[name] = const
@@ -612,6 +764,50 @@ def _set(st: State, name, origin, const):
         st.consts.pop(name, None)
     st.dk.pop(name, None)
     st.lk.pop(name, None)
+
+
+def _alias_groups(stmts) -> dict:
+    """Names that may refer to the same object: `b = a`, `a, b = b, a`, `x = y = []` (flow-insensitive union)."""
+    parent: dict = {}
+
+    def find(x):
+        while parent.get(x, x) != x:
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+    for s in stmts:
+        for n in ast.walk(s):
+            if isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                tgts = n.targets if isinstance(n, ast.Assign) else [n.target]
+                names = [t.id for t in tgts if isinstance(t, ast.Name)]
+                if isinstance(n.value, ast.Name):
+                    names.append(n.value.id)
+                elif len(names) < 2:
+                    continue
+                for a in names[1:]:
+                    union(names[0], a)
+    groups: dict = {}
+    for x in list(parent):
+        groups.setdefault(find(x), set()).add(x)
+    out = {}
+    for g in groups.values():
+        g |= {find(next(iter(g)))}
+        for x in g:
+            out[x] = g
+    return out
+
+
+def _rebound_elsewhere(fn) -> set:
+    """Names that a nested function rebinds with nonlocal/global (or, for a module, any `global` declaration)."""
+    out = set()
+    for n in ast.walk(fn):
+        if isinstance(n, (ast.Nonlocal, ast.Global)) and n is not fn:
+            out.update(n.names)
+    return out
 
 
 def _hashable(v) -> bool:
@@ -651,6 +847,9 @@ def _assigned(stmts) -> set:
             elif isinstance(n, ast.ExceptHandler) and n.name:
                 out.add(n.name)
     return out
+
+
+_QUERIED = (ast.Call, ast.Return, ast.Assign, ast.AnnAssign)
 
 
 def _nodes_of(stmt):

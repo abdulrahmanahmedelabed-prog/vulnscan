@@ -574,9 +574,6 @@
   "safe_return_calls": [],
   "validators": [
     "matches",
-    "contains",
-    "startsWith",
-    "endsWith",
     "equals",
     "equalsIgnoreCase",
     "isDigit",

@@ -86,6 +86,24 @@
         "os.environ"
       ],
       "label": "{name}"
+    },
+    {
+      "kind": "call",
+      "names": [
+        "requests.get",
+        "requests.post",
+        "requests.put",
+        "requests.request",
+        "requests.Session.get",
+        "httpx.get",
+        "httpx.post",
+        "httpx.request",
+        "urllib.request.urlopen",
+        "urlopen",
+        "aiohttp.ClientSession.get"
+      ],
+      "label": "{name}() — HTTP response",
+      "_comment": "data received from another server is untrusted"
     }
   ],
   "entry_points": [
@@ -631,7 +649,6 @@
     "isdecimal",
     "isnumeric",
     "isidentifier",
-    "isascii",
     "isalpha",
     "fullmatch",
     "match",

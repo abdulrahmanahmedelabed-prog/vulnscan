@@ -1,0 +1,132 @@
+{
+ "flow_cases__comp.py": [
+  "EXE004"
+ ],
+ "flow_cases__dict_alias.py": [
+  "DF002"
+ ],
+ "flow_cases__dict_update_dict.py": [
+  "DF004"
+ ],
+ "flow_cases__dict_update_kw.py": [
+  "DF002"
+ ],
+ "flow_cases__for_str.py": [
+  "DF002",
+  "EXE004"
+ ],
+ "flow_cases__list_alias.py": [
+  "DF002"
+ ],
+ "flow_cases__list_extend.py": [
+  "DF002"
+ ],
+ "flow_cases__list_helper.py": [
+  "DF002"
+ ],
+ "flow_cases__list_insert_var.py": [
+  "DF002"
+ ],
+ "flow_cases__list_pop_assign.py": [
+  "DF002"
+ ],
+ "flow_cases__list_setitem.py": [
+  "DF002"
+ ],
+ "flow_cases__loop_chain.py": [
+  "DF002"
+ ],
+ "flow_cases__match_capture.py": [
+  "EXE004"
+ ],
+ "flow_cases__nonlocal_flag.py": [
+  "DF002",
+  "EXE004"
+ ],
+ "flow_cases__try_mid.py": [
+  "DF002"
+ ],
+ "flow_cases__walrus.py": [
+  "EXE004"
+ ],
+ "flow_cases__while_counter.py": [
+  "DF002",
+  "EXE004"
+ ],
+ "flow_cases__while_done.py": [
+  "DF002",
+  "EXE004"
+ ],
+ "flow_cases__while_flag.py": [
+  "DF002",
+  "EXE004"
+ ],
+ "gate_gj__a.py": [
+  "DES001",
+  "DF001",
+  "DF002",
+  "DF003",
+  "DF004",
+  "DF006",
+  "EXE001",
+  "INJ001"
+ ],
+ "sanit_java__Concat.java": [
+  "DF013"
+ ],
+ "sanit_java__PQ.java": [
+  "DF013"
+ ],
+ "sanit_java__PathServlet.java": [
+  "DF005"
+ ],
+ "sanit_java__Shape.java": [
+  "DF013"
+ ],
+ "sanit_java__SqlServlet.java": [
+  "DF004"
+ ],
+ "sanit_java__XssServlet.java": [
+  "DF013"
+ ],
+ "sanit_js__concat.js": [
+  "DF013"
+ ],
+ "sanit_py2__m.py": [
+  "DF002",
+  "DF013"
+ ],
+ "sanit_py2__n.py": [
+  "DF002",
+  "DF013"
+ ],
+ "sanit_py__a_denylist_xss_ret.py": [
+  "DF013"
+ ],
+ "sanit_py__b_denylist_sql_ret.py": [
+  "DF004"
+ ],
+ "sanit_py__c_startswith_path_ret.py": [
+  "DF005",
+  "DF013"
+ ],
+ "sanit_py__d_endswith_sql.py": [
+  "DF004"
+ ],
+ "sanit_py__e_find_cmd.py": [
+  "DF002"
+ ],
+ "sanit_py__f_research_neg.py": [
+  "DF002"
+ ],
+ "sanit_py__g_startswith_arg.py": [
+  "DF002"
+ ],
+ "sanit_py__h_isascii.py": [
+  "DF002"
+ ],
+ "sanit_py__j_endswith_path.py": [
+  "DF005",
+  "DF013"
+ ]
+}

@@ -36,6 +36,7 @@ Security = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/security/pol
 
 [tool.ruff]
 line-length = 130
+extend-exclude = ["tests/data"]   # intentionally vulnerable sample programs
 target-version = "py310"
 
 [tool.ruff.lint]

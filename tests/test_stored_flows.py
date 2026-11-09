@@ -144,10 +144,13 @@ def test_tables_from_deployment_manifests_and_run_time_tables():
     assert "TIX_V2.SUBJECT" in got[("app.py", 20)].extra["taint_source"]
     assert "AUDIT_V3.MSG" in got[("app.py", 21)].extra["taint_source"]
     # table from a registry row / a remote service: linked by column, one level lower, and said so
+    stored = {(f.file, f.line): f for f in fs if f.rule_id == "DF023"}
     for line in (23, 24):
-        f = got[("app.py", line)]
-        assert f.rule_id == "DF023" and f.severity == "medium" and f.extra.get("runtime_table")
+        f = stored[("app.py", line)]
+        assert f.severity == "medium" and f.extra.get("runtime_table")
         assert "وقت التشغيل" in f.title_ar
+    # the table name itself comes from another server's response: a SQL injection of its own
+    assert any(f.rule_id == "DF004" and f.line == 23 for f in fs)
     assert ("app.py", 25) not in got                 # archive.title: no user ever writes TITLE
     # env lookups defined in the project's own deployment files are operator configuration, not user input
     assert not any(k[1] in (11, 12, 13) and f.rule_id == "DF004" for k, f in got.items())

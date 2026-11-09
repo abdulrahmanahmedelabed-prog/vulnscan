@@ -533,40 +533,72 @@ def apply_audit_profile(findings: list[Finding], projects, audit: bool) -> list[
 
 
 def _all_names_known(tree, line: int, cache: dict) -> bool:
-    """True when every variable read on `line` is defined somewhere the analysis saw (assigned, a parameter,
-    imported, a def/class). A free / global name of unknown origin keeps the pattern finding."""
+    """True only when every value read on `line` comes from a plain assignment or a parameter of the enclosing
+    function, i.e. a definition the flow-sensitive dataflow analysis actually evaluates. Globals, imported values,
+    comprehension / walrus / match-capture variables and nonlocal names are not traced, so they keep the
+    pattern finding. Module names used as a call receiver (`os` in os.system) are not values."""
     import ast as _ast
+    import builtins
     if tree is None:
         return False
     key = id(tree)
     if key not in cache:
-        bound, by_line = set(), {}
-        class_refs = set()       # id() of capitalised names used as a receiver: Runtime.getRuntime(), Math.abs()
+        scopes = []                                    # (first line, last line, well-defined names, depth)
+        imports = set()
         for n in _ast.walk(tree):
-            if isinstance(n, _ast.Attribute) and isinstance(n.value, _ast.Name) and n.value.id[:1].isupper():
-                class_refs.add(id(n.value))
-        for n in _ast.walk(tree):
-            if isinstance(n, _ast.Name):
-                if isinstance(n.ctx, (_ast.Store, _ast.Del)):
-                    bound.add(n.id)
-                elif getattr(n, "lineno", None) and id(n) not in class_refs:
-                    by_line.setdefault(n.lineno, set()).add(n.id)
-            elif isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
-                bound.add(n.name)
-            elif isinstance(n, _ast.arg):
-                bound.add(n.arg)
-            elif isinstance(n, (_ast.Import, _ast.ImportFrom)):
+            if isinstance(n, (_ast.Import, _ast.ImportFrom)):
                 for a in n.names:
-                    bound.add((a.asname or a.name).split(".")[0])
-            elif isinstance(n, _ast.ExceptHandler) and n.name:
-                bound.add(n.name)
-        cache[key] = (bound, by_line)
-    bound, by_line = cache[key]
+                    imports.add((a.asname or a.name).split(".")[0])
+        for fn in [n for n in _ast.walk(tree) if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))] + [tree]:
+            good, bad = set(), set()
+            if isinstance(fn, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                a = fn.args
+                good |= {x.arg for x in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if x is not None}
+            stack = list(_ast.iter_child_nodes(fn))
+            while stack:
+                n = stack.pop()
+                if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef, _ast.Lambda)):
+                    if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
+                        good.add(n.name)
+                    continue
+                if isinstance(n, (_ast.Assign, _ast.AnnAssign, _ast.AugAssign, _ast.For, _ast.AsyncFor, _ast.withitem)):
+                    tgts = n.targets if isinstance(n, _ast.Assign) else [getattr(n, "target", None) or getattr(n, "optional_vars", None)]
+                    for t in tgts:
+                        for x in _ast.walk(t) if t is not None else ():
+                            if isinstance(x, _ast.Name):
+                                good.add(x.id)
+                elif isinstance(n, (_ast.comprehension, _ast.NamedExpr)):
+                    for x in _ast.walk(n.target):
+                        if isinstance(x, _ast.Name):
+                            bad.add(x.id)
+                elif isinstance(n, (_ast.Global, _ast.Nonlocal)):
+                    bad.update(n.names)
+                elif n.__class__.__name__ in ("MatchAs", "MatchStar") and getattr(n, "name", None):
+                    bad.add(n.name)
+                elif isinstance(n, _ast.ExceptHandler) and n.name:
+                    good.add(n.name)
+                stack.extend(_ast.iter_child_nodes(n))
+            lo = getattr(fn, "lineno", 1)
+            hi = max(getattr(fn, "end_lineno", None) or lo,
+                     max((getattr(x, "end_lineno", None) or getattr(x, "lineno", lo) or lo for x in _ast.walk(fn)), default=lo))
+            scopes.append((lo, hi, good - bad))
+        receivers = set()                               # id() of names used as `x.f(...)` / `X.f` receivers
+        by_line: dict = {}
+        for n in _ast.walk(tree):
+            if isinstance(n, _ast.Attribute) and isinstance(n.value, _ast.Name):
+                receivers.add(id(n.value))
+        for n in _ast.walk(tree):
+            if isinstance(n, _ast.Name) and isinstance(n.ctx, _ast.Load) and getattr(n, "lineno", None):
+                is_module_receiver = id(n) in receivers and (n.id in imports or n.id[:1].isupper())
+                if not is_module_receiver and not hasattr(builtins, n.id) and n.id not in ("self", "cls", "this"):
+                    by_line.setdefault(n.lineno, set()).add(n.id)
+        cache[key] = (sorted(scopes, key=lambda x: x[1] - x[0]), by_line)
+    scopes, by_line = cache[key]
     names = by_line.get(line)
     if names is None:
         return False                      # nothing on that line the analysis saw: keep the pattern hit
-    import builtins
-    return all(n in bound or hasattr(builtins, n) or n in ("self", "cls", "this") for n in names)
+    scope = next((sc for sc in scopes if sc[0] <= line <= sc[1]), None)
+    return scope is not None and names <= scope[2]
 
 
 def frontend_notes(projects) -> list[str]:

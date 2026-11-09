@@ -153,9 +153,42 @@ def _heredoc_token(m) -> str:
 
 
 
+# word operators per language: `in`, `is`, `as`, `and`, `or` are ordinary identifiers in Java/C/C++/Go
+_WORD_OPS = {"java": ("instanceof",), "csharp": ("is", "as"), "kotlin": ("is", "as", "in"), "swift": ("is", "as"),
+             "php": ("instanceof", "as", "and", "or"), "ruby": ("and", "or"), "rust": ("as",), "go": (), "c": (), "cpp": ()}
+
 _BINOP = {"+": ast.Add, ".": ast.Add, "..": ast.Add, "-": ast.Sub, "*": ast.Mult, "/": ast.Div, "%": ast.Mod,
           "**": ast.Pow, "&": ast.BitAnd, "|": ast.BitOr, "^": ast.BitXor, "<<": ast.LShift, ">>": ast.RShift,
           ">>>": ast.RShift}
+
+
+_AUG = {"+=": ast.Add, "-=": ast.Sub, "*=": ast.Mult, "/=": ast.Div, "%=": ast.Mod, "**=": ast.Pow, "&=": ast.BitAnd,
+        "|=": ast.BitOr, "^=": ast.BitXor, "<<=": ast.LShift, ">>=": ast.RShift, ">>>=": ast.RShift}
+
+
+def _aug_op(op):
+    return _AUG.get(op, ast.Add)()       # .=, ??=, ||= … keep the concatenating / propagating meaning
+
+
+def _strip_switch_breaks(stmts) -> bool:
+    """Replace the switch's own `break`s (not those of nested loops / switches) with pass; True if any was found."""
+    found = False
+    for i, st in enumerate(stmts):
+        if isinstance(st, ast.Break):
+            stmts[i] = _mk(ast.Pass, getattr(st, "lineno", 0))
+            found = True
+        elif isinstance(st, (ast.For, ast.While, ast.AsyncFor, ast.Match, ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)):
+            continue
+        else:
+            for field in ("body", "orelse", "finalbody"):
+                block = getattr(st, field, None)
+                if isinstance(block, list) and block and _strip_switch_breaks(block):
+                    found = True
+            for h in getattr(st, "handlers", []) or []:
+                if _strip_switch_breaks(h.body):
+                    found = True
+    return found
 
 
 def _ends(stmts) -> bool:
@@ -327,7 +360,8 @@ class Parser:
             if self.t.kind != "id" or self.t.val in ("return", "new", "throw", "this", "super", "base"):
                 return False
             self.skip_type()
-            ok = self.t.kind == "id" and self.t.val not in ("instanceof", "is", "as", "in") and not self.t.nl_before
+            ok = self.t.kind == "id" and self.t.val not in ("instanceof",) + _WORD_OPS.get(self.lang, ("is", "as", "in")) \
+                and not self.t.nl_before
             if not ok and self.lang == "cpp" and self.at("(") and any(tk.val == "::" for tk in self.toks[save:self.i]):
                 j, depth = self.i, 0
                 while j < len(self.toks):
@@ -520,10 +554,15 @@ class Parser:
             if v in ("switch", "when", "match"):
                 return [self.parse_switch()]
             if v in ("break", "continue", "goto", "fallthrough"):
+                line = self.t.line
                 self.i += 1
                 if self.t.kind == "id" and not self.t.nl_before:
                     self.i += 1
                 self.end_stmt()
+                if v == "break":
+                    return [_mk(ast.Break, line)]
+                if v == "continue":
+                    return [_mk(ast.Continue, line)]
                 return []
             if v in ("echo", "print") and self.lang == "php":
                 self.i += 1
@@ -1533,12 +1572,21 @@ class Parser:
                     is_default = self.at_kw("default")
                     self.i += 1
                     labels = None
-                    if not is_default:
-                        labels = [self.untuple(self.parse_expression())]
-                        while self.opt(","):
-                            labels.append(self.untuple(self.parse_expression()))
-                    if not (self.opt(":") or self.opt("->")):
+                    self.in_case_label = True
+                    try:
+                        if not is_default:
+                            labels = [self.untuple(self.parse_expression())]
+                            while self.opt(","):
+                                labels.append(self.untuple(self.parse_expression()))
+                    finally:
+                        self.in_case_label = False
+                    arrow_arm = self.opt("->")
+                    if not (arrow_arm or self.opt(":")):
                         raise ValueError("case without ':'")
+                    if arrow_arm:
+                        # Java 14+ `case X -> stmt;` / `case X -> { … }`: one arm, never falls through
+                        groups.append([labels, self.parse_statement() if not self.at("{") else self.block(), True])
+                        continue
                     if groups and not groups[-1][1] and groups[-1][0] is not None and labels is not None:
                         groups[-1][0].extend(labels)         # `case A: case B:` share one body
                     else:
@@ -1559,6 +1607,9 @@ class Parser:
             return None
         self.eat("}")
         falls = self.lang in ("java", "c", "cpp", "csharp", "php", "javascript")
+        for g in groups:                      # a `break` of this switch anywhere in the case (in a block, an if …)
+            if _strip_switch_breaks(g[1]):
+                g[2] = True
         cases = []
         for gi, (labels, stmts, brk) in enumerate(groups):
             body = list(stmts)
@@ -1657,12 +1708,12 @@ class Parser:
         value = self.untuple(value)
         if isinstance(target, ast.Name):
             self.ruby_locals.add(target.id)
-            return self.field_or_local(target.id, value, line) if op == "=" else [_mk(ast.AugAssign, line, target=_name(target.id, line, store=True), op=ast.Add(), value=value)]
+            return self.field_or_local(target.id, value, line) if op == "=" else [_mk(ast.AugAssign, line, target=_name(target.id, line, store=True), op=_aug_op(op), value=value)]
         if isinstance(target, (ast.Attribute, ast.Subscript)):
             target.ctx = ast.Store()
             if op == "=":
                 return [_mk(ast.Assign, line, targets=[target], value=value)]
-            return [_mk(ast.AugAssign, line, target=target, op=ast.Add(), value=value)]
+            return [_mk(ast.AugAssign, line, target=target, op=_aug_op(op), value=value)]
         return [_mk(ast.Expr, line, value=value)]
 
     def pop_hoisted_function(self, name):
@@ -1720,10 +1771,12 @@ class Parser:
             left = self.untuple(left)
             if isinstance(left, ast.Name) and left.id.startswith("$"):
                 left = _name(left.id.lstrip("$"), left.lineno)
-            return ("assign", left, "=" if t.val in ("=", ":=") else "+=", right, t.line)
+            return ("assign", left, "=" if t.val in ("=", ":=") else t.val, right, t.line)
         return left
 
     def is_lambda_start(self) -> bool:
+        if getattr(self, "in_case_label", False):
+            return False                  # `case 1 -> {…}`: the arrow ends the label, it is not a lambda
         arrow = "->" if self.lang == "java" else "=>"
         t = self.t
         if t.kind == "id" and self.peek().val == arrow:
@@ -1789,7 +1842,7 @@ class Parser:
         left = self.parse_unary()
         while True:
             t = self.t
-            op = t.val if (t.kind == "punct" or (t.kind == "id" and t.val in ("instanceof", "is", "as", "in", "and", "or"))) else None
+            op = t.val if (t.kind == "punct" or (t.kind == "id" and t.val in _WORD_OPS.get(self.lang, ()))) else None
             if op == "." and self.lang != "php":
                 break
             if op == "..." and self.lang != "ruby":
@@ -1829,6 +1882,8 @@ class Parser:
                 left = _mk(ast.Compare, line, left=left, ops=[pyop], comparators=[right])
             else:
                 left = _mk(ast.BinOp, line, left=left, op=_BINOP.get(op, ast.BitOr)(), right=right)
+                if op in ("/", "%") and self.lang != "php":
+                    left.c_int_semantics = True     # integer / and % truncate toward zero in C-family languages
         return left
 
     def looks_like_generic(self) -> bool:
@@ -1855,6 +1910,10 @@ class Parser:
             operand = self.untuple(self.parse_unary())
             if t.val == "!":
                 return _mk(ast.UnaryOp, line, op=ast.Not(), operand=operand)
+            if t.val in ("++", "--") and isinstance(operand, (ast.Name, ast.Attribute, ast.Subscript)):
+                return ("assign", operand, "+=" if t.val == "++" else "-=", _const(1, line), line)
+            if t.val == "-":
+                return _mk(ast.UnaryOp, line, op=ast.USub(), operand=operand)
             return operand
         if self.lang == "rust" and (self.at("|") or self.at("||") or (t.kind == "id" and t.val in ("move", "async") and self.peek().val in ("|", "||"))):
             return self.parse_rust_closure()
@@ -1888,7 +1947,7 @@ class Parser:
             if self.t.kind == "id":
                 try:
                     self.skip_type()
-                    if self.at(")") and (self.peek().kind in ("id", "str", "num", "istr") or self.peek().val in ("(", "$", "!", "-")) and not (self.peek().kind == "id" and self.peek().val in ("instanceof", "is", "as", "and", "or", "in")):
+                    if self.at(")") and (self.peek().kind in ("id", "str", "num", "istr") or self.peek().val in ("(", "$", "!", "-")) and not (self.peek().kind == "id" and self.peek().val in ("instanceof",) + _WORD_OPS.get(self.lang, ("is", "as", "and", "or", "in"))):
                         # looks like a cast if the type name is a known type keyword or capitalised and followed by an operand
                         tn = self.toks[save + 1].val
                         if tn in TYPE_KW or tn[:1].isupper() or tn in ("int", "float", "string", "array", "bool", "object"):
@@ -1944,7 +2003,7 @@ class Parser:
         while True:
             t = self.t
             if t.kind == "punct" and t.val in (".", "->", "::", "?.", "?->", "&.") and not (t.val == "." and self.lang == "php") \
-                    and not (t.val == "->" and self.lang in ("ruby", "rust", "swift")):
+                    and not (t.val == "->" and self.lang in ("ruby", "rust", "swift", "java", "kotlin")):
                 if t.val == "::" and self.lang == "ruby" and self.peek().val == "<":
                     break
                 self.i += 1
@@ -2077,6 +2136,9 @@ class Parser:
                 self._mark_route(e, lam, t.line)
             elif t.kind == "punct" and t.val == "<" and self.looks_like_generic() and not no_call:
                 self.skip_balanced("<", ">")
+            elif t.kind == "punct" and t.val in ("++", "--") and isinstance(e, (ast.Name, ast.Attribute, ast.Subscript)):
+                self.i += 1
+                return ("assign", e, "+=" if t.val == "++" else "-=", _const(1, t.line), t.line)
             elif t.kind == "punct" and t.val in ("++", "--", "!!", "!"):
                 self.i += 1
             elif t.kind == "istr" or (t.kind == "str" and self.lang == "kotlin" and False):

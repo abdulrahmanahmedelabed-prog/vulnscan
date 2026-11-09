@@ -310,7 +310,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", ""):
             path = "/index.html"
         file = (UI_DIR / path.lstrip("/")).resolve()
-        if not str(file).startswith(str(UI_DIR.resolve())) or not file.is_file():
+        # is_relative_to, not a string prefix: "/…/ui-old/x" starts with "/…/ui" but is outside the UI directory
+        if not file.is_relative_to(UI_DIR.resolve()) or not file.is_file():
             self.send_response(404)
             self.end_headers()
             return
