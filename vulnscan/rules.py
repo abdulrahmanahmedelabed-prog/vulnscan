@@ -171,7 +171,7 @@ RULES: list[Rule] = [
 
     # --------------------------------------------------------- crypto / TLS
     Rule("CRY001", "medium", "Weak hash (MD5/SHA1)", "تجزئة ضعيفة MD5/SHA1",
-         _r(r"(?i)\b(hashlib\.(md5|sha1)\b|hashlib\.new\s*\(\s*[\"'](md5|sha1|md4|md2)[\"']|MessageDigest\.getInstance\s*\(\s*[\"'](MD5|SHA-?1)[\"']|crypto\.createHash\s*\(\s*[\"'](md5|sha1)[\"']|\bmd5\s*\(|\bsha1\s*\(|md5\.New\(|sha1\.New\(|Digest::(MD5|SHA1))"),
+         _r(r"(?i)\b(hashlib\.(md5|sha1)\b|hashlib\.new\s*\(\s*[\"'](md5|sha1|md4|md2)[\"']|MessageDigest\.getInstance\s*\(\s*[\"'](MD2|MD4|MD5|SHA-?1|SHA)[\"']|crypto\.createHash\s*\(\s*[\"'](md5|sha1)[\"']|\bmd5\s*\(|\bsha1\s*\(|md5\.New\(|sha1\.New\(|Digest::(MD5|SHA1))"),
          "استخدم SHA-256 أو أقوى، ولكلمات المرور bcrypt/argon2.", "CWE-328", CODE,
          skip=_r(r"(?i)(checksum|etag|cache|fingerprint|integrity|usedforsecurity\s*=\s*False)")),
     Rule("CRY002", "high", "TLS certificate verification disabled", "تعطيل التحقق من شهادة TLS",
@@ -181,7 +181,8 @@ RULES: list[Rule] = [
          _r(r"(PROTOCOL_(SSLv2|SSLv3|TLSv1|TLSv1_1)\b|SSLv3|TLSv1\.0|TLSv1\.1|ssl_version\s*=\s*['\"]?TLSv1['\"]?\b|\"TLSv1\"|'TLSv1')"),
          "استخدم TLS 1.2 أو أحدث.", "CWE-326", CODE | CONFIG),
     Rule("CRY004", "medium", "Weak cipher (DES/RC4/ECB)", "خوارزمية تشفير ضعيفة DES/RC4/ECB",
-         _r(r"(?i)\b(DES|3DES|TripleDES|RC4|ARC4|Blowfish)\b.*(new|getInstance|Cipher|create)|/ECB/|MODE_ECB|AES-128-ECB|aes-\d+-ecb"),
+         _r(r"(?i)\b(DES|3DES|TripleDES|RC4|ARC4|Blowfish)\b.*(new|getInstance|Cipher|create)|/ECB/|MODE_ECB|AES-128-ECB|aes-\d+-ecb|"
+           r"getInstance\s*\(\s*[\"'](DES|DESede|TripleDES|RC2|RC4|ARCFOUR|Blowfish)\b"),
          "استخدم AES-GCM أو ChaCha20-Poly1305.", "CWE-327", CODE),
     Rule("CRY005", "medium", "Non-cryptographic random for security value", "عشوائية غير آمنة لقيمة حساسة",
          _r(r"(?i)\b(random\.(random|randint|choice|choices|randrange)|Math\.random|rand\(\)|new\s+Random\(\)|Random\(\)\.next)\b.*\b(token|secret|password|salt|nonce|otp|session|key|iv)\b|\b(token|secret|password|salt|nonce|otp|key)\b.*\b(random\.(random|randint|choice|choices|randrange)|Math\.random|rand\(\))"),

@@ -161,3 +161,100 @@ def _src(node) -> str:
         return " ".join(ast.unparse(node).split())[:200]
     except Exception:  # noqa: BLE001
         return ""
+
+
+# ================================================================== Java / Kotlin
+_J_PROP = re.compile(r'(\w+)\s*=\s*[\w.]*getProperty\(\s*"([^"]+)"\s*(?:,\s*"([^"]*)")?\s*\)')
+_J_ASSIGN_LIT = re.compile(r'\b(?:String\s+|val\s+|var\s+)?(\w+)\s*=\s*"([^"]*)"\s*;?')
+_J_GETINSTANCE = re.compile(r'\b(Cipher|KeyGenerator|SecretKeyFactory|MessageDigest)\s*\.\s*getInstance\s*\(\s*("([^"]*)"|(\w+))')
+_WEAK_CIPHER = re.compile(r"(?i)^(des|desede|tripledes|3des|rc2|rc4|arcfour|blowfish)\b|/ecb\b")
+_WEAK_HASH = re.compile(r"(?i)^(md2|md4|md5|sha|sha-?1|sha1prng)$")
+_J_WEAK_RANDOM = re.compile(r"\bnew\s+(?:java\.util\.)?Random\s*\(|\bMath\s*\.\s*random\s*\(|\bThreadLocalRandom\s*\.\s*current\s*\(|"
+                            r"\bRandomStringUtils\s*\.\s*random|\bRandomUtils\s*\.\s*next")
+_J_SECURITY_CTX = re.compile(r"(?i)Cookie|getSession|token|secret|password|passwd|nonce|salt|otp|csrf|rememberMe|api_?key|"
+                             r"sessionId|resetCode|verification")
+_J_SET_SECURE_FALSE = re.compile(r"\.\s*setSecure\s*\(\s*false\s*\)")
+
+CATALOGUE += [
+    {"id": "CRY101", "severity": "medium", "cwe": "CWE-327", "title": "Weak cipher or mode (DES/3DES/RC4/Blowfish/ECB)",
+     "title_ar": "خوارزمية أو نمط تشفير ضعيف (DES/3DES/RC4/Blowfish/ECB)"},
+    {"id": "CRY102", "severity": "medium", "cwe": "CWE-328", "title": "Weak hash algorithm (MD5/SHA-1)",
+     "title_ar": "خوارزمية تجزئة ضعيفة (MD5/SHA-1)"},
+]
+
+
+def check_java(rel: str, text: str, config: dict, ignore: set) -> list[Finding]:
+    """Algorithm names are often read from configuration (`props.getProperty("hashAlg1", "SHA-512")`): resolve
+    them from the project's own .properties / .yml values first, then the default, then literals in the method."""
+    out: list[Finding] = []
+    lines = text.splitlines()
+    for start, end in _java_methods(text):
+        body = text[start:end]
+        base = text.count("\n", 0, start)
+        values: dict = {}
+        for m in _J_PROP.finditer(body):
+            var, key, default = m.group(1), m.group(2), m.group(3)
+            values[var] = config.get(key) or config.get(key.lower()) or default
+        for m in _J_ASSIGN_LIT.finditer(body):
+            values.setdefault(m.group(1), m.group(2))
+        for m in _J_GETINSTANCE.finditer(body):
+            kind, alg = m.group(1), m.group(3) if m.group(3) is not None else values.get(m.group(4))
+            if not alg:
+                continue
+            ln = base + body.count("\n", 0, m.start()) + 1
+            src = lines[ln - 1].strip()[:200] if ln <= len(lines) else ""
+            via = "" if m.group(3) is not None else f" (resolved {m.group(4)} = {alg})"
+            if kind == "MessageDigest" and _WEAK_HASH.match(alg) and "CRY102" not in ignore:
+                out.append(Finding("CRY102", "medium", f"Weak hash algorithm {alg}{via}", "خوارزمية تجزئة ضعيفة",
+                                   rel, ln, src, "استخدم SHA-256 أو أقوى، ولكلمات المرور PBKDF2/bcrypt/argon2.", "CWE-328"))
+            elif kind != "MessageDigest" and _WEAK_CIPHER.search(alg) and "CRY101" not in ignore:
+                out.append(Finding("CRY101", "medium", f"Weak cipher or mode {alg}{via}", "خوارزمية أو نمط تشفير ضعيف",
+                                   rel, ln, src, "استخدم AES-GCM (أو ChaCha20-Poly1305) بمفتاح 128/256 بت ومتجه تهيئة عشوائي.",
+                                   "CWE-327"))
+        if "RND001" not in ignore and _J_SECURITY_CTX.search(body):
+            for m in _J_WEAK_RANDOM.finditer(body):
+                ln = base + body.count("\n", 0, m.start()) + 1
+                out.append(Finding("RND001", "medium", "Predictable random value used in a security context",
+                                   "قيمة عشوائية قابلة للتوقع تُستخدم لغرض أمني", rel, ln,
+                                   lines[ln - 1].strip()[:200] if ln <= len(lines) else "",
+                                   "استخدم java.security.SecureRandom (أو SecureRandom.getInstanceStrong()).", "CWE-330"))
+                break
+        if "COOK001" not in ignore:
+            for m in _J_SET_SECURE_FALSE.finditer(body):
+                ln = base + body.count("\n", 0, m.start()) + 1
+                out.append(Finding("COOK001", "medium", "Cookie set without the Secure flag (setSecure(false))",
+                                   "كوكي بدون علامة Secure", rel, ln, lines[ln - 1].strip()[:200] if ln <= len(lines) else "",
+                                   _COOKIE_ADVICE, "CWE-614"))
+    return out
+
+
+_J_METHOD = re.compile(r"(?m)^[ \t]*(?:@\w+(?:\([^)]*\))?\s*)*(?:(?:public|private|protected|static|final|synchronized|"
+                       r"abstract|override|suspend|internal|open|fun)\s+)+[\w<>\[\],.? ]*\s*\w+\s*\([^;{]*\)\s*"
+                       r"(?:throws [\w., ]+)?(?::\s*[\w<>?, .]+)?\s*\{")
+
+
+def _java_methods(text: str):
+    """(start, end) offsets of method bodies, by brace matching (strings and comments skipped)."""
+    spans = []
+    for m in _J_METHOD.finditer(text):
+        i, depth, n = m.end(), 1, len(text)
+        while i < n and depth:
+            c = text[i]
+            if c == '"' or c == "'":
+                q = c
+                i += 1
+                while i < n and text[i] != q:
+                    i += 2 if text[i] == "\\" else 1
+            elif text.startswith("//", i):
+                j = text.find("\n", i)
+                i = n if j < 0 else j
+            elif text.startswith("/*", i):
+                j = text.find("*/", i + 2)
+                i = n if j < 0 else j + 1
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+            i += 1
+        spans.append((m.end(), i))
+    return spans or [(0, len(text))]

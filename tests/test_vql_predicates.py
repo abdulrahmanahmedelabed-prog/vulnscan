@@ -43,6 +43,6 @@ def test_builtin_reachability_query_end_to_end(tmp_path: pathlib.Path):
         "@app.route('/y')\n"
         "def other():\n    return 'ok'\n"
     )
-    findings, _ = scan_path(tmp_path)
+    findings, _ = scan_path(tmp_path, audit=True)          # reachability leads are audit-profile findings
     hits = {(f.rule_id, f.line) for f in findings if f.rule_id == "vql/entry-reaches-shell"}
     assert ("vql/entry-reaches-shell", 7) in hits and ("vql/entry-reaches-shell", 10) not in hits

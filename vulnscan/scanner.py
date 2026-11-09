@@ -479,6 +479,10 @@ AUDIT_WHEN_DATAFLOW = frozenset({
 })   # yaml.load without a Loader stays on: it is unsafe API misuse whatever the data (PyYAML >= 6 rejects it)
 
 
+# Structural leads with no data-flow evidence at all (call-graph reachability): audit profile only.
+AUDIT_ONLY = frozenset({"vql/entry-reaches-shell"})
+
+
 def apply_audit_profile(findings: list[Finding], projects, audit: bool) -> list[Finding]:
     """Default profile: drop a pattern injection hit when the data-flow engine analyzed its line and found that the
     dangerous call's argument comes neither from an untrusted source (that is reported by the data-flow rule, with
@@ -503,6 +507,11 @@ def apply_audit_profile(findings: list[Finding], projects, audit: bool) -> list[
     bound_cache: dict = {}
     out = []
     for f in findings:
+        if f.rule_id in AUDIT_ONLY:
+            if audit:
+                f.extra["audit"] = True
+                out.append(f)
+            continue
         if f.rule_id in AUDIT_WHEN_DATAFLOW and f.file in analyzed and f.line not in analyzed[f.file] \
                 and (f.file, f.line) not in param_reach and _all_names_known(trees.get(f.file), f.line, bound_cache):
             if not audit:
@@ -622,6 +631,10 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                     except OSError:
                         pass
             findings.extend(scan_project_hygiene(root, ignore_rules))
+            from . import semantic as _sem
+            for rel_j, text_j in py_sources.items():         # Java/Kotlin checks that need project configuration
+                if rel_j.endswith((".java", ".kt")):
+                    findings.extend(_sem.check_java(rel_j, text_j, config_values, ignore_rules))
             if py_sources:  # whole-project cross-file data-flow (taint) analysis: Python + JS/TS, then VQL queries
                 try:
                     projects, flows = taint.analyze_project_full(py_sources, models_dirs, config_values)

@@ -133,6 +133,17 @@ def _name_matches(canon: str, name: str) -> bool:
 MAX_AST_DEPTH = 150   # far beyond hand-written code; protects every recursive analysis from hostile nesting
 
 
+def _receiver_text(node) -> str:
+    """Text of a call receiver for receiver-pattern sinks (`request.getSession()` -> "request.getSession()")."""
+    d = _dotted(node)
+    if d:
+        return d
+    try:
+        return ast.unparse(node)[:200]
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def too_deep(tree, limit: int = MAX_AST_DEPTH) -> bool:
     """Iterative depth check (no recursion): True when the syntax tree nests deeper than `limit`."""
     stack = [(tree, 0)]
@@ -685,7 +696,7 @@ class Project:
             for entry in self.m["sinks"]:
                 if any(_name_matches(canon, n) for n in entry[9]):
                     rx = entry[11] if len(entry) > 11 else None
-                    if rx is not None and not (isinstance(call.func, ast.Attribute) and rx.search(_dotted(call.func.value) or "")):
+                    if rx is not None and not (isinstance(call.func, ast.Attribute) and rx.search(_receiver_text(call.func.value))):
                         continue                        # e.g. `search` is LDAP only on a connection-like receiver
                     res = entry[:9] + entry[10:11]      # drop the name list, keep the named-argument set at index 9
                     break
@@ -1117,7 +1128,8 @@ class Project:
         hit = cache.get(id(env))
         if hit is None or hit[0] is not env:
             try:
-                fi = _flow.FlowInterpreter(self, mod, cls, fn, env).run()
+                fpath = (self.files.get(mod) or {}).get("path", "")
+                fi = _flow.FlowInterpreter(self, mod, cls, fn, env, fpath).run()
             except (RecursionError, MemoryError, ValueError, TypeError, AttributeError, KeyError):
                 fi = None
             hit = (env, fi)

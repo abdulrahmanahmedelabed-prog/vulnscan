@@ -1,555 +1,595 @@
 {
- "_comment": "Java (Servlet/Spring/JDBC) models; also the base for Kotlin.",
- "sources": [
-  {
-   "kind": "call",
-   "names": [
-    "getParameter",
-    "getParameterValues",
-    "getParameterMap",
-    "getHeader",
-    "getHeaders",
-    "getCookies",
-    "getQueryString",
-    "getInputStream",
-    "getReader",
-    "getPathInfo",
-    "getRequestURI",
-    "getRequestURL",
-    "getRemoteUser",
-    "getPart",
-    "getParts",
-    "getAttribute",
-    "readLine",
-    "nextLine",
-    "Scanner.next",
-    "System.getenv",
-    "System.getProperty"
-   ],
-   "label": "{name}()"
-  },
-  {
-   "kind": "attr",
-   "roots": [
-    "request",
-    "req",
-    "httpRequest",
-    "servletRequest",
-    "exchange",
-    "call",
-    "call.request",
-    "ctx",
-    "context",
-    "event"
-   ],
-   "attrs": [
-    "parameters",
-    "queryParameters",
-    "headers",
-    "cookies",
-    "body",
-    "uri",
-    "path",
-    "query",
-    "form",
-    "pathVariables",
-    "queryParams",
-    "formParams",
-    "pathParams",
-    "requestURI"
-   ],
-   "label": "request.{attr}"
-  },
-  {
-   "kind": "name",
-   "names": [
-    "args"
-   ],
-   "label": "{name}"
-  }
- ],
- "entry_points": [
-  {
-   "decorators": [
-    "GetMapping",
-    "PostMapping",
-    "PutMapping",
-    "DeleteMapping",
-    "PatchMapping",
-    "RequestMapping",
-    "WebServlet",
-    "Path",
-    "GET",
-    "POST",
-    "PUT",
-    "DELETE",
-    "Query",
-    "Get",
-    "Post",
-    "Route",
-    "RequestParam",
-    "PathVariable",
-    "RequestBody",
-    "MessageMapping",
-    "JmsListener",
-    "KafkaListener",
-    "RabbitListener",
-    "Command"
-   ],
-   "label": "معامل نقطة الدخول"
-  },
-  {
-   "view_bases": [
-    "HttpServlet",
-    "Controller",
-    "RestController",
-    "Handler",
-    "ChannelInboundHandlerAdapter",
-    "SimpleChannelInboundHandler",
-    "Resource",
-    "Servlet",
-    "Filter",
-    "HandlerInterceptor"
-   ],
-   "methods": [
-    "doGet",
-    "doPost",
-    "doPut",
-    "doDelete",
-    "service",
-    "handle",
-    "handleRequest",
-    "doFilter",
-    "channelRead",
-    "channelRead0",
-    "onMessage",
-    "run",
-    "execute"
-   ]
-  },
-  {
-   "param_names": [
-    "request",
-    "req",
-    "httpRequest",
-    "servletRequest",
-    "exchange",
-    "call",
-    "ctx",
-    "context"
-   ]
-  }
- ],
- "sinks": [
-  {
-   "rule": "DF002",
-   "severity": "critical",
-   "cwe": "CWE-78",
-   "label": "shell command",
-   "args": [
-    0
-   ],
-   "names": [
-    "Runtime.getRuntime.exec",
-    "getRuntime.exec",
-    "Runtime.exec",
-    "exec"
-   ],
-   "title": "Tainted data reaches Runtime.exec",
-   "title_ar": "بيانات غير موثوقة تصل إلى Runtime.exec",
-   "advice": "استخدم ProcessBuilder بقائمة وسائط ثابتة البرنامج وتحقق من المدخلات.",
-   "shell": true
-  },
-  {
-   "rule": "DF003",
-   "severity": "high",
-   "cwe": "CWE-78",
-   "label": "ProcessBuilder",
-   "args": [
-    0,
-    1,
-    2,
-    3
-   ],
-   "names": [
-    "ProcessBuilder",
-    "ProcessBuilder.command",
-    "command",
-    "CommandLine",
-    "CommandLine.parse",
-    "DefaultExecutor.execute"
-   ],
-   "title": "Tainted data reaches a process builder",
-   "title_ar": "بيانات غير موثوقة تصل إلى ProcessBuilder",
-   "advice": "ثبّت البرنامج ولا تمرّر الأمر من المدخلات."
-  },
-  {
-   "rule": "DF004",
-   "severity": "high",
-   "cwe": "CWE-89",
-   "label": "SQL",
-   "args": [
-    0
-   ],
-   "names": [
-    "executeQuery",
-    "executeUpdate",
-    "execute",
-    "prepareStatement",
-    "prepareCall",
-    "createQuery",
-    "createNativeQuery",
-    "createSQLQuery",
-    "queryForList",
-    "queryForObject",
-    "queryForMap",
-    "update",
-    "query",
-    "batchUpdate",
-    "nativeQuery",
-    "createStatement.execute",
-    "addBatch"
-   ],
-   "title": "Tainted data reaches a SQL statement",
-   "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
-   "advice": "استخدم PreparedStatement مع معاملات (?) بدل تركيب نص الاستعلام."
-  },
-  {
-   "rule": "DF005",
-   "severity": "high",
-   "cwe": "CWE-22",
-   "label": "file path",
-   "args": [
-    0
-   ],
-   "names": [
-    "File",
-    "FileInputStream",
-    "FileOutputStream",
-    "FileReader",
-    "FileWriter",
-    "RandomAccessFile",
-    "Paths.get",
-    "Path.of",
-    "Files.readAllBytes",
-    "Files.readAllLines",
-    "Files.write",
-    "Files.newInputStream",
-    "Files.newOutputStream",
-    "Files.readString",
-    "Files.writeString",
-    "Files.copy",
-    "Files.move",
-    "Files.delete",
-    "Files.createFile",
-    "Files.walk",
-    "getResourceAsStream",
-    "ZipFile",
-    "JarFile"
-   ],
-   "title": "Tainted data reaches a file path",
-   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
-   "advice": "طبّع المسار (toRealPath/normalize) وتحقق أنه داخل المجلد المسموح."
-  },
-  {
-   "rule": "DF006",
-   "severity": "critical",
-   "cwe": "CWE-502",
-   "label": "deserialization",
-   "args": [
-    0
-   ],
-   "names": [
-    "ObjectInputStream",
-    "readObject",
-    "XMLDecoder",
-    "XStream.fromXML",
-    "fromXML",
-    "Yaml.load",
-    "SnakeYaml.load",
-    "readValue",
-    "enableDefaultTyping",
-    "Kryo.readObject",
-    "Hessian2Input.readObject",
-    "JSON.parseObject"
-   ],
-   "title": "Tainted data reaches unsafe deserialization",
-   "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل غير آمن",
-   "advice": "لا تفك تسلسل بيانات غير موثوقة؛ استخدم ObjectInputFilter أو JSON بأنواع ثابتة."
-  },
-  {
-   "rule": "DF007",
-   "severity": "high",
-   "cwe": "CWE-1336",
-   "label": "template (SSTI)",
-   "args": [
-    0
-   ],
-   "names": [
-    "Velocity.evaluate",
-    "VelocityEngine.evaluate",
-    "Template",
-    "StringTemplate",
-    "TemplateEngine.process",
-    "SpelExpressionParser.parseExpression",
-    "parseExpression",
-    "ExpressionParser.parseExpression",
-    "FreeMarker.Template",
-    "new Template",
-    "processTemplateIntoString",
-    "createTemplate",
-    "compile"
-   ],
-   "title": "Tainted data reaches a template/expression engine",
-   "title_ar": "بيانات غير موثوقة تصل إلى محرّك قوالب أو تعبيرات",
-   "advice": "لا تبنِ القالب أو التعبير من المدخلات."
-  },
-  {
-   "rule": "DF008",
-   "severity": "medium",
-   "cwe": "CWE-601",
-   "label": "redirect",
-   "args": [
-    0
-   ],
-   "names": [
-    "sendRedirect",
-    "setHeader",
-    "RedirectView",
-    "redirect",
-    "Response.seeOther",
-    "Response.temporaryRedirect"
-   ],
-   "title": "Tainted data reaches a redirect",
-   "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
-   "advice": "تحقق من وجهة التحويل بقائمة بيضاء."
-  },
-  {
-   "rule": "DF010",
-   "severity": "high",
-   "cwe": "CWE-918",
-   "label": "outbound HTTP URL (SSRF)",
-   "args": [
-    0
-   ],
-   "names": [
-    "URL",
-    "URI.create",
-    "URI",
-    "openConnection",
-    "HttpGet",
-    "HttpPost",
-    "HttpClient.send",
-    "HttpRequest.newBuilder",
-    "newBuilder.uri",
-    "uri",
-    "restTemplate.getForObject",
-    "restTemplate.getForEntity",
-    "restTemplate.exchange",
-    "restTemplate.postForObject",
-    "getForObject",
-    "getForEntity",
-    "exchange",
-    "postForObject",
-    "WebClient.create",
-    "Request.Builder.url",
-    "url",
-    "OkHttpClient.newCall",
-    "Jsoup.connect",
-    "connect"
-   ],
-   "title": "Tainted URL reaches an outbound request",
-   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
-   "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات."
-  },
-  {
-   "rule": "DF012",
-   "severity": "critical",
-   "cwe": "CWE-470",
-   "label": "dynamic class loading",
-   "args": [
-    0
-   ],
-   "names": [
-    "Class.forName",
-    "forName",
-    "loadClass",
-    "newInstance",
-    "ScriptEngine.eval",
-    "engine.eval",
-    "GroovyShell.evaluate",
-    "evaluate",
-    "MethodHandles.lookup",
-    "Method.invoke"
-   ],
-   "title": "Tainted data reaches reflection / script evaluation",
-   "title_ar": "بيانات غير موثوقة تصل إلى تحميل أصناف ديناميكي أو تنفيذ سكربت",
-   "advice": "استخدم قائمة بيضاء ثابتة من الأصناف ولا تنفّذ سكربتات من مدخلات."
-  },
-  {
-   "rule": "DF013",
-   "severity": "medium",
-   "cwe": "CWE-79",
-   "label": "HTTP response body (XSS)",
-   "args": [
-    0
-   ],
-   "names": [
-    "getWriter.write",
-    "getWriter.println",
-    "getWriter.print",
-    "getWriter.append",
-    "out.println",
-    "out.print",
-    "out.write",
-    "writer.write",
-    "writer.println",
-    "getOutputStream.write",
-    "response.getWriter.write",
-    "PrintWriter.println",
-    "Html.fromHtml",
-    "setHtml",
-    "loadData",
-    "loadDataWithBaseURL",
-    "evaluateJavascript",
-    "Mono.just",
-    "text",
-    "html"
-   ],
-   "title": "Tainted data reflected into the response",
-   "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
-   "advice": "هرّب المخرجات (Encode.forHtml / escapeHtml4) أو استخدم قوالب تُهرِّب تلقائيًا."
-  },
-  {
-   "rule": "DF014",
-   "severity": "high",
-   "cwe": "CWE-90",
-   "label": "LDAP filter",
-   "args": [
-    1
-   ],
-   "names": [
-    "search",
-    "DirContext.search",
-    "InitialDirContext.search",
-    "LdapTemplate.search",
-    "searchContext"
-   ],
-   "title": "Tainted data reaches an LDAP search",
-   "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
-   "advice": "هرّب المرشّح أو استخدم LdapQueryBuilder."
-  },
-  {
-   "rule": "DF015",
-   "severity": "high",
-   "cwe": "CWE-643",
-   "label": "XPath",
-   "args": [
-    0
-   ],
-   "names": [
-    "xpath.evaluate",
-    "XPath.compile",
-    "xpath.compile",
-    "XPathExpression",
-    "compile.evaluate",
-    "selectNodes",
-    "selectSingleNode"
-   ],
-   "title": "Tainted data reaches XPath",
-   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
-   "advice": "استخدم XPathVariableResolver بدل تركيب الاستعلام."
-  },
-  {
-   "rule": "DF016",
-   "severity": "medium",
-   "cwe": "CWE-117",
-   "label": "log injection",
-   "args": [
-    0
-   ],
-   "names": [
-    "logger.info",
-    "logger.warn",
-    "logger.error",
-    "logger.debug",
-    "log.info",
-    "log.warn",
-    "log.error",
-    "log.debug",
-    "LOG.info",
-    "LOG.warn",
-    "LOG.error",
-    "LOGGER.info",
-    "LOGGER.warn",
-    "LOGGER.error"
-   ],
-   "title": "Tainted data written to a log",
-   "title_ar": "بيانات غير موثوقة تُكتب في السجل",
-   "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل."
-  }
- ],
- "sanitizers": [
-  "Integer.parseInt",
-  "Integer.valueOf",
-  "Long.parseLong",
-  "Long.valueOf",
-  "Double.parseDouble",
-  "Boolean.parseBoolean",
-  "parseInt",
-  "parseLong",
-  "valueOf",
-  "URLEncoder.encode",
-  "StringEscapeUtils.escapeHtml4",
-  "StringEscapeUtils.escapeHtml",
-  "StringEscapeUtils.escapeSql",
-  "escapeHtml4",
-  "escapeHtml",
-  "HtmlUtils.htmlEscape",
-  "htmlEscape",
-  "Encode.forHtml",
-  "Encode.forJavaScript",
-  "Encode.forUriComponent",
-  "forHtml",
-  "forJavaScript",
-  "ESAPI.encoder().encodeForHTML",
-  "encodeForHTML",
-  "encodeForSQL",
-  "encodeForLDAP",
-  "encodeForOS",
-  "UUID.fromString",
-  "Paths.get(.*).normalize",
-  "FilenameUtils.getName",
-  "getName",
-  "Normalizer.normalize",
-  "Pattern.quote",
-  "Jsoup.clean",
-  "PolicyFactory.sanitize",
-  "sanitize",
-  "escape",
-  "hashCode",
-  "length",
-  "size"
- ],
- "safe_return_calls": [],
- "validators": [
-  "matches",
-  "contains",
-  "startsWith",
-  "endsWith",
-  "equals",
-  "equalsIgnoreCase",
-  "isDigit",
-  "isLetter",
-  "isLetterOrDigit",
-  "isAlphanumeric",
-  "isNumeric",
-  "validate",
-  "isValid",
-  "isSafe",
-  "allowed",
-  "check",
-  "verify",
-  "containsKey"
- ]
+  "_comment": "Java (Servlet/Spring/JDBC) models; also the base for Kotlin.",
+  "sources": [
+    {
+      "kind": "call",
+      "names": [
+        "getParameter",
+        "getParameterValues",
+        "getParameterMap",
+        "getHeader",
+        "getHeaders",
+        "getCookies",
+        "getQueryString",
+        "getInputStream",
+        "getReader",
+        "getPathInfo",
+        "getRequestURI",
+        "getRequestURL",
+        "getRemoteUser",
+        "getPart",
+        "getParts",
+        "getAttribute",
+        "readLine",
+        "nextLine",
+        "Scanner.next",
+        "System.getenv",
+        "System.getProperty"
+      ],
+      "label": "{name}()"
+    },
+    {
+      "kind": "attr",
+      "roots": [
+        "request",
+        "req",
+        "httpRequest",
+        "servletRequest",
+        "exchange",
+        "call",
+        "call.request",
+        "ctx",
+        "context",
+        "event"
+      ],
+      "attrs": [
+        "parameters",
+        "queryParameters",
+        "headers",
+        "cookies",
+        "body",
+        "uri",
+        "path",
+        "query",
+        "form",
+        "pathVariables",
+        "queryParams",
+        "formParams",
+        "pathParams",
+        "requestURI"
+      ],
+      "label": "request.{attr}"
+    },
+    {
+      "kind": "name",
+      "names": [
+        "args"
+      ],
+      "label": "{name}"
+    }
+  ],
+  "entry_points": [
+    {
+      "decorators": [
+        "GetMapping",
+        "PostMapping",
+        "PutMapping",
+        "DeleteMapping",
+        "PatchMapping",
+        "RequestMapping",
+        "WebServlet",
+        "Path",
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "Query",
+        "Get",
+        "Post",
+        "Route",
+        "RequestParam",
+        "PathVariable",
+        "RequestBody",
+        "MessageMapping",
+        "JmsListener",
+        "KafkaListener",
+        "RabbitListener",
+        "Command"
+      ],
+      "label": "معامل نقطة الدخول"
+    },
+    {
+      "view_bases": [
+        "HttpServlet",
+        "Controller",
+        "RestController",
+        "Handler",
+        "ChannelInboundHandlerAdapter",
+        "SimpleChannelInboundHandler",
+        "Resource",
+        "Servlet",
+        "Filter",
+        "HandlerInterceptor"
+      ],
+      "methods": [
+        "doGet",
+        "doPost",
+        "doPut",
+        "doDelete",
+        "service",
+        "handle",
+        "handleRequest",
+        "doFilter",
+        "channelRead",
+        "channelRead0",
+        "onMessage",
+        "run",
+        "execute"
+      ]
+    },
+    {
+      "param_names": [
+        "request",
+        "req",
+        "httpRequest",
+        "servletRequest",
+        "exchange",
+        "call",
+        "ctx",
+        "context"
+      ]
+    }
+  ],
+  "sinks": [
+    {
+      "rule": "DF002",
+      "severity": "critical",
+      "cwe": "CWE-78",
+      "label": "shell command",
+      "args": [
+        0
+      ],
+      "names": [
+        "Runtime.getRuntime.exec",
+        "getRuntime.exec",
+        "Runtime.exec",
+        "exec"
+      ],
+      "title": "Tainted data reaches Runtime.exec",
+      "title_ar": "بيانات غير موثوقة تصل إلى Runtime.exec",
+      "advice": "استخدم ProcessBuilder بقائمة وسائط ثابتة البرنامج وتحقق من المدخلات.",
+      "shell": true
+    },
+    {
+      "rule": "DF003",
+      "severity": "high",
+      "cwe": "CWE-78",
+      "label": "ProcessBuilder",
+      "args": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "names": [
+        "ProcessBuilder",
+        "ProcessBuilder.command",
+        "command",
+        "CommandLine",
+        "CommandLine.parse",
+        "DefaultExecutor.execute"
+      ],
+      "title": "Tainted data reaches a process builder",
+      "title_ar": "بيانات غير موثوقة تصل إلى ProcessBuilder",
+      "advice": "ثبّت البرنامج ولا تمرّر الأمر من المدخلات."
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "args": [
+        0
+      ],
+      "names": [
+        "executeQuery",
+        "executeUpdate",
+        "execute",
+        "prepareStatement",
+        "prepareCall",
+        "createQuery",
+        "createNativeQuery",
+        "createSQLQuery",
+        "queryForList",
+        "queryForObject",
+        "queryForMap",
+        "update",
+        "query",
+        "batchUpdate",
+        "nativeQuery",
+        "createStatement.execute",
+        "addBatch"
+      ],
+      "title": "Tainted data reaches a SQL statement",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
+      "advice": "استخدم PreparedStatement مع معاملات (?) بدل تركيب نص الاستعلام."
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "file path",
+      "args": [
+        0
+      ],
+      "names": [
+        "File",
+        "FileInputStream",
+        "FileOutputStream",
+        "FileReader",
+        "FileWriter",
+        "RandomAccessFile",
+        "Paths.get",
+        "Path.of",
+        "Files.readAllBytes",
+        "Files.readAllLines",
+        "Files.write",
+        "Files.newInputStream",
+        "Files.newOutputStream",
+        "Files.readString",
+        "Files.writeString",
+        "Files.copy",
+        "Files.move",
+        "Files.delete",
+        "Files.createFile",
+        "Files.walk",
+        "getResourceAsStream",
+        "ZipFile",
+        "JarFile"
+      ],
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار (toRealPath/normalize) وتحقق أنه داخل المجلد المسموح."
+    },
+    {
+      "rule": "DF006",
+      "severity": "critical",
+      "cwe": "CWE-502",
+      "label": "deserialization",
+      "args": [
+        0
+      ],
+      "names": [
+        "ObjectInputStream",
+        "readObject",
+        "XMLDecoder",
+        "XStream.fromXML",
+        "fromXML",
+        "Yaml.load",
+        "SnakeYaml.load",
+        "readValue",
+        "enableDefaultTyping",
+        "Kryo.readObject",
+        "Hessian2Input.readObject",
+        "JSON.parseObject"
+      ],
+      "title": "Tainted data reaches unsafe deserialization",
+      "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل غير آمن",
+      "advice": "لا تفك تسلسل بيانات غير موثوقة؛ استخدم ObjectInputFilter أو JSON بأنواع ثابتة."
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-1336",
+      "label": "template (SSTI)",
+      "args": [
+        0
+      ],
+      "names": [
+        "Velocity.evaluate",
+        "VelocityEngine.evaluate",
+        "Template",
+        "StringTemplate",
+        "TemplateEngine.process",
+        "SpelExpressionParser.parseExpression",
+        "parseExpression",
+        "ExpressionParser.parseExpression",
+        "FreeMarker.Template",
+        "new Template",
+        "processTemplateIntoString",
+        "createTemplate",
+        "compile"
+      ],
+      "title": "Tainted data reaches a template/expression engine",
+      "title_ar": "بيانات غير موثوقة تصل إلى محرّك قوالب أو تعبيرات",
+      "advice": "لا تبنِ القالب أو التعبير من المدخلات."
+    },
+    {
+      "rule": "DF008",
+      "severity": "medium",
+      "cwe": "CWE-601",
+      "label": "redirect",
+      "args": [
+        0
+      ],
+      "names": [
+        "sendRedirect",
+        "setHeader",
+        "RedirectView",
+        "redirect",
+        "Response.seeOther",
+        "Response.temporaryRedirect"
+      ],
+      "title": "Tainted data reaches a redirect",
+      "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+      "advice": "تحقق من وجهة التحويل بقائمة بيضاء."
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "URL",
+        "URI.create",
+        "URI",
+        "openConnection",
+        "HttpGet",
+        "HttpPost",
+        "HttpClient.send",
+        "HttpRequest.newBuilder",
+        "newBuilder.uri",
+        "uri",
+        "restTemplate.getForObject",
+        "restTemplate.getForEntity",
+        "restTemplate.exchange",
+        "restTemplate.postForObject",
+        "getForObject",
+        "getForEntity",
+        "exchange",
+        "postForObject",
+        "WebClient.create",
+        "Request.Builder.url",
+        "url",
+        "OkHttpClient.newCall",
+        "Jsoup.connect",
+        "connect"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات."
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-470",
+      "label": "dynamic class loading",
+      "args": [
+        0
+      ],
+      "names": [
+        "Class.forName",
+        "forName",
+        "loadClass",
+        "newInstance",
+        "ScriptEngine.eval",
+        "engine.eval",
+        "GroovyShell.evaluate",
+        "evaluate",
+        "MethodHandles.lookup",
+        "Method.invoke"
+      ],
+      "title": "Tainted data reaches reflection / script evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تحميل أصناف ديناميكي أو تنفيذ سكربت",
+      "advice": "استخدم قائمة بيضاء ثابتة من الأصناف ولا تنفّذ سكربتات من مدخلات."
+    },
+    {
+      "rule": "DF013",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "label": "HTTP response body (XSS)",
+      "args": [
+        0
+      ],
+      "names": [
+        "getWriter.write",
+        "getWriter.println",
+        "getWriter.print",
+        "getWriter.append",
+        "out.println",
+        "out.print",
+        "out.write",
+        "writer.write",
+        "writer.println",
+        "getOutputStream.write",
+        "response.getWriter.write",
+        "PrintWriter.println",
+        "Html.fromHtml",
+        "setHtml",
+        "loadData",
+        "loadDataWithBaseURL",
+        "evaluateJavascript",
+        "Mono.just",
+        "text",
+        "html"
+      ],
+      "title": "Tainted data reflected into the response",
+      "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+      "advice": "هرّب المخرجات (Encode.forHtml / escapeHtml4) أو استخدم قوالب تُهرِّب تلقائيًا."
+    },
+    {
+      "rule": "DF014",
+      "severity": "high",
+      "cwe": "CWE-90",
+      "label": "LDAP filter",
+      "args": [
+        1
+      ],
+      "names": [
+        "search",
+        "DirContext.search",
+        "InitialDirContext.search",
+        "LdapTemplate.search",
+        "searchContext"
+      ],
+      "title": "Tainted data reaches an LDAP search",
+      "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+      "advice": "هرّب المرشّح أو استخدم LdapQueryBuilder."
+    },
+    {
+      "rule": "DF015",
+      "severity": "high",
+      "cwe": "CWE-643",
+      "label": "XPath",
+      "args": [
+        0
+      ],
+      "names": [
+        "XPath.compile",
+        "XPath.evaluate",
+        "XPath.evaluateExpression",
+        "XPathExpression",
+        "compile.evaluate",
+        "javax.xml.xpath.XPath.compile",
+        "javax.xml.xpath.XPath.evaluate",
+        "selectNodes",
+        "selectSingleNode",
+        "xpath.compile",
+        "xpath.evaluate"
+      ],
+      "title": "Tainted data reaches XPath",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+      "advice": "استخدم XPathVariableResolver بدل تركيب الاستعلام."
+    },
+    {
+      "rule": "DF016",
+      "severity": "medium",
+      "cwe": "CWE-117",
+      "label": "log injection",
+      "args": [
+        0
+      ],
+      "names": [
+        "logger.info",
+        "logger.warn",
+        "logger.error",
+        "logger.debug",
+        "log.info",
+        "log.warn",
+        "log.error",
+        "log.debug",
+        "LOG.info",
+        "LOG.warn",
+        "LOG.error",
+        "LOGGER.info",
+        "LOGGER.warn",
+        "LOGGER.error"
+      ],
+      "title": "Tainted data written to a log",
+      "title_ar": "بيانات غير موثوقة تُكتب في السجل",
+      "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل."
+    },
+    {
+      "rule": "DF015",
+      "severity": "high",
+      "cwe": "CWE-643",
+      "title": "Tainted data reaches XPath",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+      "advice": "استخدم XPathVariableResolver بدل تركيب الاستعلام.",
+      "label": "XPath query",
+      "names": [
+        "evaluate",
+        "compile",
+        "evaluateExpression"
+      ],
+      "args": [
+        0
+      ],
+      "receiver": "(?i)(^|[._])(xp|xpath|xpe|xpathobj|path)\\w*$"
+    },
+    {
+      "rule": "DF025",
+      "severity": "medium",
+      "cwe": "CWE-501",
+      "label": "HTTP session attribute",
+      "title": "Untrusted data stored in the session (trust boundary violation)",
+      "title_ar": "بيانات غير موثوقة تُخزَّن في الجلسة (تجاوز حدود الثقة)",
+      "advice": "لا تضع مدخلات المستخدم في الجلسة كقيم موثوقة؛ تحقّق منها بقائمة بيضاء أولًا.",
+      "names": [
+        "setAttribute",
+        "putValue"
+      ],
+      "args": [
+        0,
+        1
+      ],
+      "receiver": "(?i)session"
+    }
+  ],
+  "sanitizers": [
+    "Integer.parseInt",
+    "Integer.valueOf",
+    "Long.parseLong",
+    "Long.valueOf",
+    "Double.parseDouble",
+    "Boolean.parseBoolean",
+    "parseInt",
+    "parseLong",
+    "valueOf",
+    "URLEncoder.encode",
+    "StringEscapeUtils.escapeHtml4",
+    "StringEscapeUtils.escapeHtml",
+    "StringEscapeUtils.escapeSql",
+    "escapeHtml4",
+    "escapeHtml",
+    "HtmlUtils.htmlEscape",
+    "htmlEscape",
+    "Encode.forHtml",
+    "Encode.forJavaScript",
+    "Encode.forUriComponent",
+    "forHtml",
+    "forJavaScript",
+    "ESAPI.encoder().encodeForHTML",
+    "encodeForHTML",
+    "encodeForSQL",
+    "encodeForLDAP",
+    "encodeForOS",
+    "UUID.fromString",
+    "Paths.get(.*).normalize",
+    "FilenameUtils.getName",
+    "getName",
+    "Normalizer.normalize",
+    "Pattern.quote",
+    "Jsoup.clean",
+    "PolicyFactory.sanitize",
+    "sanitize",
+    "escape",
+    "hashCode",
+    "length",
+    "size"
+  ],
+  "safe_return_calls": [],
+  "validators": [
+    "matches",
+    "contains",
+    "startsWith",
+    "endsWith",
+    "equals",
+    "equalsIgnoreCase",
+    "isDigit",
+    "isLetter",
+    "isLetterOrDigit",
+    "isAlphanumeric",
+    "isNumeric",
+    "validate",
+    "isValid",
+    "isSafe",
+    "allowed",
+    "check",
+    "verify",
+    "containsKey"
+  ]
 }

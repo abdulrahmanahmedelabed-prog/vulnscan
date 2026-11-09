@@ -533,3 +533,11 @@ def test_audit_profile_gates_pattern_hits(tmp_path):
     default = _flow_ids(tmp_path, code)
     assert ("EXE004", 4) not in default and ("EXE004", 6) in default
     assert ("EXE004", 4) in _flow_ids(tmp_path, code, audit=True)
+
+
+def test_dataflow_finding_carries_full_path(tmp_path):
+    (tmp_path / "app.py").write_text(
+        "import os\nfrom flask import Flask, request\napp = Flask(__name__)\n@app.route('/ping')\ndef ping():\n"
+        "    host = request.args.get('host')\n    cmd = 'ping -c 1 ' + host\n    os.system(cmd)\n    return 'ok'\n")
+    df = [f for f in scan_path(tmp_path, [], set())[0] if f.rule_id == "DF002"]
+    assert df and [s["line"] for s in df[0].extra["path"]] == [6, 7, 8]

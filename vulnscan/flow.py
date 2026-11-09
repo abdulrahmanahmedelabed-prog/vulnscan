@@ -185,8 +185,8 @@ class _Exit(Exception):
 class FlowInterpreter:
     """Runs one function body in order and records the state before each node of interest."""
 
-    def __init__(self, proj, mod, cls, fn, base_env):
-        self.proj, self.mod, self.cls, self.fn, self.base = proj, mod, cls, fn, base_env
+    def __init__(self, proj, mod, cls, fn, base_env, path: str = ""):
+        self.proj, self.mod, self.cls, self.fn, self.base, self.path = proj, mod, cls, fn, base_env, path
         self.snap: dict = {}          # id(node) -> State (joined over every visit)
         self.dead: set = set()        # id(stmt) of statements proven unreachable
         self.loop_exits: list = []    # states flowing out of `break` in the innermost loop
@@ -378,9 +378,20 @@ class FlowInterpreter:
         return out
 
     # ---------------------------------------------------------------- assignments
+    def stepped(self, o, name, value):
+        """Record the assignment in the origin's trail, so a finding shows the path source -> … -> sink."""
+        if not o:
+            return o
+        line = getattr(value, "lineno", 0) or 0
+        trail = o[2] if len(o) > 2 else ()
+        if trail and trail[-1].get("line") == line and trail[-1].get("file") == self.path:
+            return o
+        text = f"{name} = {o[1]}" if not trail and o[0] in ("source", "retsource") else f"{name} = …"
+        return (o[0], o[1], tuple(trail) + ({"file": self.path, "line": line, "text": text},)) + tuple(o[3:])
+
     def assign(self, tgt, value, st: State) -> State:
         if isinstance(tgt, ast.Name):
-            o = self.taint(value, st)
+            o = self.stepped(self.taint(value, st), tgt.id, value)
             st = st.copy()
             if o:
                 st.tainted[tgt.id] = o
