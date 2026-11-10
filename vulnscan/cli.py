@@ -86,6 +86,11 @@ def build_parser(lang: str = "both") -> argparse.ArgumentParser:
     p.add_argument("--fail-on", choices=SEVERITIES, help=h("أعد رمز خروج 1 إذا وُجدت نتيجة بهذه الخطورة أو أعلى (لـ CI)"))
     p.add_argument("--baseline", metavar="FILE", help=h("قارن مع خط أساس: اعرض النتائج الجديدة فقط (النتائج المعروفة تُكتم)"))
     p.add_argument("--write-baseline", metavar="FILE", help=h("احفظ بصمات النتائج الحالية في خط أساس ثم اخرج (لتبنّي الأداة على كود قائم)"))
+    p.add_argument("--diff-base", metavar="REF",
+                   help=h("افحص كل شيء لكن اعرض فقط النتائج على الأسطر المضافة أو المعدّلة منذ نقطة التفرّع مع REF "
+                          "(أو التي يمرّ مسار بياناتها بها)؛ لطلبات الدمج"))
+    p.add_argument("--diff-staged", action="store_true",
+                   help=h("اعرض فقط النتائج على الأسطر المجهّزة للإيداع (git add) مقارنة بـ HEAD؛ لخطافات pre-commit"))
     p.add_argument("--no-deps", action="store_true", help=h("لا تستعلم OSV.dev عن ثغرات الاعتماديات (دون إنترنت)"))
     p.add_argument("--no-external", action="store_true", help=h("لا تشغّل bandit/semgrep/gitleaks/npm حتى لو كانت مثبّتة"))
     p.add_argument("--deep", action="store_true", help=h("فحص ويب أعمق: تحليل HTML وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)"))
@@ -223,6 +228,12 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "ui":
         return ui_main(argv[1:])
+    if argv and argv[0] == "lsp":                    # language server for editors (stdio; --stdio accepted)
+        from .lsp import main as lsp_main
+        return lsp_main(argv[1:])
+    if argv and argv[0] == "update":
+        from .updater import cli_main as update_main
+        return update_main(argv[1:])
     lang = _lang_from_argv(argv)
     parser = build_parser(lang)
     args = parser.parse_args(argv)
@@ -236,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.target:
         parser.error("the following arguments are required: target")
+    if (args.diff_base or args.diff_staged) and args.target.startswith(("http://", "https://")):
+        parser.error("--diff-base/--diff-staged need a local path inside a git repository")
     result = run(args)
     if isinstance(result, int):          # web target unreachable: message already printed
         return result
@@ -253,6 +266,15 @@ def main(argv: list[str] | None = None) -> int:
         findings, suppressed, size = apply_baseline(findings, args.baseline)
         notes = list(notes) + ([f"خط الأساس: كُتمت {suppressed} نتيجة معروفة من أصل {size}؛ تُعرض النتائج الجديدة فقط."]
                                if size else ["خط الأساس غير موجود أو فارغ؛ كل النتائج تُعرض كجديدة."])
+    if args.diff_base or args.diff_staged:   # after the baseline (which records everything), before --fail-on
+        from .diffscope import DiffScopeError, compute, filter_findings
+        try:
+            scope = compute(args.target, args.diff_base, staged=args.diff_staged and not args.diff_base)
+        except DiffScopeError as e:
+            print(f"✖ {m(str(e))}", file=sys.stderr)
+            return 2
+        findings, dropped = filter_findings(findings, scope, args.target)
+        notes = list(notes) + scope.notes + [f"نتائج خارج التغييرات لم تُعرض: {dropped}."]
     findings = [f for f in findings if SEVERITY_RANK[f.severity] <= SEVERITY_RANK[args.min_severity]]
     findings = sort_findings(findings)
 

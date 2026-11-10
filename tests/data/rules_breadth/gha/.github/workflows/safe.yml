@@ -1,0 +1,20 @@
+name: pr-check
+on: pull_request
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: someorg/build-action@0123456789abcdef0123456789abcdef01234567 # v1.4.2
+      - uses: docker://alpine@sha256:3fbc632167424a6d997e74f52b878d7cc478225cffac6bc977eedfe51c7f4e79
+      - uses: ./.github/actions/local-step
+      - name: Greet ${{ github.head_ref }}
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: echo "building $BRANCH"

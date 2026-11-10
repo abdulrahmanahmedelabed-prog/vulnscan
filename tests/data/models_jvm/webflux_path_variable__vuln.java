@@ -1,0 +1,12 @@
+// expect: DF004
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.reactive.function.server.ServerRequest;
+
+public class Orders {
+    private JdbcTemplate jdbcTemplate;
+
+    public Object byId(ServerRequest serverRequest) {
+        String id = serverRequest.pathVariable("id");
+        return jdbcTemplate.queryForRowSet("SELECT * FROM orders WHERE id = '" + id + "'");
+    }
+}

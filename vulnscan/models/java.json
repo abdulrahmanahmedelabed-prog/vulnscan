@@ -24,7 +24,8 @@
         "nextLine",
         "Scanner.next",
         "System.getenv",
-        "System.getProperty"
+        "System.getProperty",
+        "ActionContext.getContext.getParameters"
       ],
       "label": "{name}()"
     },
@@ -59,6 +60,23 @@
         "requestURI"
       ],
       "label": "request.{attr}"
+    },
+    {
+      "kind": "call",
+      "names": [
+        "ZipEntry.getName",
+        "zipEntry.getName",
+        "JarEntry.getName",
+        "jarEntry.getName",
+        "entry.getName",
+        "ze.getName",
+        "TarArchiveEntry.getName",
+        "ArchiveEntry.getName",
+        "archiveEntry.getName",
+        "tarEntry.getName"
+      ],
+      "label": "archive entry name {name}()",
+      "_comment": "Zip Slip: the name of an entry read from an archive is attacker-controlled (../../ paths)"
     }
   ],
   "entry_points": [
@@ -87,7 +105,17 @@
         "JmsListener",
         "KafkaListener",
         "RabbitListener",
-        "Command"
+        "Command",
+        "PATCH",
+        "HEAD",
+        "OPTIONS",
+        "Put",
+        "Delete",
+        "Patch",
+        "Head",
+        "WebMethod",
+        "OnMessage",
+        "SubscribeMapping"
       ],
       "label": "معامل نقطة الدخول"
     },
@@ -102,7 +130,11 @@
         "Resource",
         "Servlet",
         "Filter",
-        "HandlerInterceptor"
+        "HandlerInterceptor",
+        "ActionSupport",
+        "AbstractController",
+        "TextWebSocketHandler",
+        "HttpHandler"
       ],
       "methods": [
         "doGet",
@@ -117,7 +149,11 @@
         "channelRead0",
         "onMessage",
         "run",
-        "execute"
+        "execute",
+        "handleRequestInternal",
+        "handleTextMessage",
+        "doHead",
+        "doOptions"
       ]
     },
     {
@@ -129,7 +165,13 @@
         "exchange",
         "call",
         "ctx",
-        "context"
+        "context",
+        "serverRequest",
+        "httpServletRequest",
+        "routingContext",
+        "webRequest",
+        "uriInfo",
+        "httpExchange"
       ]
     },
     {
@@ -220,6 +262,48 @@
       "cwe": "CWE-22",
       "label": "file path",
       "args": [
+        0,
+        1
+      ],
+      "names": [
+        "File",
+        "java.io.File"
+      ],
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار (toRealPath/normalize) وتحقق أنه داخل المجلد المسموح.",
+      "_comment": "new File(parent, child) / new File(URI): both path components are checked (the constructor has at most two)"
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "file path",
+      "args": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "names": [
+        "Paths.get",
+        "java.nio.file.Paths.get",
+        "Path.of",
+        "java.nio.file.Path.of",
+        "FileSystems.getDefault.getPath",
+        "FileUtils.getFile"
+      ],
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار (toRealPath/normalize) وتحقق أنه داخل المجلد المسموح.",
+      "_comment": "Paths.get(first, more...) / Path.of / FileSystem.getPath / FileUtils.getFile(names...): every component is checked"
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "file path",
+      "args": [
         0
       ],
       "names": [
@@ -276,6 +360,41 @@
       "title": "Tainted data reaches unsafe deserialization",
       "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل غير آمن",
       "advice": "لا تفك تسلسل بيانات غير موثوقة؛ استخدم ObjectInputFilter أو JSON بأنواع ثابتة."
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-1336",
+      "label": "template (SSTI)",
+      "args": [
+        1,
+        2
+      ],
+      "names": [
+        "freemarker.template.Template"
+      ],
+      "title": "Tainted data reaches a template/expression engine",
+      "title_ar": "بيانات غير موثوقة تصل إلى محرّك قوالب أو تعبيرات",
+      "advice": "لا تبنِ القالب أو التعبير من المدخلات.",
+      "_comment": "FreeMarker new Template(name, Reader|String source, cfg) -> source is argument 1; new Template(name, sourceName, Reader, cfg) -> argument 2. The name (argument 0) is only a label"
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-1336",
+      "label": "template (SSTI)",
+      "args": [
+        3
+      ],
+      "names": [
+        "Velocity.evaluate",
+        "org.apache.velocity.app.Velocity.evaluate",
+        "VelocityEngine.evaluate"
+      ],
+      "title": "Tainted data reaches a template/expression engine",
+      "title_ar": "بيانات غير موثوقة تصل إلى محرّك قوالب أو تعبيرات",
+      "advice": "لا تبنِ القالب أو التعبير من المدخلات.",
+      "_comment": "Velocity.evaluate(Context, Writer, String logTag, String|Reader template): only the template (argument 3); the context carries data"
     },
     {
       "rule": "DF007",
@@ -527,6 +646,784 @@
         1
       ],
       "receiver": "(?i)session"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL (Spring JDBC / Hibernate / jOOQ)",
+      "args": [
+        0
+      ],
+      "names": [
+        "queryForRowSet",
+        "queryForStream",
+        "queryForInt",
+        "queryForLong",
+        "executeLargeUpdate",
+        "nativeSQL",
+        "createMutationQuery",
+        "createNativeMutationQuery",
+        "createSelectionQuery",
+        "Restrictions.sqlRestriction",
+        "DSL.field",
+        "DSL.condition",
+        "DSL.table",
+        "DSL.sql",
+        "DSL.query",
+        "DSL.resultQuery",
+        "DSL.unquotedName"
+      ],
+      "title": "Tainted data reaches a raw SQL query API",
+      "title_ar": "بيانات غير موثوقة تصل إلى واجهة استعلام SQL خام",
+      "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى واجهات الاستعلام الخام (JdbcTemplate/Hibernate/jOOQ/R2DBC)؛ استخدم معاملات مربوطة.",
+      "_comment": "JdbcTemplate/NamedParameterJdbcTemplate, JDBC, Hibernate 6 Session, Hibernate Criteria, jOOQ plain-SQL templating"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL (jOOQ DSLContext plain SQL)",
+      "args": [
+        0
+      ],
+      "names": [
+        "fetch",
+        "fetchOne",
+        "fetchSingle",
+        "fetchOptional",
+        "fetchLazy",
+        "fetchMany",
+        "fetchValue",
+        "fetchStream",
+        "resultQuery"
+      ],
+      "title": "Tainted data reaches a raw SQL query API",
+      "title_ar": "بيانات غير موثوقة تصل إلى واجهة استعلام SQL خام",
+      "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى واجهات الاستعلام الخام (JdbcTemplate/Hibernate/jOOQ/R2DBC)؛ استخدم معاملات مربوطة.",
+      "receiver": "(^|\\.)(dsl\\w*|[a-z]\\w*Dsl\\w*|create|jooq\\w*|ctx|context|db|DSL\\.using)$",
+      "_comment": "DSLContext.fetch(String sql, Object... bindings): the SQL text is argument 0"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL (R2DBC DatabaseClient / Spring JdbcClient)",
+      "args": [
+        0
+      ],
+      "names": [
+        "sql"
+      ],
+      "title": "Tainted data reaches a raw SQL query API",
+      "title_ar": "بيانات غير موثوقة تصل إلى واجهة استعلام SQL خام",
+      "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى واجهات الاستعلام الخام (JdbcTemplate/Hibernate/jOOQ/R2DBC)؛ استخدم معاملات مربوطة.",
+      "receiver": "(^|\\.)(databaseClient|[a-z]\\w*DatabaseClient|jdbcClient|[a-z]\\w*JdbcClient|client|db)$"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-943",
+      "label": "NoSQL query (MongoDB)",
+      "args": [
+        0
+      ],
+      "names": [
+        "BasicDBObject.parse",
+        "Document.parse",
+        "BsonDocument.parse",
+        "com.mongodb.util.JSON.parse",
+        "Filters.where",
+        "BasicQuery",
+        "org.springframework.data.mongodb.core.query.BasicQuery"
+      ],
+      "title": "Tainted data reaches a MongoDB query parsed from text",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام MongoDB مُحلَّل من نص",
+      "advice": "لا تحلّل استعلام MongoDB من نص يحوي مدخلات المستخدم ولا تستخدم $where؛ ابنِ المرشّحات بـ Filters ومرّر القيم كمعاملات."
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        0
+      ],
+      "names": [
+        "MVEL.eval",
+        "MVEL.evalToString",
+        "MVEL.evalToBoolean",
+        "MVEL.compileExpression",
+        "MVEL.compileSetExpression",
+        "Ognl.getValue",
+        "Ognl.setValue",
+        "Ognl.parseExpression",
+        "OgnlUtil.getValue",
+        "OgnlUtil.setValue",
+        "OgnlUtil.compile",
+        "GroovyShell.parse",
+        "GroovyShell.run",
+        "GroovyClassLoader.parseClass",
+        "ELProcessor.eval",
+        "ELProcessor.getValue",
+        "ELProcessor.setValue",
+        "SpelExpressionParser.parseRaw",
+        "parseRaw"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا."
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        1
+      ],
+      "names": [
+        "Eval.x",
+        "groovy.util.Eval.x"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا.",
+      "_comment": "groovy.util.Eval.x(values..., String expression): the expression is argument 1"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        2
+      ],
+      "names": [
+        "Eval.xy",
+        "groovy.util.Eval.xy"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا.",
+      "_comment": "groovy.util.Eval.xy(values..., String expression): the expression is argument 2"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        3
+      ],
+      "names": [
+        "Eval.xyz",
+        "groovy.util.Eval.xyz"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا.",
+      "_comment": "groovy.util.Eval.xyz(values..., String expression): the expression is argument 3"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        0,
+        2
+      ],
+      "names": [
+        "Eval.me",
+        "groovy.util.Eval.me"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا.",
+      "_comment": "groovy.util.Eval.me(String expression) / me(String symbol, Object value, String expression)"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        1
+      ],
+      "names": [
+        "evaluateString",
+        "createValueExpression",
+        "createMethodExpression"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا.",
+      "_comment": "Rhino Context.evaluateString(scope, source, ...); EL ExpressionFactory.createValueExpression(ctx, expr, type)"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        0
+      ],
+      "names": [
+        "eval"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا.",
+      "receiver": "(^|\\.)(engine|[a-z]\\w*Engine|nashorn\\w*|rhino\\w*|graal\\w*|jshell|interp\\w*|[a-z]\\w*Interp\\w*|bsh|beanshell|js|se|elp|[a-z]\\w*ELProcessor|[a-z]\\w*ElProcessor)$",
+      "_comment": "javax.script ScriptEngine.eval, JShell.eval, BeanShell Interpreter.eval, Jython PythonInterpreter.eval"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        0
+      ],
+      "names": [
+        "evaluate",
+        "parse",
+        "run",
+        "parseClass"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا.",
+      "receiver": "(^|\\.)(shell|[a-z]\\w*Shell|groovy\\w*|[a-z]\\w*Groovy\\w*|gs|gcl|[a-z]\\w*ClassLoader)$",
+      "_comment": "GroovyShell.evaluate/parse/run, GroovyClassLoader.parseClass"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        0
+      ],
+      "names": [
+        "createExpression",
+        "createScript",
+        "createTemplate"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا.",
+      "receiver": "(^|\\.)(jexl\\w*|[a-z]\\w*Jexl\\w*)$",
+      "_comment": "Apache Commons JEXL JexlEngine.createExpression/createScript"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "code execution",
+      "args": [
+        0
+      ],
+      "names": [
+        "findValue",
+        "findString",
+        "setValue",
+        "setParameter"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تقيّم تعبيرات OGNL/MVEL/JEXL/EL أو سكربتات Groovy/JavaScript مبنية من المدخلات؛ استخدم قائمة بيضاء من العمليات أو سياق تقييم مقيّدًا.",
+      "receiver": "(^|\\.)(stack|valueStack|[a-z]\\w*ValueStack|getValueStack)$",
+      "_comment": "Struts 2 ValueStack OGNL evaluation"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-94",
+      "label": "Velocity template evaluation",
+      "args": [
+        3
+      ],
+      "names": [
+        "evaluate"
+      ],
+      "title": "Tainted data reaches script / expression evaluation",
+      "title_ar": "بيانات غير موثوقة تصل إلى تقييم سكربت أو تعبير",
+      "advice": "لا تبنِ القالب من المدخلات؛ حمّل القوالب من مجلد موثوق ومرّر المدخلات كبيانات في سياق القالب فقط.",
+      "receiver": "(^|\\.)(velocity\\w*|ve|engine)$",
+      "_comment": "VelocityEngine.evaluate(ctx, out, tag, template): the template is argument 3 (case-sensitive receiver: the static Velocity class is DF007)"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-74",
+      "label": "JNDI lookup",
+      "args": [
+        0
+      ],
+      "names": [
+        "lookup",
+        "lookupLink",
+        "InitialContext.doLookup"
+      ],
+      "title": "Tainted data reaches a JNDI lookup (JNDI injection)",
+      "title_ar": "بيانات غير موثوقة تصل إلى بحث JNDI (حقن JNDI)",
+      "advice": "لا تمرّر اسم JNDI من المدخلات إلى lookup()؛ استخدم أسماء ثابتة أو قائمة بيضاء (حقن JNDI يؤدي إلى تحميل أصناف بعيدة).",
+      "receiver": "(^|\\.)(ctx|context|ic|initialContext|[a-z]\\w*Context|InitialContext|jndi\\w*|[a-z]\\w*Jndi\\w*)$"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-74",
+      "label": "XSLT stylesheet",
+      "args": [
+        0
+      ],
+      "names": [
+        "newTransformer",
+        "newTemplates"
+      ],
+      "title": "Tainted data reaches an XSLT stylesheet (XSLT injection)",
+      "title_ar": "بيانات غير موثوقة تصل إلى ورقة أنماط XSLT (حقن XSLT)",
+      "advice": "لا تحمّل ورقة أنماط XSLT من مدخلات المستخدم؛ استخدم أوراق أنماط ثابتة وفعّل FEATURE_SECURE_PROCESSING.",
+      "receiver": "(^|\\.)(tf|factory|transformerFactory|[a-z]\\w*Factory|TransformerFactory\\.newInstance)$"
+    },
+    {
+      "rule": "DF006",
+      "severity": "critical",
+      "cwe": "CWE-502",
+      "label": "deserialization",
+      "args": [
+        0
+      ],
+      "names": [
+        "readClassAndObject",
+        "readObjectOrNull",
+        "SerializationUtils.deserialize",
+        "JSON.parse",
+        "JSON.parseArray",
+        "JSONObject.parseObject",
+        "YamlReader",
+        "JsonReader.jsonToJava",
+        "Yaml.loadAll",
+        "Yaml.loadAs"
+      ],
+      "title": "Tainted data reaches unsafe deserialization",
+      "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل غير آمن",
+      "advice": "لا تفك تسلسل بيانات غير موثوقة؛ استخدم ObjectInputFilter أو JSON بأنواع ثابتة.",
+      "_comment": "Kryo, commons-lang3/Spring SerializationUtils, fastjson (autoType), YamlBeans, json-io, SnakeYAML"
+    },
+    {
+      "rule": "DF006",
+      "severity": "critical",
+      "cwe": "CWE-502",
+      "label": "deserialization",
+      "args": [
+        0
+      ],
+      "names": [
+        "load",
+        "loadAll",
+        "loadAs"
+      ],
+      "title": "Tainted data reaches unsafe deserialization",
+      "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل غير آمن",
+      "advice": "لا تفك تسلسل بيانات غير موثوقة؛ استخدم ObjectInputFilter أو JSON بأنواع ثابتة.",
+      "receiver": "(^|\\.)(yaml\\w*|[a-z]\\w*Yaml\\w*|snake\\w*|Yaml)$",
+      "_comment": "SnakeYAML new Yaml().load(...) without SafeConstructor"
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-1336",
+      "label": "template (SSTI)",
+      "args": [
+        1
+      ],
+      "names": [
+        "putStringResource",
+        "putTemplate"
+      ],
+      "title": "Tainted data reaches a template/expression engine",
+      "title_ar": "بيانات غير موثوقة تصل إلى محرّك قوالب أو تعبيرات",
+      "advice": "لا تبنِ القالب من المدخلات؛ حمّل القوالب من مجلد موثوق ومرّر المدخلات كبيانات في سياق القالب فقط.",
+      "_comment": "Velocity StringResourceRepository.putStringResource(name, body); FreeMarker StringTemplateLoader.putTemplate(name, source)"
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-1336",
+      "label": "template (SSTI)",
+      "args": [
+        0
+      ],
+      "names": [
+        "getLiteralTemplate",
+        "compileInline",
+        "org.stringtemplate.v4.ST"
+      ],
+      "title": "Tainted data reaches a template/expression engine",
+      "title_ar": "بيانات غير موثوقة تصل إلى محرّك قوالب أو تعبيرات",
+      "advice": "لا تبنِ القالب من المدخلات؛ حمّل القوالب من مجلد موثوق ومرّر المدخلات كبيانات في سياق القالب فقط.",
+      "_comment": "Pebble getLiteralTemplate, Handlebars compileInline, StringTemplate new ST(template)"
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-1336",
+      "label": "template (SSTI)",
+      "args": [
+        0
+      ],
+      "names": [
+        "process",
+        "processThrottled"
+      ],
+      "title": "Tainted data reaches a template/expression engine",
+      "title_ar": "بيانات غير موثوقة تصل إلى محرّك قوالب أو تعبيرات",
+      "advice": "لا تبنِ القالب من المدخلات؛ حمّل القوالب من مجلد موثوق ومرّر المدخلات كبيانات في سياق القالب فقط.",
+      "receiver": "(^|\\.)(templateEngine|[a-z]\\w*TemplateEngine|thymeleaf\\w*)$",
+      "_comment": "Thymeleaf TemplateEngine.process(template, context) with a string template resolver"
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-1336",
+      "label": "template (SSTI)",
+      "args": [
+        0
+      ],
+      "names": [
+        "render",
+        "renderForResult"
+      ],
+      "title": "Tainted data reaches a template/expression engine",
+      "title_ar": "بيانات غير موثوقة تصل إلى محرّك قوالب أو تعبيرات",
+      "advice": "لا تبنِ القالب من المدخلات؛ حمّل القوالب من مجلد موثوق ومرّر المدخلات كبيانات في سياق القالب فقط.",
+      "receiver": "(^|\\.)(jinjava\\w*|[a-z]\\w*Jinjava)$"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "HttpPut",
+        "HttpDelete",
+        "HttpPatch",
+        "HttpHead",
+        "HttpOptions",
+        "HttpTrace",
+        "Request.Get",
+        "Request.Post",
+        "Request.Put",
+        "Request.Delete",
+        "Request.Head",
+        "RequestBuilder.get",
+        "RequestBuilder.post",
+        "postForEntity",
+        "postForLocation",
+        "patchForObject",
+        "headForHeaders",
+        "optionsForAllow",
+        "baseUrl",
+        "Unirest.get",
+        "Unirest.post",
+        "Unirest.put",
+        "Unirest.delete",
+        "prepareGet",
+        "preparePost",
+        "preparePut",
+        "prepareDelete",
+        "UrlResource",
+        "ResourceUtils.toURL"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات.",
+      "_comment": "Apache HttpClient 4/5 (classic + fluent), RestTemplate, WebClient/Retrofit baseUrl, Unirest, AsyncHttpClient, Spring UrlResource"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "put",
+        "delete",
+        "postForEntity"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات.",
+      "receiver": "(^|\\.)(restTemplate|[a-z]\\w*RestTemplate|RestTemplate\\(\\))$",
+      "_comment": "RestTemplate.put(url, body) / delete(url) / postForEntity(url, ...)"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "target"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات.",
+      "receiver": "(^|\\.)(client|[a-z]\\w*Client|ClientBuilder\\.newClient)$",
+      "_comment": "JAX-RS client Client.target(uri)"
+    },
+    {
+      "rule": "DF014",
+      "severity": "high",
+      "cwe": "CWE-90",
+      "label": "LDAP filter",
+      "args": [
+        2
+      ],
+      "names": [
+        "search",
+        "searchForEntry"
+      ],
+      "title": "Tainted data reaches an LDAP search",
+      "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+      "advice": "هرّب المرشّح أو استخدم LdapQueryBuilder.",
+      "receiver": "(^|\\.)(conn|connection|ldapConnection|[a-z]\\w*LdapConnection|ldapConn|pool|connectionPool|[a-z]\\w*ConnectionPool)$",
+      "_comment": "UnboundID LDAPConnection.search(baseDN, scope, filter, attrs...): the filter is argument 2"
+    },
+    {
+      "rule": "DF014",
+      "severity": "high",
+      "cwe": "CWE-90",
+      "label": "LDAP filter",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "searchForObject",
+        "HardcodedFilter",
+        "com.unboundid.ldap.sdk.Filter.create"
+      ],
+      "title": "Tainted data reaches an LDAP search",
+      "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+      "advice": "هرّب المرشّح أو استخدم LdapQueryBuilder.",
+      "_comment": "Spring LDAP LdapTemplate.searchForObject(base, filter, mapper), HardcodedFilter, UnboundID Filter.create (qualified: a bare Filter.create matches unrelated Filter classes)"
+    },
+    {
+      "rule": "DF014",
+      "severity": "high",
+      "cwe": "CWE-90",
+      "label": "LDAP filter",
+      "args": [
+        0
+      ],
+      "names": [
+        "filter"
+      ],
+      "title": "Tainted data reaches an LDAP search",
+      "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+      "advice": "هرّب المرشّح أو استخدم LdapQueryBuilder.",
+      "receiver": "(^|\\.)(LdapQueryBuilder\\.query|query)(\\.(base|searchScope|countLimit|timeLimit|attributes))*$",
+      "_comment": "Spring LDAP LdapQueryBuilder.query().filter(String hardcodedFilter): argument 0 is raw filter text"
+    },
+    {
+      "rule": "DF015",
+      "severity": "high",
+      "cwe": "CWE-643",
+      "label": "XPath",
+      "args": [
+        0
+      ],
+      "names": [
+        "createXPath",
+        "DocumentHelper.createXPath",
+        "DOMXPath",
+        "Dom4jXPath",
+        "JDOMXPath",
+        "numberValueOf"
+      ],
+      "title": "Tainted data reaches XPath",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+      "advice": "استخدم XPathVariableResolver بدل تركيب الاستعلام.",
+      "_comment": "dom4j createXPath / Node.numberValueOf, Jaxen XPath classes"
+    },
+    {
+      "rule": "DF013",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "label": "HTTP response body (XSS)",
+      "args": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "names": [
+        "printf",
+        "format"
+      ],
+      "title": "Tainted data reflected into the response",
+      "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+      "advice": "هرّب المخرجات (Encode.forHtml / escapeHtml4) أو استخدم قوالب تُهرِّب تلقائيًا.",
+      "receiver": "(?i)(^|\\.)(getwriter|\\w*writer|pw)$|(?<!system)(^|\\.)out$",
+      "_comment": "PrintWriter.printf/format([Locale,] format, args...): the format string and the arguments"
+    },
+    {
+      "rule": "DF013",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "label": "HTTP response body (XSS)",
+      "args": [
+        0
+      ],
+      "names": [
+        "getOutputStream.print",
+        "getOutputStream.println"
+      ],
+      "title": "Tainted data reflected into the response",
+      "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+      "advice": "هرّب المخرجات (Encode.forHtml / escapeHtml4) أو استخدم قوالب تُهرِّب تلقائيًا."
+    },
+    {
+      "rule": "DF008",
+      "severity": "medium",
+      "cwe": "CWE-601",
+      "label": "redirect",
+      "args": [
+        0
+      ],
+      "names": [
+        "ServerResponse.temporaryRedirect",
+        "ServerResponse.permanentRedirect",
+        "ServerResponse.seeOther",
+        "ResponseEntity.status.location",
+        "Response.status.location"
+      ],
+      "title": "Tainted data reaches a redirect",
+      "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+      "advice": "تحقق من وجهة التحويل بقائمة بيضاء."
+    },
+    {
+      "rule": "DF008",
+      "severity": "medium",
+      "cwe": "CWE-601",
+      "label": "redirect",
+      "args": [
+        0
+      ],
+      "names": [
+        "setLocation"
+      ],
+      "title": "Tainted data reaches a redirect",
+      "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+      "advice": "تحقق من وجهة التحويل بقائمة بيضاء.",
+      "receiver": "(?i)(^|\\.)(\\w*headers)$",
+      "_comment": "Spring HttpHeaders.setLocation(uri)"
+    },
+    {
+      "rule": "DF008",
+      "severity": "medium",
+      "cwe": "CWE-113",
+      "label": "HTTP response header",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "setHeader",
+        "addHeader"
+      ],
+      "title": "Tainted data written to an HTTP response header",
+      "title_ar": "بيانات غير موثوقة تُكتب في ترويسة استجابة HTTP",
+      "advice": "أزل محرفَي CR وLF من القيمة أو ارفضها قبل وضعها في ترويسة الاستجابة.",
+      "receiver": "(?i)(^|\\.)(response|resp|res|\\w*httpresponse|\\w*servletresponse)$",
+      "_comment": "HttpServletResponse.setHeader/addHeader(name, value): CR/LF in either splits the response"
+    },
+    {
+      "rule": "DF016",
+      "severity": "medium",
+      "cwe": "CWE-117",
+      "label": "log injection",
+      "args": [
+        0
+      ],
+      "names": [
+        "info",
+        "warn",
+        "error",
+        "debug",
+        "trace",
+        "fatal",
+        "warning",
+        "severe",
+        "fine"
+      ],
+      "title": "Tainted data written to a log",
+      "title_ar": "بيانات غير موثوقة تُكتب في السجل",
+      "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل.",
+      "receiver": "(^|\\.)(log|logger|LOG|LOGGER|_log|_logger|\\w*Logger|\\w*Log)$",
+      "_comment": "SLF4J / Log4j / JUL / commons-logging loggers"
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "file path",
+      "args": [
+        0
+      ],
+      "names": [
+        "Files.lines",
+        "Files.newBufferedReader",
+        "Files.newBufferedWriter",
+        "Files.list",
+        "Files.deleteIfExists",
+        "Files.createDirectories",
+        "Files.createDirectory",
+        "Files.newByteChannel",
+        "ResourceUtils.getFile",
+        "FileSystemResource",
+        "PathResource",
+        "FileUrlResource",
+        "FileUtils.readFileToString",
+        "FileUtils.openInputStream",
+        "FileUtils.openOutputStream",
+        "FileUtils.writeStringToFile",
+        "FileUtils.forceDelete",
+        "FileUtils.deleteDirectory"
+      ],
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار (toRealPath/normalize) وتحقق أنه داخل المجلد المسموح.",
+      "_comment": "java.nio.file.Files, Spring resources, commons-io FileUtils"
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "uploaded file save path",
+      "args": [
+        0
+      ],
+      "names": [
+        "transferTo"
+      ],
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار (toRealPath/normalize) وتحقق أنه داخل المجلد المسموح.",
+      "receiver": "(?i)(^|\\.)(\\w*file|multipart\\w*|upload\\w*|part|\\w*filepart)$",
+      "_comment": "Spring MultipartFile.transferTo(dest) / WebFlux FilePart.transferTo(dest)"
     }
   ],
   "sanitizers": [
@@ -569,7 +1466,38 @@
     "escape",
     "hashCode",
     "length",
-    "size"
+    "size",
+    "Short.parseShort",
+    "Byte.parseByte",
+    "Float.parseFloat",
+    "Integer.parseUnsignedInt",
+    "Long.parseUnsignedLong",
+    "Encode.forHtmlContent",
+    "Encode.forHtmlAttribute",
+    "Encode.forHtmlUnquotedAttribute",
+    "Encode.forXml",
+    "Encode.forXmlContent",
+    "Encode.forXmlAttribute",
+    "Encode.forJavaScriptBlock",
+    "Encode.forJavaScriptAttribute",
+    "Encode.forJavaScriptSource",
+    "encodeForHTMLAttribute",
+    "encodeForJavaScript",
+    "encodeForURL",
+    "encodeForXML",
+    "encodeForXMLAttribute",
+    "encodeForXPath",
+    "encodeForDN",
+    "HtmlUtils.htmlEscapeDecimal",
+    "HtmlUtils.htmlEscapeHex",
+    "JavaScriptUtils.javaScriptEscape",
+    "StringEscapeUtils.escapeXml",
+    "StringEscapeUtils.escapeXml10",
+    "StringEscapeUtils.escapeXml11",
+    "HtmlEscapers.htmlEscaper.escape",
+    "LdapEncoder.filterEncode",
+    "LdapEncoder.nameEncode",
+    "FilenameUtils.getBaseName"
   ],
   "safe_return_calls": [],
   "validators": [

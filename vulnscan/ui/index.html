@@ -46,6 +46,7 @@
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10.25 13.75a3.75 3.75 0 0 0 5.3 0l2.95-2.95a3.75 3.75 0 0 0-5.3-5.3l-1.1 1.1M13.75 10.25a3.75 3.75 0 0 0-5.3 0L5.5 13.2a3.75 3.75 0 0 0 5.3 5.3l1.1-1.1"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.25"/><path d="M12 7.5V12l3 2"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-update" viewBox="0 0 24 24"><path d="M19.25 12a7.25 7.25 0 0 1-12.9 4.55M4.75 12a7.25 7.25 0 0 1 12.9-4.55"/><path d="M17.9 3.9v3.85h-3.85M6.1 20.1v-3.85h3.85"/></symbol>
     <symbol id="i-pattern" viewBox="0 0 24 24"><rect x="3.75" y="5.75" width="16.5" height="12.5" rx="2"/><path d="M7.5 10h4M7.5 14h9"/></symbol>
   </defs>
 </svg>
@@ -57,6 +58,7 @@
       <img class="brand-logo" src="logo.svg" width="32" height="32" alt="">
       <span class="brand-text"><b id="brand-name">كاشِف</b><small><span dir="ltr">vulnscan <span id="version"></span></span></small></span>
     </a>
+    <a id="upd-pill" class="upd-pill hidden" href="#settings/update"><svg class="i sm" aria-hidden="true"><use href="#i-update"/></svg><span class="upd-pill-text"></span><span class="upd-dot" aria-hidden="true"></span></a>
     <nav aria-label="Primary">
       <a href="#dashboard" data-nav="dashboard"><svg class="i" aria-hidden="true"><use href="#i-dashboard"/></svg><span data-i18n="nav.dashboard">لوحة التحكم</span></a>
       <a href="#scan" data-nav="scan"><svg class="i" aria-hidden="true"><use href="#i-scan"/></svg><span data-i18n="nav.scan">فحص جديد</span></a>
@@ -251,6 +253,39 @@
         <div class="ph-text"><h1 data-i18n="set.title">الإعدادات</h1><p class="muted" data-i18n="set.sub">تُحفظ على هذا الجهاز وتُطبَّق على كل الفحوصات القادمة.</p></div>
       </header>
       <form id="settings-form" class="form">
+        <div class="card set-sec" id="upd-sec">
+          <div class="sec-head"><h2 data-i18n="upd.title">التحديثات</h2><p class="muted" data-i18n="upd.hint">يتحقق كاشِف من إصدارات GitHub الرسمية. لا يُرسَل أي شيء عن الكود الذي تفحصه.</p></div>
+          <div class="sec-body">
+            <div class="upd-status" id="upd-status" aria-live="polite">
+              <span class="upd-icon" id="upd-icon"></span>
+              <div class="upd-text"><b id="upd-title"></b><div class="muted" id="upd-sub"></div></div>
+              <div class="upd-actions">
+                <button id="upd-check" class="btn" type="button"><svg class="i" aria-hidden="true"><use href="#i-update"/></svg><span data-i18n="upd.check">التحقق من التحديثات</span></button>
+                <button id="upd-apply" class="btn primary hidden" type="button"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg><span data-i18n="upd.apply">حدّث الآن</span></button>
+                <button id="upd-restart" class="btn primary hidden" type="button"><svg class="i" aria-hidden="true"><use href="#i-update"/></svg><span data-i18n="upd.restart">أعد التشغيل الآن</span></button>
+              </div>
+            </div>
+            <dl class="upd-versions" id="upd-versions">
+              <div><dt data-i18n="upd.current">الإصدار الحالي</dt><dd dir="ltr" id="upd-current">—</dd></div>
+              <div><dt data-i18n="upd.latest">أحدث إصدار</dt><dd dir="ltr" id="upd-latest">—</dd></div>
+              <div><dt data-i18n="upd.kind">نوع التثبيت</dt><dd id="upd-kind">—</dd></div>
+            </dl>
+            <div id="upd-progress-wrap" class="upd-progress hidden">
+              <div class="upd-progress-row"><span id="upd-phase"></span><span class="muted" id="upd-bytes" dir="ltr"></span></div>
+              <div class="progress" id="upd-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div></div></div>
+            </div>
+            <div id="upd-cmd" class="upd-cmd hidden">
+              <span class="upd-cmd-label" id="upd-cmd-label"></span>
+              <div class="upd-cmd-box"><code id="upd-cmd-text" dir="ltr"></code><span id="upd-cmd-copy"></span></div>
+            </div>
+            <details id="upd-notes" class="upd-notes hidden">
+              <summary><svg class="i sm" aria-hidden="true"><use href="#i-chevron-down"/></svg><span data-i18n="upd.notes">ملاحظات الإصدار</span></summary>
+              <div class="upd-notes-body" id="upd-notes-body" dir="auto"></div>
+              <a id="upd-link" class="link" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest" target="_blank" rel="noopener noreferrer"><span data-i18n="upd.onGithub">عرض الإصدار على GitHub</span><svg class="i xs" aria-hidden="true"><use href="#i-external"/></svg></a>
+            </details>
+            <label class="check upd-auto"><input type="checkbox" name="check_updates" id="f-upd-auto"> <span data-i18n="upd.auto">التحقق من التحديثات تلقائيًا عند تشغيل الواجهة (مرة كل 6 ساعات على الأكثر)</span></label>
+          </div>
+        </div>
         <div class="card set-sec">
           <div class="sec-head"><h2 data-i18n="set.secScope">النطاق والحدود</h2><p class="muted" data-i18n="set.secScopeHint">ما يُعرض من النتائج ومتى يفشل التكامل المستمر.</p></div>
           <div class="sec-body">

@@ -28,6 +28,7 @@ DEFAULT_SETTINGS = {
     "fail_on": "high",
     "authorized_targets": [],
     "keep_scans": 50,
+    "check_updates": True,          # look for a newer release at UI start (GitHub API, cached 6 hours)
 }
 
 

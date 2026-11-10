@@ -1,0 +1,12 @@
+services:
+  app:
+    image: nginx:1.25.3
+    # expect-next: DKR011
+    network_mode: host
+    # expect-next: DKR011
+    pid: "host"
+    security_opt:
+      # expect-next: DKR012
+      - seccomp:unconfined
+      # expect-next: DKR012
+      - "apparmor=unconfined"

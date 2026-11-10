@@ -36,6 +36,22 @@
     "readln"
    ],
    "label": "{name}()"
+  },
+  {
+   "kind": "attr",
+   "roots": [
+    "part",
+    "partData",
+    "fileItem",
+    "item",
+    "it",
+    "filePart"
+   ],
+   "attrs": [
+    "originalFileName"
+   ],
+   "label": "{attr} (uploaded file name)",
+   "_comment": "Ktor multipart PartData.FileItem.originalFileName"
   }
  ],
  "entry_points": [
@@ -46,7 +62,13 @@
     "RequestMapping",
     "Get",
     "Post",
-    "Route"
+    "Route",
+    "PutMapping",
+    "DeleteMapping",
+    "PatchMapping",
+    "Put",
+    "Delete",
+    "Patch"
    ],
    "label": "معامل نقطة الدخول"
   },
@@ -56,11 +78,202 @@
     "request",
     "req",
     "ctx",
-    "exchange"
+    "exchange",
+    "serverRequest",
+    "routingContext"
    ]
   }
  ],
- "sinks": [],
+ "sinks": [
+  {
+   "rule": "DF002",
+   "severity": "critical",
+   "cwe": "CWE-78",
+   "label": "shell command",
+   "title": "Tainted data reaches Runtime.exec",
+   "title_ar": "بيانات غير موثوقة تصل إلى Runtime.exec",
+   "advice": "استخدم ProcessBuilder بقائمة وسائط ثابتة البرنامج وتحقق من المدخلات.",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "exec"
+   ],
+   "shell": true,
+   "receiver": "(?i)(^|\\.)(runtime|getruntime|rt)$",
+   "_comment": "Runtime.getRuntime().exec(cmd) from Kotlin"
+  },
+  {
+   "rule": "DF003",
+   "severity": "high",
+   "cwe": "CWE-78",
+   "label": "ProcessBuilder",
+   "title": "Tainted data reaches a process builder",
+   "title_ar": "بيانات غير موثوقة تصل إلى ProcessBuilder",
+   "advice": "ثبّت البرنامج ولا تمرّر الأمر من المدخلات.",
+   "args": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "names": [
+    "ProcessBuilder",
+    "java.lang.ProcessBuilder",
+    "ProcessBuilder.command"
+   ],
+   "_comment": "ProcessBuilder(listOf(...)) / ProcessBuilder(\"sh\", \"-c\", cmd)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (Exposed raw SQL)",
+   "title": "Tainted data reaches raw SQL in Exposed",
+   "title_ar": "بيانات غير موثوقة تصل إلى SQL خام في Exposed",
+   "advice": "لا تمرّر نص SQL مركّبًا إلى exec() أو execInBatch() في Exposed؛ استخدم DSL أو معاملات مربوطة.",
+   "args": [
+    0
+   ],
+   "names": [
+    "execInBatch"
+   ],
+   "_comment": "Exposed Transaction.execInBatch(statements)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (Exposed raw SQL)",
+   "title": "Tainted data reaches raw SQL in Exposed",
+   "title_ar": "بيانات غير موثوقة تصل إلى SQL خام في Exposed",
+   "advice": "لا تمرّر نص SQL مركّبًا إلى exec() أو execInBatch() في Exposed؛ استخدم DSL أو معاملات مربوطة.",
+   "args": [
+    0
+   ],
+   "names": [
+    "exec"
+   ],
+   "receiver": "(?i)(^|\\.)(TransactionManager\\.current|\\w*transaction|tx)$",
+   "_comment": "Exposed TransactionManager.current().exec(sql) / transaction.exec(sql); a bare exec(sql) inside transaction {} keeps the Java exec model"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل قراءته أو كتابته (File/Path في kotlin.io).",
+   "args": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "names": [
+    "File",
+    "java.io.File",
+    "Path",
+    "kotlin.io.path.Path",
+    "Paths.get",
+    "java.nio.file.Paths.get",
+    "Path.of"
+   ],
+   "_comment": "kotlin.io File(parent, child) / kotlin.io.path.Path(base, *subpaths)"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل قراءته أو كتابته (File/Path في kotlin.io).",
+   "args": [
+    "self"
+   ],
+   "names": [
+    "readText",
+    "readBytes",
+    "readLines",
+    "writeText",
+    "writeBytes",
+    "appendText",
+    "appendBytes",
+    "forEachLine",
+    "useLines",
+    "deleteRecursively",
+    "copyTo",
+    "inputStream",
+    "outputStream",
+    "bufferedReader",
+    "bufferedWriter"
+   ],
+   "receiver": "(?i)(file|path|dir|directory|toFile|toPath|File|Path)$",
+   "_comment": "kotlin.io / kotlin.io.path extension functions: the receiver File/Path is the dangerous value"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "Ktor respondFile",
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل قراءته أو كتابته (File/Path في kotlin.io).",
+   "args": [
+    1
+   ],
+   "names": [
+    "respondFile"
+   ],
+   "_comment": "Ktor call.respondFile(baseDir, fileName): the relative file name is argument 1 (respondFile(File) is covered by the File constructor sink)"
+  },
+  {
+   "rule": "DF008",
+   "severity": "medium",
+   "cwe": "CWE-601",
+   "label": "redirect",
+   "title": "Tainted data reaches a redirect",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+   "advice": "تحقق من وجهة التحويل بقائمة بيضاء.",
+   "args": [
+    0
+   ],
+   "names": [
+    "respondRedirect"
+   ],
+   "_comment": "Ktor call.respondRedirect(url)"
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (SSRF)",
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات.",
+   "args": [
+    0
+   ],
+   "names": [
+    "get",
+    "post",
+    "put",
+    "delete",
+    "patch",
+    "head",
+    "options",
+    "request",
+    "prepareGet",
+    "preparePost",
+    "prepareRequest"
+   ],
+   "receiver": "(^|\\.)(\\w*[hH]ttpClient\\w*|client|ktorClient|HttpClient)$",
+   "_comment": "Ktor HttpClient.get(urlString) / request(url)"
+  }
+ ],
  "sanitizers": [
   "toInt",
   "toLong",

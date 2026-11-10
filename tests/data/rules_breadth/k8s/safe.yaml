@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      hostNetwork: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: nginx:1.25.3
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db
+                  key: password
+            - name: TOKEN_PATH
+              value: "$(TOKEN_DIR)/token"
+            - name: ALLOYDB_SECRET_NAME
+              value: alloydb-credentials
+            - name: GOOGLE_API_KEY
+              value: GOOGLE_API_KEY_VAL
+            - name: ETCD_DISCOVERY_TOKEN
+              value: INSERT_ETCD_DISCOVERY_TOKEN
+            - name: TOKEN_TTL
+              value: "3600"
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 10001
+            capabilities:
+              drop: ["ALL"]
+              add: ["NET_BIND_SERVICE"]
+        - name: sidecar
+          image: registry.local:5000/tools/busybox@sha256:3fbc632167424a6d997e74f52b878d7cc478225cffac6bc977eedfe51c7f4e79
+          resources:
+            limits:
+              memory: 64Mi
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_BIND_SERVICE
+      volumes:
+        - name: scratch
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: templated
+spec:
+  containers:
+    - name: app
+      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: reader
+rules:
+  - apiGroups: ["*"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+site:
+  logo:
+    image: assets/logo.png
+features:
+  image: false

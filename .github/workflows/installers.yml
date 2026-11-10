@@ -1,0 +1,76 @@
+name: Installers
+
+# Real-machine tests of the one-line installers and the Homebrew formula, against a published release.
+on:
+  push:
+    paths: ["site/install.sh", "site/install.ps1", "Formula/**", "packaging/**", ".github/workflows/installers.yml"]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  install-sh:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: install.sh installs a verified binary
+        shell: bash
+        env:
+          KASHIF_INSTALL_DIR: ${{ runner.temp }}/kashif-bin
+        run: |
+          sh site/install.sh
+          "$KASHIF_INSTALL_DIR/vulnscan" --version
+          "$KASHIF_INSTALL_DIR/kashif" --version
+          if [ "$(uname -s)" = Darwin ]; then
+            # curl sets no quarantine attribute, so Gatekeeper will not block the binary
+            ! xattr -p com.apple.quarantine "$KASHIF_INSTALL_DIR/vulnscan" 2>/dev/null
+          fi
+      - name: install.sh refuses a version that does not exist
+        shell: bash
+        env:
+          KASHIF_INSTALL_DIR: ${{ runner.temp }}/kashif-bad
+          KASHIF_VERSION: v0.0.1
+        run: |
+          if sh site/install.sh; then echo "expected a failure"; exit 1; fi
+          test ! -e "$KASHIF_INSTALL_DIR/vulnscan"
+
+  install-ps1:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: install.ps1 installs a verified binary
+        shell: pwsh
+        env:
+          KASHIF_INSTALL_DIR: ${{ runner.temp }}\kashif-bin
+        run: |
+          ./site/install.ps1
+          & "$env:KASHIF_INSTALL_DIR\vulnscan.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+  homebrew:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: brew installs the formula from this repository
+        shell: bash
+        run: |
+          brew tap-new --no-git kashif/local
+          cp Formula/kashif.rb "$(brew --repository)/Library/Taps/kashif/homebrew-local/Formula/kashif.rb"
+          brew install kashif/local/kashif
+          vulnscan --version
+          kashif --version
+          brew test kashif/local/kashif
+          ! xattr -p com.apple.quarantine "$(brew --prefix)/bin/vulnscan" 2>/dev/null

@@ -1,0 +1,10 @@
+// @id vql/js-cookie-insecure
+// @name Cookie set with secure or httpOnly explicitly disabled (Express)
+// @name_ar كوكي بخاصية secure أو httpOnly معطّلة صراحة (Express)
+// @severity medium
+// @cwe CWE-614
+// @advice اضبط secure: true وhttpOnly: true وsameSite للكوكيز.
+from call c
+where (c.name matches "^(res|response|reply)\.cookie$" and c.arg2 matches "['\"](secure|httpOnly)['\"]: False")
+   or (c.name in ("express-session", "cookie-session") and c.arg0 matches "['\"](secure|httpOnly)['\"]: False")
+select c, "Insecure cookie flags in " + c.name

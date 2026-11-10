@@ -57,9 +57,9 @@
   "softwareVersion": "__VERSION__",
   "url": "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/",
   "downloadUrl": "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest",
-  "releaseNotes": "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/blob/main/CHANGELOG.md",
+  "releaseNotes": "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/changelog.html",
   "codeRepository": "https://github.com/abdulrahmanahmedelabed-prog/vulnscan",
-  "license": "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/blob/main/LICENSE",
+  "license": "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/license.html",
   "isAccessibleForFree": true,
   "inLanguage": ["en", "ar"],
   "image": "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/img/og-en.png",
@@ -71,7 +71,7 @@
 {"@type":"Question","name":"Is Kashif free?","acceptedAnswer":{"@type":"Answer","text":"Yes. Kashif is open source under the MIT license: free for personal and commercial use, with no paid tier, no account and no usage limits."}},
 {"@type":"Question","name":"Does Kashif upload my code?","acceptedAnswer":{"@type":"Answer","text":"No. Everything runs locally and the web UI listens on 127.0.0.1 only. The only network call in a code scan is the optional OSV.dev dependency lookup, which sends package names and versions, never source code. Turn it off with --no-deps."}},
 {"@type":"Question","name":"Can it run offline or in an air-gapped network?","acceptedAnswer":{"@type":"Answer","text":"Yes. Copy the single binary (or install the Python package) and run with --no-deps --no-external. No step of a code scan needs the network."}},
-{"@type":"Question","name":"How accurate is it?","acceptedAnswer":{"@type":"Answer","text":"On the OWASP Benchmark it scores 74.0% for Python and 73.1% for Java (mean of TPR minus FPR per category), and you can reproduce both with one command. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review."}},
+{"@type":"Question","name":"How accurate is it?","acceptedAnswer":{"@type":"Answer","text":"On the OWASP Benchmark it scores 74.0% for Python and 76.3% for Java (mean of TPR minus FPR per category), and you can reproduce both with one command. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review."}},
 {"@type":"Question","name":"Which languages and targets are supported?","acceptedAnswer":{"@type":"Answer","text":"Dataflow analysis for Python, JavaScript/TypeScript, Java, Kotlin, C#, Go, PHP, C/C++, Rust, Swift, Ruby and PL/SQL, plus Oracle APEX exports, Android APK/JAR (via jadx), configuration, containers, CI files and passive web scanning."}},
 {"@type":"Question","name":"How do I use it in CI?","acceptedAnswer":{"@type":"Answer","text":"Run vulnscan with -f sarif and upload the file to GitHub Code Scanning, or use --fail-on high to fail the build. With --baseline, only findings that are new since the baseline fail the build."}},
 {"@type":"Question","name":"How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?","acceptedAnswer":{"@type":"Answer","text":"Those tools have far more rules and library models, IDE plugins and years of real-world tuning. Kashif's strengths are running fully locally with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard."}},
@@ -91,25 +91,25 @@
   color-scheme:dark;
   --bg:#070b14;--bg2:#0a101d;--panel:#0e1524;--panel2:#131c2f;--line:#1c2740;--line2:#2a3956;
   --text:#e8eef6;--muted:#a3b1c4;--dim:#8291a7;
-  --accent:#22d3ee;--accent-ink:#67e8f9;--violet:#a78bfa;--ok:#34d399;--bad:#f87171;--warn:#fbbf24;
-  --btn-bg:linear-gradient(135deg,#22d3ee,#0891b2);--btn-fg:#03141a;--btn-shadow:0 10px 34px -12px rgba(34,211,238,.6);
+  --accent:#3fc07c;--accent-ink:#6ad69a;--violet:#4fc3f7;--ok:#34d399;--bad:#f87171;--warn:#fbbf24;
+  --btn-bg:linear-gradient(135deg,#3fc07c,#2aa866);--btn-fg:#04210f;--btn-shadow:0 10px 34px -12px rgba(63,192,124,.6);
   --head-bg:rgba(7,11,20,.8);--chip-code:#141e33;--chip-code-fg:#bfeaf3;
-  --glow1:rgba(34,211,238,.16);--glow2:rgba(167,139,250,.13);--grid-op:.28;
-  --shadow-lg:0 40px 100px -40px rgba(0,0,0,.9);--frame-glow:0 0 0 1px rgba(34,211,238,.05),0 50px 140px -60px rgba(34,211,238,.45);
+  --glow1:rgba(63,192,124,.16);--glow2:rgba(79,195,247,.13);--grid-op:.28;
+  --shadow-lg:0 40px 100px -40px rgba(0,0,0,.9);--frame-glow:0 0 0 1px rgba(63,192,124,.05),0 50px 140px -60px rgba(63,192,124,.45);
   --legal-bg:rgba(251,191,36,.07);--legal-bd:rgba(251,191,36,.3);--legal-fg:#fcd34d;
-  --track:#1a2438;--tint:rgba(34,211,238,.1);--tint-bd:rgba(34,211,238,.22);--tint2:rgba(167,139,250,.1);--tint2-bd:rgba(167,139,250,.24);
+  --track:#1a2438;--tint:rgba(63,192,124,.1);--tint-bd:rgba(63,192,124,.22);--tint2:rgba(79,195,247,.1);--tint2-bd:rgba(79,195,247,.24);
 }
 [data-theme="light"]{
   color-scheme:light;
   --bg:#ffffff;--bg2:#f5f7fb;--panel:#ffffff;--panel2:#f1f4f9;--line:#e3e8f0;--line2:#d0d8e4;
   --text:#0b1220;--muted:#3f4a5c;--dim:#556072;
-  --accent:#0e7490;--accent-ink:#0e7490;--violet:#6d28d9;--ok:#047857;--bad:#b91c1c;--warn:#b45309;
-  --btn-bg:linear-gradient(135deg,#0e7490,#155e75);--btn-fg:#ffffff;--btn-shadow:0 10px 30px -14px rgba(14,116,144,.7);
+  --accent:#087a3f;--accent-ink:#087a3f;--violet:#0071a8;--ok:#047857;--bad:#b91c1c;--warn:#b45309;
+  --btn-bg:linear-gradient(135deg,#087a3f,#066434);--btn-fg:#ffffff;--btn-shadow:0 10px 30px -14px rgba(8,122,63,.7);
   --head-bg:rgba(255,255,255,.85);--chip-code:#eef3f8;--chip-code-fg:#0b4a5c;
-  --glow1:rgba(34,211,238,.18);--glow2:rgba(167,139,250,.16);--grid-op:.55;
-  --shadow-lg:0 30px 80px -40px rgba(15,23,42,.35);--frame-glow:0 0 0 1px rgba(15,23,42,.04),0 40px 100px -50px rgba(14,116,144,.45);
+  --glow1:rgba(63,192,124,.18);--glow2:rgba(79,195,247,.16);--grid-op:.55;
+  --shadow-lg:0 30px 80px -40px rgba(15,23,42,.35);--frame-glow:0 0 0 1px rgba(15,23,42,.04),0 40px 100px -50px rgba(8,122,63,.45);
   --legal-bg:#fffbeb;--legal-bd:#f5d27a;--legal-fg:#7c4a03;
-  --track:#e6ebf2;--tint:rgba(14,116,144,.08);--tint-bd:rgba(14,116,144,.22);--tint2:rgba(109,40,217,.07);--tint2-bd:rgba(109,40,217,.2);
+  --track:#e6ebf2;--tint:rgba(8,122,63,.08);--tint-bd:rgba(8,122,63,.22);--tint2:rgba(109,40,217,.07);--tint2-bd:rgba(109,40,217,.2);
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;scroll-padding-top:80px}
@@ -172,8 +172,8 @@ html[dir="rtl"] .vbadge{padding:5px 6px 5px 12px}
 html[dir="rtl"] .flip{transform:scaleX(-1)}
 h1{text-wrap:balance;font-size:clamp(38px,6vw,68px);line-height:1.04;letter-spacing:-.04em;margin:22px auto 20px;font-weight:800;max-width:900px}
 html[lang="ar"] h1{letter-spacing:0;line-height:1.3;font-weight:700}
-.grad{background:linear-gradient(120deg,#22d3ee 0%,#0ea5e9 40%,#8b5cf6 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
-[data-theme="light"] .grad{background:linear-gradient(120deg,#0e7490 0%,#0369a1 45%,#6d28d9 100%);-webkit-background-clip:text;background-clip:text}
+.grad{background:linear-gradient(120deg,#3fc07c 0%,#2fb98a 45%,#33b5ec 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+[data-theme="light"] .grad{background:linear-gradient(120deg,#087a3f 0%,#0369a1 45%,#0071a8 100%);-webkit-background-clip:text;background-clip:text}
 .lead{font-size:clamp(17px,1.6vw,19.5px);color:var(--muted);margin:0 auto 30px;max-width:720px}
 .cta{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
 .os-pick{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:14px;font-size:13.5px;color:var(--dim)}
@@ -248,7 +248,7 @@ html[dir="rtl"] .flow{transform:scaleX(-1)}
 .stepsx p{margin:0;color:var(--muted);font-size:15.5px}
 
 /* code panel (always dark) */
-.panel{background:linear-gradient(180deg,#0d1424,#0a0f1b);border:1px solid #26344f;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg),0 0 80px -30px rgba(34,211,238,.35);overflow:hidden;direction:ltr;text-align:left;color:var(--code-text)}
+.panel{background:linear-gradient(180deg,#0d1424,#0a0f1b);border:1px solid #26344f;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg),0 0 80px -30px rgba(63,192,124,.35);overflow:hidden;direction:ltr;text-align:left;color:var(--code-text)}
 .panel .bar{background:rgba(255,255,255,.02);border-bottom-color:var(--code-line)}
 .panel .dots i{background:#26324a}
 .ptab{font-family:var(--mono);font-size:12.5px;color:#a3b1c4;padding:3px 10px;border-radius:7px;background:#121b2e;border:1px solid var(--code-line)}
@@ -256,12 +256,12 @@ html[dir="rtl"] .flow{transform:scaleX(-1)}
 .code{margin:0;padding:14px 0;font-size:13px;line-height:1.75;overflow-x:auto}
 .code .ln{display:block;padding:0 16px 0 0;white-space:pre;border-left:2px solid transparent}
 .code .ln b{display:inline-block;width:38px;text-align:right;padding-right:14px;color:#56647c;font-weight:400;user-select:none}
-.code .src{background:rgba(34,211,238,.08);border-left-color:#22d3ee}
-.code .mid{background:rgba(167,139,250,.07);border-left-color:#a78bfa}
+.code .src{background:rgba(63,192,124,.08);border-left-color:#3fc07c}
+.code .mid{background:rgba(79,195,247,.07);border-left-color:#4fc3f7}
 .code .sink{background:rgba(248,113,113,.09);border-left-color:#f87171}
-.k{color:#c4a7ff}.s{color:#7ee0a3}.f{color:#67e8f9}.c{color:#7d8ba1}.d{color:#f5c776}
+.k{color:#c4a7ff}.s{color:#7ee0a3}.f{color:#6ad69a}.c{color:#7d8ba1}.d{color:#f5c776}
 .tag{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;border-radius:5px;padding:1px 6px;margin-left:10px;vertical-align:1px}
-.tag.t-src{color:#67e8f9;background:rgba(34,211,238,.14)}
+.tag.t-src{color:#6ad69a;background:rgba(63,192,124,.14)}
 .tag.t-sink{color:#fca5a5;background:rgba(248,113,113,.14)}
 .finding{border-top:1px solid var(--code-line);padding:16px 18px 18px;background:rgba(5,8,15,.55)}
 .f-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px}
@@ -275,7 +275,7 @@ html[lang="ar"] .f-title,html[lang="ar"] .fix{direction:rtl;text-align:right;fon
 .steps li::before{content:"";position:absolute;left:10px;top:50%;bottom:-50%;width:2px;background:#2a3956}
 .steps li:last-child::before{display:none}
 .steps .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;background:#121b2e;border:1px solid #2a3956;color:#a3b1c4;position:relative;z-index:1}
-.steps .src-n{border-color:#22d3ee;color:#67e8f9}
+.steps .src-n{border-color:#3fc07c;color:#6ad69a}
 .steps .sink-n{border-color:#f87171;color:#fca5a5}
 .steps .lbl{color:#93a1b6;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
 .steps code{color:#d6e0ee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -302,7 +302,7 @@ html[lang="ar"] .f-title,html[lang="ar"] .fix{direction:rtl;text-align:right;fon
 .term .copy{position:absolute;top:8px;right:8px}
 .copy{all:unset;cursor:pointer;font-size:12px;color:#c9d4e3;border:1px solid #2a3956;background:#121b2e;border-radius:7px;padding:3px 9px;font-family:var(--font);line-height:1.5}
 .copy:hover{color:#fff;border-color:#3a4c6e}
-.copy:focus-visible{outline:2px solid #22d3ee}
+.copy:focus-visible{outline:2px solid #3fc07c}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--line2);background:var(--panel2);font-size:13px;color:var(--text);text-decoration:none}
 a.chip:hover{border-color:var(--accent)}
@@ -322,6 +322,10 @@ p code,.note code,.faq code,.honest li code{font-size:.88em;background:var(--chi
 .snip .dots i{background:#26324a}
 .snip pre{margin:0;padding:16px 18px;font-size:12.8px;line-height:1.7;overflow-x:auto;color:var(--code-text)}
 .stack{display:grid;gap:16px}
+.int-more{margin-top:20px}
+.more{display:inline-flex;align-items:center;gap:6px;margin-top:16px;font-weight:600;font-size:14.5px;color:var(--accent-ink);text-decoration:none}
+.more:hover{text-decoration:underline;text-underline-offset:3px}
+.more .ic{width:16px;height:16px}
 
 /* accuracy */
 .acc{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr);gap:20px;align-items:start}
@@ -346,7 +350,7 @@ html[lang="ar"] thead th{letter-spacing:0;text-transform:none;font-size:13px}
 .bench .cat code{font-size:11.5px;color:var(--dim)}
 .meter{display:flex;align-items:center;gap:10px;min-width:140px}
 .meter .track{flex:1;height:8px;border-radius:4px;background:var(--track);overflow:hidden}
-.meter .fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#0891b2,#22d3ee)}
+.meter .fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#2aa866,#3fc07c)}
 .meter .val{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text);min-width:44px;text-align:end;direction:ltr}
 .bench tr:hover td{background:var(--tint)}
 .notes{display:grid;gap:10px;margin-top:16px}
@@ -536,7 +540,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
 <main id="main" tabindex="-1">
 <section class="hero" aria-labelledby="hero-h">
   <div class="wrap">
-    <a class="vbadge rel-link" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest"><span class="ver">v__VERSION__</span><span data-i18n="hero.notes">What's new in this release</span><svg class="ic flip" aria-hidden="true" style="width:15px;height:15px"><use href="#i-arrow"/></svg></a>
+    <a class="vbadge rel-link" href="changelog.html"><span class="ver">v__VERSION__</span><span data-i18n="hero.notes">What's new in this release</span><svg class="ic flip" aria-hidden="true" style="width:15px;height:15px"><use href="#i-arrow"/></svg></a>
     <h1 id="hero-h" data-i18n-html="hero.h1">Trace every vulnerability <span class="grad">from input to impact.</span></h1>
     <p class="lead" data-i18n="hero.lead">Kashif is a free, open-source SAST tool for developers and security teams. It follows untrusted input across functions and files in 12 languages, Oracle APEX and Android apps, and shows the exact source-to-sink path behind every dataflow finding. Zero dependencies. Runs entirely on your machine.</p>
     <div class="cta">
@@ -574,7 +578,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
 <div class="proof" role="region" aria-label="Key facts" data-i18n-attr="aria-label:proof.label">
   <ul>
     <li><b class="ltr"><span data-bench-suite="python">74.0</span>%</b><span data-i18n="proof.py">OWASP Benchmark score, Python</span></li>
-    <li><b class="ltr"><span data-bench-suite="java">73.1</span>%</b><span data-i18n="proof.java">OWASP Benchmark score, Java</span></li>
+    <li><b class="ltr"><span data-bench-suite="java">76.3</span>%</b><span data-i18n="proof.java">OWASP Benchmark score, Java</span></li>
     <li><b>12</b><span data-i18n="proof.langs">languages with dataflow analysis</span></li>
     <li><b>0</b><span data-i18n="proof.deps">runtime dependencies</span></li>
     <li><b class="ltr">SARIF 2.1.0</b><span data-i18n="proof.sarif">for GitHub Code Scanning</span></li>
@@ -735,6 +739,13 @@ vulnscan . --baseline .vulnscan-baseline.json --fail-on high</div></div>
           <div class="chips" dir="ltr"><span class="chip mono">console</span><span class="chip mono">markdown</span><span class="chip mono">json</span><span class="chip mono">html</span><span class="chip mono">sarif 2.1.0</span></div></div>
       </div>
     </div>
+    <div class="grid g2 int-more">
+      <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg></div><h3 data-i18n="int.ide.h">In your editor</h3><p data-i18n="int.ide.p">The same findings as the CLI, in VS Code and any LSP editor: severity, CWE and the cross-file data-flow trail on hover, with quick fixes to suppress a finding or add it to the baseline. Offline; nothing leaves your machine.</p>
+        <div class="chips"><span class="chip">VS Code</span><span class="chip" data-i18n="int.ide.lsp">Any LSP editor</span><span class="chip mono">vulnscan lsp</span></div></div>
+      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-flow"/></svg></div><h3 data-i18n="int.pr.h">On every pull request</h3><p data-i18n="int.pr.p">PR review comments on GitHub, GitLab SAST and Code Quality reports, and a pre-commit hook. Diff-aware scans report only what the branch changed.</p>
+        <div class="chips"><span class="chip" data-i18n="int.pr.gh">GitHub PR comments</span><span class="chip">GitLab SAST</span><span class="chip">GitLab Code Quality</span><span class="chip mono">pre-commit</span></div>
+        <a class="more" href="docs.html?lang=en#ci-and-github-code-scanning-sarif" data-i18n-attr="href:int.pr.href"><span data-i18n="int.pr.more">CI and pull-request setup</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
+    </div>
   </div>
 </section>
 
@@ -832,7 +843,7 @@ vulnscan . --baseline .vulnscan-baseline.json --fail-on high</div></div>
         <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-hash"/></svg></div><h3 data-i18n="sec.sum.h">SHA-256 checksums</h3><p data-i18n="sec.sum.p">SHA256SUMS.txt lets you confirm that every download is intact.</p></div>
         <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-pin"/></svg></div><h3 data-i18n="sec.ci.h">Hardened CI</h3><p data-i18n="sec.ci.p">Every GitHub Action is pinned by commit SHA with least-privilege tokens, monitored by OpenSSF Scorecard and Dependabot.</p></div>
         <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg></div><h3 data-i18n="sec.zero.h">No dependency tree</h3><p data-i18n="sec.zero.p">Standard library only: nothing is pulled in at install or run time, so there is no transitive supply chain to attack.</p></div>
-        <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg></div><h3 data-i18n="sec.disc.h">Private disclosure</h3><p data-i18n-html="sec.disc.p">Report vulnerabilities privately through GitHub, as described in <a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/blob/main/SECURITY.md">SECURITY.md</a>.</p></div>
+        <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg></div><h3 data-i18n="sec.disc.h">Private disclosure</h3><p data-i18n-html="sec.disc.p">Report vulnerabilities privately through GitHub, as described in our <a href="security.html">security policy</a>.</p></div>
       </div>
       <div class="snip">
         <div class="bar"><span class="ptab" data-i18n="sec.verify">Verify a download</span><button type="button" class="copy" data-copy="verify-snip" data-i18n="copy">Copy</button></div>
@@ -866,10 +877,17 @@ gh attestation verify vulnscan-linux \
       <div class="card"><h3 data-i18n="run.lin.h">Linux</h3><p data-i18n="run.lin.p">Make the file executable, then run it:</p><div class="term">chmod +x vulnscan-linux
 ./vulnscan-linux            <span class="c"># web UI</span>
 ./vulnscan-linux ./project  <span class="c"># CLI</span></div></div>
-      <div class="card"><h3 data-i18n="run.mac.h">macOS</h3><p data-i18n="run.mac.p">The binary is not yet notarized by Apple. Before the first launch, remove the quarantine flag once (or right-click the file and choose Open):</p><div class="term">chmod +x vulnscan-macos-arm64
+      <div class="card"><h3 data-i18n="run.mac.h">macOS</h3><p data-i18n="run.mac.p">Easiest: Homebrew or the one-command install below (no quarantine step). If you downloaded the file in a browser, remove the quarantine flag once before the first launch:</p><div class="term">chmod +x vulnscan-macos-arm64
 xattr -d com.apple.quarantine vulnscan-macos-arm64
 ./vulnscan-macos-arm64</div></div>
     </div>
+    <div class="card" style="margin-top:14px"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-term"/></svg></div><h3 data-i18n="inst.h">Install with one command</h3><p data-i18n="inst.p">Downloads the release for your machine, verifies its SHA-256 before installing, and puts vulnscan on your PATH. On macOS no quarantine step is needed.</p>
+      <div class="term copyable"><button type="button" class="copy" data-copy="inst-sh" data-i18n="copy">Copy</button><span class="c" data-i18n="inst.sh"># macOS and Linux</span>
+<span id="inst-sh">curl -fsSL https://abdulrahmanahmedelabed-prog.github.io/vulnscan/install.sh | sh</span></div>
+      <div class="term copyable"><button type="button" class="copy" data-copy="inst-brew" data-i18n="copy">Copy</button><span class="c" data-i18n="inst.brew"># Homebrew</span>
+<span id="inst-brew">brew tap kashif/vulnscan https://github.com/abdulrahmanahmedelabed-prog/vulnscan &amp;&amp; brew install kashif</span></div>
+      <div class="term copyable"><button type="button" class="copy" data-copy="inst-ps" data-i18n="copy">Copy</button><span class="c" data-i18n="inst.ps"># Windows (PowerShell)</span>
+<span id="inst-ps">irm https://abdulrahmanahmedelabed-prog.github.io/vulnscan/install.ps1 | iex</span></div></div>
     <div class="card" style="margin-top:14px"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-pkg"/></svg></div><h3 data-i18n="pip.h">Or install with pip</h3><p data-i18n="pip.p">Python 3.10 or later. No runtime dependencies are installed.</p>
       <div class="term copyable"><button type="button" class="copy" data-copy="pip-snip" data-i18n="copy">Copy</button><span id="pip-snip">pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan</span>
 vulnscan ui                               <span class="c"># web UI on 127.0.0.1:8765</span>
@@ -926,20 +944,19 @@ vulnscan ./project -f sarif -o out.sarif  <span class="c"># CLI</span></div></di
         <li><a href="#faq" data-i18n="nav.faq">FAQ</a></li>
       </ul></nav>
       <nav aria-labelledby="fh2"><h2 id="fh2" data-i18n="foot.res">Resources</h2><ul>
-        <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan#readme" data-i18n="foot.docs">Documentation</a></li>
-        <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/blob/main/CHANGELOG.md" data-i18n="foot.changelog">Changelog</a></li>
-        <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases" data-i18n="foot.rel">Releases</a></li>
-        <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/issues" data-i18n="foot.issues">Issues</a></li>
+        <li><a href="docs.html" data-i18n="foot.docs">Documentation</a></li>
+        <li><a href="changelog.html" data-i18n="foot.changelog">Changelog</a></li>
+        <li><a href="#download" data-i18n="nav.download">Download</a></li>
       </ul></nav>
       <nav aria-labelledby="fh3"><h2 id="fh3" data-i18n="foot.trust">Trust</h2><ul>
-        <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/blob/main/SECURITY.md" data-i18n="foot.sec">Security policy</a></li>
-        <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/security/advisories/new" data-i18n="foot.report">Report a vulnerability</a></li>
-        <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/blob/main/LICENSE" data-i18n="foot.license">MIT License</a></li>
+        <li><a href="security.html" data-i18n="foot.sec">Security policy</a></li>
+        <li><a href="security.html#report" data-i18n="foot.report">Report a vulnerability</a></li>
+        <li><a href="license.html" data-i18n="foot.license">MIT License</a></li>
         <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan" >GitHub</a></li>
       </ul></nav>
     </div>
     <div class="foot-bottom">
-      <span><span data-i18n="foot.ver">Version</span> <a class="ver rel-link" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest">v__VERSION__</a> · <span data-i18n="foot.lic">MIT License</span></span>
+      <span><span data-i18n="foot.ver">Version</span> <a class="ver rel-link" href="changelog.html">v__VERSION__</a> · <span data-i18n="foot.lic">MIT License</span></span>
       <span data-i18n="foot.legal">Scan only systems you are authorized to test.</span>
     </div>
   </div>
@@ -979,13 +996,13 @@ const BENCH = {
       { id: "crypto",          tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "hash",            tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "ldapi",           tpr: 100.0, fpr: 37.5, score:  62.5 },
-      { id: "pathtraver",      tpr:  82.7, fpr: 33.3, score:  49.4 },
+      { id: "pathtraver",      tpr: 100.0, fpr: 38.5, score:  61.5 },
       { id: "securecookie",    tpr: 100.0, fpr:  0.0, score: 100.0 },
-      { id: "sqli",            tpr:  96.0, fpr: 35.8, score:  60.2 },
+      { id: "sqli",            tpr: 100.0, fpr: 37.1, score:  62.9 },
       { id: "trustbound",      tpr:  85.5, fpr: 34.9, score:  50.7 },
       { id: "weakrand",        tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "xpathi",          tpr: 100.0, fpr: 15.0, score:  85.0 },
-      { id: "xss",             tpr:  47.6, fpr: 26.8, score:  20.8 }
+      { id: "xss",             tpr:  88.2, fpr: 46.4, score:  41.8 }
     ]
   }
 };
@@ -1066,6 +1083,8 @@ en: {
   "copy":"Copy","copied":"Copied","int.yaml":"GitHub Actions workflow","copied.sr":"Copied to clipboard",
   "int.base.h":"Baseline: report only what's new","int.base.p":"Record today's findings once and commit the file (fingerprints only, no code). Later scans report, and fail CI on, new findings alone. Fingerprints survive line shifts and reformatting.",
   "int.audit.h":"Audit profile","int.audit.p":"For security reviews, <code>--audit</code> also lists every dangerous call (eval, shell, SQL, pickle…) that dataflow analysis could not prove reachable, so reviewers see the whole attack surface.",
+  "int.ide.h":"In your editor","int.ide.p":"The same findings as the CLI, in VS Code and any LSP editor: severity, CWE and the cross-file data-flow trail on hover, with quick fixes to suppress a finding or add it to the baseline. Offline; nothing leaves your machine.","int.ide.lsp":"Any LSP editor",
+  "int.pr.h":"On every pull request","int.pr.p":"PR review comments on GitHub, GitLab SAST and Code Quality reports, and a pre-commit hook. Diff-aware scans report only what the branch changed.","int.pr.gh":"GitHub PR comments","int.pr.more":"CI and pull-request setup","int.pr.href":"docs.html?lang=en#ci-and-github-code-scanning-sarif",
   "int.out.h":"Five output formats","int.out.p":"SARIF output is validated against the OASIS 2.1.0 schema and opens in GitHub and VS Code. Every finding carries a stable fingerprint.",
   "acc.eyebrow":"Accuracy","acc.h2":"Measured in public. Reproducible with one command.",
   "acc.sub":"We score Kashif on the OWASP Benchmark and publish every category, including the weak ones.",
@@ -1101,7 +1120,7 @@ en: {
   "sec.sum.h":"SHA-256 checksums","sec.sum.p":"SHA256SUMS.txt lets you confirm that every download is intact.",
   "sec.ci.h":"Hardened CI","sec.ci.p":"Every GitHub Action is pinned by commit SHA with least-privilege tokens, monitored by OpenSSF Scorecard and Dependabot.",
   "sec.zero.h":"No dependency tree","sec.zero.p":"Standard library only: nothing is pulled in at install or run time, so there is no transitive supply chain to attack.",
-  "sec.disc.h":"Private disclosure","sec.disc.p":"Report vulnerabilities privately through GitHub, as described in <a href=\"https://github.com/abdulrahmanahmedelabed-prog/vulnscan/blob/main/SECURITY.md\">SECURITY.md</a>.",
+  "sec.disc.h":"Private disclosure","sec.disc.p":"Report vulnerabilities privately through GitHub, as described in our <a href=\"security.html\">security policy</a>.",
   "sec.verify":"Verify a download",
   "dl.eyebrow":"Download","dl.h2":"Download Kashif <span class=\"ver opt\"></span>",
   "dl.sub":"Single-file binaries, nothing to install. Run with no arguments to open the web UI, or pass a path to scan from the command line.",
@@ -1110,7 +1129,8 @@ en: {
   "dl.mac1":"macOS · Apple Silicon","dl.mac1.req":"arm64 · M1 and later","dl.mac2":"macOS · Intel","dl.mac2.req":"x86_64",
   "run.win.h":"Windows","run.win.p":"Double-click vulnscan-windows.exe to open the web UI, or run it from a terminal:",
   "run.lin.h":"Linux","run.lin.p":"Make the file executable, then run it:",
-  "run.mac.h":"macOS","run.mac.p":"The binary is not yet notarized by Apple. Before the first launch, remove the quarantine flag once (or right-click the file and choose Open):",
+  "run.mac.h":"macOS","run.mac.p":"Easiest: Homebrew or the one-command install below (no quarantine step). If you downloaded the file in a browser, remove the quarantine flag once before the first launch:",
+  "inst.h":"Install with one command","inst.p":"Downloads the release for your machine, verifies its SHA-256 before installing, and puts vulnscan on your PATH. On macOS no quarantine step is needed.","inst.sh":"# macOS and Linux","inst.brew":"# Homebrew","inst.ps":"# Windows (PowerShell)",
   "pip.h":"Or install with pip","pip.p":"Python 3.10 or later. No runtime dependencies are installed.",
   "legal":"Scan only what you own or are authorized in writing to test. Scanning other people's systems without permission may be illegal.",
   "faq.eyebrow":"FAQ","faq.h2":"Questions, answered.",
@@ -1124,7 +1144,7 @@ en: {
   "q8":"How do I report a security issue in Kashif?","a8":"Use GitHub private vulnerability reporting, as described in SECURITY.md. Please do not open a public issue.",
   "final.h2":"Start scanning in a minute.","final.p":"Download one file, point it at a project, and read a report ordered from critical to info, with the data-flow path behind every dataflow finding.",
   "foot.tag":"Open-source static application security testing with source-to-sink dataflow analysis. Built in the open.",
-  "foot.product":"Product","foot.res":"Resources","foot.trust":"Trust","foot.docs":"Documentation","foot.changelog":"Changelog","foot.rel":"Releases","foot.issues":"Issues",
+  "foot.product":"Product","foot.res":"Resources","foot.trust":"Trust","foot.docs":"Documentation","foot.changelog":"Changelog",
   "foot.sec":"Security policy","foot.report":"Report a vulnerability","foot.license":"MIT License",
   "foot.ver":"Version","foot.lic":"MIT License","foot.legal":"Scan only systems you are authorized to test.",
   "latest":"latest"
@@ -1187,6 +1207,8 @@ ar: {
   "copy":"نسخ","copied":"نُسخ","int.yaml":"سير عمل GitHub Actions","copied.sr":"نُسخ إلى الحافظة",
   "int.base.h":"خط الأساس: الجديد فقط","int.base.p":"احفظ نتائج اليوم مرة واحدة وأضف الملف إلى المستودع (بصمات فقط، بلا كود). بعدها يعرض كل فحص الجديد فقط ويُفشل CI عليه وحده. البصمات تصمد أمام إزاحة الأسطر وإعادة التنسيق.",
   "int.audit.h":"ملف التدقيق","int.audit.p":"للمراجعات الأمنية، يعرض <code>--audit</code> أيضًا كل استدعاء خطِر (eval وshell وSQL وpickle…) لم يُثبت تحليل التدفق وصول مُدخل إليه، فيرى المراجع سطح الهجوم كاملًا.",
+  "int.ide.h":"داخل محرّرك","int.ide.p":"النتائج نفسها التي يعطيها سطر الأوامر، في VS Code وأي محرّر يدعم LSP: الخطورة وCWE ومسار تدفق البيانات عبر الملفات عند التمرير، مع إصلاحات سريعة لكتم نتيجة أو إضافتها إلى خط الأساس. يعمل دون إنترنت، ولا يغادر شيء جهازك.","int.ide.lsp":"أي محرّر يدعم LSP",
+  "int.pr.h":"على كل طلب دمج","int.pr.p":"تعليقات مراجعة على طلبات الدمج في GitHub، وتقارير GitLab SAST وCode Quality، وخطّاف pre-commit. والفحص المقيَّد بالفرق يعرض ما غيّره الفرع فقط.","int.pr.gh":"تعليقات طلبات الدمج في GitHub","int.pr.more":"إعداد CI وطلبات الدمج","int.pr.href":"docs.html?lang=ar#%D8%A7%D9%84%D8%AA%D9%83%D8%A7%D9%85%D9%84-%D9%85%D8%B9-github-code-scanning-sarif",
   "int.out.h":"خمس صيغ للمخرجات","int.out.p":"تقرير SARIF مُتحقَّق منه مقابل مخطط OASIS 2.1.0 ويُفتح في GitHub وVS Code، ولكل نتيجة بصمة ثابتة.",
   "acc.eyebrow":"الدقة","acc.h2":"نقيسها علنًا، وتعيد إنتاجها بأمر واحد.",
   "acc.sub":"نقيس كاشِف على OWASP Benchmark وننشر نتيجة كل فئة، بما فيها الفئات الأضعف.",
@@ -1222,7 +1244,7 @@ ar: {
   "sec.sum.h":"بصمات SHA-256","sec.sum.p":"ملف SHA256SUMS.txt يتيح لك التأكد من سلامة كل ملف نزّلته.",
   "sec.ci.h":"CI محصَّن","sec.ci.p":"كل إجراء في GitHub Actions مثبّت ببصمة الإيداع (SHA) وبأقل الصلاحيات، تحت مراقبة OpenSSF Scorecard وDependabot.",
   "sec.zero.h":"بلا شجرة اعتماديات","sec.zero.p":"المكتبة المعيارية فقط: لا يُنزَّل أي شيء عند التثبيت أو التشغيل، فلا سلسلة توريد غير مباشرة يمكن مهاجمتها.",
-  "sec.disc.h":"إبلاغ خاص","sec.disc.p":"أبلغ عن الثغرات بشكل خاص عبر GitHub كما هو موضّح في <a href=\"https://github.com/abdulrahmanahmedelabed-prog/vulnscan/blob/main/SECURITY.md\">SECURITY.md</a>.",
+  "sec.disc.h":"إبلاغ خاص","sec.disc.p":"أبلغ عن الثغرات بشكل خاص عبر GitHub كما هو موضّح في <a href=\"security.html\">سياسة الأمان</a>.",
   "sec.verify":"تحقّق من التنزيل",
   "dl.eyebrow":"التحميل","dl.h2":"حمّل كاشِف <span class=\"ver opt\"></span>",
   "dl.sub":"ملفات تنفيذية مفردة بلا تثبيت. شغّلها بلا وسائط لفتح الواجهة، أو مرّر مسارًا للفحص من سطر الأوامر.",
@@ -1231,7 +1253,8 @@ ar: {
   "dl.mac1":"macOS · Apple Silicon","dl.mac1.req":"arm64 · M1 وما بعده","dl.mac2":"macOS · Intel","dl.mac2.req":"x86_64",
   "run.win.h":"ويندوز","run.win.p":"انقر مرّتين على vulnscan-windows.exe لفتح الواجهة، أو شغّله من الطرفية:",
   "run.lin.h":"لينكس","run.lin.p":"اجعل الملف قابلًا للتنفيذ ثم شغّله:",
-  "run.mac.h":"macOS","run.mac.p":"الملف غير موثَّق (notarized) من Apple بعد. قبل أول تشغيل أزل علامة الحجر مرة واحدة (أو انقر بالزر الأيمن واختر «فتح»):",
+  "run.mac.h":"macOS","run.mac.p":"الأسهل: Homebrew أو التثبيت بأمر واحد أدناه (دون خطوة الحجر). وإن نزّلت الملف من المتصفح فأزل علامة الحجر مرة واحدة قبل أول تشغيل:",
+  "inst.h":"ثبّته بأمر واحد","inst.p":"ينزّل النسخة المناسبة لجهازك، ويتحقق من بصمتها SHA-256 قبل التثبيت، ويضيف vulnscan إلى PATH. لا حاجة لخطوة الحجر على macOS.","inst.sh":"# macOS ولينكس","inst.brew":"# Homebrew","inst.ps":"# ويندوز (PowerShell)",
   "pip.h":"أو ثبّته عبر pip","pip.p":"Python 3.10 أو أحدث، دون تثبيت أي اعتماديات تشغيل.",
   "legal":"افحص فقط ما تملكه أو ما لديك تصريح كتابي بفحصه. فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.",
   "faq.eyebrow":"الأسئلة الشائعة","faq.h2":"أسئلة وأجوبة.",
@@ -1245,7 +1268,7 @@ ar: {
   "q8":"كيف أبلّغ عن ثغرة في كاشِف نفسه؟","a8":"استخدم الإبلاغ الخاص عن الثغرات في GitHub كما هو موضّح في SECURITY.md، ولا تفتح بلاغًا عامًا.",
   "final.h2":"ابدأ الفحص خلال دقيقة.","final.p":"نزّل ملفًا واحدًا، ووجّهه إلى مشروعك، واقرأ تقريرًا مرتّبًا من الحرج إلى المعلوماتي، مع مسار تدفق البيانات خلف كل نتيجة لتحليل التدفق.",
   "foot.tag":"اختبار أمان التطبيقات بالتحليل الساكن، مفتوح المصدر، بتتبّع تدفق البيانات من المصدر إلى نقطة الخطر. يُطوَّر علنًا.",
-  "foot.product":"المنتج","foot.res":"المصادر","foot.trust":"الثقة","foot.docs":"التوثيق","foot.changelog":"سجل التغييرات","foot.rel":"الإصدارات","foot.issues":"البلاغات",
+  "foot.product":"المنتج","foot.res":"المصادر","foot.trust":"الثقة","foot.docs":"التوثيق","foot.changelog":"سجل التغييرات",
   "foot.sec":"سياسة الأمان","foot.report":"أبلغ عن ثغرة","foot.license":"رخصة MIT",
   "foot.ver":"الإصدار","foot.lic":"رخصة MIT","foot.legal":"افحص فقط الأنظمة المصرَّح لك باختبارها.",
   "latest":"أحدث إصدار"
@@ -1255,7 +1278,7 @@ ar: {
 (function () {
   "use strict";
   var root = document.documentElement;
-  var state = { lang: root.lang === "ar" ? "ar" : "en", theme: root.getAttribute("data-theme") === "light" ? "light" : "dark", suite: "python", shot: "dashboard", os: null, version: null, releaseUrl: null };
+  var state = { lang: root.lang === "ar" ? "ar" : "en", theme: root.getAttribute("data-theme") === "light" ? "light" : "dark", suite: "python", shot: "dashboard", os: null, version: null };
   if (/^\d/.test(STAMPED_VERSION)) state.version = "v" + STAMPED_VERSION;
   var themeStored = false;
   try { var ts = localStorage.getItem("kashif-theme"); themeStored = ts === "light" || ts === "dark"; } catch (e) {}
@@ -1344,7 +1367,6 @@ ar: {
   function renderVersion() {
     var label = state.version || t("latest");
     document.querySelectorAll(".ver").forEach(function (el) { el.textContent = (!state.version && el.classList.contains("opt")) ? "" : label; el.classList.toggle("word", !state.version); });
-    if (state.releaseUrl) document.querySelectorAll(".rel-link").forEach(function (a) { a.href = state.releaseUrl; });
   }
 
   /* ---------- OS detection & download CTA ---------- */
@@ -1516,7 +1538,6 @@ ar: {
         var tag = String(j.tag_name).trim();
         if (!/^v?\d[0-9A-Za-z.+-]*$/.test(tag)) return;
         state.version = /^v/i.test(tag) ? tag : "v" + tag;
-        if (j.html_url && /^https:\/\/github\.com\//.test(j.html_url)) state.releaseUrl = j.html_url;
         renderVersion();
       })
       .catch(function () {});

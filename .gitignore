@@ -13,3 +13,9 @@ dist-download/
 .coverage
 coverage.xml
 owasp*.json
+# documentation pages generated at deploy time by site/build_docs.py
+site/docs.html
+site/changelog.html
+site/security.html
+site/license.html
+site/docs/

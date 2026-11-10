@@ -3,7 +3,8 @@ name: Deploy landing page
 on:
   push:
     branches: [main]
-    paths: ["site/**", "vulnscan/__init__.py", ".github/workflows/pages.yml"]
+    paths: ["site/**", "vulnscan/__init__.py", ".github/workflows/pages.yml",
+            "README.md", "CHANGELOG.md", "SECURITY.md", "LICENSE", "docs/**"]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +26,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Stamp the current version into the page
         run: python3 site/stamp_version.py site/index.html
+      - name: Build the documentation pages from README, CHANGELOG, SECURITY and LICENSE
+        run: python3 site/build_docs.py
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:

@@ -12,4 +12,25 @@
     <xhtml:link rel="alternate" hreflang="ar" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/?lang=ar"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/"/>
   </url>
+  <url>
+    <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html"/>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html?lang=ar"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html"/>
+  </url>
+  <url>
+    <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html?lang=ar</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html"/>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html?lang=ar"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html"/>
+  </url>
+  <url>
+    <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/changelog.html</loc>
+  </url>
+  <url>
+    <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/security.html</loc>
+  </url>
+  <url>
+    <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/license.html</loc>
+  </url>
 </urlset>

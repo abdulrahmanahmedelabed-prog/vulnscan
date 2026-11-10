@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+# expect-next: K8S011
+kind: Deployment
+metadata:
+  name: web
+spec:
+  template:
+    spec:
+      # expect-next: K8S002
+      hostNetwork: true
+      # expect-next: K8S002
+      hostPID: true
+      securityContext:
+        seccompProfile:
+          # expect-next: K8S008
+          type: Unconfined
+      containers:
+        - name: web
+          # expect-next: K8S007
+          image: nginx:latest
+          env:
+            - name: DB_PASSWORD
+              # expect-next: K8S012
+              value: "s3cr3t-value"
+          securityContext:
+            # expect-next: K8S001
+            allowPrivilegeEscalation: true
+            # expect-next: K8S005
+            readOnlyRootFilesystem: false
+            # expect-next: K8S006
+            runAsUser: 0
+            capabilities:
+              # expect-next: K8S004
+              add: ["NET_ADMIN"]
+        - name: sidecar
+          # expect-next: K8S007
+          image: registry.local:5000/tools/busybox
+          securityContext:
+            capabilities:
+              add:
+                # expect-next: K8S013
+                - SYS_ADMIN
+              drop:
+                - ALL
+      volumes:
+        - name: host-etc
+          # expect-next: K8S003
+          hostPath:
+            path: /etc
+---
+apiVersion: v1
+# expect-next: K8S010
+kind: Pod
+metadata:
+  name: job
+spec:
+  containers:
+    - name: job
+      image: alpine:3.19
+      resources:
+        limits:
+          memory: 128Mi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: too-broad
+rules:
+  - apiGroups: [""]
+    # expect-next: K8S009
+    resources: ["*"]
+    # expect-next: K8S009
+    verbs: ["*"]

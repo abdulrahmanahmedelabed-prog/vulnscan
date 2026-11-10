@@ -1,0 +1,179 @@
+name: Kashif SAST
+description: >-
+  Static application security testing for 12 languages with inter-procedural data flow. On pull requests it reports
+  only the findings the change introduced: inline review comments, one summary comment, SARIF for code scanning.
+author: Kashif (vulnscan) contributors
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  path:
+    description: Directory or file to scan, relative to the repository root.
+    required: false
+    default: "."
+  fail-on:
+    description: Fail the job when a reported finding has this severity or higher (critical|high|medium|low|info|none).
+    required: false
+    default: high
+  min-severity:
+    description: Report only findings of this severity or higher (critical|high|medium|low|info).
+    required: false
+    default: info
+  diff-base:
+    description: >-
+      Report only findings on lines changed since the merge-base with this ref (the whole project is still scanned,
+      so cross-file data flow is complete). Defaults to the pull request's base commit; empty scans everything.
+    required: false
+    default: ${{ github.event.pull_request.base.sha }}
+  baseline:
+    description: Optional baseline file (vulnscan --write-baseline); known findings are not reported.
+    required: false
+    default: ""
+  language:
+    description: Language of comments and the job summary (en|ar).
+    required: false
+    default: en
+  comment-mode:
+    description: "review: inline review comments plus a summary comment; summary: the summary comment only; none: no comments."
+    required: false
+    default: review
+  upload-sarif:
+    description: Upload the SARIF report to GitHub code scanning (needs security-events write).
+    required: false
+    default: "true"
+  audit:
+    description: Audit profile (also report risky calls not proven reachable by tainted data).
+    required: false
+    default: "false"
+  token:
+    description: Token for pull request comments (needs pull-requests write).
+    required: false
+    default: ${{ github.token }}
+  python-version:
+    description: Python used to run the scanner.
+    required: false
+    default: "3.12"
+
+outputs:
+  findings:
+    description: Number of reported findings (after diff, baseline and severity filters).
+    value: ${{ steps.report.outputs.findings }}
+  sarif:
+    description: Path of the SARIF report.
+    value: ${{ steps.scan.outputs.sarif }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Check inputs
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MIN_SEVERITY: ${{ inputs.min-severity }}
+        LANGUAGE: ${{ inputs.language }}
+        COMMENT_MODE: ${{ inputs.comment-mode }}
+        UPLOAD_SARIF: ${{ inputs.upload-sarif }}
+        AUDIT: ${{ inputs.audit }}
+        DIFF_BASE: ${{ inputs.diff-base }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=Kashif SAST::$1"; exit 2; }
+        case "$SCAN_PATH" in -*|"") fail "invalid input path";; esac
+        case "$DIFF_BASE" in -*|*..*|*@\{*|*[!A-Za-z0-9_./@^~{}+-]*) fail "invalid input diff-base";; esac
+        case "$FAIL_ON" in critical|high|medium|low|info|none|"") ;; *) fail "invalid input fail-on";; esac
+        case "$MIN_SEVERITY" in critical|high|medium|low|info) ;; *) fail "invalid input min-severity";; esac
+        case "$LANGUAGE" in en|ar) ;; *) fail "invalid input language";; esac
+        case "$COMMENT_MODE" in review|summary|none) ;; *) fail "invalid input comment-mode";; esac
+        case "$UPLOAD_SARIF" in true|false) ;; *) fail "invalid input upload-sarif";; esac
+        case "$AUDIT" in true|false) ;; *) fail "invalid input audit";; esac
+
+    - name: Install Kashif
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        python -m venv "$RUNNER_TEMP/kashif-venv"
+        py="$RUNNER_TEMP/kashif-venv/bin/python"
+        [ -x "$py" ] || py="$RUNNER_TEMP/kashif-venv/Scripts/python.exe"
+        "$py" -m pip install --disable-pip-version-check --quiet "$ACTION_PATH"
+        echo "KASHIF_PY=$py" >> "$GITHUB_ENV"
+
+    - name: Fetch the base commit
+      if: inputs.diff-base != ''
+      shell: bash
+      env:
+        DIFF_BASE: ${{ inputs.diff-base }}
+      run: |
+        set -uo pipefail
+        if ! git cat-file -e "${DIFF_BASE}^{commit}" 2>/dev/null; then
+          git fetch --no-tags --depth=1 origin -- "$DIFF_BASE" \
+            || echo "::warning title=Kashif SAST::could not fetch the base commit; use actions/checkout with fetch-depth: 0"
+        fi
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        MIN_SEVERITY: ${{ inputs.min-severity }}
+        LANGUAGE: ${{ inputs.language }}
+        DIFF_BASE: ${{ inputs.diff-base }}
+        BASELINE: ${{ inputs.baseline }}
+        AUDIT: ${{ inputs.audit }}
+      run: |
+        set -uo pipefail
+        args=("$SCAN_PATH" --all-formats "$RUNNER_TEMP/kashif" --min-severity "$MIN_SEVERITY" --lang "$LANGUAGE" --no-color)
+        if [ -n "$DIFF_BASE" ]; then args+=(--diff-base "$DIFF_BASE"); fi
+        if [ -n "$BASELINE" ]; then args+=(--baseline "$BASELINE"); fi
+        if [ "$AUDIT" = "true" ]; then args+=(--audit); fi
+        # The console report quotes code from the pull request: no workflow command may be read from it.
+        stop="kashif-$("$KASHIF_PY" -c 'import secrets; print(secrets.token_hex(16))')"
+        echo "::stop-commands::$stop"
+        "$KASHIF_PY" -m vulnscan "${args[@]}"
+        code=$?
+        echo "::$stop::"
+        if [ "$code" -gt 1 ]; then exit "$code"; fi
+        echo "sarif=$RUNNER_TEMP/kashif.sarif" >> "$GITHUB_OUTPUT"
+        echo "json=$RUNNER_TEMP/kashif.json" >> "$GITHUB_OUTPUT"
+
+    - name: Make SARIF paths repository-relative
+      if: inputs.upload-sarif == 'true'
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        SARIF: ${{ steps.scan.outputs.sarif }}
+      run: |
+        "$KASHIF_PY" -m vulnscan.integrations.github_pr --rebase-sarif "$SARIF" --scan-root "$SCAN_PATH"
+
+    - name: Upload SARIF to code scanning
+      if: inputs.upload-sarif == 'true'
+      continue-on-error: true   # pull requests from forks get no security-events write permission
+      uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9 # v3.39.3
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif }}
+        category: kashif
+
+    - name: Report to the pull request
+      id: report
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        REPORT: ${{ steps.scan.outputs.json }}
+        SCAN_PATH: ${{ inputs.path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        LANGUAGE: ${{ inputs.language }}
+        COMMENT_MODE: ${{ inputs.comment-mode }}
+        DIFF_BASE: ${{ inputs.diff-base }}
+      run: |
+        set -uo pipefail
+        args=(--report "$REPORT" --comment-mode "$COMMENT_MODE" --lang "$LANGUAGE" --scan-root "$SCAN_PATH" --diff-base "$DIFF_BASE")
+        if [ -n "$FAIL_ON" ] && [ "$FAIL_ON" != "none" ]; then args+=(--fail-on "$FAIL_ON"); fi
+        "$KASHIF_PY" -m vulnscan.integrations.github_pr "${args[@]}"

@@ -125,6 +125,41 @@
       ],
       "label": "{name}()",
       "_comment": "Tornado RequestHandler accessors"
+    },
+    {
+      "kind": "name",
+      "names": [
+        "bottle.request.forms",
+        "bottle.request.params",
+        "bottle.request.fullpath",
+        "bottle.request.urlparts",
+        "bottle.request.auth",
+        "bottle.request.remote_route",
+        "self.request.path_info",
+        "self.request.matchdict",
+        "self.request.params",
+        "self.request.json_body",
+        "self.request.rel_url",
+        "self.request.match_info",
+        "self.request.query_args"
+      ],
+      "label": "{name}",
+      "_comment": "framework request attributes reached through a global (bottle.request) or self.request; the bare attribute names are not listed in the attr group because `self.<attr>` of any class would match it"
+    },
+    {
+      "kind": "call",
+      "names": [
+        "bottle.request.get_cookie",
+        "bottle.request.get_header",
+        "self.request.get_full_path",
+        "self.request.get_full_path_info",
+        "self.request.build_absolute_uri",
+        "self.request.get_host",
+        "self.request.get_param",
+        "self.request.get_header"
+      ],
+      "label": "{name}()",
+      "_comment": "accessors on a request object that is not a handler parameter (Bottle global, Django CBV / Pyramid self.request)"
     }
   ],
   "entry_points": [
@@ -145,7 +180,13 @@
         "task",
         "on_message",
         "view",
-        "api"
+        "api",
+        "api_route",
+        "view_config",
+        "require_http_methods",
+        "require_GET",
+        "require_POST",
+        "require_safe"
       ],
       "label": "معامل نقطة الدخول"
     },
@@ -167,7 +208,23 @@
         "DetailView",
         "CreateView",
         "UpdateView",
-        "DeleteView"
+        "DeleteView",
+        "MethodView",
+        "HTTPEndpoint",
+        "WebSocketEndpoint",
+        "RedirectView",
+        "ModelViewSet",
+        "ReadOnlyModelViewSet",
+        "GenericViewSet",
+        "ListAPIView",
+        "CreateAPIView",
+        "RetrieveAPIView",
+        "UpdateAPIView",
+        "DestroyAPIView",
+        "ListCreateAPIView",
+        "RetrieveUpdateAPIView",
+        "RetrieveDestroyAPIView",
+        "RetrieveUpdateDestroyAPIView"
       ],
       "methods": [
         "get",
@@ -180,7 +237,16 @@
         "dispatch",
         "on_message",
         "receive",
-        "connect"
+        "connect",
+        "list",
+        "create",
+        "retrieve",
+        "update",
+        "partial_update",
+        "destroy",
+        "websocket_connect",
+        "websocket_receive",
+        "on_receive"
       ]
     },
     {
@@ -225,7 +291,8 @@
         "subprocess.getoutput",
         "subprocess.getstatusoutput",
         "commands.getoutput",
-        "os.startfile"
+        "os.startfile",
+        "commands.getstatusoutput"
       ],
       "title": "Tainted data reaches a shell command",
       "title_ar": "بيانات غير موثوقة تصل إلى أمر shell",
@@ -252,12 +319,13 @@
         "os.execvpe",
         "os.execl",
         "os.execlp",
-        "os.spawnl",
-        "os.spawnv",
-        "os.spawnlp",
-        "os.spawnvp",
         "asyncio.create_subprocess_exec",
-        "asyncio.create_subprocess_shell"
+        "asyncio.create_subprocess_shell",
+        "os.execle",
+        "os.execlpe",
+        "os.posix_spawn",
+        "os.posix_spawnp",
+        "pty.spawn"
       ],
       "title": "Tainted command/program reaches subprocess",
       "title_ar": "أمر أو برنامج ملوّث يصل إلى subprocess",
@@ -280,11 +348,46 @@
         "sqlalchemy.text",
         "sqlalchemy.sql.text",
         "django.db.connection.cursor.execute",
-        "extra"
+        "exec_driver_sql",
+        "mogrify",
+        "sqlalchemy.sql.expression.text",
+        "sqlalchemy.sql.elements.TextClause",
+        "sqlalchemy.TextClause",
+        "sqlalchemy.literal_column",
+        "sqlalchemy.sql.literal_column",
+        "sqlalchemy.sql.expression.literal_column",
+        "psycopg2.sql.SQL",
+        "psycopg.sql.SQL",
+        "pandas.read_sql",
+        "pandas.read_sql_query",
+        "pandas.io.sql.read_sql",
+        "pandas.io.sql.read_sql_query"
       ],
       "title": "Tainted data reaches SQL execute()",
       "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ SQL",
       "advice": "استخدم استعلامات مُعَلَّمة (parameters) بدل بناء نص الاستعلام من المدخلات."
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL execute",
+      "title": "Tainted data reaches SQL execute()",
+      "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ SQL",
+      "advice": "استخدم استعلامات مُعَلَّمة (parameters) بدل بناء نص الاستعلام من المدخلات.",
+      "args": [
+        0
+      ],
+      "kwargs": [
+        "where",
+        "select",
+        "tables",
+        "order_by"
+      ],
+      "names": [
+        "extra"
+      ],
+      "_comment": "Django QuerySet.extra(select=, where=, params=, tables=, order_by=): select/where/tables/order_by take raw SQL"
     },
     {
       "rule": "DF005",
@@ -302,7 +405,15 @@
         "codecs.open",
         "os.open",
         "FileResponse",
-        "static_file"
+        "static_file",
+        "aiofiles.open",
+        "sanic.response.file",
+        "sanic.response.file_stream",
+        "fileinput.input",
+        "fileinput.FileInput",
+        "linecache.getline",
+        "linecache.getlines",
+        "io.FileIO"
       ],
       "title": "Tainted data reaches a file path",
       "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
@@ -329,7 +440,18 @@
         "dill.loads",
         "dill.load",
         "shelve.open",
-        "jsonpickle.decode"
+        "jsonpickle.decode",
+        "cloudpickle.loads",
+        "cloudpickle.load",
+        "joblib.load",
+        "torch.load",
+        "pandas.read_pickle",
+        "pickle.Unpickler",
+        "_pickle.loads",
+        "_pickle.load",
+        "dill.Unpickler",
+        "yaml.unsafe_load_all",
+        "jsonpickle.unpickler.decode"
       ],
       "title": "Tainted data reaches unsafe deserialization",
       "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل غير آمن",
@@ -350,7 +472,15 @@
         "from_string",
         "mako.template.Template",
         "django.template.Template",
-        "Environment.from_string"
+        "Environment.from_string",
+        "tornado.template.Template",
+        "bottle.template",
+        "bottle.SimpleTemplate",
+        "chameleon.PageTemplate",
+        "chameleon.zpt.template.PageTemplate",
+        "genshi.template.MarkupTemplate",
+        "genshi.template.TextTemplate",
+        "Cheetah.Template.Template"
       ],
       "title": "Tainted data reaches a dynamic template",
       "title_ar": "بيانات غير موثوقة تصل إلى قالب ديناميكي",
@@ -369,11 +499,23 @@
         "HttpResponseRedirect",
         "RedirectResponse",
         "flask.redirect",
-        "django.shortcuts.redirect"
+        "django.shortcuts.redirect",
+        "HttpResponsePermanentRedirect",
+        "HTTPFound",
+        "HTTPSeeOther",
+        "HTTPMovedPermanently",
+        "HTTPTemporaryRedirect",
+        "HTTPPermanentRedirect"
       ],
       "title": "Tainted data reaches redirect()",
       "title_ar": "بيانات غير موثوقة تصل إلى redirect",
-      "advice": "تحقق أن وجهة التحويل ضمن قائمة بيضاء (Open Redirect)."
+      "advice": "تحقق أن وجهة التحويل ضمن قائمة بيضاء (Open Redirect).",
+      "kwargs": [
+        "location",
+        "url",
+        "redirect_to"
+      ],
+      "_comment": "HTTPFound & co: aiohttp.web / pyramid.httpexceptions / webob.exc (location is the first argument)"
     },
     {
       "rule": "DF010",
@@ -390,7 +532,6 @@
         "requests.delete",
         "requests.patch",
         "requests.head",
-        "requests.request",
         "requests.Session.get",
         "requests.Session.post",
         "urllib.request.urlopen",
@@ -398,7 +539,6 @@
         "urllib.request.Request",
         "httpx.get",
         "httpx.post",
-        "httpx.request",
         "httpx.Client.get",
         "httpx.AsyncClient.get",
         "aiohttp.ClientSession.get",
@@ -407,11 +547,50 @@
         "client.get",
         "client.post",
         "http.client.HTTPConnection",
-        "http.client.HTTPSConnection"
+        "http.client.HTTPSConnection",
+        "requests.options",
+        "requests.Session.put",
+        "requests.Session.delete",
+        "requests.Session.patch",
+        "requests.Session.head",
+        "requests.Session.options",
+        "httpx.put",
+        "httpx.delete",
+        "httpx.patch",
+        "httpx.head",
+        "httpx.options",
+        "httpx.Client.post",
+        "httpx.Client.put",
+        "httpx.Client.delete",
+        "httpx.Client.patch",
+        "httpx.Client.head",
+        "httpx.AsyncClient.post",
+        "httpx.AsyncClient.put",
+        "httpx.AsyncClient.delete",
+        "httpx.AsyncClient.patch",
+        "httpx.AsyncClient.head",
+        "aiohttp.ClientSession.post",
+        "aiohttp.ClientSession.put",
+        "aiohttp.ClientSession.delete",
+        "aiohttp.ClientSession.patch",
+        "aiohttp.ClientSession.head",
+        "aiohttp.ClientSession.ws_connect",
+        "urllib.request.urlretrieve",
+        "urllib.urlopen",
+        "urllib2.urlopen",
+        "urllib2.Request",
+        "tornado.httpclient.AsyncHTTPClient.fetch",
+        "tornado.httpclient.HTTPClient.fetch",
+        "tornado.httpclient.HTTPRequest",
+        "websocket.create_connection",
+        "websockets.connect"
       ],
       "title": "Tainted URL reaches an outbound HTTP request",
       "title_ar": "عنوان ملوّث يصل إلى طلب HTTP صادر (SSRF)",
-      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات، وارفض العناوين الداخلية وعناوين البيانات الوصفية."
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات، وارفض العناوين الداخلية وعناوين البيانات الوصفية.",
+      "kwargs": [
+        "url"
+      ]
     },
     {
       "rule": "DF011",
@@ -442,7 +621,14 @@
         "shutil.move",
         "glob.glob",
         "tarfile.open",
-        "zipfile.ZipFile"
+        "zipfile.ZipFile",
+        "os.truncate",
+        "os.utime",
+        "os.lchown",
+        "os.mkfifo",
+        "os.mknod",
+        "glob.iglob",
+        "shutil.chown"
       ],
       "title": "Tainted path reaches a filesystem operation",
       "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
@@ -461,7 +647,11 @@
         "builtins.__import__",
         "imp.load_source",
         "runpy.run_path",
-        "runpy.run_module"
+        "runpy.run_module",
+        "pydoc.locate",
+        "importlib.__import__",
+        "pkgutil.resolve_name",
+        "import_string"
       ],
       "title": "Tainted module name reaches a dynamic import",
       "title_ar": "اسم وحدة ملوّث يصل إلى استيراد ديناميكي",
@@ -483,11 +673,19 @@
         "django.http.HttpResponse",
         "web.Response",
         "Response",
-        "PlainTextResponse"
+        "PlainTextResponse",
+        "sanic.response.html",
+        "StreamingHttpResponse"
       ],
       "title": "Tainted data reflected into an HTTP response",
       "title_ar": "بيانات غير موثوقة تُعاد في استجابة HTTP (XSS انعكاسي)",
-      "advice": "هرّب المخرجات (html.escape / markupsafe) أو استخدم قوالب تُهرِّب تلقائيًا."
+      "advice": "هرّب المخرجات (html.escape / markupsafe) أو استخدم قوالب تُهرِّب تلقائيًا.",
+      "kwargs": [
+        "content",
+        "text",
+        "body",
+        "response"
+      ]
     },
     {
       "rule": "DF013",
@@ -523,7 +721,10 @@
       ],
       "title": "Tainted data reaches an LDAP search filter",
       "title_ar": "بيانات غير موثوقة تصل إلى مرشّح LDAP",
-      "advice": "هرّب القيم بـ ldap.filter.escape_filter_chars."
+      "advice": "هرّب القيم بـ ldap.filter.escape_filter_chars.",
+      "kwargs": [
+        "filterstr"
+      ]
     },
     {
       "rule": "DF015",
@@ -584,15 +785,19 @@
       "title_ar": "بيانات غير موثوقة تصل إلى مرشّح LDAP",
       "advice": "هرّب القيم بـ ldap.filter.escape_filter_chars.",
       "names": [
-        "search"
+        "search",
+        "search_ext"
       ],
       "args": [
-        1
+        1,
+        2
       ],
       "kwargs": [
-        "search_filter"
+        "search_filter",
+        "filterstr"
       ],
-      "receiver": "(?i)(^|[._])(conn|connection|ldap|ld|server_conn)\\w*$"
+      "receiver": "(?i)(^|[._])(conn|connection|ldap|ld|server_conn)\\w*$",
+      "_comment": "ldap3 Connection.search(base, filter) and python-ldap LDAPObject.search/search_ext(base, scope, filterstr)"
     },
     {
       "rule": "DF005",
@@ -625,6 +830,412 @@
       "args": [
         "self"
       ]
+    },
+    {
+      "rule": "DF001",
+      "severity": "critical",
+      "cwe": "CWE-95",
+      "title": "Tainted data reaches eval/exec",
+      "title_ar": "بيانات غير موثوقة تصل إلى eval/exec",
+      "advice": "لا تمرّر مدخلات المستخدم إلى eval/exec؛ استخدم منطقًا صريحًا أو ast.literal_eval.",
+      "label": "code string (timeit)",
+      "args": [
+        0
+      ],
+      "kwargs": [
+        "stmt",
+        "setup"
+      ],
+      "names": [
+        "timeit.timeit",
+        "timeit.repeat",
+        "timeit.Timer"
+      ]
+    },
+    {
+      "rule": "DF003",
+      "severity": "high",
+      "cwe": "CWE-78",
+      "title": "Tainted command/program reaches subprocess",
+      "title_ar": "أمر أو برنامج ملوّث يصل إلى subprocess",
+      "advice": "استخدم قائمة وسائط بلا shell=True ولا تبنِ الأمر من المدخلات.",
+      "label": "os.spawn* program",
+      "args": [
+        1
+      ],
+      "names": [
+        "os.spawnl",
+        "os.spawnv",
+        "os.spawnlp",
+        "os.spawnvp",
+        "os.spawnle",
+        "os.spawnlpe",
+        "os.spawnve",
+        "os.spawnvpe"
+      ],
+      "_comment": "os.spawn*(mode, path, ...): the program is the second argument"
+    },
+    {
+      "rule": "DF003",
+      "severity": "high",
+      "cwe": "CWE-78",
+      "title": "Tainted command/program reaches subprocess",
+      "title_ar": "أمر أو برنامج ملوّث يصل إلى subprocess",
+      "advice": "استخدم قائمة وسائط بلا shell=True ولا تبنِ الأمر من المدخلات.",
+      "label": "asyncio loop.subprocess_exec",
+      "args": [
+        1
+      ],
+      "names": [
+        "subprocess_exec"
+      ],
+      "_comment": "loop.subprocess_exec(protocol_factory, program, *args)"
+    },
+    {
+      "rule": "DF002",
+      "severity": "critical",
+      "cwe": "CWE-78",
+      "title": "Tainted data reaches a shell command",
+      "title_ar": "بيانات غير موثوقة تصل إلى أمر shell",
+      "advice": "لا تبنِ أوامر النظام من المدخلات؛ استخدم قائمة وسائط بلا shell وتحقق منها.",
+      "label": "asyncio loop.subprocess_shell",
+      "args": [
+        1
+      ],
+      "shell": true,
+      "names": [
+        "subprocess_shell"
+      ],
+      "_comment": "loop.subprocess_shell(protocol_factory, cmd)"
+    },
+    {
+      "rule": "DF002",
+      "severity": "critical",
+      "cwe": "CWE-78",
+      "title": "Tainted data reaches a shell command",
+      "title_ar": "بيانات غير موثوقة تصل إلى أمر shell",
+      "advice": "لا تبنِ أوامر الصدفة (المحلية أو البعيدة عبر SSH) من المدخلات؛ هرّب كل وسيط بـ shlex.quote وتحقق منه بقائمة بيضاء.",
+      "label": "remote shell command (SSH)",
+      "args": [
+        0
+      ],
+      "kwargs": [
+        "command"
+      ],
+      "shell": true,
+      "names": [
+        "exec_command",
+        "fabric.api.run",
+        "fabric.api.sudo",
+        "fabric.api.local",
+        "fabric.operations.run",
+        "fabric.operations.sudo",
+        "fabric.operations.local",
+        "invoke.run",
+        "invoke.sudo"
+      ],
+      "_comment": "paramiko SSHClient/Channel.exec_command, Fabric 1 fabric.api.*, Invoke run/sudo: the command runs in a shell"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "title": "Tainted data reaches SQL execute()",
+      "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ SQL",
+      "advice": "استخدم استعلامات مُعَلَّمة (parameters) بدل بناء نص الاستعلام من المدخلات.",
+      "label": "SQL (asyncpg / databases)",
+      "args": [
+        0
+      ],
+      "kwargs": [
+        "query"
+      ],
+      "names": [
+        "fetch",
+        "fetchrow",
+        "fetchval",
+        "fetch_all",
+        "fetch_one",
+        "fetch_val",
+        "iterate",
+        "copy_from_query"
+      ],
+      "receiver": "(?i)^(?!.*(imap|pop3?|mail|ftp|smtp))(.*[._\\[\"'])?(conn|connection|con|db|pool|pg|asyncpg|database|tx|transaction)(_\\w*|\\d*)[\"']?\\]?$",
+      "_comment": "asyncpg Connection/Pool.fetch*(query, *args), encode/databases Database.fetch_*(query)"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-943",
+      "label": "NoSQL server-side JavaScript",
+      "title": "Tainted data reaches a MongoDB server-side JavaScript query",
+      "title_ar": "بيانات غير موثوقة تصل إلى شيفرة JavaScript تنفّذها MongoDB",
+      "advice": "لا تبنِ شيفرة JavaScript لـ MongoDB ($where / Code / where()) من المدخلات؛ استخدم مشغّلات الاستعلام ومرّر القيم عبر scope.",
+      "args": [
+        0
+      ],
+      "names": [
+        "bson.code.Code",
+        "bson.Code"
+      ],
+      "_comment": "bson.code.Code(code, scope): the code string is evaluated by the server ($where, mapReduce)"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-943",
+      "label": "NoSQL server-side JavaScript",
+      "title": "Tainted data reaches a MongoDB server-side JavaScript query",
+      "title_ar": "بيانات غير موثوقة تصل إلى شيفرة JavaScript تنفّذها MongoDB",
+      "advice": "لا تبنِ شيفرة JavaScript لـ MongoDB ($where / Code / where()) من المدخلات؛ استخدم مشغّلات الاستعلام ومرّر القيم عبر scope.",
+      "args": [
+        0
+      ],
+      "names": [
+        "where",
+        "exec_js"
+      ],
+      "receiver": "(^|\\.)objects$|(^|\\.)objects\\.",
+      "_comment": "mongoengine QuerySet.where(js) / exec_js(code): Document.objects.where(...)"
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح (resolve + is_relative_to).",
+      "label": "uploaded file save path",
+      "args": [
+        0
+      ],
+      "kwargs": [
+        "dst"
+      ],
+      "names": [
+        "save"
+      ],
+      "receiver": "(?i)(\\bfiles\\b.*|(^|[._])(f|file|upload|uploaded|uploaded_?file|upload_?file|attachment|file_?storage)\\d*)$",
+      "_comment": "werkzeug FileStorage.save(dst): request.files['f'].save(path)"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "title": "Tainted URL reaches an outbound HTTP request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب HTTP صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات، وارفض العناوين الداخلية وعناوين البيانات الوصفية.",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        1
+      ],
+      "kwargs": [
+        "url"
+      ],
+      "names": [
+        "requests.request",
+        "httpx.request",
+        "requests.Session.request",
+        "httpx.stream",
+        "httpx.Client.request",
+        "httpx.Client.stream",
+        "httpx.AsyncClient.request",
+        "httpx.AsyncClient.stream",
+        "aiohttp.request",
+        "aiohttp.ClientSession.request",
+        "urllib3.request",
+        "session.request"
+      ],
+      "_comment": "request(method, url, ...): the URL is the second argument"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "title": "Tainted URL reaches an outbound HTTP request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب HTTP صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات، وارفض العناوين الداخلية وعناوين البيانات الوصفية.",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        1
+      ],
+      "kwargs": [
+        "url"
+      ],
+      "names": [
+        "request",
+        "urlopen",
+        "request_encode_url",
+        "request_encode_body"
+      ],
+      "receiver": "(?i)(^|[._])(http|pool|pool_?manager|proxy_?manager|urllib3\\.(PoolManager|ProxyManager|HTTPConnectionPool|HTTPSConnectionPool|connection_from_url))$",
+      "_comment": "urllib3 PoolManager.request(method, url) / urlopen(method, url)"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل أي عملية حذف أو نسخ أو إنشاء.",
+      "label": "filesystem operation (source and destination)",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "shutil.copy2",
+        "shutil.copymode",
+        "shutil.copystat",
+        "os.link",
+        "os.symlink",
+        "shutil.unpack_archive"
+      ],
+      "_comment": "both paths are dangerous: shutil.unpack_archive(filename, extract_dir), os.link(src, dst)"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل أي عملية حذف أو نسخ أو إنشاء.",
+      "label": "archive extraction directory",
+      "args": [
+        0
+      ],
+      "kwargs": [
+        "path"
+      ],
+      "names": [
+        "extractall"
+      ],
+      "receiver": "(?i)((^|[._])(tar|tarfile|tar_?file|tarball|tf|zf|zip|zipfile|zip_?file|zip_?ref|archive|arch)\\d*$|^(tarfile\\.(open|TarFile)|zipfile\\.ZipFile)\\(.*\\)$)",
+      "_comment": "TarFile/ZipFile.extractall(path): writing to a directory the user picked"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل أي عملية حذف أو نسخ أو إنشاء.",
+      "label": "archive extraction directory",
+      "args": [
+        1
+      ],
+      "kwargs": [
+        "path"
+      ],
+      "names": [
+        "extract"
+      ],
+      "receiver": "(?i)((^|[._])(tar|tarfile|tar_?file|tarball|tf|zf|zip|zipfile|zip_?file|zip_?ref|archive|arch)\\d*$|^(tarfile\\.(open|TarFile)|zipfile\\.ZipFile)\\(.*\\)$)",
+      "_comment": "TarFile/ZipFile.extract(member, path)"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل أي عملية حذف أو نسخ أو إنشاء.",
+      "label": "local file path (boto3 S3 transfer)",
+      "args": [
+        0
+      ],
+      "kwargs": [
+        "filename"
+      ],
+      "names": [
+        "upload_file"
+      ],
+      "receiver": "(?i)(s3|bucket|obj|boto3\\.(client|resource))",
+      "_comment": "boto3 client/Bucket/Object.upload_file(Filename, ...): reads an arbitrary local file"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل أي عملية حذف أو نسخ أو إنشاء.",
+      "label": "local file path (boto3 S3 transfer)",
+      "args": [
+        0
+      ],
+      "kwargs": [
+        "filename"
+      ],
+      "names": [
+        "download_file"
+      ],
+      "receiver": "(?i)((^|[._])\\w*(obj|object)\\d*$|\\.Object\\(.*\\)$)",
+      "_comment": "s3.Object(...).download_file(Filename)"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل أي عملية حذف أو نسخ أو إنشاء.",
+      "label": "local file path (boto3 S3 transfer)",
+      "args": [
+        1
+      ],
+      "kwargs": [
+        "filename"
+      ],
+      "names": [
+        "download_file"
+      ],
+      "receiver": "(?i)((^|[._])\\w*bucket\\w*$|\\.Bucket\\(.*\\)$)",
+      "_comment": "s3.Bucket(...).download_file(Key, Filename)"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل أي عملية حذف أو نسخ أو إنشاء.",
+      "label": "local file path (boto3 S3 transfer)",
+      "args": [
+        2
+      ],
+      "kwargs": [
+        "filename"
+      ],
+      "names": [
+        "download_file"
+      ],
+      "receiver": "(?i)((^|[._])\\w*(s3|client)\\w*$|boto3\\.client\\(.*\\)$)",
+      "_comment": "boto3 S3 client.download_file(Bucket, Key, Filename): writes to an arbitrary local path"
+    },
+    {
+      "rule": "DF013",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "title": "Tainted data reflected into an HTTP response",
+      "title_ar": "بيانات غير موثوقة تُعاد في استجابة HTTP (XSS انعكاسي)",
+      "advice": "لا تُعلِّم مدخلات المستخدم كـ HTML آمن (mark_safe / Markup)؛ هرّبها أولًا أو مرّرها وسيطًا إلى format_html.",
+      "label": "HTML marked safe (XSS)",
+      "args": [
+        0
+      ],
+      "names": [
+        "django.utils.safestring.mark_safe",
+        "mark_safe",
+        "SafeString",
+        "SafeText",
+        "django.utils.html.format_html",
+        "markupsafe.Markup",
+        "flask.Markup",
+        "jinja2.Markup",
+        "Markup"
+      ],
+      "_comment": "the value bypasses template autoescaping; format_html escapes its arguments but not the format string"
     }
   ],
   "sanitizers": [
@@ -665,7 +1276,24 @@
     "round",
     "isinstance",
     "type",
-    "id"
+    "id",
+    "werkzeug.utils.safe_join",
+    "werkzeug.security.safe_join",
+    "flask.helpers.safe_join",
+    "flask.safe_join",
+    "django.utils._os.safe_join",
+    "pymysql.converters.escape_string",
+    "pymysql.escape_string",
+    "MySQLdb.escape_string",
+    "psycopg2.sql.Literal",
+    "psycopg2.sql.Identifier",
+    "psycopg.sql.Literal",
+    "psycopg.sql.Identifier",
+    "django.utils.html.conditional_escape",
+    "conditional_escape",
+    "xml.sax.saxutils.escape",
+    "xml.sax.saxutils.quoteattr",
+    "nh3.clean"
   ],
   "safe_return_calls": [
     "render_template",
@@ -680,7 +1308,12 @@
     "JsonResponse",
     "JSONResponse",
     "render_to_response",
-    "TemplateResponse"
+    "TemplateResponse",
+    "json_response",
+    "render_to_string",
+    "ORJSONResponse",
+    "UJSONResponse",
+    "sanic.response.json"
   ],
   "validators": [
     "isalnum",

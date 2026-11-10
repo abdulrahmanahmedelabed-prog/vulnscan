@@ -1,5 +1,5 @@
 {
- "_comment": "Ruby: Kernel, Open3, File/FileUtils, ActiveRecord/Rails, Sinatra, Rack, ERB, YAML/Marshal, Net::HTTP.",
+ "_comment": "Ruby: Kernel, Open3, File/FileUtils, ActiveRecord/Rails, Sinatra, Rack, ERB, YAML/Marshal, Net::HTTP. Breadth: ActiveRecord finders/calculations, Sequel/pg, html_safe, constantize, render file:/template:, ERB/Erubi/Haml engines from strings, Net::HTTP/Faraday/HTTPX/Excon/RestClient constructors, net-ldap, Nokogiri/REXML XPath.",
  "sources": [
   {
    "kind": "name",
@@ -116,6 +116,21 @@
     "format"
    ],
    "label": "{root}.{attr}"
+  },
+  {
+   "kind": "call",
+   "label": "{name}()",
+   "names": [
+    "request.request_parameters",
+    "request.query_parameters",
+    "request.path_parameters",
+    "request.get_header",
+    "request.authorization",
+    "request.raw_post",
+    "Rack.Request",
+    "ActionDispatch.Request",
+    "declared"
+   ]
   }
  ],
  "entry_points": [
@@ -170,7 +185,14 @@
     "GraphQL::Schema::Resolver",
     "GraphQL.Schema.Resolver",
     "GraphQL::Schema::Mutation",
-    "GraphQL.Schema.Mutation"
+    "GraphQL.Schema.Mutation",
+    "ActionController::Metal",
+    "ActionController.Metal",
+    "Padrino::Application",
+    "Padrino.Application",
+    "Grape::API::Instance",
+    "Grape.API.Instance",
+    "Cuba"
    ],
    "methods": [
     "index",
@@ -201,7 +223,20 @@
     "do_GET",
     "do_POST",
     "do_PUT",
-    "do_DELETE"
+    "do_DELETE",
+    "preview",
+    "approve",
+    "reject",
+    "login",
+    "logout",
+    "signup",
+    "register",
+    "confirm",
+    "reset",
+    "verify",
+    "report",
+    "list",
+    "feed"
    ]
   },
   {
@@ -214,8 +249,6 @@
     "session",
     "args",
     "argv",
-    "options",
-    "opts",
     "job",
     "ws",
     "socket",
@@ -226,6 +259,21 @@
   }
  ],
  "sinks": [
+  {
+   "rule": "DF013",
+   "severity": "medium",
+   "cwe": "CWE-79",
+   "label": "HTTP response (XSS)",
+   "args": [
+    "self"
+   ],
+   "names": [
+    "html_safe"
+   ],
+   "title": "Tainted data reflected into the response",
+   "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+   "advice": "لا تستدعِ html_safe على مدخلات المستخدم؛ هرّبها بـ ERB::Util.h أو نظّفها بـ sanitize."
+  },
   {
    "rule": "DF002",
    "severity": "high",
@@ -370,6 +418,29 @@
    "title": "Tainted data reaches a database query",
    "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
    "advice": "استخدم استعلامات مُعدّة بدل تركيب النص."
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    0
+   ],
+   "names": [
+    "render",
+    "render_to_string"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح.",
+   "kwargs": [
+    "file",
+    "template",
+    "partial",
+    "action",
+    "layout"
+   ]
   },
   {
    "rule": "DF005",
@@ -691,6 +762,23 @@
    "cwe": "CWE-94",
    "label": "code execution",
    "args": [
+    0,
+    "self"
+   ],
+   "names": [
+    "constantize",
+    "safe_constantize"
+   ],
+   "title": "Tainted data reaches code evaluation",
+   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
+   "advice": "لا تنفّذ شيفرة مبنية من المدخلات."
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-94",
+   "label": "code execution",
+   "args": [
     0
    ],
    "names": [
@@ -832,6 +920,304 @@
    "title": "Tainted data written to a log",
    "title_ar": "بيانات غير موثوقة تُكتب في السجل",
    "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل."
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    0
+   ],
+   "names": [
+    "not"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "استخدم استعلامات مُعدّة بدل تركيب النص.",
+   "receiver": "(^|\\.)where$"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    0
+   ],
+   "names": [
+    "find_by",
+    "find_by!",
+    "find_or_create_by",
+    "find_or_create_by!",
+    "find_or_initialize_by",
+    "destroy_by",
+    "delete_by",
+    "minimum",
+    "maximum",
+    "average",
+    "reselect",
+    "regroup",
+    "count_by_sql",
+    "DB.execute_ddl",
+    "DB.execute_dui",
+    "DB.execute_insert",
+    "conn.exec_params",
+    "conn.async_exec_params",
+    "connection.exec_params"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "استخدم استعلامات مُعدّة بدل تركيب النص."
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    1
+   ],
+   "names": [
+    "conn.prepare",
+    "connection.prepare"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "استخدم استعلامات مُعدّة بدل تركيب النص."
+  },
+  {
+   "rule": "DF002",
+   "severity": "high",
+   "cwe": "CWE-78",
+   "label": "shell command",
+   "args": [
+    0
+   ],
+   "names": [
+    "Process.exec",
+    "Open3.pipeline_r",
+    "Open3.pipeline_w",
+    "Open3.pipeline_rw",
+    "Open3.pipeline_start"
+   ],
+   "title": "Tainted data reaches a shell command",
+   "title_ar": "بيانات غير موثوقة تصل إلى أمر نظام",
+   "advice": "لا تمرّر مدخلات إلى الصدفة؛ استخدم وسائط منفصلة وقائمة بيضاء."
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    0
+   ],
+   "names": [
+    "Tilt",
+    "Tilt.ERBTemplate",
+    "Slim.Template",
+    "Haml.Template"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح."
+  },
+  {
+   "rule": "DF007",
+   "severity": "high",
+   "cwe": "CWE-1336",
+   "label": "template",
+   "args": [
+    0
+   ],
+   "names": [
+    "ERB",
+    "Erubi.Engine",
+    "Erubis.Eruby",
+    "Erubis.EscapedEruby",
+    "Haml.Engine"
+   ],
+   "title": "Tainted data reaches a template",
+   "title_ar": "بيانات غير موثوقة تصل إلى قالب",
+   "advice": "لا تبنِ القالب من المدخلات."
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound URL (SSRF)",
+   "args": [
+    0
+   ],
+   "names": [
+    "Net.HTTP",
+    "Net.HTTP.Get",
+    "Net.HTTP.Post",
+    "Net.HTTP.Put",
+    "Net.HTTP.Delete",
+    "Net.HTTP.Patch",
+    "Net.HTTP.Head",
+    "Faraday.put",
+    "Faraday.delete",
+    "Faraday.patch",
+    "Faraday.head",
+    "Excon",
+    "Excon.post",
+    "Excon.put",
+    "Excon.delete",
+    "Excon.head",
+    "HTTParty.put",
+    "HTTParty.patch",
+    "HTTParty.delete",
+    "HTTParty.head",
+    "RestClient.put",
+    "RestClient.patch",
+    "RestClient.delete",
+    "RestClient.head",
+    "RestClient.Resource",
+    "HTTP.put",
+    "HTTP.patch",
+    "HTTP.delete",
+    "HTTP.head",
+    "HTTPX.get",
+    "HTTPX.post",
+    "HTTPX.put",
+    "HTTPX.patch",
+    "HTTPX.delete",
+    "HTTPX.head",
+    "Typhoeus.Request",
+    "Typhoeus.post",
+    "Typhoeus.put",
+    "Typhoeus.delete",
+    "Typhoeus.head",
+    "Curl.Easy",
+    "Curl.post",
+    "TCPSocket",
+    "Net.FTP",
+    "Down.download",
+    "Down.open"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات وارفض العناوين الداخلية."
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound URL (SSRF)",
+   "args": [
+    0
+   ],
+   "names": [
+    "Faraday"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات وارفض العناوين الداخلية.",
+   "kwargs": [
+    "url"
+   ]
+  },
+  {
+   "rule": "DF006",
+   "severity": "critical",
+   "cwe": "CWE-502",
+   "label": "deserialization",
+   "args": [
+    0
+   ],
+   "names": [
+    "Ox.parse_obj"
+   ],
+   "title": "Tainted data reaches deserialization",
+   "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل",
+   "advice": "لا تفكّ بيانات غير موثوقة؛ استخدم صيغًا آمنة."
+  },
+  {
+   "rule": "DF008",
+   "severity": "medium",
+   "cwe": "CWE-601",
+   "label": "redirect",
+   "args": [
+    0
+   ],
+   "names": [
+    "redirect_back_or_to"
+   ],
+   "title": "Tainted data reaches a redirect",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+   "advice": "تحقق من الوجهة بقائمة بيضاء."
+  },
+  {
+   "rule": "DF014",
+   "severity": "high",
+   "cwe": "CWE-90",
+   "label": "LDAP filter",
+   "args": [
+    0
+   ],
+   "names": [
+    "Net.LDAP.Filter.construct",
+    "Net.LDAP.Filter.from_rfc2254",
+    "Net.LDAP.Filter.from_rfc4515"
+   ],
+   "title": "Tainted data reaches an LDAP query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام LDAP",
+   "advice": "ابنِ المرشّح بـ Net::LDAP::Filter.equals/contains أو هرّب القيمة بـ Net::LDAP::Filter.escape."
+  },
+  {
+   "rule": "DF014",
+   "severity": "high",
+   "cwe": "CWE-90",
+   "label": "LDAP filter",
+   "args": [],
+   "names": [
+    "search",
+    "search_subschema_entry"
+   ],
+   "title": "Tainted data reaches an LDAP query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام LDAP",
+   "advice": "ابنِ المرشّح بـ Net::LDAP::Filter.equals/contains أو هرّب القيمة بـ Net::LDAP::Filter.escape.",
+   "kwargs": [
+    "filter",
+    "base"
+   ],
+   "receiver": "(?i)ldap"
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "args": [
+    0
+   ],
+   "names": [
+    "xpath",
+    "at_xpath"
+   ],
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "لا تركّب استعلام XPath من المدخلات."
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "args": [
+    1
+   ],
+   "names": [
+    "REXML.XPath.first",
+    "REXML.XPath.match",
+    "REXML.XPath.each"
+   ],
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "لا تركّب استعلام XPath من المدخلات."
   }
  ],
  "sanitizers": [
@@ -945,7 +1331,13 @@
   "Sanitize.clean",
   "sanitizer.sanitize",
   "full_sanitizer.sanitize",
-  "safe_list_sanitizer.sanitize"
+  "safe_list_sanitizer.sanitize",
+  "Net.LDAP.Filter.escape",
+  "Net.LDAP.Filter.equals",
+  "Net.LDAP.Filter.begins",
+  "Net.LDAP.Filter.ends",
+  "Net.LDAP.Filter.contains",
+  "escape_javascript"
  ],
  "safe_return_calls": [],
  "validators": [

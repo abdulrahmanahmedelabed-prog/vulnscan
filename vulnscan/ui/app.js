@@ -38,6 +38,28 @@ const I18N = {
     'set.keep': 'عدد الفحوصات المحفوظة', 'set.webTimeout': 'مهلة طلب الويب بالثواني (يُعاد الطلب الأول مرة بمهلة مضاعفة)', 'set.webDelay': 'تأخير بين طلبات الزحف بالثواني (ألطف على الخادم وجدار الحماية)', 'set.save': 'حفظ', 'set.saved': 'تم الحفظ', 'set.home': 'مجلد البيانات', 'set.none': 'لا توجد أدوات مثبّتة',
     'set.secScope': 'النطاق والحدود', 'set.secScopeHint': 'ما يُعرض من النتائج ومتى يفشل التكامل المستمر.', 'set.secAnalysis': 'التحليل والتكاملات', 'set.secAnalysisHint': 'مصادر إضافية للنتائج ودرجة الشمول.',
     'set.secBinary': 'الملفات الثنائية (jadx)', 'set.secWeb': 'فحص الويب', 'set.secWebHint': 'فحص سلبي ولطيف للمواقع المصرّح بها فقط.', 'set.secStorage': 'التخزين',
+    'upd.title': 'التحديثات', 'upd.hint': 'يتحقق كاشِف من إصدارات GitHub الرسمية. لا يُرسَل أي شيء عن الكود الذي تفحصه.', 'upd.check': 'التحقق من التحديثات', 'upd.apply': 'حدّث الآن', 'upd.restart': 'أعد التشغيل الآن',
+    'upd.current': 'الإصدار الحالي', 'upd.latest': 'أحدث إصدار', 'upd.kind': 'نوع التثبيت', 'upd.notes': 'ملاحظات الإصدار', 'upd.onGithub': 'عرض الإصدار على GitHub',
+    'upd.auto': 'التحقق من التحديثات تلقائيًا عند تشغيل الواجهة (مرة كل 6 ساعات على الأكثر)',
+    'upd.kindBinary': 'نسخة تنفيذية', 'upd.kindPip': 'حزمة pip', 'upd.kindSource': 'من الكود المصدري',
+    'upd.checking': 'جارٍ التحقق من التحديثات…', 'upd.uptodate': 'أنت تستخدم أحدث إصدار', 'upd.uptodateSub': 'كاشِف {v} هو أحدث إصدار منشور.',
+    'upd.available': 'الإصدار {v} متاح', 'upd.availableSub': 'لديك الإصدار {cur}.', 'upd.released': 'نُشر {date}.', 'upd.checked': 'آخر تحقق {when}.',
+    'upd.disabled': 'التحقق التلقائي متوقف', 'upd.disabledSub': 'اضغط «التحقق من التحديثات» للتحقق الآن.', 'upd.failed': 'تعذّر التحقق من التحديثات',
+    'upd.runCmd': 'لتحديث هذا التثبيت شغّل الأمر التالي في الطرفية:', 'upd.manual': 'نزّل الإصدار الجديد من صفحة الإصدارات واستبدل به الملف الحالي.',
+    'upd.pill': 'تحديث متاح: {v}', 'upd.pillTitle': 'الإصدار {v} متاح — افتح الإعدادات للتحديث',
+    'upd.phase.check': 'جارٍ التحضير…', 'upd.phase.download': 'جارٍ التنزيل…', 'upd.phase.verify': 'جارٍ التحقق من بصمة SHA-256 ومن البرنامج الجديد…', 'upd.phase.swap': 'جارٍ تثبيت الإصدار الجديد…',
+    'upd.doneTitle': 'تم تثبيت الإصدار {v}', 'upd.doneSub': 'أعد التشغيل لاستخدامه. احتُفظ بالنسخة السابقة احتياطًا حتى التشغيل القادم.', 'upd.restarting': 'جارٍ إعادة التشغيل…', 'upd.restartSlow': 'لم تعد الواجهة بعد. شغّل كاشِف من جديد إن لزم.',
+    'upd.updateFailed': 'لم يكتمل التحديث', 'upd.confirm': 'تنزيل الإصدار {v} وتثبيته الآن؟ ستحتاج إلى إعادة تشغيل الواجهة بعده.',
+    'upd.err.offline': 'تعذّر الاتصال بـ GitHub. تحقّق من اتصالك بالإنترنت أو من إعدادات الوكيل ثم أعد المحاولة.', 'upd.err.rate_limited': 'بلغت حدّ طلبات GitHub المسموح به مؤقتًا. أعد المحاولة بعد قليل.',
+    'upd.err.bad_response': 'ردّ GitHub غير متوقع. أعد المحاولة لاحقًا.', 'upd.err.no_release': 'لا يوجد إصدار منشور بعد.',
+    'upd.err.not_binary': 'التحديث من داخل البرنامج متاح للنسخة التنفيذية فقط.', 'upd.err.unsupported_platform': 'لا توجد نسخة تنفيذية جاهزة لهذا النظام أو المعالج.',
+    'upd.err.not_writable': 'لا يمكن الكتابة في مجلد البرنامج. شغّل كاشِف بصلاحيات المسؤول ثم حدّث، أو نزّل الإصدار يدويًا.', 'upd.err.up_to_date': 'أنت تستخدم أحدث إصدار.',
+    'upd.err.not_newer': 'الإصدار المنشور ليس أحدث من إصدارك؛ لا يُثبَّت إصدار أقدم أو مماثل.', 'upd.err.asset_missing': 'الإصدار المنشور لا يحتوي على ملف هذا النظام.',
+    'upd.err.checksum_missing': 'ملف البصمات لا يحتوي على بصمة هذا الملف؛ أُلغي التحديث حفاظًا على سلامتك.', 'upd.err.checksum_mismatch': 'بصمة الملف المنزَّل لا تطابق البصمة المنشورة؛ أُلغي التحديث ولم يتغيّر شيء.',
+    'upd.err.too_large': 'الملف المنزَّل أكبر من الحد المسموح؛ أُلغي التحديث.', 'upd.err.bad_host': 'رُفض التنزيل: العنوان ليس من خوادم GitHub الموثوقة.',
+    'upd.err.bad_binary': 'الملف المنزَّل ليس برنامجًا تنفيذيًا صالحًا لهذا النظام؛ أُلغي التحديث.', 'upd.err.version_mismatch': 'النسخة الجديدة لم تُبلغ عن الإصدار المتوقع؛ أُلغي التحديث.',
+    'upd.err.swap_failed': 'تعذّر استبدال البرنامج؛ أُعيدت النسخة السابقة كما كانت.', 'upd.err.download_failed': 'انقطع التنزيل أو فشل؛ لم يتغيّر شيء. أعد المحاولة.',
+    'upd.err.busy': 'يوجد تحديث جارٍ بالفعل.', 'upd.err.not_ready': 'لا يوجد تحديث مكتمل لإعادة التشغيل.', 'upd.err.restart_pending': 'اكتمل التحديث بالفعل؛ أعد تشغيل كاشِف لاستخدام الإصدار الجديد.', 'upd.err.restart_failed': 'تعذّر بدء الإصدار الجديد تلقائيًا. أغلق كاشِف وشغّله من جديد.', 'upd.err.forbidden': 'رُفض الطلب: يجب أن يصدر من هذه الواجهة نفسها.',
   },
   en: {
     brand: 'Kashif',
@@ -75,6 +97,28 @@ const I18N = {
     'set.keep': 'Scans to keep', 'set.webTimeout': 'Web request timeout in seconds (the first request is retried once with double the timeout)', 'set.webDelay': 'Delay between crawl requests in seconds (gentler on the server and its firewall)', 'set.save': 'Save changes', 'set.saved': 'Saved', 'set.home': 'Data folder', 'set.none': 'none installed',
     'set.secScope': 'Scope and thresholds', 'set.secScopeHint': 'Which findings are shown and when CI fails.', 'set.secAnalysis': 'Analysis and integrations', 'set.secAnalysisHint': 'Extra result sources and how broad the analysis is.',
     'set.secBinary': 'Binaries (jadx)', 'set.secWeb': 'Web scanning', 'set.secWebHint': 'Passive, rate-limited checks of sites you are authorized to test.', 'set.secStorage': 'Storage',
+    'upd.title': 'Updates', 'upd.hint': 'Kashif checks the official GitHub releases. Nothing about the code you scan is sent.', 'upd.check': 'Check for updates', 'upd.apply': 'Update now', 'upd.restart': 'Restart now',
+    'upd.current': 'Current version', 'upd.latest': 'Latest version', 'upd.kind': 'Installed as', 'upd.notes': 'Release notes', 'upd.onGithub': 'View the release on GitHub',
+    'upd.auto': 'Check for updates automatically when the UI starts (at most every 6 hours)',
+    'upd.kindBinary': 'Standalone binary', 'upd.kindPip': 'pip package', 'upd.kindSource': 'Source checkout',
+    'upd.checking': 'Checking for updates…', 'upd.uptodate': 'You’re up to date', 'upd.uptodateSub': 'Kashif {v} is the latest release.',
+    'upd.available': 'Version {v} is available', 'upd.availableSub': 'You have {cur}.', 'upd.released': 'Released {date}.', 'upd.checked': 'Checked {when}.',
+    'upd.disabled': 'Automatic checks are off', 'upd.disabledSub': 'Select “Check for updates” to check now.', 'upd.failed': 'Couldn’t check for updates',
+    'upd.runCmd': 'To update this installation, run this command in a terminal:', 'upd.manual': 'Download the new release from the releases page and replace the current file with it.',
+    'upd.pill': 'Update available: {v}', 'upd.pillTitle': 'Version {v} is available — open Settings to update',
+    'upd.phase.check': 'Preparing…', 'upd.phase.download': 'Downloading…', 'upd.phase.verify': 'Verifying the SHA-256 checksum and the new binary…', 'upd.phase.swap': 'Installing the new version…',
+    'upd.doneTitle': 'Version {v} is installed', 'upd.doneSub': 'Restart to start using it. The previous version is kept as a backup until the next start.', 'upd.restarting': 'Restarting…', 'upd.restartSlow': 'The UI has not come back yet. Start Kashif again if needed.',
+    'upd.updateFailed': 'The update did not complete', 'upd.confirm': 'Download and install version {v} now? The UI will need a restart afterwards.',
+    'upd.err.offline': 'Couldn’t reach GitHub. Check your internet connection or proxy settings and try again.', 'upd.err.rate_limited': 'GitHub’s request limit was reached for now. Try again in a little while.',
+    'upd.err.bad_response': 'GitHub sent an unexpected response. Try again later.', 'upd.err.no_release': 'No release has been published yet.',
+    'upd.err.not_binary': 'In-app updates are available for the standalone binary only.', 'upd.err.unsupported_platform': 'There is no prebuilt binary for this operating system or CPU.',
+    'upd.err.not_writable': 'The program’s folder is not writable. Run Kashif as an administrator and update, or download the release manually.', 'upd.err.up_to_date': 'You are using the latest version.',
+    'upd.err.not_newer': 'The published release is not newer than yours; an older or identical version is never installed.', 'upd.err.asset_missing': 'The published release has no file for this system.',
+    'upd.err.checksum_missing': 'The checksum file has no entry for this download, so the update was cancelled for your safety.', 'upd.err.checksum_mismatch': 'The download’s checksum does not match the published one. The update was cancelled and nothing changed.',
+    'upd.err.too_large': 'The download is larger than allowed, so the update was cancelled.', 'upd.err.bad_host': 'Download refused: the address is not one of GitHub’s trusted servers.',
+    'upd.err.bad_binary': 'The downloaded file is not a valid executable for this system, so the update was cancelled.', 'upd.err.version_mismatch': 'The new binary did not report the expected version, so the update was cancelled.',
+    'upd.err.swap_failed': 'The program could not be replaced; the previous version was restored as it was.', 'upd.err.download_failed': 'The download failed or was interrupted; nothing changed. Try again.',
+    'upd.err.busy': 'An update is already in progress.', 'upd.err.not_ready': 'There is no completed update to restart into.', 'upd.err.restart_pending': 'The update is already installed. Restart Kashif to use the new version.', 'upd.err.restart_failed': 'The new version could not be started automatically. Close Kashif and start it again.', 'upd.err.forbidden': 'Request refused: it must come from this UI.',
   },
 };
 
@@ -175,7 +219,7 @@ function applyLang() {
   $$('#f-min option, #f-fail option').forEach((o) => { o.textContent = sevName(o.value); });
   applyThemeUI();
 }
-$('#lang-btn').onclick = () => { lang = lang === 'ar' ? 'en' : 'ar'; store.set('vs.lang', lang); applyLang(); jadxHint(); route(); };
+$('#lang-btn').onclick = () => { lang = lang === 'ar' ? 'en' : 'ar'; store.set('vs.lang', lang); applyLang(); jadxHint(); renderPill(); route(); };
 const themeNow = () => document.documentElement.dataset.theme || 'auto';
 function applyThemeUI() {
   const th = themeNow();
@@ -574,7 +618,7 @@ function renderRules() {
 }
 
 /* ------------------------------------------------------------ settings */
-async function loadSettings() {
+async function loadSettings(arg) {
   const [s, meta] = await Promise.all([api('/api/settings'), api('/api/meta')]);
   const f = $('#settings-form');
   f.min_severity.value = s.min_severity; f.web_timeout.value = s.web_timeout || 20; f.web_delay.value = s.web_delay != null ? s.web_delay : 0.5; f.fail_on.value = s.fail_on; f.keep_scans.value = s.keep_scans;
@@ -586,6 +630,11 @@ async function loadSettings() {
   $('#ext-tools').textContent = `(${meta.external_tools.length ? meta.external_tools.join(', ') : t('set.none')})`;
   setHTML($('#settings-home'), `${esc(t('set.home'))}<span class="home-path" dir="ltr" title="${esc(meta.home)}">${esc(meta.home)}</span>`);
   $('#version').textContent = 'v' + meta.version;
+  f.check_updates.checked = s.check_updates !== false;
+  updAuto = f.check_updates.checked;
+  renderUpdate();
+  if (!upd.data && !upd.err && !upd.busy && !upd.job) updCheck(false);
+  if (arg === 'update') $('#upd-sec').scrollIntoView({block: 'start'});
 }
 $('#settings-form').onsubmit = async (e) => {
   e.preventDefault(); const f = e.target; const lines = (v) => v.split('\n').map((x) => x.trim()).filter(Boolean);
@@ -593,9 +642,135 @@ $('#settings-form').onsubmit = async (e) => {
     await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, web_timeout: Math.min(120, Math.max(5, +f.web_timeout.value || 20)), web_delay: Math.min(10, Math.max(0, +f.web_delay.value || 0)), fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
       exclude: lines(f.exclude.value), ignore_rules: lines(f.ignore_rules.value), authorized_targets: lines(f.authorized_targets.value), use_osv: f.use_osv.checked, use_external: f.use_external.checked,
       audit: f.audit.checked, use_jadx: f.use_jadx.checked, jadx_include_libs: f.jadx_include_libs.checked, jadx_timeout: +f.jadx_timeout.value,
-      models_dir: f.models_dir.value.trim(), queries_dir: f.queries_dir.value.trim()})});
+      models_dir: f.models_dir.value.trim(), queries_dir: f.queries_dir.value.trim(), check_updates: f.check_updates.checked})});
   } catch (err) { toast(err.message); return; }
   const m = $('#settings-saved'); setHTML(m, `${ic('check', 'sm')}${esc(t('set.saved'))}`); clearTimeout(m._t); m._t = setTimeout(() => { m.textContent = ''; }, 2400);
+};
+
+
+/* ------------------------------------------------------------- updates */
+/* GET /api/update checks GitHub (cached 6 h server-side); POST /api/update installs a newer binary in the background. */
+const upd = {data: null, err: null, busy: false, job: null, restarting: false};
+let updAuto = true;
+const RELEASES = 'https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest';
+const updErr = (j) => { const k = 'upd.err.' + (j && j.error); return I18N[lang][k] ? t(k) : ((lang === 'en' ? j && j.message_en : j && j.message) || t('upd.err.offline')); };
+const relTime = (ts) => {
+  const s = Math.round(ts - Date.now() / 1000); const rtf = new Intl.RelativeTimeFormat(locale(), {numeric: 'auto'});
+  const a = Math.abs(s);
+  return a < 60 ? rtf.format(0, 'second') : a < 3600 ? rtf.format(Math.round(s / 60), 'minute') : a < 86400 ? rtf.format(Math.round(s / 3600), 'hour') : rtf.format(Math.round(s / 86400), 'day');
+};
+const fmtMB = (n) => (n / 1048576).toLocaleString(locale(), {maximumFractionDigits: 1});
+async function updRequest(path, opts) {
+  const r = await fetch(path, {headers: {'Content-Type': 'application/json'}, ...opts});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(updErr(j)); e.info = j; throw e; }
+  return j;
+}
+async function updCheck(force) {
+  upd.busy = true; upd.err = null; renderUpdate();
+  try { upd.data = await updRequest('/api/update' + (force ? '?force=1' : '')); } catch (e) { upd.err = e.info && e.info.error ? e.info : {error: 'offline'}; }
+  upd.busy = false; renderUpdate();
+}
+function renderPill() {
+  const p = $('#upd-pill'); const d = upd.data;
+  const on = !!(d && d.newer && !d.disabled);
+  p.classList.toggle('hidden', !on);
+  if (!on) return;
+  $('.upd-pill-text', p).textContent = t('upd.pill', {v: 'v' + d.latest});
+  p.title = t('upd.pillTitle', {v: 'v' + d.latest}); p.setAttribute('aria-label', p.title);
+}
+function renderUpdate() {
+  renderPill();
+  const d = upd.data; const job = upd.job;
+  const icon = $('#upd-icon'); const title = $('#upd-title'); const sub = $('#upd-sub');
+  const show = (sel, on) => $(sel).classList.toggle('hidden', !on);
+  const setIcon = (cls, html) => { icon.className = 'upd-icon ' + cls; setHTML(icon, html); };
+  $('#upd-current').textContent = 'v' + ((d && d.current) || (meta && meta.version) || '');
+  $('#upd-latest').textContent = d && d.latest ? 'v' + d.latest : '—';
+  const kind = d && d.install_kind;
+  $('#upd-kind').textContent = kind ? t({binary: 'upd.kindBinary', pip: 'upd.kindPip', source: 'upd.kindSource'}[kind] || kind) : '—';
+  const working = job && ['check', 'download', 'verify', 'swap'].includes(job.phase);
+  $('#upd-check').disabled = upd.busy || working || upd.restarting;
+  show('#upd-check', true); show('#upd-apply', false); show('#upd-restart', false); show('#upd-cmd', false); show('#upd-progress-wrap', false);
+  // release notes (plain text, never HTML)
+  const hasNotes = !!(d && d.newer && d.notes);
+  show('#upd-notes', hasNotes);
+  if (hasNotes) { $('#upd-notes-body').textContent = d.notes; $('#upd-link').href = /^https:\/\/github\.com\/abdulrahmanahmedelabed-prog\/vulnscan\/releases\//.test(d.url || '') ? d.url : RELEASES; }
+
+  if (upd.restarting) { setIcon('new', '<span class="spinner"></span>'); title.textContent = t('upd.restarting'); sub.textContent = upd.restartSlow ? t('upd.restartSlow') : ''; return; }
+  if (job && job.phase !== 'idle') {
+    if (working) {
+      setIcon('new', '<span class="spinner"></span>'); title.textContent = t('upd.available', {v: d ? 'v' + d.latest : ''}); sub.textContent = t('upd.phase.' + job.phase);
+      show('#upd-progress-wrap', true);
+      $('#upd-phase').textContent = t('upd.phase.' + job.phase);
+      const bar = $('#upd-progress'); const pct = job.phase === 'download' && job.total ? Math.min(100, Math.round(job.bytes * 100 / job.total)) : null;
+      bar.classList.toggle('indeterminate', pct === null); $('div', bar).style.width = pct === null ? '' : pct + '%';
+      if (pct === null) bar.removeAttribute('aria-valuenow'); else bar.setAttribute('aria-valuenow', pct);
+      bar.setAttribute('aria-label', t('upd.phase.' + job.phase));
+      $('#upd-bytes').textContent = job.phase === 'download' && job.bytes ? (job.total ? `${fmtMB(job.bytes)} / ${fmtMB(job.total)} MB` : `${fmtMB(job.bytes)} MB`) : '';
+      return;
+    }
+    if (job.phase === 'done') {
+      setIcon('ok', ic('check')); title.textContent = t('upd.doneTitle', {v: job.result ? 'v' + job.result.to : ''}); sub.textContent = t('upd.doneSub');
+      show('#upd-restart', true); show('#upd-check', false); return;
+    }
+    if (job.phase === 'error') {
+      setIcon('err', ic('warning')); title.textContent = t('upd.updateFailed'); sub.textContent = updErr(job);
+      show('#upd-apply', !!(d && d.can_self_update && d.newer && job.error !== 'restart_failed')); return;
+    }
+  }
+  if (upd.busy) { setIcon('', '<span class="spinner"></span>'); title.textContent = t('upd.checking'); sub.textContent = ''; return; }
+  if (upd.err) { setIcon('err', ic('warning')); title.textContent = t('upd.failed'); sub.textContent = updErr(upd.err); return; }
+  if (!d || d.disabled) { setIcon('', ic('update')); title.textContent = d && d.disabled ? t('upd.disabled') : t('upd.check'); sub.textContent = d && d.disabled ? t('upd.disabledSub') : ''; return; }
+  const checked = d.checked_at ? ' ' + t('upd.checked', {when: relTime(d.checked_at)}) : '';
+  if (!d.newer) { setIcon('ok', ic('check')); title.textContent = t('upd.uptodate'); sub.textContent = t('upd.uptodateSub', {v: 'v' + d.current}) + checked; return; }
+  setIcon('new', ic('update'));
+  title.textContent = t('upd.available', {v: 'v' + d.latest});
+  const rel = d.published_at ? ' ' + t('upd.released', {date: new Date(d.published_at).toLocaleDateString(locale(), {dateStyle: 'medium'})}) : '';
+  sub.textContent = t('upd.availableSub', {cur: 'v' + d.current}) + rel + checked;
+  if (d.can_self_update) { show('#upd-apply', true); return; }
+  // pip / source / not writable / unsupported: explain and show the exact command (or the download page)
+  show('#upd-cmd', true);
+  const reason = d.reason && d.reason !== 'not_binary' ? updErr({error: d.reason}) + ' ' : '';
+  $('#upd-cmd-label').textContent = reason + (d.command ? t('upd.runCmd') : t('upd.manual'));
+  $('.upd-cmd-box').classList.toggle('hidden', !d.command);
+  $('#upd-cmd-text').textContent = d.command || '';
+  setHTML($('#upd-cmd-copy'), d.command ? copyBtn(d.command) : '');
+  if (!d.command) show('#upd-notes', true);
+}
+async function updPoll() {
+  for (;;) {
+    try { upd.job = await updRequest('/api/update/status'); } catch (e) { upd.job = {phase: 'error', ...(e.info || {error: 'offline'})}; }
+    renderUpdate();
+    if (!['check', 'download', 'verify', 'swap'].includes(upd.job.phase)) return;
+    await new Promise((res) => setTimeout(res, 400));
+  }
+}
+$('#upd-check').onclick = () => { upd.job = null; updCheck(true); };
+$('#upd-apply').onclick = async () => {
+  if (!upd.data || !confirm(t('upd.confirm', {v: upd.data.latest}))) return;
+  try { upd.job = await updRequest('/api/update', {method: 'POST', body: '{}'}); } catch (e) { upd.job = {phase: 'error', ...(e.info || {error: 'offline'})}; renderUpdate(); return; }
+  renderUpdate(); updPoll();
+};
+$('#upd-restart').onclick = async () => {
+  const want = upd.job && upd.job.result ? upd.job.result.to : null;
+  try { await updRequest('/api/update/restart', {method: 'POST', body: '{}'}); } catch (e) { upd.job = {phase: 'error', ...(e.info || {})}; renderUpdate(); return; }
+  upd.restarting = true; renderUpdate();
+  const t0 = Date.now();
+  await new Promise((res) => setTimeout(res, 1200));
+  for (;;) {
+    try { const m = await (await fetch('/api/meta', {cache: 'no-store'})).json(); if (!want || m.version === want) { location.reload(); return; } } catch { /* server still restarting */ }
+    try { // the old server is still answering: did starting the new binary fail?
+      const j = await (await fetch('/api/update/status', {cache: 'no-store'})).json();
+      if (j.restart_error) { upd.restarting = false; upd.job = {...j, phase: 'error', error: 'restart_failed', detail: j.restart_error}; renderUpdate(); return; }
+    } catch { /* server still restarting */ }
+    if (Date.now() - t0 > 45000 && !upd.restartSlow) { upd.restartSlow = true; renderUpdate(); }
+    await new Promise((res) => setTimeout(res, 700));
+  }
+};
+$('#f-upd-auto').onchange = async (e) => {
+  updAuto = e.target.checked;
+  try { await api('/api/settings', {method: 'POST', body: JSON.stringify({check_updates: updAuto})}); } catch (err) { toast(err.message); }
 };
 
 /* ---------------------------------------------------------------- boot */
@@ -603,3 +778,6 @@ let meta = null;
 const jadxHint = () => { if (meta) $('#jadx-hint').textContent = meta.jadx ? t('scan.jadxOn') : t('scan.jadxOff'); };
 api('/api/meta').then((m) => { meta = m; $('#version').textContent = 'v' + m.version; jadxHint(); }).catch(() => {});
 applyLang(); route();
+/* One quiet check at start (the server honours the "check updates automatically" setting and its 6-hour cache). */
+if (curPage !== 'settings') updRequest('/api/update').then((d) => { upd.data = d; renderPill(); }).catch(() => {});
+updRequest('/api/update/status').then((j) => { if (j.phase !== 'idle') { upd.job = j; renderUpdate(); if (['check', 'download', 'verify', 'swap'].includes(j.phase)) updPoll(); } }).catch(() => {});

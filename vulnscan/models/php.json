@@ -1,5 +1,5 @@
 {
-  "_comment": "PHP models (superglobals, Laravel/Symfony request objects, PDO/mysqli). Procedural mysqli_*/pg_*/oci_*/odbc_* take the connection first, so the SQL is a later argument.",
+  "_comment": "PHP models (superglobals, Laravel/Symfony request objects, PDO/mysqli). Procedural mysqli_*/pg_*/oci_*/odbc_* take the connection first, so the SQL is a later argument. Breadth: Laravel (Request, DB facade, query-builder *Raw, Http client, Storage/File facades, redirect()), Symfony (Request bags, Doctrine DBAL/ORM QueryBuilder, BinaryFileResponse, Process), WordPress ($wpdb, WP_REST_Request, esc_*/sanitize_*), CodeIgniter 3/4 (input/request/uri, db, output), PSR-7 requests.",
   "sources": [
     {
       "kind": "name",
@@ -80,6 +80,98 @@
         "parse_str"
       ],
       "label": "{name}()"
+    },
+    {
+      "kind": "call",
+      "label": "{name}()",
+      "names": [
+        "request.cookie",
+        "request.header",
+        "request.file",
+        "request.allFiles",
+        "request.bearerToken",
+        "request.fullUrl",
+        "request.path",
+        "request.userAgent",
+        "request.string",
+        "request.str",
+        "request.collect",
+        "request.only",
+        "request.except",
+        "request.keys",
+        "request.server",
+        "request.getPayload",
+        "request.toArray",
+        "Input.get",
+        "Input.all",
+        "Input.only",
+        "Request.input",
+        "Request.get",
+        "Request.query",
+        "Request.all",
+        "Request.cookie",
+        "Request.header",
+        "Request.file",
+        "Cookie.get",
+        "Request.createFromGlobals",
+        "request.getUri",
+        "request.getRequestUri",
+        "request.getPathInfo",
+        "request.getQueryString",
+        "request.getHost",
+        "getClientOriginalName",
+        "getClientOriginalExtension",
+        "getClientMimeType",
+        "getClientFilename",
+        "getClientMediaType",
+        "request.getQueryParams",
+        "request.getParsedBody",
+        "request.getCookieParams",
+        "request.getUploadedFiles",
+        "request.getServerParams",
+        "request.getHeaderLine",
+        "request.getHeader",
+        "request.get_param",
+        "request.get_params",
+        "request.get_json_params",
+        "request.get_body_params",
+        "request.get_query_params",
+        "request.get_url_params",
+        "request.get_file_params",
+        "request.get_body",
+        "request.get_header",
+        "request.get_headers",
+        "request.getVar",
+        "request.getGet",
+        "request.getPost",
+        "request.getGetPost",
+        "request.getPostGet",
+        "request.getJSON",
+        "request.getJsonVar",
+        "request.getRawInput",
+        "request.getRawInputVar",
+        "request.getCookie",
+        "request.getServer",
+        "request.getFile",
+        "request.getFiles",
+        "request.getBody",
+        "input.get",
+        "input.post",
+        "input.get_post",
+        "input.post_get",
+        "input.cookie",
+        "input.server",
+        "input.request_headers",
+        "input.get_request_header",
+        "input.input_stream",
+        "input.user_agent",
+        "uri.segment",
+        "uri.rsegment",
+        "uri.uri_to_assoc",
+        "request.getQueryParam",
+        "request.getBodyParam",
+        "request.getBodyParams"
+      ]
     }
   ],
   "entry_points": [
@@ -103,7 +195,12 @@
         "AbstractController",
         "BaseController",
         "HttpKernel",
-        "Command"
+        "Command",
+        "CI_Controller",
+        "ResourceController",
+        "ResourcePresenter",
+        "AbstractFOSRestController",
+        "FOSRestController"
       ],
       "methods": [
         "index",
@@ -117,7 +214,15 @@
         "execute",
         "__invoke",
         "run",
-        "action"
+        "action",
+        "list",
+        "search",
+        "upload",
+        "download",
+        "export",
+        "import",
+        "callback",
+        "webhook"
       ]
     },
     {
@@ -130,6 +235,23 @@
     }
   ],
   "sinks": [
+    {
+      "rule": "DF002",
+      "severity": "critical",
+      "cwe": "CWE-78",
+      "label": "shell command",
+      "args": [
+        4
+      ],
+      "names": [
+        "mail",
+        "mb_send_mail"
+      ],
+      "title": "Tainted data reaches a shell command",
+      "title_ar": "بيانات غير موثوقة تصل إلى أمر shell",
+      "advice": "استخدم escapeshellarg لكل وسيط وescapeshellcmd للأمر، أو تجنّب تنفيذ الأوامر.",
+      "shell": true
+    },
     {
       "rule": "DF002",
       "severity": "critical",
@@ -616,6 +738,460 @@
       "title": "Tainted data written to a log",
       "title_ar": "بيانات غير موثوقة تُكتب في السجل",
       "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل."
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "args": [
+        0
+      ],
+      "names": [
+        "select",
+        "selectOne",
+        "scalar",
+        "statement",
+        "unprepared",
+        "insert",
+        "update",
+        "cursor",
+        "affectingStatement",
+        "selectResultSets"
+      ],
+      "title": "Tainted data reaches a SQL query",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
+      "advice": "استخدم PDO::prepare مع معاملات مرتبطة بدل تركيب النص.",
+      "receiver": "^\\\\?(Illuminate\\.Support\\.Facades\\.)?DB(\\.connection)?$"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "DQL / SQL",
+      "args": [
+        0
+      ],
+      "names": [
+        "where",
+        "andWhere",
+        "orWhere",
+        "having",
+        "andHaving",
+        "orHaving",
+        "orderBy",
+        "addOrderBy",
+        "groupBy",
+        "addGroupBy",
+        "select",
+        "addSelect"
+      ],
+      "title": "Tainted data reaches a Doctrine query builder expression",
+      "title_ar": "بيانات غير موثوقة تصل إلى تعبير في منشئ استعلامات Doctrine",
+      "advice": "مرّر القيم عبر setParameter() والعناصر النائبة (:name) بدل دمجها في where/orderBy.",
+      "receiver": "(?i)(^|\\.)(qb|querybuilder|createQueryBuilder)(\\.|$)"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "get",
+        "post",
+        "put",
+        "patch",
+        "head"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات وارفض العناوين الداخلية.",
+      "receiver": "^\\\\?(Illuminate\\.Support\\.Facades\\.)?Http(\\.\\w+)*$"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        1
+      ],
+      "names": [
+        "send"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات وارفض العناوين الداخلية.",
+      "receiver": "^\\\\?(Illuminate\\.Support\\.Facades\\.)?Http(\\.\\w+)*$"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "get",
+        "post",
+        "put",
+        "patch",
+        "head",
+        "getAsync",
+        "postAsync"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات وارفض العناوين الداخلية.",
+      "receiver": "(?i)(^|\\.)(guzzle\\w*|http_?client)$"
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "file path",
+      "args": [
+        0
+      ],
+      "names": [
+        "get",
+        "put",
+        "readStream",
+        "writeStream",
+        "response",
+        "prepend",
+        "append",
+        "lines",
+        "sharedGet"
+      ],
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار (realpath) وتحقق أنه داخل المجلد المسموح وارفض ..",
+      "receiver": "^\\\\?(Illuminate\\.Support\\.Facades\\.)?(Storage|File)(\\.disk|\\.drive)?$"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "filesystem operation",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "move",
+        "moveDirectory",
+        "copyDirectory",
+        "cleanDirectory",
+        "makeDirectory",
+        "relativeLink"
+      ],
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "تحقق من المسار قبل الحذف أو الإنشاء أو الاستخراج.",
+      "receiver": "^\\\\?(Illuminate\\.Support\\.Facades\\.)?(Storage|File)(\\.disk|\\.drive)?$"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "filesystem operation",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "remove",
+        "mirror"
+      ],
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "تحقق من المسار قبل الحذف أو الإنشاء أو الاستخراج.",
+      "receiver": "(?i)(^|\\.)(filesystem|fs)$"
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "filesystem operation",
+      "_comment": "Symfony Filesystem::dumpFile/appendToFile($filename, $content): only the file name is a path",
+      "args": [
+        0
+      ],
+      "names": [
+        "dumpFile",
+        "appendToFile"
+      ],
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "تحقق من المسار قبل الحذف أو الإنشاء أو الاستخراج.",
+      "receiver": "(?i)(^|\\.)(filesystem|fs)$"
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-98",
+      "label": "file inclusion",
+      "args": [
+        0
+      ],
+      "names": [
+        "getRequire",
+        "requireOnce"
+      ],
+      "title": "Tainted data reaches include/require",
+      "title_ar": "بيانات غير موثوقة تصل إلى include/require",
+      "advice": "استخدم قائمة بيضاء ثابتة من الملفات المسموح تضمينها.",
+      "receiver": "^\\\\?(Illuminate\\.Support\\.Facades\\.)?File$"
+    },
+    {
+      "rule": "DF002",
+      "severity": "critical",
+      "cwe": "CWE-78",
+      "label": "shell command",
+      "args": [
+        0
+      ],
+      "names": [
+        "run",
+        "start"
+      ],
+      "title": "Tainted data reaches a shell command",
+      "title_ar": "بيانات غير موثوقة تصل إلى أمر shell",
+      "advice": "استخدم escapeshellarg لكل وسيط وescapeshellcmd للأمر، أو تجنّب تنفيذ الأوامر.",
+      "receiver": "^\\\\?(Illuminate\\.Support\\.Facades\\.)?Process(\\.\\w+)*$",
+      "shell": true
+    },
+    {
+      "rule": "DF008",
+      "severity": "medium",
+      "cwe": "CWE-601",
+      "label": "redirect",
+      "args": [
+        0
+      ],
+      "names": [
+        "to",
+        "away",
+        "guest",
+        "intended"
+      ],
+      "title": "Tainted data reaches a redirect / header",
+      "title_ar": "بيانات غير موثوقة تصل إلى تحويل أو ترويسة",
+      "advice": "تحقق من الوجهة بقائمة بيضاء ولا تمرّر مدخلات إلى header().",
+      "receiver": "^(redirect|\\\\?(Illuminate\\.Support\\.Facades\\.)?Redirect)$"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "args": [
+        0
+      ],
+      "names": [
+        "wpdb.get_results",
+        "wpdb.get_var",
+        "wpdb.get_row",
+        "wpdb.get_col",
+        "orWhereRaw",
+        "orHavingRaw",
+        "fromQuery",
+        "fetchAllAssociative",
+        "fetchAssociative",
+        "fetchOne",
+        "fetchAllNumeric",
+        "fetchNumeric",
+        "fetchFirstColumn",
+        "fetchAllKeyValue",
+        "fetchAllAssociativeIndexed",
+        "iterateAssociative",
+        "iterateNumeric",
+        "executeUpdate",
+        "simple_query",
+        "simpleQuery",
+        "querySingle",
+        "mysql_unbuffered_query",
+        "mssql_query"
+      ],
+      "title": "Tainted data reaches a SQL query",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
+      "advice": "استخدم PDO::prepare مع معاملات مرتبطة بدل تركيب النص."
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "args": [
+        1
+      ],
+      "names": [
+        "pg_query_params",
+        "pg_send_query_params",
+        "sqlsrv_query",
+        "sqlsrv_prepare",
+        "db2_exec",
+        "db2_prepare",
+        "mysql_db_query"
+      ],
+      "title": "Tainted data reaches a SQL query",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
+      "advice": "استخدم PDO::prepare مع معاملات مرتبطة بدل تركيب النص."
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "args": [
+        2
+      ],
+      "names": [
+        "pg_send_prepare"
+      ],
+      "title": "Tainted data reaches a SQL query",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام SQL",
+      "advice": "استخدم PDO::prepare مع معاملات مرتبطة بدل تركيب النص."
+    },
+    {
+      "rule": "DF002",
+      "severity": "critical",
+      "cwe": "CWE-78",
+      "label": "shell command",
+      "args": [
+        0
+      ],
+      "names": [
+        "Process.fromShellCommandline"
+      ],
+      "title": "Tainted data reaches a shell command",
+      "title_ar": "بيانات غير موثوقة تصل إلى أمر shell",
+      "advice": "استخدم escapeshellarg لكل وسيط وescapeshellcmd للأمر، أو تجنّب تنفيذ الأوامر.",
+      "shell": true
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "file path",
+      "args": [
+        0
+      ],
+      "names": [
+        "BinaryFileResponse",
+        "gzopen",
+        "gzfile",
+        "readgzfile",
+        "bzopen",
+        "exif_read_data"
+      ],
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار (realpath) وتحقق أنه داخل المجلد المسموح وارفض .."
+    },
+    {
+      "rule": "DF011",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "filesystem operation",
+      "args": [
+        0
+      ],
+      "names": [
+        "chgrp",
+        "lchown",
+        "lchgrp"
+      ],
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "تحقق من المسار قبل الحذف أو الإنشاء أو الاستخراج."
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-98",
+      "label": "file inclusion",
+      "args": [
+        0
+      ],
+      "names": [
+        "load.view",
+        "load.file"
+      ],
+      "title": "Tainted data reaches include/require",
+      "title_ar": "بيانات غير موثوقة تصل إلى include/require",
+      "advice": "استخدم قائمة بيضاء ثابتة من الملفات المسموح تضمينها."
+    },
+    {
+      "rule": "DF001",
+      "severity": "critical",
+      "cwe": "CWE-95",
+      "label": "eval/create_function",
+      "args": [
+        0
+      ],
+      "names": [
+        "forward_static_call",
+        "forward_static_call_array"
+      ],
+      "title": "Tainted data reaches eval or a callable",
+      "title_ar": "بيانات غير موثوقة تصل إلى eval أو استدعاء ديناميكي",
+      "advice": "لا تنفّذ كودًا من مدخلات؛ استخدم قوائم بيضاء للدوال."
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "wp_remote_head"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات وارفض العناوين الداخلية."
+    },
+    {
+      "rule": "DF013",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "label": "HTML output (XSS)",
+      "args": [
+        0
+      ],
+      "names": [
+        "HtmlString",
+        "output.set_output",
+        "output.append_output",
+        "response.setBody",
+        "getBody.write"
+      ],
+      "title": "Tainted data echoed into HTML output",
+      "title_ar": "بيانات غير موثوقة تُطبع في مخرجات HTML (XSS)",
+      "advice": "استخدم htmlspecialchars($x, ENT_QUOTES, 'UTF-8') أو قوالب تُهرِّب تلقائيًا (Twig/Blade)."
+    },
+    {
+      "rule": "DF013",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "label": "HTML output (XSS)",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "vprintf"
+      ],
+      "title": "Tainted data echoed into HTML output",
+      "title_ar": "بيانات غير موثوقة تُطبع في مخرجات HTML (XSS)",
+      "advice": "استخدم htmlspecialchars($x, ENT_QUOTES, 'UTF-8') أو قوالب تُهرِّب تلقائيًا (Twig/Blade)."
     }
   ],
   "sanitizers": [
@@ -681,7 +1257,33 @@
     "crc32",
     "strlen",
     "count",
-    "Carbon::parse"
+    "Carbon::parse",
+    "wpdb.prepare",
+    "esc_textarea",
+    "esc_xml",
+    "esc_url_raw",
+    "sanitize_key",
+    "sanitize_title",
+    "sanitize_user",
+    "sanitize_textarea_field",
+    "sanitize_hex_color",
+    "sanitize_html_class",
+    "wp_kses_data",
+    "Purifier.clean",
+    "Str.slug",
+    "Uuid.fromString",
+    "quoteIdentifier",
+    "quoteSingleIdentifier",
+    "db.escape",
+    "html_escape",
+    "xss_clean",
+    "Html.encode",
+    "HtmlPurifier.process",
+    "escapeHtml",
+    "escapeHtmlAttr",
+    "escapeJs",
+    "escapeUrl",
+    "esc"
   ],
   "safe_return_calls": [
     "view",
@@ -690,7 +1292,10 @@
     "jsonResponse",
     "JsonResponse",
     "render",
-    "compact"
+    "compact",
+    "wp_send_json",
+    "wp_send_json_success",
+    "wp_send_json_error"
   ],
   "validators": [
     "in_array",
@@ -715,6 +1320,11 @@
     "array_search",
     "filter_var",
     "in",
-    "Rule::in"
+    "Rule::in",
+    "wp_http_validate_url",
+    "is_email",
+    "ctype_xdigit",
+    "ctype_upper",
+    "ctype_lower"
   ]
 }

@@ -9,7 +9,7 @@ optional regex that suppresses the match when it also matches the line
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -303,6 +303,706 @@ RULES: list[Rule] = [
          "لا تسجّل الأسرار؛ قنّع القيم الحساسة.", "CWE-532", CODE,
          skip=_r(r"(?i)(masked|redact|\*{3,}|missing|invalid|required|not set|hidden)")),
 ]
+
+# =========================================================================================== breadth expansion
+# Rule families the leading tools ship (secret formats, Dockerfile/Compose, Kubernetes, Terraform, GitHub Actions,
+# JWT/CORS/TLS/crypto API misuse). Each rule is line-scoped; checks that need the whole file (a missing setting,
+# a port range together with an open CIDR) are BLOCK_RULES below, evaluated by check_blocks().
+TF = frozenset({".tf"})
+TFVARS = frozenset({".tfvars"})
+YAML = frozenset({".yml", ".yaml"})
+
+_ADV_REVOKE = "أبطل الرمز من لوحة المزوّد فورًا وأصدر غيره، وانقله إلى متغيرات البيئة أو مدير أسرار."
+_NOT_TOKEN = r"(?![A-Za-z0-9_\-])"
+_NO_PREFIX = r"(?<![A-Za-z0-9_\-])"
+# YAML/HCL values that are templated, not literals
+_TEMPLATED = r"\$\{|\{\{"
+# a commented-out HCL setting (``# encrypted = false``) is not configuration
+_HCL_COMMENT = r"^\s*(#|//)"
+
+RULES += [
+    # ------------------------------------------------------------------ secrets: provider token formats
+    Rule("SEC012", "critical", "GitHub app / user-to-server / refresh token", "رمز GitHub (تطبيق أو مستخدم أو تحديث)",
+         _r(_NO_PREFIX + r"gh[usr]_[A-Za-z0-9]{36,251}" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC013", "critical", "GitLab token (pipeline, runner, deploy, CI build, agent…)", "رمز GitLab (خط إنتاج أو مُشغّل أو نشر…)",
+         _r(_NO_PREFIX + r"(glptt-[0-9a-f]{40}|GR1348941[A-Za-z0-9_\-]{20}|glrt-[A-Za-z0-9_\-]{20,}|gldt-[A-Za-z0-9_\-]{20,}"
+            r"|glsoat-[A-Za-z0-9_\-]{20,}|glcbt-[0-9a-fA-F]{1,5}_[A-Za-z0-9_\-]{20}|glffct-[A-Za-z0-9_\-]{20}"
+            r"|glimt-[A-Za-z0-9_\-]{25}|glagent-[A-Za-z0-9_\-]{50}|gloas-[A-Za-z0-9_\-]{64}"
+            r"|glpat-[A-Za-z0-9_\-]{20}[A-Za-z0-9_.][A-Za-z0-9_.\-]*)" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC014", "critical", "Slack app-level / refresh token", "رمز Slack (مستوى التطبيق أو التحديث)",
+         _r(_NO_PREFIX + r"(xapp-\d-[A-Z0-9]{9,}-\d{10,}-[a-f0-9]{30,}|xoxe-\d-[A-Za-z0-9]{100,})" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC015", "critical", "Stripe live / restricted key or webhook secret", "مفتاح Stripe حيّ أو مقيّد أو سرّ webhook",
+         _r(_NO_PREFIX + r"(sk_live_[0-9a-zA-Z]{25,247}|rk_live_[0-9a-zA-Z]{24,247}|whsec_[A-Za-z0-9+/=]{32,})" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC016", "high", "Mailchimp API key", "مفتاح API لـ Mailchimp",
+         _r(r"(?<![0-9a-zA-Z])[0-9a-f]{32}-us\d{1,2}(?![0-9A-Za-z])"),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC017", "critical", "Shopify access token / shared secret", "رمز وصول Shopify أو سرّ مشترك",
+         _r(_NO_PREFIX + r"shp(ss|ca|pa)_[a-fA-F0-9]{32}" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC018", "critical", "Atlassian API token", "رمز API لـ Atlassian (Jira/Confluence)",
+         _r(_NO_PREFIX + r"ATATT3[A-Za-z0-9_\-=]{150,}" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC019", "critical", "Azure SAS token / Service Bus or Event Hubs shared access key",
+         "رمز SAS أو مفتاح وصول مشترك لـ Azure",
+         _r(r"(?i)(SharedAccessKey=[A-Za-z0-9+/]{42,44}=|^(?=.*\bsv=\d{4}-\d{2}-\d{2}\b).*[?&;]sig=[A-Za-z0-9%+/]{40,})"),
+         "أبطل المفتاح أو رمز SAS من Azure وأعد توليده، واستخدم هويات مُدارة أو رموز SAS قصيرة العمر تُولَّد عند الحاجة.",
+         "CWE-798"),
+    Rule("SEC020", "critical", "Azure AD (Entra ID) client secret", "سرّ عميل Azure AD (Entra ID)",
+         _r(r"(?<![A-Za-z0-9_~.\-])[A-Za-z0-9_~.]{3}\dQ~[A-Za-z0-9_~.\-]{31,34}(?![A-Za-z0-9_~.\-])"),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC021", "critical", "Google OAuth client secret", "سرّ عميل OAuth من Google",
+         _r(_NO_PREFIX + r"GOCSPX-[A-Za-z0-9_\-]{28}" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC022", "critical", "Heroku API key", "مفتاح API لـ Heroku",
+         _r(r"(?i)(?<![A-Za-z0-9_\-])(HRKU-[A-Za-z0-9_\-]{40,}" + _NOT_TOKEN +
+            r"|heroku\w*(api)?[_-]?(key|token)['\"]?\s*[:=]\s*['\"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b)"),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC023", "critical", "Docker Hub access token", "رمز وصول Docker Hub",
+         _r(_NO_PREFIX + r"dckr_(pat|oat)_[A-Za-z0-9_\-]{27,}" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC024", "critical", "Hugging Face access token", "رمز وصول Hugging Face",
+         _r(_NO_PREFIX + r"(hf|api_org)_(?=[A-Za-z0-9]{0,33}[A-Z])(?=[A-Za-z0-9]{0,33}[a-z])[A-Za-z0-9]{34}" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC025", "critical", "OpenAI project / service-account / admin key", "مفتاح OpenAI (مشروع أو حساب خدمة أو إدارة)",
+         _r(_NO_PREFIX + r"sk-(proj|svcacct|admin)-[A-Za-z0-9_\-]{40,}" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC026", "critical", "Anthropic API key", "مفتاح API لـ Anthropic",
+         _r(_NO_PREFIX + r"sk-ant-(api|admin|oat|ort)\d{2}-[A-Za-z0-9_\-]{80,}" + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC027", "critical", "Databricks personal access token", "رمز وصول شخصي لـ Databricks",
+         _r(r"(?<![A-Za-z0-9])dapi[0-9a-f]{32}(-\d)?(?![A-Za-z0-9])"),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC028", "critical", "HashiCorp Vault token", "رمز HashiCorp Vault",
+         _r(_NO_PREFIX + r"hv[sbr]\.[A-Za-z0-9_\-]{90,}" + _NOT_TOKEN),
+         "أبطل الرمز (vault token revoke) وأصدر غيره بعمر قصير، ولا تضعه في الكود.", "CWE-798"),
+    Rule("SEC029", "critical", "Developer-platform API token (Grafana, Postman, Linear, New Relic, Pulumi, Terraform Cloud, "
+         "Doppler, Sentry, Supabase, PlanetScale, Airtable, Square, Alibaba Cloud, age)",
+         "رمز API لمنصة تطوير (Grafana/Postman/Linear/New Relic/Pulumi/Terraform Cloud…)",
+         _r(_NO_PREFIX + r"(glc_[A-Za-z0-9+/]{32,}={0,2}|glsa_[A-Za-z0-9]{32}_[A-Fa-f0-9]{8}|PMAK-[a-f0-9]{24}-[a-f0-9]{34}"
+            r"|lin_api_[A-Za-z0-9]{40}|NRAK-[A-Z0-9]{27}|pul-[a-f0-9]{40}|[A-Za-z0-9]{14}\.atlasv1\.[A-Za-z0-9_\-]{60,70}"
+            r"|dp\.(pt|st|sa|ct|scim|audit)\.[A-Za-z0-9]{40,44}|sntrys_[A-Za-z0-9+/=_\-]{50,}|sntryu_[a-f0-9]{64}"
+            r"|sbp_[a-f0-9]{40}|pscale_(tkn|pw|oauth)_[A-Za-z0-9_\-.]{32,64}|pat[A-Za-z0-9]{14}\.[a-f0-9]{64}"
+            r"|sq0csp-[0-9A-Za-z\-_]{43}|LTAI[A-Za-z0-9]{12,20}|AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58})"
+            + _NOT_TOKEN),
+         _ADV_REVOKE, "CWE-798"),
+    Rule("SEC030", "high", "Encrypted or PuTTY private key committed", "مفتاح خاص مشفّر أو بصيغة PuTTY مضمّن في الملفات",
+         _r(r"-----BEGIN (ENCRYPTED PRIVATE KEY|SSH2 ENCRYPTED PRIVATE KEY)-----|^PuTTY-User-Key-File-\d+:"),
+         "احذف المفتاح من المستودع وأصدر غيره؛ التشفير بعبارة مرور لا يمنع الهجوم عليها دون اتصال.", "CWE-321"),
+    Rule("SEC031", "critical", "AWS secret access key", "مفتاح وصول سرّي لـ AWS",
+         _r(r"""(?i)\baws_?secret_?access_?key['"]?\s*[:=]\s*['"]?(?=[A-Za-z0-9/+=]*[0-9/+])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])"""),
+         "أبطل المفتاح فورًا من IAM وأصدر مفتاحًا جديدًا، ولا تضع المفاتيح في الكود.", "CWE-798",
+         skip=_r(r"(?i)EXAMPLEKEY|example")),
+
+    # ------------------------------------------------------------------ Dockerfile / Compose
+    Rule("DKR006", "medium", "Credential in ENV/ARG layer", "بيانات اعتماد في طبقة ENV/ARG",
+         _r(r"(?i)^\s*(ENV|ARG)\s+\w*(PASSWD|PRIVATE_KEY|ACCESS_KEY|CREDENTIALS?|AUTH_KEY|CLIENT_KEY)\w*\s*[= ]\s*\S{4,}"),
+         "مرّر الأسرار وقت التشغيل أو عبر --secret، لا في الصورة.", "CWE-538", DOCKER,
+         # PASSWORD/SECRET/TOKEN/API_KEY are DKR005's; an access key ID or a path to a credentials file is not a secret
+         skip=_r(r"(?i)=\s*$|\$\{?\w+|PASSWORD|SECRET|TOKEN|API_KEY|ACCESS_KEY_ID\b|_(FILE|PATH|DIR)\b")),
+    Rule("DKR007", "low", "sudo used in a Dockerfile RUN", "استخدام sudo داخل RUN في Dockerfile",
+         _r(r"^\s*RUN\b.*(^|[\s;&|(])sudo\s"),
+         "البناء يجري بصلاحيات المستخدم الحالي؛ نفّذ الأوامر المميزة قبل USER ولا تثبّت sudo في الصورة.", "CWE-250", DOCKER),
+    Rule("DKR008", "medium", "SSH port exposed by the image", "الصورة تكشف منفذ SSH 22",
+         _r(r"(?i)^\s*EXPOSE\b.*(?<![\w./-])22(/tcp)?(?![\w.-])"),
+         "لا تشغّل SSH داخل الحاويات؛ استخدم docker exec/kubectl exec للوصول الإداري.", "CWE-284", DOCKER),
+    Rule("DKR009", "high", "TLS or package signature verification disabled during build", "تعطيل التحقق من TLS أو توقيع الحزم أثناء البناء",
+         _r(r"(--allow-unauthenticated|--force-yes|--no-check-certificate|--nogpgcheck|--allow-untrusted|"
+            r"\bcurl\b[^\n|;&]*\s(-k|--insecure)\b|\bpip3?\b[^\n|;&]*--trusted-host|strict-ssl\s+false|"
+            r"http\.sslVerify\s+false|GIT_SSL_NO_VERIFY|PYTHONHTTPSVERIFY\s*=?\s*0)"),
+         "لا تعطّل التحقق من الشهادات أو التواقيع؛ أضف شهادة CA الداخلية إلى مخزن الثقة بدلًا من ذلك.", "CWE-295",
+         DOCKER),
+    Rule("DKR010", "high", "Password set in a Dockerfile RUN", "كلمة مرور تُضبط داخل RUN في Dockerfile",
+         _r(r"""^\s*RUN\b.*\becho\s+['"]?[\w.-]+:[^\s'"$]+['"]?\s*\|\s*(sudo\s+)?chpasswd\b"""),
+         "لا تضبط كلمات المرور في طبقات الصورة؛ مرّرها وقت التشغيل أو عبر BuildKit --secret.", "CWE-798", DOCKER),
+    Rule("DKR011", "high", "Compose service shares a host namespace", "خدمة Compose تشارك مساحة أسماء المضيف",
+         _r(r"""^\s*(network_mode|pid|ipc|userns_mode|uts)\s*:\s*['"]?host['"]?\s*$"""),
+         "أزل network_mode/pid/ipc: host؛ مشاركة مساحات أسماء المضيف تكسر عزل الحاوية.", "CWE-250", COMPOSE),
+    Rule("DKR012", "high", "Compose service disables seccomp/AppArmor/SELinux", "خدمة Compose تعطّل seccomp أو AppArmor",
+         _r(r"""(?i)^\s*-?\s*['"]?(seccomp|apparmor)[:=]unconfined|^\s*-?\s*['"]?label[:=]disable"""),
+         "أبقِ ملفات seccomp وAppArmor الافتراضية؛ عطّل قدرات محددة فقط عند الحاجة.", "CWE-693", COMPOSE),
+
+    # ------------------------------------------------------------------ Kubernetes manifests (and Helm output)
+    Rule("K8S001", "high", "allowPrivilegeEscalation enabled", "allowPrivilegeEscalation مفعّل",
+         _r(r"^\s*allowPrivilegeEscalation\s*:\s*['\"]?true\b"),
+         "اضبط allowPrivilegeEscalation: false في securityContext لكل حاوية.", "CWE-269", YAML),
+    Rule("K8S002", "high", "Pod shares a host namespace (hostNetwork/hostPID/hostIPC)", "الـ Pod يشارك مساحة أسماء المضيف",
+         _r(r"^\s*host(Network|PID|IPC|Users)\s*:\s*['\"]?true\b"),
+         "أزل hostNetwork/hostPID/hostIPC؛ فهي تكشف شبكة المضيف وعملياته للحاوية.", "CWE-250", YAML),
+    Rule("K8S003", "medium", "hostPath volume mount", "تحميل مجلد من المضيف (hostPath)",
+         _r(r"^\s*-?\s*hostPath\s*:"),
+         "تجنّب hostPath؛ استخدم PersistentVolumeClaim أو emptyDir، وإن لزم فاجعله readOnly ومحدودًا.", "CWE-668", YAML),
+    Rule("K8S004", "high", "Dangerous Linux capability added", "إضافة قدرة Linux خطرة",
+         _r(r"^\s*-?\s*add\s*:\s*\[[^\]]*['\"]?\b(CAP_)?(SYS_ADMIN|NET_ADMIN|SYS_PTRACE|SYS_MODULE|DAC_READ_SEARCH|SYS_RAWIO|BPF|ALL)\b"),
+         "أسقط كل القدرات (drop: [ALL]) وأضف فقط ما يلزم فعلًا؛ SYS_ADMIN وما يماثلها تعادل صلاحيات root.", "CWE-250", YAML),
+    Rule("K8S005", "low", "Root filesystem is writable", "نظام ملفات الجذر قابل للكتابة",
+         _r(r"^\s*readOnlyRootFilesystem\s*:\s*['\"]?false\b"),
+         "اضبط readOnlyRootFilesystem: true واستخدم emptyDir للمسارات التي تحتاج كتابة.", "CWE-732", YAML),
+    Rule("K8S006", "medium", "Container explicitly runs as root", "الحاوية تعمل صراحة بصلاحيات root",
+         _r(r"^\s*(runAsNonRoot\s*:\s*['\"]?false\b|runAs(User|Group)\s*:\s*['\"]?0['\"]?\s*(#.*)?$)"),
+         "اضبط runAsNonRoot: true وrunAsUser برقم غير صفري.", "CWE-250", YAML),
+    Rule("K8S007", "low", "Container image uses :latest or no tag", "صورة حاوية بالوسم latest أو بلا وسم",
+         _r(r"""^\s*-?\s*image\s*:\s*['"]?(?:[\w.\-]+(?::\d+)?/)*[\w.\-]+(:latest)?['"]?\s*(#.*)?$"""),
+         "ثبّت إصدار الصورة (ويفضَّل digest) لتكون عمليات النشر قابلة للتكرار والتدقيق.", "CWE-1104", YAML,
+         skip=_r(r"(?i)\.(png|jpe?g|gif|svg|webp|ico|bmp)['\"]?\s*(#.*)?$|image\s*:\s*['\"]?(true|false|null|none|yes|no)['\"]?\s*(#.*)?$|"
+                 + _TEMPLATED)),
+    Rule("K8S008", "medium", "Seccomp or AppArmor profile is Unconfined", "ملف seccomp أو AppArmor غير مقيّد",
+         _r(r"""^\s*type\s*:\s*['"]?Unconfined['"]?\s*$|apparmor\.security\.beta\.kubernetes\.io/[\w.\-]+\s*:\s*['"]?unconfined|"""
+            r"""seccomp\.security\.alpha\.kubernetes\.io/pod\s*:\s*['"]?unconfined"""),
+         "استخدم RuntimeDefault لملفي seccomp وAppArmor.", "CWE-693", YAML),
+    Rule("K8S009", "medium", "RBAC rule grants wildcard verbs or resources", "قاعدة RBAC تمنح كل الأفعال أو الموارد (*)",
+         _r(r"""^\s*-?\s*(verbs|resources)\s*:\s*\[\s*['"]\*['"]\s*\]"""),
+         "اذكر الأفعال والموارد اللازمة صراحة بدل *؛ مبدأ أقل الصلاحيات.", "CWE-269", YAML),
+
+    # ------------------------------------------------------------------ Terraform (AWS / Azure / GCP)
+    Rule("TF001", "high", "Storage bucket with a public ACL", "حاوية تخزين بصلاحية وصول عامة (ACL)",
+         _r(r"""\b(acl\s*=\s*"(public-read|public-read-write|authenticated-read)"|predefined_acl\s*=\s*"(publicRead|publicReadWrite|authenticatedRead)")"""),
+         "اجعل الحاوية خاصة (private) وقدّم الملفات العامة عبر CDN بصلاحيات محددة.", "CWE-732", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF002", "medium", "S3 Block Public Access setting disabled", "تعطيل حظر الوصول العام في S3",
+         _r(r"\b(block_public_acls|block_public_policy|ignore_public_acls|restrict_public_buckets)\s*=\s*false\b"),
+         "فعّل الإعدادات الأربعة لحظر الوصول العام (true).", "CWE-732", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF003", "high", "Resource policy allows any principal (*)", "سياسة موارد تسمح لأي جهة (*)",
+         # HCL ``principals { identifiers = ["*"] }`` needs the enclosing statement (Deny / condition): see _terraform
+         _r(r"""("Principal"\s*:\s*("\*"|\{\s*"AWS"\s*:\s*\[?\s*"\*")|\bPrincipal\s*=\s*"\*")"""),
+         "حدّد الحسابات أو الأدوار المسموحة صراحة، أو أضف شرطًا (Condition) يقيّد المصدر.", "CWE-732",
+         TF | frozenset({".json"}), skip=_r(_HCL_COMMENT)),
+    Rule("TF004", "high", "IAM policy allows every action (*)", "سياسة IAM تسمح بكل الإجراءات (*)",
+         # HCL ``actions = ["*"]`` needs the enclosing statement's effect (a Deny of * is a guard rail): see _terraform
+         _r(r"""("Action"|\bAction)\s*[:=]\s*\[?\s*"\*"\s*\]?\s*,?\s*(#.*)?$"""),
+         "اذكر الإجراءات اللازمة فقط؛ Action: * يمنح صلاحيات المدير.", "CWE-269", TF | frozenset({".json"}),
+         skip=_r(_HCL_COMMENT)),
+    Rule("TF005", "medium", "Encryption at rest/in transit explicitly disabled", "تعطيل التشفير صراحة (عند التخزين أو النقل)",
+         _r(r"\b(encrypted|storage_encrypted|at_rest_encryption_enabled|transit_encryption_enabled|enable_encryption_at_rest)\s*=\s*false\b"),
+         "فعّل التشفير (true) واستخدم مفتاح KMS مُدارًا.", "CWE-311", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF006", "high", "Database instance publicly accessible", "قاعدة بيانات متاحة للعامة",
+         _r(r"\bpublicly_accessible\s*=\s*true\b"),
+         "اضبط publicly_accessible = false وضع القاعدة في شبكة فرعية خاصة.", "CWE-284", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF007", "medium", "CloudTrail logging or log validation disabled", "تعطيل سجلات CloudTrail أو التحقق منها",
+         _r(r"\b(enable_logging|enable_log_file_validation)\s*=\s*false\b"),
+         "فعّل enable_logging وenable_log_file_validation في CloudTrail.", "CWE-778", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF008", "medium", "KMS key rotation disabled", "تعطيل تدوير مفتاح KMS",
+         _r(r"\benable_key_rotation\s*=\s*false\b"),
+         "اضبط enable_key_rotation = true.", "CWE-320", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF009", "high", "Public IAM member (allUsers / allAuthenticatedUsers)", "عضو IAM عام (allUsers)",
+         _r(r"""(\bmembers?\s*=\s*\[?[^\n]*"(allUsers|allAuthenticatedUsers)"|^\s*"(allUsers|allAuthenticatedUsers)"\s*,?\s*$)"""),
+         "أزل allUsers/allAuthenticatedUsers وامنح الوصول لهويات محددة.", "CWE-732", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF010", "high", "HTTPS not enforced (storage account / web app)", "عدم فرض HTTPS (حساب تخزين أو تطبيق ويب)",
+         _r(r"\b(enable_https_traffic_only|https_traffic_only_enabled|https_only)\s*=\s*false\b"),
+         "اضبط القيمة إلى true لفرض HTTPS.", "CWE-319", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF011", "medium", "Minimum TLS version below 1.2", "الحد الأدنى لإصدار TLS أقل من 1.2",
+         _r(r"""\b(min_tls_version|minimum_tls_version|minimum_protocol_version|ssl_minimum_version|tls_version)\s*=\s*"(TLS1_0|TLS1_1|TLS_1_0|TLS_1_1|1\.0|1\.1|TLSv1|TLSv1\.1|TLSv1_2016|TLSv1\.1_2016|SSLv3)\""""),
+         "اضبط الحد الأدنى على TLS 1.2 أو أحدث.", "CWE-326", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF012", "medium", "Kubernetes API endpoint is public", "واجهة Kubernetes API متاحة للعامة",
+         _r(r"\b(endpoint_public_access\s*=\s*true|private_cluster_enabled\s*=\s*false|enable_private_endpoint\s*=\s*false)\b"),
+         "اجعل نقطة نهاية API خاصة أو قيّدها بقائمة عناوين موثوقة.", "CWE-284", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF013", "high", "Kubernetes API open to the whole internet", "واجهة Kubernetes API مفتوحة للإنترنت كله",
+         _r(r"""\bpublic_access_cidrs\s*=\s*\[[^\]]*"0\.0\.0\.0/0\""""),
+         "قيّد public_access_cidrs بعناوين محددة أو عطّل الوصول العام.", "CWE-284", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF014", "medium", "EC2 metadata service allows IMDSv1", "خدمة بيانات EC2 الوصفية تسمح بـ IMDSv1",
+         _r(r"""\bhttp_tokens\s*=\s*"optional\""""),
+         "اضبط http_tokens = \"required\" لفرض IMDSv2 والحد من سرقة بيانات الاعتماد عبر SSRF.", "CWE-918", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF015", "high", "Cloud credentials hard-coded in Terraform", "بيانات اعتماد سحابية مكتوبة في Terraform",
+         _r(r"""^\s*(access_key|secret_key|client_secret|client_certificate_password)\s*=\s*"[^"$]{8,}\""""),
+         "استخدم متغيرات البيئة أو ملفات الاعتماد أو هوية مُدارة بدل كتابة المفاتيح في الإعدادات.", "CWE-798",
+         TF | TFVARS, skip=_r(r"(?i)example|changeme|placeholder|dummy|xxxx|<|" + _HCL_COMMENT)),
+    Rule("TF016", "high", "Azure storage allows public blob access", "Azure Storage يسمح بالوصول العام للملفات",
+         _r(r"""\b((allow_blob_public_access|allow_nested_items_to_be_public)\s*=\s*true|container_access_type\s*=\s*"(blob|container)")"""),
+         "عطّل الوصول العام واستخدم رموز SAS قصيرة العمر أو هويات مُدارة.", "CWE-732", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF017", "medium", "Database TLS enforcement disabled", "تعطيل فرض TLS على قاعدة البيانات",
+         _r(r"""\b(ssl_enforcement_enabled\s*=\s*false|ssl_enforcement\s*=\s*"Disabled"|require_ssl\s*=\s*false|ssl_mode\s*=\s*"ALLOW_UNENCRYPTED_AND_ENCRYPTED")"""),
+         "افرض الاتصالات المشفّرة على قاعدة البيانات.", "CWE-319", TF, skip=_r(_HCL_COMMENT)),
+    Rule("TF018", "high", "Firewall rule allows every IPv4 address", "قاعدة جدار حماية تسمح بكل عناوين IPv4",
+         _r(r"""\bend_ip_address\s*=\s*"255\.255\.255\.255\""""),
+         "اسمح فقط بنطاقات العناوين اللازمة.", "CWE-284", TF, skip=_r(_HCL_COMMENT)),
+
+    # ------------------------------------------------------------------ GitHub Actions
+    Rule("GHA001", "medium", "Third-party action not pinned to a commit SHA", "إجراء طرف ثالث غير مثبّت على SHA",
+         _r(r"""^\s*-?\s*uses\s*:\s*['"]?(?!(actions|github)/)[\w.\-]+/[\w./\-]+@(?![0-9a-f]{40}(['"\s#]|$))[\w./\-]+"""),
+         "ثبّت الإجراءات الخارجية على SHA كامل (40 حرفًا) واذكر الإصدار في تعليق؛ الوسوم والفروع قابلة للنقل.",
+         "CWE-829", YAML, skip=_r(r"@(main|master|v?\d+(\.\d+)*)\s*$")),
+    Rule("GHA002", "high", "Untrusted GitHub context interpolated into a script", "إدراج سياق GitHub غير موثوق داخل سكربت",
+         _r(r"""^(?!\s*-?\s*(?!run\s*:)[\w.\-]+\s*:(\s|$)).*\$\{\{\s*(github\.head_ref|"""
+            r"""github\.event\.workflow_run\.(head_branch|display_title|head_commit\.(message|author\.(name|email)))|"""
+            r"""github\.event\.pull_request\.head\.(label|repo\.default_branch)|github\.event\.pages\b[^}]*\.page_name|"""
+            r"""toJSON\(\s*github\.event\s*\))\s*\}\}"""),
+         "مرّر القيمة عبر env: ثم استخدم \"$VAR\" في run:، ولا تضمّنها مباشرة.", "CWE-78", YAML),
+    Rule("GHA003", "high", "ACTIONS_ALLOW_UNSECURE_COMMANDS enabled", "تفعيل ACTIONS_ALLOW_UNSECURE_COMMANDS",
+         _r(r"""ACTIONS_ALLOW_UNSECURE_COMMANDS\s*:\s*['"]?true"""),
+         "أزل هذا المتغير؛ يعيد تفعيل أوامر set-env/add-path التي تسمح بحقن متغيرات البيئة.", "CWE-78", YAML),
+    Rule("GHA004", "low", "Docker action image not pinned to a digest", "صورة إجراء Docker غير مثبّتة على digest",
+         _r(r"""^\s*-?\s*uses\s*:\s*['"]?docker://(?![^\s'"]*@sha256:)[^\s'"]+"""),
+         "ثبّت الصورة على digest (@sha256:…).", "CWE-829", YAML),
+
+    # ------------------------------------------------------------------ JWT
+    Rule("JWT001", "high", "JWT signature verification disabled (options)", "تعطيل التحقق من توقيع JWT",
+         _r(r"""['"]verify_signature['"]\s*:\s*False\b"""),
+         "تحقق دائمًا من التوقيع وحدّد الخوارزميات المسموحة.", "CWE-347", PY,
+         skip=_r(r"jwt\.decode\(")),
+    Rule("JWT002", "high", "JWT parsed without a signature (jjwt / java-jwt)", "تحليل JWT بلا توقيع (jjwt/java-jwt)",
+         _r(r"\.(parseClaimsJwt|parsePlaintextJwt|parseUnsecuredClaims|parseUnsecuredContent)\s*\(|\.unsecured\s*\(\s*\)|\bAlgorithm\.none\s*\(\s*\)"),
+         "استخدم parseSignedClaims/parseClaimsJws مع مفتاح تحقق، ولا تقبل JWT غير موقّع.", "CWE-347", JVM),
+    Rule("JWT003", "high", "JWT 'none' algorithm accepted (Go)", "قبول خوارزمية none في JWT (Go)",
+         # SigningMethodNone alone is also used in guards (``t.Method == jwt.SigningMethodNone``): only signing with it,
+         # or the UnsafeAllowNoneSignatureType key that makes Parse accept it, is a finding
+         _r(r"\bjwt\.UnsafeAllowNoneSignatureType\b|\bjwt\.New(WithClaims)?\s*\(\s*jwt\.SigningMethodNone\b"),
+         "لا تقبل الخوارزمية none؛ تحقق من نوع خوارزمية التوقيع في keyFunc.", "CWE-347", GO),
+    Rule("JWT004", "medium", "JWT parsed without verification (Go)", "تحليل JWT دون تحقق (Go)",
+         _r(r"\.ParseUnverified\s*\("),
+         "استخدم jwt.Parse مع keyFunc يتحقق من التوقيع والخوارزمية قبل الوثوق بالمطالبات.", "CWE-347", GO),
+    Rule("JWT005", "high", "JWT signature validation disabled (.NET)", "تعطيل التحقق من توقيع JWT (.NET)",
+         # ValidateIssuerSigningKey = false is the library default and does not skip the signature check itself
+         _r(r"\bRequireSignedTokens\s*=\s*false\b|\bSignatureValidator\s*=[^;]*=>\s*new\s+(JwtSecurityToken|JsonWebToken)\s*\("),
+         "اضبط RequireSignedTokens على true ولا تستبدل SignatureValidator بدالة تتجاوز التحقق من التوقيع.", "CWE-347", CS),
+    Rule("JWT006", "high", "JWT decoded without verification (Ruby)", "فك JWT دون تحقق (Ruby)",
+         _r(r"\bJWT\.decode\s*\([^,)]+,[^,)]+,\s*false\b"),
+         "مرّر true للتحقق وحدّد algorithm صراحة.", "CWE-347", RUBY),
+    Rule("JWT007", "high", "Hard-coded JWT signing key", "مفتاح توقيع JWT مكتوب في الكود",
+         _r(r"""(\bAlgorithm\.HMAC(256|384|512)\s*\(\s*"|\bsignWith\s*\([^)]*"[^"]{4,}"|\bKeys\.hmacShaKeyFor\s*\(\s*"|"""
+            r"""\.setSigningKey\s*\(\s*"|\bSignedString\s*\(\s*\[\]byte\s*\(\s*")"""),
+         "اقرأ مفتاح التوقيع من مدير أسرار أو متغير بيئة، وأصدر مفتاحًا جديدًا إن كان حقيقيًا.", "CWE-798", JVM | GO),
+
+    # ------------------------------------------------------------------ CORS
+    Rule("CORS001", "high", "CORS allows any origin together with credentials", "CORS يسمح بأي أصل مع بيانات الاعتماد",
+         _r(r"""^(?=.*(\b(credentials|allow_credentials|allowCredentials|AllowCredentials|supports_credentials)['"]?\s*[:=(]\s*['"]?(true|True)\b|\.AllowCredentials\s*\(\s*\)))"""
+            r"""(?=.*(\borigins?['"]?\s*[:=]\s*(true\b|['"]\*['"])|\ballow_origins\s*=\s*\[\s*['"]\*['"]|AllowAllOrigins\s*:\s*true|"""
+            r"""allowedOrigin(Pattern)?s?\s*\(\s*"\*"|\.AllowAnyOrigin\s*\(|\bAllowedOrigins\s*:\s*\[\]string\s*\{\s*"\*"))"""),
+         "لا تجمع بين أي أصل وبيانات الاعتماد؛ حدّد قائمة بيضاء من الأصول الموثوقة.", "CWE-942", CODE | CONFIG),
+    Rule("CORS002", "medium", "CORS origin reflected from the request", "CORS يعكس أصل الطلب كما هو",
+         _r(r"""(?i)(access-control-allow-origin['"]?\s*[,:=]\s*(req|request|r|ctx|c)\.(headers?(\.get)?\s*[\[(.]\s*['"]?origin|getheader\s*\(\s*['"]origin|header\.get\s*\(\s*"origin|get_header\s*\(\s*['"]origin)|"""
+            r"""access-control-allow-origin:\s*['"]\s*\.\s*\$_SERVER\[\s*['"]HTTP_ORIGIN|"""
+            r"""allow_?origin_?func\s*[:=]\s*func\s*\([^)]*\)\s*bool\s*\{\s*return\s+true|SetIsOriginAllowed\s*\(\s*\w+\s*=>\s*true)"""),
+         "قارن الأصل بقائمة بيضاء قبل إعادته في Access-Control-Allow-Origin.", "CWE-942", CODE),
+
+    # ------------------------------------------------------------------ TLS
+    Rule("TLS001", "high", "TLS hostname or certificate check disabled (Python)", "تعطيل التحقق من TLS (Python)",
+         _r(r"\bverify_ssl\s*=\s*False\b|(\baiohttp\b|\bsession\b|\bTCPConnector\s*\(|\.(get|post|put|patch|delete|head|request|ws_connect)\s*\().*\bssl\s*=\s*False\b"),
+         "فعّل التحقق من الشهادة واسم المضيف؛ استخدم ssl.create_default_context().", "CWE-295", PY),
+    Rule("TLS002", "high", "Hostname verifier accepts every host (Java/Kotlin)", "مدقق أسماء مضيف يقبل أي مضيف (Java/Kotlin)",
+         _r(r"""\bNoopHostnameVerifier\b|[Hh]ostnameVerifier\s*[({=]?\s*\{?\s*\(?\s*_?\w*\s*,\s*_?\w*\s*\)?\s*->\s*true|"""
+            r"""\bverify\s*\(\s*(final\s+)?(String|\w+\s*:\s*String\??)[^)]*SSLSession[^)]*\)\s*(:\s*Boolean\s*)?(\{\s*return\s+true|=\s*true)"""),
+         "استخدم مدقق أسماء المضيف الافتراضي؛ لا تقبل كل المضيفين.", "CWE-297", JVM, skip=_r(r"^\s*import\s")),
+    Rule("TLS003", "high", "Server certificate validation bypassed (.NET)", "تجاوز التحقق من شهادة الخادم (.NET)",
+         _r(r"\bDangerousAcceptAnyServerCertificateValidator\b|(ServerCertificate(Custom)?ValidationCallback|RemoteCertificateValidationCallback)\s*[+]?=\s*[^;]*=>\s*true\b"),
+         "لا تتجاوز التحقق من الشهادة؛ ثبّت الشهادة أو أضف CA الداخلية إلى مخزن الثقة.", "CWE-295", CS),
+    Rule("TLS004", "high", "TLS verification disabled (Ruby)", "تعطيل التحقق من TLS (Ruby)",
+         _r(r"""OpenSSL::SSL::VERIFY_NONE|\bssl_verify_mode\s*[:=]>?\s*:none\b|\bverify_ssl\s*[:=]>?\s*false\b"""),
+         "استخدم OpenSSL::SSL::VERIFY_PEER.", "CWE-295", RUBY),
+    Rule("TLS005", "high", "TLS verification disabled (PHP)", "تعطيل التحقق من TLS (PHP)",
+         _r(r"""CURLOPT_SSL_VERIFYHOST\s*,\s*(0|false)\b|['"]verify_peer(_name)?['"]\s*=>\s*false\b|['"]verify['"]\s*=>\s*false\b"""),
+         "فعّل التحقق: CURLOPT_SSL_VERIFYHOST = 2 وverify_peer = true.", "CWE-295", PHP),
+    Rule("TLS006", "medium", "Obsolete TLS/SSL protocol version allowed", "السماح بإصدار TLS/SSL قديم",
+         _r(r"""\bMinVersion\s*:\s*tls\.Version(SSL30|TLS10|TLS11)\b|\bSSLContext\.getInstance\s*\(\s*"SSL"\s*\)|"""
+            r"""\bSslProtocols\.(Ssl2|Ssl3|Tls|Tls11)\b|\bminimum_version\s*=\s*(ssl\.)?TLSVersion\.(SSLv3|TLSv1|TLSv1_1)\b"""),
+         "استخدم TLS 1.2 أو أحدث.", "CWE-326", CODE),
+
+    Rule("TLS007", "medium", "TLS hostname verification disabled (Python)", "تعطيل التحقق من اسم المضيف في TLS (Python)",
+         _r(r"\bcheck_hostname\s*=\s*False\b"),
+         "فعّل التحقق من الشهادة واسم المضيف؛ استخدم ssl.create_default_context().", "CWE-297", PY),
+
+    # ------------------------------------------------------------------ cryptography API misuse
+    Rule("CRY007", "medium", "AES cipher without an explicit mode (defaults to ECB)", "تشفير AES دون نمط صريح (ECB افتراضيًا)",
+         _r(r"""\bCipher\.getInstance\s*\(\s*"AES"\s*\)"""),
+         "حدّد نمطًا مصادقًا صريحًا: AES/GCM/NoPadding مع IV عشوائي.", "CWE-327", JVM),
+    Rule("CRY008", "medium", "ECB mode", "نمط التشفير ECB",
+         _r(r"\bmodes\.ECB\s*\(|\bCipherMode\.ECB\b"),
+         "استخدم AES-GCM أو ChaCha20-Poly1305.", "CWE-327", PY | CS),
+    Rule("CRY009", "medium", "Weak cipher (DES/3DES/RC2/RC4/Blowfish)", "خوارزمية تشفير ضعيفة (DES/3DES/RC4…)",
+         _r(r"""\balgorithms\.(TripleDES|ARC4|Blowfish|IDEA|CAST5|SEED)\s*\(|\b(TripleDES|DES|RC2)CryptoServiceProvider\b|\bRC2\.Create\s*\(|"""
+            r"""\bcreate(De)?Cipher(iv)?\s*\(\s*['"`](des[\w-]*|rc[24][\w-]*|bf[\w-]*|blowfish|cast[\w-]*|idea[\w-]*)['"`]|"""
+            r"""\bopenssl_(en|de)crypt\s*\([^,]+,\s*['"](des[\w-]*|rc[24][\w-]*|bf[\w-]*)['"]"""),
+         "استخدم AES-GCM أو ChaCha20-Poly1305.", "CWE-327", PY | CS | JS | PHP),
+    Rule("CRY010", "medium", "Static or zero IV", "متجه تهيئة ثابت أو صفري",
+         _r(r"""\bnew\s+IvParameterSpec\s*\(\s*(new\s+byte\s*\[|"[^"]*"\.(getBytes|toByteArray)|\{)|"""
+            r"""\.IV\s*=\s*(new\s+byte\s*\[|Encoding\.\w+\.GetBytes\s*\(\s*")|"""
+            r"""\bcipher\.New(CBC(En|De)crypter|CFB(En|De)crypter|OFB|CTR)\s*\([^,]+,\s*(\[\]byte\s*\(\s*"|make\s*\(\s*\[\]byte)"""),
+         "ولّد IV عشوائيًا لكل عملية تشفير (SecureRandom/crypto/rand) وخزّنه مع النص المشفّر.", "CWE-329", JVM | CS | GO),
+    Rule("CRY011", "medium", "Hard-coded salt in key derivation", "ملح ثابت في اشتقاق المفاتيح",
+         _r(r"""\bnew\s+PBE(KeySpec|ParameterSpec)\s*\(\s*([^,]+,\s*)?"[^"]*"\.(getBytes|toByteArray)|"""
+            r"""\bpbkdf2\.Key\s*\([^,]+,\s*\[\]byte\s*\(\s*"|"""
+            r"""\bnew\s+Rfc2898DeriveBytes\s*\([^,]+,\s*(Encoding\.\w+\.GetBytes\s*\(\s*"|new\s+byte\s*\[)"""),
+         "ولّد ملحًا عشوائيًا لكل كلمة مرور (16 بايت على الأقل) وخزّنه مع الناتج.", "CWE-760", JVM | CS | GO),
+]
+
+# The line rules above that match code or Dockerfile/workflow commands must not fire on a comment that names the API
+# ("# never pass check_hostname=False", "# don't use --no-check-certificate").
+_COMMENT_LINE = r"^\s*(#|//|/\*|\*\s)"
+_SKIP_COMMENTS = re.compile(r"^(JWT|CORS|TLS)\d+$|^CRY0(0[7-9]|1\d)$|^(GHA002|GHA003|DKR007|DKR009|DKR010)$")
+RULES[:] = [replace(r, skip=_r(r.skip.pattern + "|" + _COMMENT_LINE if r.skip else _COMMENT_LINE))
+            if _SKIP_COMMENTS.match(r.id) else r for r in RULES]
+
+
+# ----------------------------------------------------------------------------------- whole-file (block) checks
+# Some misconfigurations are an ABSENCE (no USER, no runAsNonRoot, no limits) or need two settings of one block
+# together (an ingress rule's CIDR and its port range). check_blocks() evaluates them over the whole file; the
+# rules carry metadata only (their line pattern never matches).
+_NEVER = _r(r"(?!)")
+
+BLOCK_RULES: list[Rule] = [
+    Rule("DKR013", "medium", "Dockerfile never switches to a non-root USER", "ملف Dockerfile لا ينتقل إلى مستخدم غير root",
+         _NEVER, "أضف تعليمة USER لمستخدم غير root.", "CWE-250", DOCKER),
+    Rule("K8S010", "medium", "Workload does not require a non-root user", "حمولة Kubernetes لا تفرض مستخدمًا غير root",
+         _NEVER, "اضبط runAsNonRoot: true وrunAsUser برقم غير صفري.", "CWE-250", YAML),
+    Rule("K8S011", "low", "Workload containers have no resource limits", "حاويات بلا حدود للموارد",
+         _NEVER, "حدّد resources.limits (cpu وmemory) لكل حاوية لتجنّب استنزاف موارد العقدة.", "CWE-770", YAML),
+    Rule("K8S012", "high", "Secret literal in a container environment variable", "سرّ مكتوب حرفيًا في متغير بيئة للحاوية",
+         _NEVER, "استخدم valueFrom.secretKeyRef مع Secret مُدار (أو مدير أسرار خارجي) بدل كتابة القيمة.", "CWE-798", YAML),
+    Rule("K8S013", "high", "Dangerous Linux capability added", "إضافة قدرة Linux خطرة",
+         _NEVER, "أسقط كل القدرات (drop: [ALL]) وأضف فقط ما يلزم فعلًا؛ SYS_ADMIN وما يماثلها تعادل صلاحيات root.",
+         "CWE-250", YAML),
+    Rule("TF019", "high", "Administrative port or all ports open to the internet", "منفذ إداري أو كل المنافذ مفتوحة للإنترنت",
+         _NEVER, "قيّد المصدر بنطاقات موثوقة أو استخدم bastion/SSM/VPN بدل فتح SSH وRDP للعالم.", "CWE-284", TF),
+    Rule("TF020", "medium", "Storage created without encryption at rest", "تخزين يُنشأ بلا تشفير عند التخزين",
+         _NEVER, "فعّل التشفير (true) واستخدم مفتاح KMS مُدارًا.", "CWE-311", TF),
+    Rule("TF021", "medium", "KMS key created without rotation", "مفتاح KMS يُنشأ بلا تدوير",
+         _NEVER, "اضبط enable_key_rotation = true.", "CWE-320", TF),
+    Rule("TF022", "high", "Authorized network open to the whole internet", "شبكة مُصرَّح بها مفتوحة للإنترنت كله",
+         _NEVER, "اسمح فقط بنطاقات العناوين اللازمة.", "CWE-284", TF),
+    Rule("GHA005", "critical", "Privileged workflow checks out untrusted pull-request code",
+         "workflow مميز يسحب كود طلب دمج غير موثوق",
+         _NEVER, "لا تسحب كود الـ PR (ref: head) مع pull_request_target؛ استخدم pull_request.", "CWE-829", YAML),
+]
+_BLOCK = {r.id: r for r in BLOCK_RULES}
+_LINE = {r.id: r for r in RULES}
+
+
+def _block_keys(rel: str) -> set:
+    name = rel.rsplit("/", 1)[-1]
+    keys = {name}
+    if "." in name:
+        keys.add("." + name.rsplit(".", 1)[-1].lower())
+    if name.startswith("Dockerfile") or name.endswith(".dockerfile"):
+        keys.add("Dockerfile")
+    return keys
+
+
+def _emit(out: list, rid: str, rel: str, lines: list, idx: int, ignore_rules) -> None:
+    if rid in ignore_rules:
+        return
+    from .model import Finding
+    r = _BLOCK.get(rid) or _LINE[rid]
+    snippet = lines[idx].strip()[:200] if 0 <= idx < len(lines) else ""
+    out.append(Finding(rule_id=r.id, severity=r.severity, title=r.title, title_ar=r.title_ar, file=rel, line=idx + 1,
+                       snippet=snippet, advice=r.advice, cwe=r.cwe))
+
+
+def check_blocks(rel: str, text: str, ignore_rules=frozenset()) -> list:
+    """Whole-file checks for Dockerfiles, Kubernetes manifests, Terraform and GitHub workflows.
+
+    Returns Finding objects (line numbers are 1-based). ``rel`` is the path relative to the scanned root; it selects
+    the checks (by extension / base name, and ``.github/workflows/`` for workflow-only checks)."""
+    keys = _block_keys(rel)
+    lines = text.splitlines()
+    out: list = []
+    if "Dockerfile" in keys:
+        _dockerfile_user(rel, lines, out, ignore_rules)
+    if keys & YAML:
+        _k8s(rel, lines, out, ignore_rules)
+        if ".github/workflows/" in "/" + rel:
+            _gha_untrusted_checkout(rel, text, lines, out, ignore_rules)
+    if keys & TF:
+        _terraform(rel, lines, out, ignore_rules)
+    return out
+
+
+# ------------------------------------------------------------------ Dockerfile
+_DOCKERFILE_ROOT_PATHS = {"Dockerfile", "server/Dockerfile", "docker/Dockerfile"}     # covered by DKR000
+
+
+def _dockerfile_user(rel, lines, out, ignore_rules):
+    if rel in _DOCKERFILE_ROOT_PATHS:
+        return
+    froms = [i for i, ln in enumerate(lines) if re.match(r"^\s*FROM\s", ln, re.I)]
+    if not froms:
+        return
+    if any(re.match(r"^\s*USER\s+(?!root\b|0\b|0:)\S+", ln, re.I) for ln in lines):
+        return
+    if re.search(r"[:\-]nonroot\b", lines[froms[-1]]):
+        return
+    _emit(out, "DKR013", rel, lines, froms[-1], ignore_rules)
+
+
+# ------------------------------------------------------------------ Kubernetes
+_WORKLOAD = re.compile(r"^kind\s*:\s*['\"]?(Pod|Deployment|StatefulSet|DaemonSet|ReplicaSet|ReplicationController|Job|CronJob)\b")
+_SECRET_NAME = re.compile(r"""^\s*-\s*name\s*:\s*['"]?([\w.\-]*(?i:password|passwd|secret|token|api[_-]?key|private[_-]?key|credentials?)[\w.\-]*)['"]?\s*$""")
+_ENV_VALUE = re.compile(r"""^\s*value\s*:\s*(['"]?)(.*?)\1\s*(#.*)?$""")
+# names that hold a reference to a secret, not the secret (ALLOYDB_SECRET_NAME, PASSWORD_FILE, TOKEN_TTL...)
+_SECRET_REF_NAME = re.compile(r"(?i)[_.\-](name|file|path|dir|ref|arn|id|url|uri|host|port|ttl|length|len|size|version|"
+                              r"enabled|mode|type|header|field|key_id)$")
+# values that are placeholders or flags rather than secrets: GOOGLE_API_KEY_VAL, INSERT_TOKEN, true, 3600
+_PLACEHOLDER_VALUE = re.compile(r"^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$|(?i:\$\(|\$\{|\{\{|^<.*>$|changeme|example|placeholder|"
+                                r"^(insert|replace|your|todo)\b|^(true|false|yes|no|null|none|\d+)$)")
+_DANGEROUS_CAPS = {"SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE", "SYS_MODULE", "DAC_READ_SEARCH", "SYS_RAWIO", "BPF", "ALL"}
+
+
+def _indent(s: str) -> int:
+    return len(s) - len(s.lstrip(" "))
+
+
+def _k8s(rel, lines, out, ignore_rules):
+    # documents
+    starts = [0] + [i + 1 for i, ln in enumerate(lines) if re.match(r"^---(\s|$)", ln)]
+    bounds = list(zip(starts, starts[1:] + [len(lines)]))
+    for a, b in bounds:
+        doc = lines[a:b]
+        kind_idx = next((i for i, ln in enumerate(doc) if _WORKLOAD.match(ln)), None)
+        if kind_idx is None or any("{{" in ln for ln in doc):
+            continue
+        if not any(re.match(r"^\s*(containers|initContainers)\s*:", ln) for ln in doc):
+            continue
+        body = "\n".join(doc)
+        if not re.search(r"(?m)^\s*runAsNonRoot\s*:\s*['\"]?true\b", body) and \
+                not re.search(r"(?m)^\s*runAsUser\s*:\s*['\"]?[1-9]\d*", body) and \
+                not re.search(r"(?m)^\s*runAsNonRoot\s*:\s*['\"]?false\b|^\s*runAsUser\s*:\s*['\"]?0\b", body):  # K8S006
+            _emit(out, "K8S010", rel, lines, a + kind_idx, ignore_rules)
+        if not re.search(r"(?m)^\s*limits\s*:", body):
+            _emit(out, "K8S011", rel, lines, a + kind_idx, ignore_rules)
+    # env secret literals and capability lists (any manifest, Helm values included)
+    cap_indent = None
+    add_indent = None
+    for i, ln in enumerate(lines):
+        if not ln.strip() or ln.lstrip().startswith("#"):
+            continue
+        ind = _indent(ln)
+        m = _SECRET_NAME.match(ln)
+        if m:
+            j = i + 1
+            while j < len(lines) and (not lines[j].strip() or lines[j].lstrip().startswith("#")):
+                j += 1
+            if j < len(lines):
+                v = _ENV_VALUE.match(lines[j])
+                val = v.group(2) if v else ""
+                if v and len(val) >= 4 and not _SECRET_REF_NAME.search(m.group(1)) and not _PLACEHOLDER_VALUE.search(val):
+                    _emit(out, "K8S012", rel, lines, j, ignore_rules)
+        if cap_indent is not None and ind <= cap_indent:
+            cap_indent = add_indent = None
+        if add_indent is not None and ind <= add_indent and not ln.lstrip().startswith("-"):
+            add_indent = None
+        if re.match(r"^\s*capabilities\s*:\s*$", ln):
+            cap_indent, add_indent = ind, None
+            continue
+        if cap_indent is not None and re.match(r"^\s*add\s*:\s*$", ln):
+            add_indent = ind
+            continue
+        if cap_indent is not None and re.match(r"^\s*drop\s*:", ln):
+            add_indent = None
+            continue
+        if add_indent is not None:
+            item = re.match(r"""^\s*-\s*['"]?(?:CAP_)?([A-Z_]+)['"]?\s*(#.*)?$""", ln)
+            if item and item.group(1) in _DANGEROUS_CAPS:
+                _emit(out, "K8S013", rel, lines, i, ignore_rules)
+
+
+# ------------------------------------------------------------------ GitHub Actions
+_PRIV_TRIGGER = re.compile(r"(?m)^\s*(-\s*)?['\"]?(pull_request_target|workflow_run)['\"]?\s*:?\s*$|^\s*['\"]?on['\"]?\s*:.*\b(pull_request_target|workflow_run)\b")
+_UNTRUSTED_CHECKOUT = re.compile(
+    r"""^\s*-?\s*(ref|repository)\s*:\s*.*\$\{\{\s*(github\.event\.pull_request\.head\.(sha|ref|repo\.full_name)|github\.head_ref|"""
+    r"""github\.event\.workflow_run\.(head_sha|head_branch|head_repository\.full_name))\s*\}\}|"""
+    r"""refs/pull/\$\{\{|\bpull/\$\{\{[^}]*\}\}/(head|merge)\b|\bgh\s+pr\s+checkout\b""")
+
+
+def _gha_untrusted_checkout(rel, text, lines, out, ignore_rules):
+    if not _PRIV_TRIGGER.search(text):
+        return
+    for i, ln in enumerate(lines):
+        if not ln.lstrip().startswith("#") and _UNTRUSTED_CHECKOUT.search(ln):
+            _emit(out, "GHA005", rel, lines, i, ignore_rules)
+
+
+# ------------------------------------------------------------------ Terraform (a small HCL reader)
+class _Hcl:
+    __slots__ = ("kind", "labels", "line", "attrs", "children")
+
+    def __init__(self, kind, labels, line):
+        self.kind, self.labels, self.line = kind, labels, line
+        self.attrs: dict = {}          # name -> (value text, 0-based line)
+        self.children: list = []
+
+    def get(self, name, default=""):
+        return self.attrs.get(name, (default, self.line))[0]
+
+    def walk(self):
+        yield self
+        for c in self.children:
+            yield from c.walk()
+
+
+def _hcl_parse(lines) -> _Hcl:
+    root = _Hcl("", [], 0)
+    stack = [root]
+    i, n = 0, len(lines)
+    while i < n:
+        raw = lines[i]
+        s = raw.strip()
+        if not s or s.startswith(("#", "//")):
+            i += 1
+            continue
+        s = re.sub(r"\s+(#|//).*$", "", s) if '"' not in s else s
+        m = re.match(r"^([\w\-]+)((?:\s+(?:\"[^\"]*\"|[\w\-]+))*)\s*\{\s*$", s)
+        if m:
+            node = _Hcl(m.group(1), re.findall(r"\"([^\"]*)\"|([\w\-]+)", m.group(2)), i)
+            node.labels = [q or b for q, b in node.labels]
+            stack[-1].children.append(node)
+            stack.append(node)
+            i += 1
+            continue
+        m = re.match(r"^([\w\-]+)\s*=\s*\{\s*$", s)       # map attribute: treat as a nested block
+        if m:
+            node = _Hcl(m.group(1), [], i)
+            stack[-1].children.append(node)
+            stack.append(node)
+            i += 1
+            continue
+        if s.startswith("}"):
+            if len(stack) > 1:
+                stack.pop()
+            i += 1
+            continue
+        m = re.match(r"^([\w\-]+)\s*=\s*(.*)$", s)
+        if m:
+            name, val, start = m.group(1), m.group(2), i
+            here = re.match(r"^<<-?\s*(\w+)", val)
+            if here:                                       # heredoc: keep the body, it may hold a policy
+                end = here.group(1)
+                body = []
+                i += 1
+                while i < n and lines[i].strip() != end:
+                    body.append(lines[i])
+                    i += 1
+                val = "\n".join(body)
+            elif val.count("[") > val.count("]") or val.count("(") > val.count(")"):
+                parts = [val]
+                depth = val.count("[") + val.count("(") - val.count("]") - val.count(")")
+                while depth > 0 and i + 1 < n:
+                    i += 1
+                    nxt = lines[i].strip()
+                    parts.append(nxt)
+                    depth += nxt.count("[") + nxt.count("(") - nxt.count("]") - nxt.count(")")
+                val = " ".join(parts)
+            stack[-1].attrs[name] = (val.strip(), start)
+        i += 1
+    return root
+
+
+def _int(v):
+    m = re.fullmatch(r"\"?(-?\d+)\"?", v.strip())
+    return int(m.group(1)) if m else None
+
+
+_WORLD = re.compile(r"\"(0\.0\.0\.0/0|::/0)\"")
+_ADMIN_PORTS = (22, 3389)
+
+
+def _range_open(lo, hi) -> bool:
+    return lo is not None and hi is not None and (any(lo <= p <= hi for p in _ADMIN_PORTS) or (lo <= 0 and hi >= 65535)
+                                                 or (lo == 0 and hi == 0))
+
+
+def _port_spec_open(spec: str) -> bool:
+    """An Azure/GCP port spec: "22", "*", "20-30" (one value)."""
+    spec = spec.strip().strip('"')
+    if spec in ("*", "0-65535", "1-65535"):
+        return True
+    m = re.fullmatch(r"(\d+)\s*-\s*(\d+)", spec)
+    if m:
+        return any(int(m.group(1)) <= p <= int(m.group(2)) for p in _ADMIN_PORTS)
+    return spec.isdigit() and int(spec) in _ADMIN_PORTS
+
+
+def _aws_rule_open(b: _Hcl, cidr_attrs) -> bool:
+    if not any(_WORLD.search(b.get(a)) for a in cidr_attrs):
+        return False
+    proto = (b.get("protocol") or b.get("ip_protocol")).strip('"').lower()
+    if proto in ("-1", "all"):
+        return True
+    return _range_open(_int(b.get("from_port")), _int(b.get("to_port")))
+
+
+_STAR_LIST = re.compile(r"^\[?\s*\"\*\"\s*,?\s*\]?$")
+
+
+def _iam_statements(rel, lines, out, ignore_rules, root):
+    """HCL policy statements (aws_iam_policy_document, role definitions): a wildcard principal or action is a
+    finding unless the statement denies (a Deny of everything is a guard rail) or, for principals, is conditioned."""
+    for blk in root.walk():
+        if blk.get("effect").strip('"').lower() == "deny":
+            continue
+        if "actions" in blk.attrs and _STAR_LIST.match(blk.attrs["actions"][0]):
+            _emit(out, "TF004", rel, lines, blk.attrs["actions"][1], ignore_rules)
+        if any(c.kind == "condition" for c in blk.children):
+            continue
+        for pr in blk.children:
+            if pr.kind == "principals" and pr.get("type").strip('"') in ("AWS", "*") \
+                    and _STAR_LIST.match(pr.get("identifiers")):
+                _emit(out, "TF003", rel, lines, pr.attrs["identifiers"][1], ignore_rules)
+
+
+def _terraform(rel, lines, out, ignore_rules):
+    root = _hcl_parse(lines)
+    _iam_statements(rel, lines, out, ignore_rules, root)
+    for res in root.children:
+        if res.kind != "resource" or not res.labels:
+            continue
+        rtype = res.labels[0]
+        # ---- network rules open to the world on admin ports
+        if rtype == "aws_security_group":
+            for ch in res.children:
+                if ch.kind == "ingress" and _aws_rule_open(ch, ("cidr_blocks", "ipv6_cidr_blocks")):
+                    _emit(out, "TF019", rel, lines, ch.line, ignore_rules)
+        elif rtype == "aws_security_group_rule":
+            if res.get("type").strip('"') == "ingress" and _aws_rule_open(res, ("cidr_blocks", "ipv6_cidr_blocks")):
+                _emit(out, "TF019", rel, lines, res.line, ignore_rules)
+        elif rtype == "aws_vpc_security_group_ingress_rule":
+            if _aws_rule_open(res, ("cidr_ipv4", "cidr_ipv6")):
+                _emit(out, "TF019", rel, lines, res.line, ignore_rules)
+        elif rtype in ("azurerm_network_security_rule", "azurerm_network_security_group"):
+            blocks = [res] if rtype == "azurerm_network_security_rule" else [c for c in res.children if c.kind == "security_rule"]
+            for b in blocks:
+                if b.get("direction").strip('"').lower() != "inbound" or b.get("access").strip('"').lower() != "allow":
+                    continue
+                src = b.get("source_address_prefix") + " " + b.get("source_address_prefixes")
+                if not re.search(r"\"(\*|0\.0\.0\.0(/0)?|Internet|Any)\"", src, re.I):
+                    continue
+                ports = re.findall(r"\"([^\"]+)\"", b.get("destination_port_range") + " " + b.get("destination_port_ranges"))
+                if any(_port_spec_open(p) for p in ports):
+                    _emit(out, "TF019", rel, lines, b.line, ignore_rules)
+        elif rtype == "google_compute_firewall":
+            if b_dir := res.get("direction").strip('"'):
+                if b_dir.upper() != "INGRESS":
+                    continue
+            if not _WORLD.search(res.get("source_ranges")):
+                continue
+            for ch in res.children:
+                if ch.kind != "allow":
+                    continue
+                proto = ch.get("protocol").strip('"').lower()
+                ports = re.findall(r"\"([^\"]+)\"", ch.get("ports"))
+                if proto == "all" or (proto in ("tcp", "udp") and not ports) or any(_port_spec_open(p) for p in ports):
+                    _emit(out, "TF019", rel, lines, ch.line, ignore_rules)
+                    break
+        # ---- encryption at rest missing (an explicit false is TF005)
+        if rtype == "aws_ebs_volume" and "encrypted" not in res.attrs and "snapshot_id" not in res.attrs:
+            _emit(out, "TF020", rel, lines, res.line, ignore_rules)
+        elif rtype in ("aws_db_instance", "aws_rds_cluster") and "storage_encrypted" not in res.attrs \
+                and not ({"replicate_source_db", "snapshot_identifier", "kms_key_id"} & set(res.attrs)) \
+                and "serverless" not in res.get("engine_mode"):
+            _emit(out, "TF020", rel, lines, res.line, ignore_rules)
+        # ---- KMS rotation missing (an explicit false is TF008)
+        if rtype == "aws_kms_key" and "enable_key_rotation" not in res.attrs \
+                and res.get("customer_master_key_spec", '"SYMMETRIC_DEFAULT"').strip('"') == "SYMMETRIC_DEFAULT":
+            _emit(out, "TF021", rel, lines, res.line, ignore_rules)
+        # ---- authorized networks (GKE control plane, Cloud SQL) open to the world
+        seen = set()
+        for b in res.walk():
+            if b.kind in ("master_authorized_networks_config", "authorized_networks"):
+                for blk in b.walk():
+                    for attr in ("cidr_block", "value"):
+                        if attr in blk.attrs and _WORLD.search(blk.attrs[attr][0]) and blk.attrs[attr][1] not in seen:
+                            seen.add(blk.attrs[attr][1])
+                            _emit(out, "TF022", rel, lines, blk.attrs[attr][1], ignore_rules)
+
 
 # File names that should not be committed / shipped at all.
 SENSITIVE_FILES: list[tuple[re.Pattern, str, str, str, str]] = [

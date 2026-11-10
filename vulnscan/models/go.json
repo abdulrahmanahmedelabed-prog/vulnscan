@@ -1,5 +1,5 @@
 {
- "_comment": "Go (net/http, gin, echo, fiber, database/sql) models.",
+ "_comment": "Go (net/http, gin, echo, fiber, chi, gorilla/mux, database/sql, sqlx, gorm, pgx, os/exec, html/template, go-ldap, xmlquery, otto/goja/expr, mongo-driver) models.",
  "sources": [
   {
    "kind": "attr",
@@ -75,7 +75,21 @@
     "flag.Arg",
     "FormFile",
     "BodyParser",
-    "QueryParser"
+    "QueryParser",
+    "PathValue",
+    "QueryParams",
+    "FormParams",
+    "GetQuery",
+    "GetQueryArray",
+    "QueryArray",
+    "GetPostForm",
+    "PostFormArray",
+    "GetRawData",
+    "ShouldBindQuery",
+    "ShouldBindUri",
+    "BindQuery",
+    "AllParams",
+    "BodyRaw"
    ],
    "label": "{name}()"
   },
@@ -85,6 +99,16 @@
     "os.Args"
    ],
    "label": "{name}"
+  },
+  {
+   "kind": "call",
+   "names": [
+    "zip.OpenReader",
+    "zip.NewReader",
+    "tar.NewReader"
+   ],
+   "label": "archive entry ({name})",
+   "_comment": "Zip Slip: entry names (f.Name / hdr.Name) of an archive come from whoever made it"
   }
  ],
  "entry_points": [
@@ -129,9 +153,7 @@
    ],
    "names": [
     "exec.Command",
-    "exec.CommandContext",
     "Command",
-    "CommandContext",
     "syscall.Exec",
     "os.StartProcess",
     "StartProcess"
@@ -156,11 +178,7 @@
     "Query",
     "Exec",
     "QueryRow",
-    "QueryContext",
-    "ExecContext",
-    "QueryRowContext",
     "Prepare",
-    "PrepareContext",
     "Raw",
     "gorm.Raw",
     "Where",
@@ -168,8 +186,6 @@
     "Select",
     "Having",
     "Joins",
-    "sqlx.Select",
-    "sqlx.Get",
     "NamedQuery",
     "NamedExec"
    ],
@@ -195,8 +211,6 @@
     "ioutil.WriteFile",
     "os.Stat",
     "os.Lstat",
-    "http.ServeFile",
-    "ServeFile",
     "http.Dir",
     "FileServer",
     "SendFile",
@@ -311,20 +325,12 @@
     "http.Post",
     "http.Head",
     "http.PostForm",
-    "http.NewRequest",
-    "http.NewRequestWithContext",
-    "NewRequest",
-    "NewRequestWithContext",
     "client.Get",
     "client.Post",
     "client.Do",
     "Get",
     "Post",
     "url.Parse",
-    "net.Dial",
-    "net.DialTimeout",
-    "Dial",
-    "DialTimeout",
     "resty.R().Get",
     "grequests.Get"
    ],
@@ -377,7 +383,6 @@
     "io.WriteString",
     "WriteString",
     "c.String",
-    "String",
     "c.HTML",
     "c.Data",
     "Data",
@@ -390,6 +395,45 @@
    "advice": "هرّب المخرجات (html.EscapeString) أو استخدم html/template."
   },
   {
+   "rule": "DF013",
+   "severity": "medium",
+   "cwe": "CWE-79",
+   "label": "HTTP response body (XSS)",
+   "_comment": "ctx.String(code, format, values...) (gin/echo/iris); not log/slog attribute constructors (slog.String(key, value), zap.String)",
+   "args": [
+    0,
+    1,
+    2,
+    3,
+    4
+   ],
+   "names": [
+    "String"
+   ],
+   "title": "Tainted data reflected into the response",
+   "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+   "advice": "هرّب المخرجات (html.EscapeString) أو استخدم html/template.",
+   "receiver": "^(?!(?:slog|zap|zerolog|logrus|log|logger|attr|strconv|strings|fmt)$)"
+  },
+  {
+   "rule": "DF014",
+   "severity": "high",
+   "cwe": "CWE-90",
+   "label": "LDAP filter",
+   "args": [
+    0,
+    3,
+    6
+   ],
+   "names": [
+    "ldap.NewSearchRequest",
+    "NewSearchRequest"
+   ],
+   "title": "Tainted data reaches an LDAP search",
+   "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+   "advice": "هرّب المرشّح (ldap.EscapeFilter)."
+  },
+  {
    "rule": "DF014",
    "severity": "high",
    "cwe": "CWE-90",
@@ -398,13 +442,12 @@
     3
    ],
    "names": [
-    "ldap.NewSearchRequest",
-    "NewSearchRequest",
     "Search"
    ],
    "title": "Tainted data reaches an LDAP search",
    "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
-   "advice": "هرّب المرشّح (ldap.EscapeFilter)."
+   "advice": "هرّب المرشّح (ldap.EscapeFilter).",
+   "_comment": "bare Search: any search method (repositories, indexers); kept at its previous argument only"
   },
   {
    "rule": "DF015",
@@ -421,7 +464,8 @@
     "htmlquery.Find",
     "xmlquery.Find",
     "Find",
-    "QuerySelector"
+    "QuerySelector",
+    "xpath.MustCompile"
    ],
    "title": "Tainted data reaches XPath",
    "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
@@ -457,6 +501,589 @@
    "title": "Tainted data written to a log",
    "title_ar": "بيانات غير موثوقة تُكتب في السجل",
    "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل."
+  },
+  {
+   "rule": "DF003",
+   "severity": "high",
+   "cwe": "CWE-78",
+   "label": "exec.Command",
+   "args": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "names": [
+    "exec.CommandContext",
+    "CommandContext"
+   ],
+   "title": "Tainted data reaches exec.Command",
+   "title_ar": "بيانات غير موثوقة تصل إلى exec.Command",
+   "advice": "لا تمرّر المدخلات إلى sh -c؛ استدعِ البرنامج مباشرة بقائمة معاملات ثابتة وتحقّق من القيم."
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    1
+   ],
+   "names": [
+    "QueryContext",
+    "ExecContext",
+    "QueryRowContext",
+    "PrepareContext",
+    "QueryxContext",
+    "QueryRowxContext",
+    "MustExecContext",
+    "PreparexContext",
+    "NamedExecContext",
+    "NamedQueryContext"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى database/sql أو sqlx أو gorm أو pgx؛ استخدم العناصر النائبة (? أو $1) ومرّر القيم معاملات."
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    3
+   ],
+   "names": [
+    "GetContext",
+    "SelectContext"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى database/sql أو sqlx أو gorm أو pgx؛ استخدم العناصر النائبة (? أو $1) ومرّر القيم معاملات.",
+   "receiver": "^sqlx$"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    2
+   ],
+   "names": [
+    "Get",
+    "Select"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى database/sql أو sqlx أو gorm أو pgx؛ استخدم العناصر النائبة (? أو $1) ومرّر القيم معاملات.",
+   "receiver": "^sqlx$"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    2
+   ],
+   "names": [
+    "GetContext",
+    "SelectContext"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى database/sql أو sqlx أو gorm أو pgx؛ استخدم العناصر النائبة (? أو $1) ومرّر القيم معاملات."
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    0
+   ],
+   "names": [
+    "Queryx",
+    "QueryRowx",
+    "MustExec",
+    "Preparex",
+    "squirrel.Expr"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى database/sql أو sqlx أو gorm أو pgx؛ استخدم العناصر النائبة (? أو $1) ومرّر القيم معاملات."
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    1
+   ],
+   "names": [
+    "Get"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى database/sql أو sqlx أو gorm أو pgx؛ استخدم العناصر النائبة (? أو $1) ومرّر القيم معاملات.",
+   "receiver": "(?i)^(?!.*collection)(.*\\.)?(db|tx|gormdb|orm|database|dbx|sqlxdb)(\\.|$)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "Select"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى database/sql أو sqlx أو gorm أو pgx؛ استخدم العناصر النائبة (? أو $1) ومرّر القيم معاملات.",
+   "receiver": "(?i)^(?!.*collection)(.*\\.)?(db|tx|gormdb|orm|database|dbx|sqlxdb)(\\.|$)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (gorm inline condition)",
+   "args": [
+    1
+   ],
+   "names": [
+    "First",
+    "Find",
+    "Last",
+    "Take",
+    "Delete",
+    "FirstOrInit",
+    "FirstOrCreate"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "في gorm لا تمرّر نصًا من المدخلات كشرط مضمَّن (First/Find/Delete) ولا كعمود (Order/Group/Pluck)؛ استخدم Where(\"col = ?\", v) وقائمة بيضاء لأسماء الأعمدة.",
+   "receiver": "(?i)^(?!.*collection)(.*\\.)?(db|tx|gormdb|orm|database|dbx|sqlxdb)(\\.|$)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (gorm clause)",
+   "args": [
+    0
+   ],
+   "names": [
+    "Pluck",
+    "Group",
+    "Distinct",
+    "Not",
+    "Or",
+    "Table"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "في gorm لا تمرّر نصًا من المدخلات كشرط مضمَّن (First/Find/Delete) ولا كعمود (Order/Group/Pluck)؛ استخدم Where(\"col = ?\", v) وقائمة بيضاء لأسماء الأعمدة.",
+   "receiver": "(?i)^(?!.*collection)(.*\\.)?(db|tx|gormdb|orm|database|dbx|sqlxdb)(\\.|$)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (pgx)",
+   "args": [
+    1
+   ],
+   "names": [
+    "Query",
+    "QueryRow",
+    "Exec",
+    "SendBatch"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى database/sql أو sqlx أو gorm أو pgx؛ استخدم العناصر النائبة (? أو $1) ومرّر القيم معاملات.",
+   "receiver": "(?i)(^|\\.)(pool|dbpool|pgpool|pgxpool|pgxconn|pgconn)$"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (xorm)",
+   "args": [
+    0
+   ],
+   "names": [
+    "SQL"
+   ],
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "لا تمرّر نص SQL مركّبًا من المدخلات إلى database/sql أو sqlx أو gorm أو pgx؛ استخدم العناصر النائبة (? أو $1) ومرّر القيم معاملات.",
+   "receiver": "(?i)(^|\\.)(engine|session|sess|orm|xorm)(\\.|$)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-943",
+   "label": "NoSQL query (MongoDB)",
+   "args": [
+    0
+   ],
+   "names": [
+    "bson.UnmarshalExtJSON",
+    "bson.UnmarshalJSON"
+   ],
+   "title": "Tainted data reaches a MongoDB query parsed from text",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام MongoDB مُحلَّل من نص",
+   "advice": "لا تحلّل مستند استعلام MongoDB من نص يحوي مدخلات المستخدم ولا تستخدم $where أو BsonJavaScript؛ ابنِ المرشّحات ببنّاء المرشّحات ومرّر القيم كمعاملات."
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    2
+   ],
+   "names": [
+    "http.ServeFile"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقّق أنه داخل المجلد المسموح (filepath.IsLocal أو strings.HasPrefix بعد filepath.Clean) قبل استخدامه."
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    3
+   ],
+   "names": [
+    "http.ServeFileFS"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقّق أنه داخل المجلد المسموح (filepath.IsLocal أو strings.HasPrefix بعد filepath.Clean) قبل استخدامه."
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    0
+   ],
+   "names": [
+    "ServeFile"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقّق أنه داخل المجلد المسموح (filepath.IsLocal أو strings.HasPrefix بعد filepath.Clean) قبل استخدامه.",
+   "receiver": "^(c|ctx)$"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    0
+   ],
+   "names": [
+    "os.DirFS",
+    "filepath.Glob",
+    "filepath.WalkDir",
+    "os.Chdir",
+    "os.Readlink",
+    "FileAttachment"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقّق أنه داخل المجلد المسموح (filepath.IsLocal أو strings.HasPrefix بعد filepath.Clean) قبل استخدامه."
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    0
+   ],
+   "names": [
+    "Attachment",
+    "Inline",
+    "Download"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقّق أنه داخل المجلد المسموح (filepath.IsLocal أو strings.HasPrefix بعد filepath.Clean) قبل استخدامه.",
+   "receiver": "^(c|ctx)$"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "args": [
+    1
+   ],
+   "names": [
+    "SaveUploadedFile",
+    "SaveFile"
+   ],
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقّق أنه داخل المجلد المسموح (filepath.IsLocal أو strings.HasPrefix بعد filepath.Clean) قبل استخدامه.",
+   "receiver": "^(c|ctx)$"
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (SSRF)",
+   "args": [
+    1
+   ],
+   "names": [
+    "http.NewRequest",
+    "NewRequest",
+    "net.Dial",
+    "net.DialTimeout",
+    "tls.Dial"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء من المضيفين والمخططات وارفض العناوين الداخلية قبل إرسال الطلب."
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (SSRF)",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "Dial",
+    "DialTimeout"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء من المضيفين والمخططات وارفض العناوين الداخلية قبل إرسال الطلب."
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (SSRF)",
+   "args": [
+    2
+   ],
+   "names": [
+    "http.NewRequestWithContext",
+    "NewRequestWithContext",
+    "DialContext",
+    "tls.DialWithDialer"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء من المضيفين والمخططات وارفض العناوين الداخلية قبل إرسال الطلب."
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (SSRF)",
+   "args": [
+    0
+   ],
+   "names": [
+    "httputil.NewSingleHostReverseProxy",
+    "NewSingleHostReverseProxy",
+    "SetBaseURL",
+    "SetHostURL"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء من المضيفين والمخططات وارفض العناوين الداخلية قبل إرسال الطلب."
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (SSRF)",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "Dial"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء من المضيفين والمخططات وارفض العناوين الداخلية قبل إرسال الطلب.",
+   "receiver": "(?i)dialer$"
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (SSRF)",
+   "args": [
+    1,
+    2
+   ],
+   "names": [
+    "DialContext"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء من المضيفين والمخططات وارفض العناوين الداخلية قبل إرسال الطلب.",
+   "receiver": "(?i)dialer$"
+  },
+  {
+   "rule": "DF008",
+   "severity": "medium",
+   "cwe": "CWE-601",
+   "label": "redirect",
+   "args": [
+    1
+   ],
+   "names": [
+    "Redirect"
+   ],
+   "title": "Tainted data reaches a redirect",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+   "advice": "حوّل إلى مسارات محلية فقط أو تحقّق من المضيف بقائمة بيضاء قبل التحويل.",
+   "receiver": "^(c|ctx)$"
+  },
+  {
+   "rule": "DF007",
+   "severity": "high",
+   "cwe": "CWE-1336",
+   "label": "template (SSTI)",
+   "args": [
+    0
+   ],
+   "names": [
+    "template.HTMLAttr",
+    "template.CSS",
+    "template.JSStr",
+    "template.Srcset"
+   ],
+   "title": "Tainted data reaches a template parse or unescaped HTML",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحليل قالب أو HTML غير مُهرَّب",
+   "advice": "لا تحوّل المدخلات إلى template.HTML/HTMLAttr/CSS/JSStr/Srcset؛ دع html/template يهرّبها تلقائيًا."
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-94",
+   "label": "plugin / code loading",
+   "args": [
+    0
+   ],
+   "names": [
+    "Run",
+    "RunString",
+    "Eval"
+   ],
+   "title": "Tainted data reaches plugin or script loading",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحميل إضافات أو سكربتات",
+   "advice": "لا تقيّم شيفرة JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.",
+   "receiver": "(?i)(^|\\.)(vm|otto|goja|jsvm|js|interp|interpreter)$"
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-94",
+   "label": "plugin / code loading",
+   "args": [
+    1
+   ],
+   "names": [
+    "RunScript"
+   ],
+   "title": "Tainted data reaches plugin or script loading",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحميل إضافات أو سكربتات",
+   "advice": "لا تقيّم شيفرة JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.",
+   "receiver": "(?i)(^|\\.)(vm|goja|jsvm|js|runtime)$"
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-94",
+   "label": "plugin / code loading",
+   "args": [
+    0
+   ],
+   "names": [
+    "Compile",
+    "Eval"
+   ],
+   "title": "Tainted data reaches plugin or script loading",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحميل إضافات أو سكربتات",
+   "advice": "لا تقيّم شيفرة JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.",
+   "receiver": "^expr$"
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-94",
+   "label": "plugin / code loading",
+   "args": [
+    0
+   ],
+   "names": [
+    "govaluate.NewEvaluableExpression",
+    "NewEvaluableExpression"
+   ],
+   "title": "Tainted data reaches plugin or script loading",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحميل إضافات أو سكربتات",
+   "advice": "لا تقيّم شيفرة JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط."
+  },
+  {
+   "rule": "DF013",
+   "severity": "medium",
+   "cwe": "CWE-79",
+   "label": "HTTP response body (XSS)",
+   "args": [
+    1
+   ],
+   "names": [
+    "HTMLBlob"
+   ],
+   "title": "Tainted data reflected into the response",
+   "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+   "advice": "هرّب المخرجات (html.EscapeString) أو استخدم html/template بدل كتابة HTML مركّب من المدخلات.",
+   "receiver": "^(c|ctx)$"
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "args": [
+    1
+   ],
+   "names": [
+    "Find",
+    "FindOne",
+    "QueryAll",
+    "Query",
+    "FindEach"
+   ],
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "لا تركّب تعبير XPath من المدخلات؛ استخدم متغيرات XPath أو قائمة بيضاء من القيم.",
+   "receiver": "^(xmlquery|htmlquery|jsonquery)$"
   }
  ],
  "sanitizers": [
@@ -490,7 +1117,17 @@
   "QuoteMeta",
   "uuid.Parse",
   "len",
-  "utf8.RuneCountInString"
+  "utf8.RuneCountInString",
+  "ldap.EscapeFilter",
+  "ldap.EscapeDN",
+  "template.HTMLEscaper",
+  "template.JSEscaper",
+  "template.URLQueryEscaper",
+  "pq.QuoteIdentifier",
+  "bluemonday.Policy.Sanitize",
+  "policy.Sanitize",
+  "strconv.ParseUint",
+  "ParseUint"
  ],
  "safe_return_calls": [],
  "validators": [
@@ -511,6 +1148,8 @@
   "verify",
   "Verify",
   "Struct",
-  "Var"
+  "Var",
+  "filepath.IsLocal",
+  "IsLocal"
  ]
 }

@@ -1,0 +1,8 @@
+services:
+  app:
+    image: nginx:1.25.3
+    network_mode: bridge
+    pid: "service:db"
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./seccomp-profile.json

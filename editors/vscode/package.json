@@ -1,0 +1,193 @@
+{
+  "name": "kashif",
+  "displayName": "Kashif (كاشِف) — Security Scanner",
+  "description": "Static application security testing in the editor: type-aware, cross-file taint analysis for 12 languages, powered by the open-source Kashif (vulnscan) language server.",
+  "version": "0.9.0",
+  "publisher": "kashif",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "homepage": "https://github.com/abdulrahmanahmedelabed-prog/vulnscan#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abdulrahmanahmedelabed-prog/vulnscan.git",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/issues"
+  },
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "security",
+    "sast",
+    "vulnerability",
+    "taint analysis",
+    "cwe",
+    "owasp",
+    "lsp"
+  ],
+  "activationEvents": [
+    "onLanguage:python",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:java",
+    "onLanguage:kotlin",
+    "onLanguage:csharp",
+    "onLanguage:go",
+    "onLanguage:php",
+    "onLanguage:c",
+    "onLanguage:cpp",
+    "onLanguage:rust",
+    "onLanguage:swift",
+    "onLanguage:ruby",
+    "onLanguage:sql",
+    "onLanguage:plsql",
+    "onLanguage:oraclesql",
+    "onLanguage:html",
+    "onLanguage:xml",
+    "onLanguage:yaml",
+    "onLanguage:dockerfile",
+    "onLanguage:terraform",
+    "onLanguage:shellscript",
+    "onLanguage:properties",
+    "onLanguage:dotenv"
+  ],
+  "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In Restricted Mode Kashif still scans (reading files is what it does), but it ignores workspace values of the settings that choose which program to run or where to write the baseline.",
+      "restrictedConfigurations": [
+        "kashif.serverPath",
+        "kashif.serverArgs",
+        "kashif.baseline"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "The Kashif language server scans files on the local disk."
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "kashif.scanWorkspace",
+        "title": "Scan workspace",
+        "category": "Kashif"
+      },
+      {
+        "command": "kashif.openWebUI",
+        "title": "Open web UI",
+        "category": "Kashif"
+      },
+      {
+        "command": "kashif.restartServer",
+        "title": "Restart language server",
+        "category": "Kashif"
+      }
+    ],
+    "configuration": {
+      "title": "Kashif",
+      "properties": {
+        "kashif.serverPath": {
+          "type": "string",
+          "default": "vulnscan",
+          "scope": "machine-overridable",
+          "markdownDescription": "Command that runs Kashif (the `vulnscan` executable on `PATH`, an absolute path to it, or a Python interpreter together with `#kashif.serverArgs#` = `[\"-m\", \"vulnscan\"]`). The extension starts `<serverPath> <serverArgs> lsp --stdio`."
+        },
+        "kashif.serverArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine-overridable",
+          "markdownDescription": "Arguments placed before `lsp --stdio`, e.g. `[\"-m\", \"vulnscan\"]` when `#kashif.serverPath#` is a Python interpreter."
+        },
+        "kashif.minSeverity": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info"
+          ],
+          "default": "info",
+          "description": "Show findings of this severity and above."
+        },
+        "kashif.audit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Audit profile: also show every dangerous call (eval, shell, SQL, deserialization ...) that data-flow analysis did not prove reachable by input."
+        },
+        "kashif.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Glob patterns of paths to leave out of the scan (relative to the workspace folder), e.g. \"tests/*\"."
+        },
+        "kashif.baseline": {
+          "type": "string",
+          "default": ".vulnscan-baseline.json",
+          "markdownDescription": "Baseline file (relative to the workspace folder). Findings recorded in it are hidden; **Add to baseline** writes to it. Same format as `vulnscan --write-baseline`."
+        },
+        "kashif.language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "ar"
+          ],
+          "enumDescriptions": [
+            "English",
+            "العربية"
+          ],
+          "default": "en",
+          "description": "Language of finding titles, remediation advice and data-flow steps."
+        },
+        "kashif.webUiPort": {
+          "type": "number",
+          "default": 8765,
+          "description": "Local port used by \"Kashif: Open web UI\"."
+        },
+        "kashif.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace the communication between VS Code and the Kashif language server (Output panel)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run bundle",
+    "bundle": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --minify --sourcemap",
+    "typecheck": "tsc --noEmit",
+    "compile": "npm run typecheck && npm run bundle",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.130",
+    "@types/vscode": "1.82.0",
+    "@vscode/vsce": "3.6.2",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

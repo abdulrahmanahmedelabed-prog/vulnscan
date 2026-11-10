@@ -1,0 +1,31 @@
+name: pr-build
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # expect-next: GHA003
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          # expect-next: GHA005
+          ref: ${{ github.event.pull_request.head.sha }}
+      # expect-next: GHA001
+      - uses: someorg/build-action@release/v1
+      # expect-next: GHA004
+      - uses: docker://alpine:3.19
+      - name: Greet
+        run: |
+          # expect-next: GHA002
+          echo "building ${{ github.head_ref }}"
+      # expect-next: GHA002
+      - run: echo '${{ toJSON(github.event) }}' > event.json
+      - name: Comment
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            # expect-next: GHA002
+            const title = "${{ github.event.workflow_run.head_commit.message }}";

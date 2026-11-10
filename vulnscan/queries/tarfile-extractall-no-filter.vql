@@ -1,0 +1,9 @@
+// @id vql/tarfile-extractall-no-filter
+// @name tar archive extracted without a member filter
+// @name_ar فك أرشيف tar دون مرشّح للعناصر
+// @severity medium
+// @cwe CWE-22
+// @advice مرّر filter="data" (Python 3.12+) أو تحقق من مسار كل عنصر قبل الفك؛ قد تحوي الأرشيفات مسارات ../ أو روابط رمزية.
+from call c
+where c.func = "extractall" and c.receiver matches "(?i)tarfile|(^|\.)(tar|tf|tarball)$" and not c.kwargs matches "(^|, )(filter|members)="
+select c, "Archive extracted without a filter by " + c.name

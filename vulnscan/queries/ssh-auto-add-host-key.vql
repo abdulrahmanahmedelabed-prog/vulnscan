@@ -1,0 +1,9 @@
+// @id vql/ssh-auto-add-host-key
+// @name SSH client accepts unknown host keys (paramiko AutoAddPolicy)
+// @name_ar عميل SSH يقبل مفاتيح مضيف غير معروفة (AutoAddPolicy)
+// @severity medium
+// @cwe CWE-295
+// @advice حمّل known_hosts واستخدم RejectPolicy؛ قبول أي مفتاح مضيف يسمح بهجوم الوسيط.
+from call c
+where c.name matches "\.set_missing_host_key_policy$" and c.arg0 matches "AutoAddPolicy|WarningPolicy"
+select c, "Unknown SSH host keys accepted by " + c.name

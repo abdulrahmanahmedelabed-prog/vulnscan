@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import pathlib
 import re
 import shutil
@@ -15,7 +16,7 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import __version__
+from . import __version__, updater
 from .deps import audit_dependencies
 from .external import available, run_external
 from .i18n import to_en
@@ -144,6 +145,8 @@ def parse_multipart(body: bytes, content_type: str) -> list[tuple[str, bytes]]:
 
 class Handler(BaseHTTPRequestHandler):
     store: Store
+    lang = "both"
+    update_job = updater.Job()
     server_version = f"vulnscan/{__version__}"
 
     def log_message(self, fmt, *args):  # quiet
@@ -170,13 +173,35 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _loopback_host(self) -> bool:
+        """The Host header must name this machine. Defeats DNS rebinding: a page on attacker.example whose name
+        is re-pointed at 127.0.0.1 is same-origin with itself, but its requests carry Host: attacker.example."""
+        try:
+            host = urllib.parse.urlsplit("//" + self.headers.get("Host", "")).hostname or ""
+        except ValueError:
+            return False
+        return host in ("127.0.0.1", "localhost", "::1")
+
     def _same_origin(self) -> bool:
         """Reject cross-site requests: the UI is local-only and has no auth."""
+        if not self._loopback_host():
+            return False
         origin = self.headers.get("Origin") or self.headers.get("Referer")
         host = self.headers.get("Host", "")
         if not origin:
             return True
         return urllib.parse.urlparse(origin).netloc == host
+
+    def _not_cross_site(self) -> bool:
+        """Browsers label every request with Sec-Fetch-Site; anything a page on another site (or another local
+        port) triggers, even a plain <img> GET, is refused. Clients that send no such header (curl, tests) pass."""
+        return self.headers.get("Sec-Fetch-Site", "same-origin").strip().lower() in ("same-origin", "none")
+
+    def _loopback_json(self) -> bool:
+        """Extra guard for the update endpoints: a loopback Host (defeats DNS rebinding), not cross-site, and a JSON
+        body type (a cross-site form cannot send one without a CORS preflight, which this server never grants)."""
+        ctype = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        return self._loopback_host() and self._not_cross_site() and ctype == "application/json"
 
     def _body(self) -> dict:
         n = int(self.headers.get("Content-Length") or 0)
@@ -191,6 +216,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
         if path.startswith("/api/"):
+            if not self._loopback_host():          # DNS rebinding would otherwise let a web page read scan results
+                return self._json({"error": "forbidden"}, 403)
+            if path.startswith("/api/update") and not self._not_cross_site():
+                return self._json({"error": "forbidden"}, 403)   # e.g. <img src=".../api/update?force=1">
             return self._api_get(path)
         return self._static(path)
 
@@ -204,6 +233,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._upload()
         if path == "/api/settings":
             return self._json(self.store.save_settings(self._body()))
+        if path in ("/api/update", "/api/update/restart"):
+            if not self._loopback_json():
+                return self._json({"error": "forbidden"}, 403)
+            return self._update_apply() if path == "/api/update" else self._update_restart()
         return self._json({"error": "not found"}, 404)
 
     def do_DELETE(self):
@@ -240,6 +273,10 @@ class Handler(BaseHTTPRequestHandler):
                                "archive_exts": list(ARCHIVE_EXTS), "jadx_exts": list(JADX_EXTS), "home": str(self.store.home)})
         if path == "/api/scans":
             return self._json(self.store.list_scans())
+        if path == "/api/update":
+            return self._update_check()
+        if path == "/api/update/status":
+            return self._json(self.update_job.snapshot())
         if path == "/api/stats":
             return self._json(self._stats())
         if len(parts) >= 4 and parts[2] == "scans":
@@ -262,6 +299,53 @@ class Handler(BaseHTTPRequestHandler):
             if fmt == "report.html":
                 return self._text(render_html(*args, lang=lang), "text/html", name + ".html")
         return self._json({"error": "not found"}, 404)
+
+    # ----------------------------------------------------------------- update
+    def _update_check(self):
+        """GET /api/update[?force=1]: is a newer release out? Respects the "check_updates" setting unless forced."""
+        force = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("force") or ["0"])[0] == "1"
+        if not force and not self.store.settings().get("check_updates", True):
+            info = updater.install_info()
+            return self._json({"disabled": True, "current": __version__, "install_kind": info["kind"], "command": info["command"]})
+        try:
+            return self._json(updater.check(force=force, home=self.store.home))
+        except updater.UpdateError as e:
+            return self._json({**e.to_dict(), "current": __version__}, 502)
+
+    def _update_apply(self):
+        """POST /api/update: start installing the latest binary in the background; poll /api/update/status."""
+        if updater.install_info()["kind"] != "binary":
+            return self._json(updater.UpdateError("not_binary").to_dict(), 400)
+        if self.update_job.running():
+            return self._json(updater.UpdateError("busy").to_dict(), 409)
+        if self.update_job.snapshot()["phase"] in ("done", "restarting"):
+            return self._json(updater.UpdateError("restart_pending").to_dict(), 409)
+        try:
+            st = updater.check(force=False, home=self.store.home)
+        except updater.UpdateError as e:
+            return self._json(e.to_dict(), 502)
+        if not st["newer"]:
+            return self._json(updater.UpdateError("up_to_date").to_dict(), 409)
+        if not st["can_self_update"]:
+            return self._json(updater.UpdateError(st["reason"]).to_dict(), 409)
+        if not self.update_job.start(home=self.store.home):
+            return self._json(updater.UpdateError("busy").to_dict(), 409)
+        return self._json(self.update_job.snapshot(), 202)
+
+    def _update_restart(self):
+        """POST /api/update/restart: after a successful update, replace this server with the new binary."""
+        if not self.update_job.claim_restart():          # not updated yet, or a restart is already under way
+            return self._json(updater.UpdateError("not_ready").to_dict(), 409)
+        args = ["ui", "--port", str(self.server.server_address[1]), "--no-browser", "--lang", self.lang]
+        job = self.update_job
+
+        def go():
+            try:
+                updater.restart(args)
+            except OSError as e:                           # exec failed: this server keeps running, the UI can retry
+                job.restart_failed(str(e))
+        threading.Timer(0.5, go).start()                   # answer first, then exec
+        return self._json({"ok": True}, 202)
 
     def _stats(self) -> dict:
         scans = [s for s in self.store.list_scans() if s["status"] == "done"]
@@ -360,7 +444,18 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port: int = 8765, open_browser: bool = True, home: pathlib.Path | None = None, lang: str = "both") -> None:
     Handler.store = Store(home)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    Handler.lang = lang
+    updater.cleanup_stale()                       # the backup left by a previous in-app update (binary only)
+    # Right after an in-app update the previous process may still hold the port for a moment.
+    tries = 40 if os.environ.pop("VULNSCAN_UPDATE_RESTART", "") else 1
+    for attempt in range(tries):
+        try:
+            httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+            break
+        except OSError:
+            if attempt == tries - 1:
+                raise
+            time.sleep(0.25)
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
     print(f"vulnscan UI: {url}   (Ctrl+C to stop)" if lang == "en" else f"vulnscan UI: {url}   (Ctrl+C للإيقاف)")
     if open_browser:

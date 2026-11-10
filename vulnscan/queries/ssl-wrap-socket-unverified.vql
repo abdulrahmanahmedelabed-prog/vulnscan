@@ -1,0 +1,9 @@
+// @id vql/ssl-wrap-socket-unverified
+// @name ssl.wrap_socket without certificate verification
+// @name_ar ssl.wrap_socket دون التحقق من الشهادة
+// @severity high
+// @cwe CWE-295
+// @advice استخدم ssl.create_default_context().wrap_socket(sock, server_hostname=host)؛ ssl.wrap_socket لا يتحقق من الشهادة افتراضيًا وأُزيل في Python 3.12.
+from call c
+where c.name = "ssl.wrap_socket" and not c.kwargs matches "cert_reqs=(ssl\.)?CERT_REQUIRED"
+select c, "ssl.wrap_socket without CERT_REQUIRED"

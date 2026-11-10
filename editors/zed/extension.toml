@@ -1,0 +1,13 @@
+id = "kashif"
+name = "Kashif"
+version = "0.8.0"
+schema_version = 1
+authors = ["vulnscan contributors"]
+description = "Kashif (كاشِف) security findings through the vulnscan language server."
+repository = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan"
+
+# Zed's built-in languages. Add the names of other installed language extensions (e.g. "Java", "PHP", "Ruby",
+# "Kotlin", "Swift", "C#", "SQL") to run Kashif on them as well.
+[language_servers.kashif]
+name = "Kashif"
+languages = ["Python", "JavaScript", "TypeScript", "TSX", "Go", "Rust", "C", "C++", "YAML"]

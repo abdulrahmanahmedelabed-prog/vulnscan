@@ -47,6 +47,28 @@ from a **local web UI** in English and Arabic.
 
 ## Install
 
+### One line (verifies the SHA-256 before installing)
+
+```bash
+# macOS and Linux: installs vulnscan (and a kashif alias) into ~/.local/bin
+curl -fsSL https://abdulrahmanahmedelabed-prog.github.io/vulnscan/install.sh | sh
+```
+
+```powershell
+# Windows: installs into %LOCALAPPDATA%\Programs\Kashif and adds it to your PATH
+irm https://abdulrahmanahmedelabed-prog.github.io/vulnscan/install.ps1 | iex
+```
+
+```bash
+# Homebrew (macOS and Linux)
+brew tap kashif/vulnscan https://github.com/abdulrahmanahmedelabed-prog/vulnscan
+brew install kashif
+```
+
+All three download the release binary over HTTPS and check it against the release's `SHA256SUMS.txt`. Because
+they download with curl, macOS does not quarantine the file, so Gatekeeper does not block the (not yet notarized)
+binary.
+
 ### Download a binary (nothing else needed)
 
 Get the file for your platform from the
@@ -87,6 +109,27 @@ pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan
 ```
 
 Kashif has **zero runtime dependencies**. You can also run it from a clone with `python -m vulnscan`.
+
+### Updating
+
+The binaries update themselves. In the web UI open **Settings > Updates** and select **Update now**, then
+**Restart now**; a small "Update available" badge appears in the sidebar when a newer release is out. From a
+terminal:
+
+```bash
+vulnscan update            # check, confirm, download, verify, install
+vulnscan update --check    # only check: exit code 10 when an update is available, 0 when up to date
+vulnscan update --yes      # no confirmation prompt (scripts)
+```
+
+The update is downloaded only from GitHub over HTTPS, checked against the release's `SHA256SUMS.txt`, refused if
+it is not newer, and tested (`--version`) before it atomically replaces the running binary; the previous binary is
+kept as `<name>.old` until the next start, and any failure rolls back. On macOS, an Intel binary running under
+Rosetta is offered the native Apple Silicon build. If the binary's folder is not writable (for example
+`/usr/local/bin`), run `sudo vulnscan update`. pip and source installs are never modified: the UI and
+`vulnscan update` show the exact command instead (`python -m pip install --upgrade ...` or `git pull`).
+The check asks `api.github.com` for the latest release at most every 6 hours and sends nothing about your code;
+turn off **Check for updates automatically** in Settings to disable it.
 
 ## Quick start
 
@@ -129,6 +172,26 @@ steps:
 Findings appear in the Security tab and inline on pull requests, with a numeric severity, CWE and the dataflow
 path. Fingerprints are stable across line shifts and reformatting, so alerts are not duplicated.
 
+### Pull-request review comments, GitLab, pre-commit
+
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v0.9.0`): scans the pull request, uploads SARIF and
+  posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
+  plus a summary comment that is updated, not duplicated, on every push.
+- **Diff-aware scanning** anywhere: `vulnscan . --diff-base origin/main` reports only what the branch introduces
+  (the whole project is still analysed, so cross-file flows stay correct); `--fail-on` then gates on new findings only.
+- **GitLab**: `-f gitlab-sast` (Security dashboard and merge-request widget) and `-f codeclimate` (Code Quality);
+  a ready `.gitlab-ci.yml`, plus Azure Pipelines and Bitbucket templates, are in `integrations/`.
+- **pre-commit**: a `kashif` hook that checks only staged changes.
+
+Full guide: `docs/integrations.md`.
+
+## IDE integration (VS Code, JetBrains, Neovim, Helix, Zed, Sublime, Emacs)
+
+`vulnscan lsp` is a Language Server: vulnerabilities are underlined while you work, with the data-flow path as
+related locations, remediation on hover, and quick fixes to suppress a reviewed finding or add it to the baseline.
+The VS Code extension (`kashif-vscode.vsix`, attached to every release) runs it for you; other editors connect to
+the same server. Setup for each editor: `editors/README.md`.
+
 ### Baseline: report only what's new
 
 ```bash
@@ -147,7 +210,7 @@ surface, not just proven flows.
 Measured on the [OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/BenchmarkPython) v0.1
 (1,230 test cases) and the [OWASP Benchmark for Java](https://github.com/OWASP-Benchmark/BenchmarkJava) v1.2
 (2,740 test cases). Score = mean over categories of TPR − FPR (Youden's J), the official OWASP method.
-**Python: 74.0% · Java: 73.1%.**
+**Python: 74.0% · Java: 76.3%.**
 
 | Category | Py TPR % | Py FPR % | Py score | Java TPR % | Java FPR % | Java score |
 |---|---:|---:|---:|---:|---:|---:|
@@ -157,16 +220,16 @@ Measured on the [OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/
 | deserialization (deserialization) | 100.0 | 8.3 | 91.7 | — | — | — |
 | hash (weak hashing) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
 | ldapi (LDAP injection) | 100.0 | 7.7 | 92.3 | 100.0 | 37.5 | 62.5 |
-| pathtraver (path traversal) | 92.3 | 46.6 | 45.7 | 82.7 | 33.3 | 49.4 |
+| pathtraver (path traversal) | 92.3 | 46.6 | 45.7 | 100.0 | 38.5 | 61.5 |
 | redirect (open redirect) | 100.0 | 47.6 | 52.4 | — | — | — |
 | securecookie (insecure cookie) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
-| sqli (SQL injection) | 100.0 | 0.0 | 100.0 | 96.0 | 35.8 | 60.2 |
+| sqli (SQL injection) | 100.0 | 0.0 | 100.0 | 100.0 | 37.1 | 62.9 |
 | trustbound (trust boundary) | 100.0 | 36.8 | 63.2 | 85.5 | 34.9 | 50.7 |
 | weakrand (weak randomness) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
 | xpathi (XPath injection) | 76.5 | 20.0 | 56.5 | 100.0 | 15.0 | 85.0 |
-| xss (cross-site scripting) | 100.0 | 43.1 | 56.9 | 47.6 | 26.8 | 20.8 |
+| xss (cross-site scripting) | 100.0 | 43.1 | 56.9 | 88.2 | 46.4 | 41.8 |
 | xxe (XML external entities) | 100.0 | 35.0 | 65.0 | — | — | — |
-| **Overall** | | | **74.0** | | | **73.1** |
+| **Overall** | | | **74.0** | | | **76.3** |
 
 Each suite is scanned whole, as one application (the Python repository, the Java `src/main` tree), with the
 default profile. Reproduce either with one command:
@@ -195,9 +258,9 @@ reported as measured.
 - Static analysis finds common patterns and flows; it does not replace human review or penetration testing.
 - False positives and misses happen. Suppress a reviewed line with `# nosec` or `// vulnscan: ignore`, or a
   rule with `--ignore-rule`.
-- Compared with Semgrep, SonarQube, Snyk Code or CodeQL, Kashif has far fewer rules and library models, no IDE
-  plugins and much less real-world tuning. Its strengths are running fully locally with zero dependencies,
-  Arabic output, Oracle APEX, archives/APKs and passive web checks in one tool.
+- Compared with CodeQL, Semgrep, SonarQube or Snyk Code, Kashif has fewer library models (about 5,100 modelled APIs
+  and 149 pattern rules) and far less real-world tuning on large codebases. Its strengths are running fully locally
+  with zero dependencies, English and Arabic output, Oracle APEX, archives/APKs and passive web checks in one tool.
 - Not modelled yet: validation done by form libraries (WTForms `validate_on_submit()` and similar), reflection
   and dynamic dispatch through strings, and values that flow through files or databases outside the scanned code.
 - Without jadx, APK/JAR contents are scanned as text only; decompiled code may differ from the original source.
@@ -570,6 +633,31 @@ cd vulnscan
 python -m vulnscan /path/to/project
 ```
 
+## التثبيت بسطر واحد (مع التحقق من SHA-256)
+
+```bash
+# macOS ولينكس
+curl -fsSL https://abdulrahmanahmedelabed-prog.github.io/vulnscan/install.sh | sh
+# Homebrew
+brew tap kashif/vulnscan https://github.com/abdulrahmanahmedelabed-prog/vulnscan && brew install kashif
+```
+
+```powershell
+# ويندوز
+irm https://abdulrahmanahmedelabed-prog.github.io/vulnscan/install.ps1 | iex
+```
+
+تنزّل الطرق الثلاث النسخة الرسمية وتطابقها مع `SHA256SUMS.txt` قبل التثبيت، ولأنها تنزّل بـ curl فلا يضع macOS علامة
+الحجر على الملف فلا يمنعه Gatekeeper.
+
+## داخل محرر الكود وطلبات الدمج
+
+- **محرّرات الكود:** `vulnscan lsp` خادم لغة (LSP) يضع خطًا تحت الثغرات أثناء الكتابة مع مسار تدفق البيانات وطريقة
+  الإصلاح وإصلاحات سريعة (كتم نتيجة مُراجَعة أو إضافتها لخط الأساس). إضافة VS Code مرفقة بكل إصدار (`kashif-vscode.vsix`)،
+  ويعمل الخادم نفسه مع JetBrains وNeovim وHelix وZed وSublime وEmacs (الإعداد في `editors/README.md`).
+- **طلبات الدمج:** إجراء GitHub يعلّق على الأسطر المتغيّرة فقط ويحدّث تعليق ملخّص واحد، و`--diff-base origin/main` لفحص ما
+  أضافه الفرع فقط، وتقارير GitLab (`-f gitlab-sast` و`-f codeclimate`)، وخطّاف pre-commit (الدليل في `docs/integrations.md`).
+
 ## نسخ جاهزة (بلا تثبيت Python)
 
 نزّل الملف من [صفحة الإصدارات](https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest):
@@ -609,6 +697,25 @@ gh attestation verify vulnscan-linux --repo abdulrahmanahmedelabed-prog/vulnscan
 لبنائها محليًا: `pip install pyinstaller` ثم `pyinstaller --clean --noconfirm vulnscan.spec` (الناتج في `dist/`).
 
 **صفحة الهبوط**: موقع تعريفي في `site/` يُنشر على GitHub Pages ويتضمن المقارنة مع الأدوات العالمية.
+
+### التحديث
+
+النسخ الجاهزة تحدّث نفسها: من الواجهة افتح **الإعدادات ← التحديثات** واضغط **حدّث الآن** ثم **أعد التشغيل الآن**،
+وتظهر شارة «تحديث متاح» في الشريط الجانبي عند صدور إصدار أحدث. ومن سطر الأوامر:
+
+```bash
+vulnscan update            # تحقّق، ثم أكّد، ثم نزّل وتحقّق وثبّت
+vulnscan update --check    # تحقّق فقط: رمز الخروج 10 عند توفّر تحديث و0 إن كنت على أحدث إصدار
+vulnscan update --yes      # دون سؤال للتأكيد (للسكربتات)
+```
+
+يُنزَّل التحديث من GitHub فقط عبر HTTPS، ويُطابَق مع `SHA256SUMS.txt` المنشور مع الإصدار، ويُرفض إن لم يكن أحدث،
+ويُجرَّب (`--version`) قبل أن يحلّ محلّ البرنامج دفعة واحدة؛ وتبقى النسخة السابقة باسم `<الاسم>.old` حتى التشغيل
+القادم، وأي فشل يعيدها كما كانت. على macOS تُعرض النسخة الأصلية لـ Apple Silicon على نسخة Intel العاملة عبر Rosetta.
+إن لم يكن مجلد البرنامج قابلًا للكتابة (مثل `/usr/local/bin`) فشغّل `sudo vulnscan update`. أما تثبيت pip أو الكود
+المصدري فلا يُعدَّل أبدًا: تعرض الواجهة و`vulnscan update` الأمر المناسب بدلًا من ذلك. يسأل التحقق `api.github.com`
+عن أحدث إصدار مرة كل 6 ساعات على الأكثر ولا يرسل شيئًا عن الكود؛ ويمكن إيقافه من خيار
+**التحقق من التحديثات تلقائيًا** في الإعدادات.
 
 ## التشغيل بنقرة واحدة
 
@@ -752,7 +859,7 @@ vulnscan — ./my-project  (156 ملفًا مفحوصًا، 37 نتيجة)
 ## الدقة: OWASP Benchmark
 
 نقيس كاشِف على مجموعتي OWASP Benchmark الرسميتين بمقياس OWASP نفسه (متوسط معدّل الإيجابيات الصحيحة ناقص معدّل
-الإيجابيات الكاذبة لكل فئة): **Python ‏74.0%** (1,230 حالة) و**Java ‏73.1%**
+الإيجابيات الكاذبة لكل فئة): **Python ‏74.0%** (1,230 حالة) و**Java ‏76.3%**
 (2,740 حالة). تُفحص كل مجموعة كاملة كتطبيق واحد بالملف الافتراضي، ولا يحوي المحرّك أي اسم أو مسار أو نتيجة من
 ملفات الاختبار. الجدول الكامل لكل فئة في القسم الإنجليزي أعلاه وفي صفحة الهبوط، وتعيد إنتاجه بأمر واحد:
 

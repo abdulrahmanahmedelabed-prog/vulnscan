@@ -1,0 +1,11 @@
+// @id vql/cipher-static-iv
+// @name Cipher initialised with a constant or zero IV/nonce
+// @name_ar تهيئة تشفير بمتجه تهيئة ثابت أو صفري
+// @severity medium
+// @cwe CWE-329
+// @advice ولّد IV عشوائيًا لكل عملية تشفير (SecureRandom/crypto/rand) وخزّنه مع النص المشفّر.
+from call c
+where (c.name matches "^crypto\.createCipheriv$" and c.arg2 matches "^(['\"`]|Buffer\.(alloc|from)\(\s*(\d|['\"`]))")
+   or (c.name matches "(^|\.)modes\.(CBC|CFB|CFB8|OFB|CTR|GCM)$" and c.arg0 matches "^(b['\"]|bytes\(\s*\d)")
+   or (c.name matches "(^|\.)(AES|DES3|Blowfish|ARC2|CAST)\.new$" and c.arg2 matches "^b['\"]")
+select c, "Constant IV passed to " + c.name

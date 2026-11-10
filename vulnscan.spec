@@ -13,7 +13,13 @@ a = Analysis(
     pathex=["."],
     datas=datas,
     hiddenimports=["vulnscan", "vulnscan.i18n", "vulnscan.server", "vulnscan.scanner", "vulnscan.web",
-                   "vulnscan.deps", "vulnscan.external", "vulnscan.report", "vulnscan.store", "vulnscan.rules"],
+                   "vulnscan.deps", "vulnscan.external", "vulnscan.report", "vulnscan.store", "vulnscan.rules",
+                   "vulnscan.updater", "vulnscan.lsp", "vulnscan.diffscope", "vulnscan.integrations",
+                   "vulnscan.integrations.github_pr"]
+                  # every module of the package, so ones reached only lazily or via ``python -m`` (the i18n catalogs,
+                  # vulnscan.integrations.*) are frozen too
+                  + sorted({f[:-3].replace("\\", "/").replace("/", ".").removesuffix(".__init__")
+                            for f in glob.glob("vulnscan/**/*.py", recursive=True) if not f.endswith("__main__.py")}),
     hookspath=[],
     runtime_hooks=[],
     excludes=["tkinter", "test", "unittest", "pydoc", "PyInstaller"],

@@ -1,5 +1,5 @@
 {
-  "_comment": "C# (ASP.NET / .NET) models.",
+  "_comment": "C# models: ASP.NET Core (MVC, Razor Pages, minimal APIs), ASP.NET MVC/WebForms, ADO.NET, EF/EF Core, Dapper, NHibernate, OrmLite, MongoDB driver, System.Diagnostics, serializers, Roslyn scripting, HttpClient/WebClient, System.DirectoryServices, System.Xml.XPath.",
   "sources": [
     {
       "kind": "attr",
@@ -30,7 +30,11 @@
         "ContentType",
         "UserAgent",
         "UrlReferrer",
-        "InputStream"
+        "InputStream",
+        "ServerVariables",
+        "PathInfo",
+        "Unvalidated",
+        "Host"
       ],
       "label": "Request.{attr}"
     },
@@ -44,9 +48,27 @@
         "Environment.GetCommandLineArgs",
         "GetCommandLineArgs",
         "ReadToEnd",
-        "Request.Query.TryGetValue"
+        "Request.Query.TryGetValue",
+        "Request.GetQueryNameValuePairs",
+        "Request.Content.ReadAsStringAsync",
+        "Request.Content.ReadAsStreamAsync",
+        "Request.ReadFormAsync",
+        "Request.ReadFromJsonAsync"
       ],
       "label": "{name}()"
+    },
+    {
+      "kind": "call",
+      "names": [
+        "ZipFile.OpenRead",
+        "ZipArchive",
+        "TarReader",
+        "ZipInputStream",
+        "TarInputStream",
+        "ZipFile.Open"
+      ],
+      "label": "archive entry ({name})",
+      "_comment": "Zip Slip: entry names (entry.FullName) of an archive come from whoever made it"
     }
   ],
   "entry_points": [
@@ -68,7 +90,20 @@
         "HubMethodName",
         "Function",
         "FunctionName",
-        "AcceptVerbs"
+        "AcceptVerbs",
+        "HttpHead",
+        "HttpOptions",
+        "ValidateAntiForgeryToken",
+        "IgnoreAntiforgeryToken",
+        "AllowAnonymous",
+        "Authorize",
+        "RequestSizeLimit",
+        "DisableRequestSizeLimit",
+        "RequestFormLimits",
+        "ValidateInput",
+        "ResponseCache",
+        "OutputCache",
+        "HttpTrigger"
       ],
       "label": "معامل نقطة الدخول"
     },
@@ -82,7 +117,10 @@
         "Page",
         "IHttpHandler",
         "HttpTaskAsyncHandler",
-        "WebService"
+        "WebService",
+        "ODataController",
+        "IHttpAsyncHandler",
+        "IMiddleware"
       ],
       "methods": [
         "Get",
@@ -100,7 +138,43 @@
         "Handle",
         "HandleAsync",
         "Execute",
-        "Run"
+        "Run",
+        "OnGetAsync",
+        "OnPostAsync",
+        "OnPutAsync",
+        "OnDeleteAsync",
+        "OnPatch",
+        "OnPatchAsync",
+        "Page_Load",
+        "ProcessRequestAsync",
+        "GetAsync",
+        "PostAsync",
+        "PutAsync",
+        "DeleteAsync",
+        "Patch",
+        "PatchAsync",
+        "Details",
+        "Create",
+        "Edit",
+        "Search",
+        "Upload",
+        "Download",
+        "Login",
+        "Register",
+        "Update",
+        "List",
+        "Show",
+        "Save",
+        "Submit",
+        "Export",
+        "Import",
+        "Preview",
+        "Lookup",
+        "Fetch",
+        "Proxy",
+        "Find",
+        "Load",
+        "Report"
       ]
     },
     {
@@ -109,7 +183,9 @@
         "req",
         "context",
         "ctx",
-        "httpContext"
+        "httpContext",
+        "httpRequest",
+        "httpReq"
       ]
     },
     {
@@ -197,8 +273,6 @@
         "File.OpenWrite",
         "File.Create",
         "File.Exists",
-        "File.Copy",
-        "File.Move",
         "FileStream",
         "StreamReader",
         "StreamWriter",
@@ -329,7 +403,6 @@
         "GetByteArrayAsync",
         "GetStreamAsync",
         "SendAsync",
-        "HttpRequestMessage",
         "WebRequest.Create",
         "HttpWebRequest.Create",
         "Create",
@@ -408,12 +481,10 @@
         0
       ],
       "names": [
-        "DirectorySearcher",
         "DirectoryEntry",
         "FindAll",
         "FindOne",
-        "Filter",
-        "SearchRequest"
+        "Filter"
       ],
       "title": "Tainted data reaches an LDAP search",
       "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
@@ -465,6 +536,434 @@
       "title": "Tainted data written to a log",
       "title_ar": "بيانات غير موثوقة تُكتب في السجل",
       "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل."
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "args": [
+        0
+      ],
+      "names": [
+        "ExecuteAsync"
+      ],
+      "title": "Tainted data reaches a SQL command",
+      "title_ar": "بيانات غير موثوقة تصل إلى أمر SQL",
+      "advice": "استخدم معاملات (SqlParameter / FromSqlInterpolated / معاملات Dapper) بدل تركيب نص SQL من المدخلات.",
+      "receiver": "(?i)(^|[._])(\\w*conn(ection)?|cnn|db|database|\\w*transaction|tx|trans|session)$",
+      "_comment": "Dapper SqlMapper.ExecuteAsync(this IDbConnection, sql): only on a connection/transaction-like receiver"
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL",
+      "args": [
+        0
+      ],
+      "names": [
+        "SqlQueryRaw",
+        "ExecuteSqlCommandAsync",
+        "ExecuteStoreQuery",
+        "ExecuteStoreCommand",
+        "ExecuteStoreQueryAsync",
+        "ExecuteStoreCommandAsync",
+        "CreateSQLQuery",
+        "CreateQuery",
+        "QueryFirstAsync",
+        "QueryFirstOrDefaultAsync",
+        "QuerySingleAsync",
+        "QuerySingleOrDefault",
+        "QuerySingleOrDefaultAsync",
+        "QueryMultiple",
+        "QueryMultipleAsync",
+        "QueryUnbufferedAsync",
+        "ExecuteScalarAsync",
+        "ExecuteReaderAsync",
+        "OracleCommand",
+        "SQLiteCommand",
+        "DB2Command",
+        "SqlCeCommand",
+        "OracleDataAdapter",
+        "MySqlDataAdapter",
+        "NpgsqlDataAdapter",
+        "OleDbDataAdapter",
+        "OdbcDataAdapter",
+        "SQLiteDataAdapter",
+        "SqliteDataAdapter",
+        "NpgsqlBatchCommand",
+        "SqlList",
+        "SqlScalar",
+        "SqlColumn"
+      ],
+      "title": "Tainted data reaches a SQL command",
+      "title_ar": "بيانات غير موثوقة تصل إلى أمر SQL",
+      "advice": "استخدم معاملات (SqlParameter / FromSqlInterpolated / معاملات Dapper) بدل تركيب نص SQL من المدخلات."
+    },
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-943",
+      "label": "NoSQL query (MongoDB)",
+      "args": [
+        0
+      ],
+      "names": [
+        "BsonDocument.Parse",
+        "BsonDocument.TryParse",
+        "JsonFilterDefinition",
+        "JsonPipelineStageDefinition",
+        "BsonJavaScript",
+        "BsonJavaScriptWithScope"
+      ],
+      "title": "Tainted data reaches a MongoDB query parsed from text",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام MongoDB مُحلَّل من نص",
+      "advice": "لا تحلّل مستند استعلام MongoDB من نص يحوي مدخلات المستخدم ولا تستخدم $where أو BsonJavaScript؛ ابنِ المرشّحات ببنّاء المرشّحات ومرّر القيم كمعاملات."
+    },
+    {
+      "rule": "DF002",
+      "severity": "critical",
+      "cwe": "CWE-78",
+      "label": "PowerShell script",
+      "args": [
+        0
+      ],
+      "names": [
+        "AddScript"
+      ],
+      "title": "Tainted data reaches a PowerShell script",
+      "title_ar": "بيانات غير موثوقة تصل إلى سكربت PowerShell",
+      "advice": "لا تبنِ سكربت PowerShell من المدخلات؛ استخدم AddCommand وAddParameter بقيم متحقَّق منها."
+    },
+    {
+      "rule": "DF002",
+      "severity": "critical",
+      "cwe": "CWE-78",
+      "label": "shell command",
+      "args": [
+        0
+      ],
+      "names": [
+        "Interaction.Shell"
+      ],
+      "title": "Tainted data reaches Process.Start",
+      "title_ar": "بيانات غير موثوقة تصل إلى Process.Start",
+      "advice": "لا تبنِ معاملات العملية من المدخلات؛ ثبّت البرنامج وتحقّق من كل معامل بقائمة بيضاء.",
+      "shell": true
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "file path",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "File.Copy",
+        "File.Move",
+        "File.Replace",
+        "Directory.Move",
+        "File.CreateSymbolicLink"
+      ],
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار (Path.GetFullPath) وتحقّق أنه يبدأ بالمجلد المسموح قبل القراءة أو الكتابة."
+    },
+    {
+      "rule": "DF005",
+      "severity": "high",
+      "cwe": "CWE-22",
+      "label": "file path",
+      "args": [
+        0
+      ],
+      "names": [
+        "File.ReadLines",
+        "File.OpenText",
+        "File.ReadAllTextAsync",
+        "File.ReadAllBytesAsync",
+        "File.ReadAllLinesAsync",
+        "File.ReadLinesAsync",
+        "File.WriteAllTextAsync",
+        "File.WriteAllBytesAsync",
+        "File.WriteAllLines",
+        "File.WriteAllLinesAsync",
+        "File.AppendAllLines",
+        "File.AppendAllTextAsync",
+        "File.AppendText",
+        "File.CreateText",
+        "Directory.GetDirectories",
+        "Directory.EnumerateDirectories",
+        "Directory.EnumerateFileSystemEntries",
+        "Directory.GetFileSystemEntries",
+        "Directory.Exists",
+        "ZipFile.CreateFromDirectory",
+        "ExtractToFile",
+        "PhysicalFileProvider",
+        "XmlTextWriter"
+      ],
+      "title": "Tainted data reaches a file path",
+      "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+      "advice": "طبّع المسار (Path.GetFullPath) وتحقّق أنه يبدأ بالمجلد المسموح قبل القراءة أو الكتابة."
+    },
+    {
+      "rule": "DF006",
+      "severity": "critical",
+      "cwe": "CWE-502",
+      "label": "deserialization",
+      "args": [
+        0
+      ],
+      "names": [
+        "NetDataContractSerializer.ReadObject",
+        "XamlReader.Load",
+        "XamlReader.Parse",
+        "JSON.ToObject",
+        "fastJSON.JSON.ToObject",
+        "BinaryFormatter.UnsafeDeserialize",
+        "UnsafeDeserialize",
+        "UnsafeDeserializeMethodResponse"
+      ],
+      "title": "Tainted data reaches unsafe deserialization",
+      "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل غير آمن",
+      "advice": "لا تفك تسلسل بيانات غير موثوقة بـ NetDataContractSerializer أو XamlReader أو fastJSON؛ استخدم System.Text.Json بأنواع ثابتة."
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-94",
+      "label": "code / template evaluation",
+      "args": [
+        0
+      ],
+      "names": [
+        "CSharpScript.Create",
+        "Handlebars.Compile",
+        "Template.Parse",
+        "Template.ParseLiquid",
+        "Razor.Compile",
+        "Engine.Razor.Compile",
+        "RunCompile",
+        "Eval.JScriptEvaluate",
+        "JScriptEvaluate"
+      ],
+      "title": "Tainted data reaches a template or expression evaluator",
+      "title_ar": "بيانات غير موثوقة تصل إلى قالب أو مقيّم تعبيرات",
+      "advice": "لا تترجم أو تنفّذ شيفرة C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط."
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-94",
+      "label": "code / template evaluation",
+      "args": [
+        1,
+        2,
+        3
+      ],
+      "names": [
+        "CompileAssemblyFromSource"
+      ],
+      "title": "Tainted data reaches a template or expression evaluator",
+      "title_ar": "بيانات غير موثوقة تصل إلى قالب أو مقيّم تعبيرات",
+      "advice": "لا تترجم أو تنفّذ شيفرة C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط."
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-94",
+      "label": "JavaScript engine",
+      "args": [
+        0
+      ],
+      "names": [
+        "Execute",
+        "Evaluate",
+        "ExecuteCommand"
+      ],
+      "title": "Tainted data reaches a template or expression evaluator",
+      "title_ar": "بيانات غير موثوقة تصل إلى قالب أو مقيّم تعبيرات",
+      "advice": "لا تترجم أو تنفّذ شيفرة C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط.",
+      "receiver": "(?i)(^|\\.)_?(js|jint|v8|script)?engine$"
+    },
+    {
+      "rule": "DF008",
+      "severity": "medium",
+      "cwe": "CWE-601",
+      "label": "redirect",
+      "args": [
+        0
+      ],
+      "names": [
+        "RedirectPreserveMethod",
+        "RedirectPermanentPreserveMethod"
+      ],
+      "title": "Tainted data reaches a redirect",
+      "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+      "advice": "استخدم LocalRedirect أو تحقّق بـ Url.IsLocalUrl قبل التحويل."
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "HttpRequestMessage"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد عناوين HttpClient/WebClient بقائمة بيضاء من المضيفين وارفض العناوين الداخلية."
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "PutAsync",
+        "PatchAsync",
+        "DeleteAsync",
+        "GetFromJsonAsync",
+        "PostAsJsonAsync",
+        "PutAsJsonAsync",
+        "PatchAsJsonAsync",
+        "DeleteFromJsonAsync"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد عناوين HttpClient/WebClient بقائمة بيضاء من المضيفين وارفض العناوين الداخلية.",
+      "receiver": "(?i)(client|http)$"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "UploadData",
+        "UploadFile",
+        "UploadValues"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد عناوين HttpClient/WebClient بقائمة بيضاء من المضيفين وارفض العناوين الداخلية.",
+      "receiver": "(?i)(^|[._])(\\w*webclient|client|wc)$"
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "outbound HTTP URL (SSRF)",
+      "args": [
+        0
+      ],
+      "names": [
+        "DownloadStringTaskAsync",
+        "DownloadDataTaskAsync",
+        "DownloadFileTaskAsync",
+        "OpenReadTaskAsync",
+        "UploadStringTaskAsync",
+        "UploadDataTaskAsync",
+        "WebRequest.CreateHttp",
+        "HttpWebRequest.CreateHttp",
+        "CreateHttp",
+        "WebRequest.CreateDefault"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد عناوين HttpClient/WebClient بقائمة بيضاء من المضيفين وارفض العناوين الداخلية."
+    },
+    {
+      "rule": "DF012",
+      "severity": "critical",
+      "cwe": "CWE-470",
+      "label": "reflection / assembly load",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "CreateInstanceAndUnwrap",
+        "CreateInstanceFrom",
+        "CreateInstanceFromAndUnwrap",
+        "Assembly.UnsafeLoadFrom",
+        "UnsafeLoadFrom",
+        "AssemblyLoadContext.LoadFromAssemblyPath",
+        "LoadFromAssemblyPath"
+      ],
+      "title": "Tainted data reaches reflection or assembly loading",
+      "title_ar": "بيانات غير موثوقة تصل إلى انعكاس أو تحميل تجميعات",
+      "advice": "لا تحمّل أنواعًا أو تجميعات بأسماء من المدخلات؛ استخدم قائمة بيضاء ثابتة."
+    },
+    {
+      "rule": "DF013",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "label": "HTTP response body (XSS)",
+      "args": [
+        0
+      ],
+      "names": [
+        "MarkupString",
+        "LiteralControl",
+        "AppendHtml",
+        "SetHtmlContent",
+        "WriteLiteral",
+        "Response.BinaryWrite"
+      ],
+      "title": "Tainted data reflected into the response",
+      "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+      "advice": "لا تُخرج HTML خامًا من المدخلات (MarkupString/AppendHtml/InnerHtml)؛ هرّبه بـ HtmlEncoder أو نظّفه بـ HtmlSanitizer."
+    },
+    {
+      "rule": "DF014",
+      "severity": "high",
+      "cwe": "CWE-90",
+      "label": "LDAP filter",
+      "args": [
+        0,
+        1
+      ],
+      "names": [
+        "DirectorySearcher",
+        "SearchRequest"
+      ],
+      "title": "Tainted data reaches an LDAP search",
+      "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+      "advice": "هرّب قيم المرشّح (Encoder.LdapFilterEncode) والأسماء المميّزة (Encoder.LdapDistinguishedNameEncode) قبل البحث."
+    },
+    {
+      "rule": "DF015",
+      "severity": "high",
+      "cwe": "CWE-643",
+      "label": "XPath",
+      "args": [
+        0
+      ],
+      "names": [
+        "Select",
+        "Compile",
+        "Evaluate",
+        "Matches",
+        "SelectSingleNode"
+      ],
+      "title": "Tainted data reaches XPath",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+      "advice": "لا تركّب تعبير XPath من المدخلات؛ استخدم متغيرات XPath أو قائمة بيضاء من القيم.",
+      "receiver": "(?i)(nav|navigator|createnavigator)$"
     }
   ],
   "sanitizers": [
@@ -503,7 +1002,15 @@
     "Sanitizer.GetSafeHtml",
     "GetSafeHtmlFragment",
     "Length",
-    "Count"
+    "Count",
+    "HtmlSanitizer.Sanitize",
+    "sanitizer.Sanitize",
+    "Encoder.LdapFilterEncode",
+    "LdapFilterEncode",
+    "Encoder.LdapDistinguishedNameEncode",
+    "LdapDistinguishedNameEncode",
+    "QuoteIdentifier",
+    "HtmlAttributeEncode"
   ],
   "safe_return_calls": [
     "View",
@@ -511,7 +1018,20 @@
     "Ok",
     "Content",
     "PartialView",
-    "RedirectToAction"
+    "RedirectToAction",
+    "Created",
+    "CreatedAtAction",
+    "CreatedAtRoute",
+    "Accepted",
+    "AcceptedAtAction",
+    "AcceptedAtRoute",
+    "NotFound",
+    "BadRequest",
+    "Conflict",
+    "UnprocessableEntity",
+    "ValidationProblem",
+    "Problem",
+    "NoContent"
   ],
   "validators": [
     "Contains",
@@ -533,6 +1053,94 @@
     "Verify",
     "ContainsKey",
     "TryGetValue",
-    "IsNullOrEmpty"
+    "IsNullOrEmpty",
+    "IsLocalUrl",
+    "Url.IsLocalUrl"
+  ],
+  "attr_sinks": [
+    {
+      "rule": "DF004",
+      "severity": "high",
+      "cwe": "CWE-89",
+      "label": "SQL (CommandText)",
+      "attrs": [
+        "CommandText"
+      ],
+      "title": "Tainted data reaches a SQL command",
+      "title_ar": "بيانات غير موثوقة تصل إلى أمر SQL",
+      "advice": "استخدم معاملات (SqlParameter / FromSqlInterpolated / معاملات Dapper) بدل تركيب نص SQL من المدخلات."
+    },
+    {
+      "rule": "DF014",
+      "severity": "high",
+      "cwe": "CWE-90",
+      "label": "LDAP filter (DirectorySearcher.Filter)",
+      "attrs": [
+        "Filter"
+      ],
+      "title": "Tainted data reaches an LDAP search",
+      "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+      "advice": "هرّب قيم المرشّح (Encoder.LdapFilterEncode) والأسماء المميّزة (Encoder.LdapDistinguishedNameEncode) قبل البحث."
+    },
+    {
+      "rule": "DF013",
+      "severity": "medium",
+      "cwe": "CWE-79",
+      "label": "HTML (InnerHtml)",
+      "attrs": [
+        "InnerHtml"
+      ],
+      "title": "Tainted data reflected into the response",
+      "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+      "advice": "لا تُخرج HTML خامًا من المدخلات (MarkupString/AppendHtml/InnerHtml)؛ هرّبه بـ HtmlEncoder أو نظّفه بـ HtmlSanitizer."
+    },
+    {
+      "rule": "DF002",
+      "severity": "critical",
+      "cwe": "CWE-78",
+      "label": "process arguments (ProcessStartInfo.Arguments)",
+      "attrs": [
+        "Arguments"
+      ],
+      "title": "Tainted data reaches Process.Start",
+      "title_ar": "بيانات غير موثوقة تصل إلى Process.Start",
+      "advice": "لا تبنِ معاملات العملية من المدخلات؛ ثبّت البرنامج وتحقّق من كل معامل بقائمة بيضاء."
+    },
+    {
+      "rule": "DF008",
+      "severity": "medium",
+      "cwe": "CWE-601",
+      "label": "redirect (RedirectLocation)",
+      "attrs": [
+        "RedirectLocation"
+      ],
+      "title": "Tainted data reaches a redirect",
+      "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+      "advice": "استخدم LocalRedirect أو تحقّق بـ Url.IsLocalUrl قبل التحويل."
+    },
+    {
+      "rule": "DF007",
+      "severity": "high",
+      "cwe": "CWE-1336",
+      "label": "DataView.RowFilter expression",
+      "attrs": [
+        "RowFilter"
+      ],
+      "title": "Tainted data reaches a template or expression evaluator",
+      "title_ar": "بيانات غير موثوقة تصل إلى قالب أو مقيّم تعبيرات",
+      "advice": "لا تبنِ القالب أو التعبير من المدخلات."
+    },
+    {
+      "rule": "DF010",
+      "severity": "high",
+      "cwe": "CWE-918",
+      "label": "HttpClient.BaseAddress",
+      "attrs": [
+        "BaseAddress"
+      ],
+      "title": "Tainted URL reaches an outbound request",
+      "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+      "advice": "قيّد عناوين HttpClient/WebClient بقائمة بيضاء من المضيفين وارفض العناوين الداخلية."
+    }
   ]
 }

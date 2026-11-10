@@ -1,0 +1,11 @@
+// @id vql/kdf-hardcoded-salt
+// @name Key derivation or password hash with a hard-coded salt
+// @name_ar اشتقاق مفتاح أو تجزئة كلمة مرور بملح ثابت
+// @severity medium
+// @cwe CWE-760
+// @advice ولّد ملحًا عشوائيًا لكل كلمة مرور (16 بايت على الأقل) وخزّنه مع الناتج.
+from call c
+where (c.name matches "(^|\.)pbkdf2_hmac$" and c.arg2 matches "^b?['\"]")
+   or (c.name matches "(^|\.)bcrypt\.hashpw$" and c.arg1 matches "^b?['\"]")
+   or (c.name matches "^crypto\.(pbkdf2|pbkdf2Sync|scrypt|scryptSync)$" and c.arg1 matches "^['\"`]")
+select c, "Hard-coded salt passed to " + c.name
