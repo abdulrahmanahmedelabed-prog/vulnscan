@@ -8,6 +8,7 @@ import os
 import pathlib
 import re
 import shutil
+import sys
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -403,8 +404,8 @@ def test_review_payload_paths_lines_sides(tmp_path, fake, capsys):
     assert summary.startswith(github_pr.SUMMARY_MARKER)
     assert "5 new finding(s)" in summary and "src/app.py:90" in summary and "the check fails" in summary
     assert "https://github.com/o/r/blob/abc123/src/app.py#L90" in summary
-    assert pathlib.Path(env["GITHUB_STEP_SUMMARY"]).read_text().count(github_pr.SUMMARY_MARKER) == 1
-    assert "findings=5" in pathlib.Path(env["GITHUB_OUTPUT"]).read_text()
+    assert pathlib.Path(env["GITHUB_STEP_SUMMARY"]).read_text(encoding="utf-8").count(github_pr.SUMMARY_MARKER) == 1
+    assert "findings=5" in pathlib.Path(env["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
     out = capsys.readouterr()
     assert TOKEN not in out.out + out.err
 
@@ -468,7 +469,7 @@ def test_fork_falls_back_to_step_summary(tmp_path, fake, capsys):
     code = _run(tmp_path, env, [_finding(1, 2, sev="critical")], "--fail-on", "high")
     assert code == 1
     assert fake.requests == []                                     # a read-only token is not even tried
-    summary = pathlib.Path(env["GITHUB_STEP_SUMMARY"]).read_text()
+    summary = pathlib.Path(env["GITHUB_STEP_SUMMARY"]).read_text(encoding="utf-8")
     assert "Read-only token" in summary and "DF002" in summary
     out = capsys.readouterr().out
     assert "::error file=src/app.py,line=2,title=DF002 OS command injection::Do not pass input to a shell." in out
@@ -479,7 +480,7 @@ def test_forbidden_write_falls_back(tmp_path, fake):
     fake.fail[("POST", "/repos/o/r/pulls/7/reviews")] = [404]     # e.g. a token without pull-requests write
     env = _env(tmp_path, fake, event_name="pull_request_target")
     assert _run(tmp_path, env, [_finding(1, 2)]) == 0
-    assert "Read-only token" in pathlib.Path(env["GITHUB_STEP_SUMMARY"]).read_text()
+    assert "Read-only token" in pathlib.Path(env["GITHUB_STEP_SUMMARY"]).read_text(encoding="utf-8")
 
 
 def test_retry_on_502_and_secondary_rate_limit(tmp_path, fake):
@@ -539,7 +540,7 @@ def test_rebase_sarif(tmp_path):
     p = tmp_path / "r.sarif"
     p.write_text(json.dumps(sarif))
     assert rebase_sarif(str(p), "svc/api") == 2
-    out = json.loads(p.read_text())["runs"][0]
+    out = json.loads(p.read_text(encoding="utf-8"))["runs"][0]
     assert "originalUriBaseIds" not in out
     assert out["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"] == {"uri": "svc/api/a%20b.py"}
     tf = out["results"][0]["codeFlows"][0]["threadFlows"][0]["locations"][0]["location"]["physicalLocation"]
@@ -557,9 +558,9 @@ def test_end_to_end_scan_to_review(repo, tmp_path, fake):
     _git(repo, "commit", "-q", "-m", "change")
     report = tmp_path / "k.json"
     main([str(repo), *SCAN, "-o", str(report), "--diff-base", base])
-    found = json.loads(report.read_text())["findings"]
+    found = json.loads(report.read_text(encoding="utf-8"))["findings"]
     lines = sorted({f["line"] for f in found})
-    n = len((DATA / "added_vuln.py").read_text().splitlines())
+    n = len((DATA / "added_vuln.py").read_text(encoding="utf-8").splitlines())
     fake.files = [{"filename": "added.py", "status": "added",
                    "patch": f"@@ -0,0 +1,{n} @@\n" + "\n".join("+x" for _ in range(n))}]
     env = {**_env(tmp_path, fake), "GITHUB_WORKSPACE": str(repo)}
@@ -599,7 +600,7 @@ def test_action_yml_is_hardened():
     assert "default: ${{ github.event.pull_request.base.sha }}" in text
     uses = re.findall(r"uses: (\S+)", text)
     assert uses and all(re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", u) for u in uses), uses
-    workflows = "".join(p.read_text() for p in (ROOT / ".github" / "workflows").glob("*.yml"))
+    workflows = "".join(p.read_text(encoding="utf-8") for p in (ROOT / ".github" / "workflows").glob("*.yml"))
     assert all(u in workflows for u in uses)                       # the same pinned SHAs as the repo's workflows
     blocks = _run_blocks(text)
     assert len(blocks) >= 5
@@ -718,7 +719,7 @@ def test_review_422_falls_back_to_summary(tmp_path, fake):
     assert fake.reviews == []
     summary = fake.issue_comments[0]["body"]
     assert "1 new finding(s)" in summary and "💬" not in summary
-    assert "inline-comments=0" in pathlib.Path(env["GITHUB_OUTPUT"]).read_text()
+    assert "inline-comments=0" in pathlib.Path(env["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
 
 
 def test_secondary_rate_limit_honours_retry_after(fake):
@@ -754,7 +755,7 @@ def test_non_json_answer_is_handled_without_leaking_the_token(tmp_path, fake, ca
     assert _run(tmp_path, env, [_finding(1, 2)]) == 0
     out = capsys.readouterr()
     assert "something other than JSON" in out.err and TOKEN not in out.out + out.err
-    assert "DF002" in pathlib.Path(env["GITHUB_STEP_SUMMARY"]).read_text()
+    assert "DF002" in pathlib.Path(env["GITHUB_STEP_SUMMARY"]).read_text(encoding="utf-8")
 
 
 def test_unreachable_api_is_handled(tmp_path, fake, capsys):
@@ -768,7 +769,9 @@ def test_action_validates_diff_base_and_stops_workflow_commands():
     text = (ROOT / "action.yml").read_text(encoding="utf-8")
     check = next(b for b in _run_blocks(text) if "invalid input path" in b)
     assert "invalid input diff-base" in check
-    if shutil.which("bash"):
+    # On Windows "bash" may resolve to the WSL launcher rather than Git Bash; the action's run steps execute on
+    # Linux/macOS runners, so the shell check runs there.
+    if shutil.which("bash") and sys.platform != "win32":
         line = next(ln for ln in check.splitlines() if "diff-base" in ln).strip()
         for value, ok in (("", True), ("origin/main", True), ("0" * 40, True), ("v1^{commit}", True),
                           ("-x", False), ("a..b", False), ("a b", False), ("x@{1}", False), ("$(id)", False)):
