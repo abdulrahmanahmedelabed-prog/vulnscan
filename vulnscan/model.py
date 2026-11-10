@@ -6,6 +6,8 @@ import hashlib
 import re
 from dataclasses import dataclass, field, asdict
 
+from .i18n import to_en
+
 # Ordered from most to least severe. Reports are sorted with this order.
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 SEVERITY_RANK = {s: i for i, s in enumerate(SEVERITIES)}
@@ -16,6 +18,7 @@ SEVERITY_AR = {
     "low": "منخفض",
     "info": "معلوماتي",
 }
+SEVERITY_EN = {s: s.capitalize() for s in SEVERITIES}
 
 
 _COOKIE_RULES = frozenset({"WEB020", "WEB021", "WEB022"})
@@ -60,9 +63,23 @@ class Finding:
         return hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()[:16]
 
     def to_dict(self) -> dict:
+        """JSON form shared by the UI, the JSON report and saved scans. English counterparts of the Arabic
+        engine text are added next to it (advice_en, snippet_en, extra.path[*].text_en,
+        extra.taint_source_en, extra.apex_component_en); the Arabic itself
+        is never altered, so fingerprints stay stable. asdict() deep-copies, so the finding is not mutated."""
         d = asdict(self)
         d["severity_ar"] = SEVERITY_AR[self.severity]
         d["fingerprint"] = self.fingerprint()
+        d["advice_en"] = to_en(self.advice)
+        d["snippet_en"] = to_en(self.snippet)
+        path = d["extra"].get("path")
+        if isinstance(path, list):
+            d["extra"]["path"] = [{**st, "text_en": to_en(st.get("text", ""))} if isinstance(st, dict) else st
+                                  for st in path]
+        for key in ("taint_source", "apex_component"):
+            val = d["extra"].get(key)
+            if isinstance(val, str):
+                d["extra"][f"{key}_en"] = to_en(val)
         return d
 
     def fingerprint(self) -> str:

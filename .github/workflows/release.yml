@@ -8,7 +8,7 @@ on:
       release_tag:
         description: "انشر النسخ في إصدار بهذا الوسم (اتركه فارغًا لبناء دون نشر)"
         type: string
-        default: "v0.7.0"
+        default: "v0.8.0"
 
 # Read-only by default; only the publish job may write the release and sign provenance.
 permissions:

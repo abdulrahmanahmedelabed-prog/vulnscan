@@ -17,9 +17,9 @@ Python. `vulnscan` is the name of the command and the package. It scans source c
 and (passively) websites, and produces a report ordered from **critical to info**, from the command line or
 from a **local web UI** in English and Arabic.
 
-| Dashboard | Findings with remediation |
+| Dashboard | Finding with its data-flow trace |
 |---|---|
-| ![](docs/screenshots/dashboard.png) | ![](docs/screenshots/findings.png) |
+| ![Kashif dashboard](docs/screenshots/dashboard-en-light.png) | ![A SQL injection finding with its source-to-sink trace](docs/screenshots/trace-en-light.png) |
 
 > **Authorization first:** scan only what you own or are authorized in writing to test. Scanning other
 > people's systems without permission may be illegal. Web targets require the `--authorized` flag.
@@ -98,7 +98,12 @@ vulnscan . --fail-on high --exclude "tests/*" # CI gate
 vulnscan . --no-deps --no-external            # fully offline
 vulnscan https://my-site.example --authorized # passive web scan of a site you own
 vulnscan ui                                   # web UI on http://127.0.0.1:8765
+vulnscan . --lang en                          # English-only output (ar, en, both; or set VULNSCAN_LANG)
 ```
+
+Every finding, remediation, data-flow step and scan note is available in English and Arabic: the web UI switches
+language in one click, `--lang` controls the console and the Markdown/HTML reports, and SARIF is English-first
+for GitHub Code Scanning (Arabic kept in the result properties).
 
 The web UI (dashboard, scan, findings, reports, rules, settings) listens on 127.0.0.1 only; data is stored in
 `~/.vulnscan` (or `VULNSCAN_HOME`).
@@ -224,13 +229,13 @@ provenance.
 مرتبًا **من الأعلى خطورة إلى الأقل**: حرج ← عالٍ ← متوسط ← منخفض ← معلوماتي.
 تعمل من سطر الأوامر، أو من **واجهة رسومية محلية** بلوحة تحكم وتقارير وإعدادات.
 
-| لوحة التحكم | النتائج مع طريقة الإصلاح |
+| لوحة التحكم | نتيجة مع مسار تدفق البيانات وطريقة الإصلاح |
 |---|---|
-| ![](docs/screenshots/dashboard.png) | ![](docs/screenshots/findings.png) |
+| ![لوحة تحكم كاشِف](docs/screenshots/dashboard-ar-light.png) | ![نتيجة حقن SQL مع مسارها من المصدر إلى نقطة الخطر](docs/screenshots/trace-ar-light.png) |
 
-| رفع برنامج مضغوط أو ملفات | التقارير والمقارنة (الوضع الداكن) |
+| فحص جديد: مجلد أو ملف مضغوط أو موقع | التقارير والمقارنة (الوضع الداكن) |
 |---|---|
-| ![](docs/screenshots/scan-upload.png) | ![](docs/screenshots/reports-dark.png) |
+| ![شاشة الفحص الجديد](docs/screenshots/scan-ar-light.png) | ![التقارير في الوضع الداكن](docs/screenshots/reports-ar-dark.png) |
 
 > ⚠️ **الصلاحية أولًا:** افحص فقط ما تملكه أو ما لديك تصريح كتابي بفحصه. فحص أنظمة الآخرين دون إذن
 > قد يكون مخالفًا للقانون. فحص عناوين الويب لا يعمل إلا مع العلامة `--authorized`.

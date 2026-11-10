@@ -5,5 +5,5 @@
 // @cwe CWE-89
 // @advice استخدم استعلامات مُعَلَّمة (placeholders) بدل تركيب نص الاستعلام.
 from call c
-where c.func in ("execute", "executemany", "executescript", "raw", "query") and c.arg0 matches "\.format\(|%\s*\(|%\s*[A-Za-z_]|^f['\"]|\+\s*[A-Za-z_]|\$\{"
+where c.func in ("execute", "executemany", "executescript", "raw", "query") and c.name != "String.raw" and c.arg0 matches "\.format\(|%\s*\(|%\s*[A-Za-z_]|^f['\"]|\+\s*[A-Za-z_]|\$\{"
 select c, "SQL built dynamically for " + c.name

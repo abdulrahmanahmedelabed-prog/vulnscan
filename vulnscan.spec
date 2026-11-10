@@ -12,7 +12,7 @@ a = Analysis(
     ["exe_entry.py"],
     pathex=["."],
     datas=datas,
-    hiddenimports=["vulnscan", "vulnscan.server", "vulnscan.scanner", "vulnscan.web",
+    hiddenimports=["vulnscan", "vulnscan.i18n", "vulnscan.server", "vulnscan.scanner", "vulnscan.web",
                    "vulnscan.deps", "vulnscan.external", "vulnscan.report", "vulnscan.store", "vulnscan.rules"],
     hookspath=[],
     runtime_hooks=[],

@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import __version__
 from .deps import audit_dependencies
 from .external import available, run_external
+from .i18n import to_en
 from .model import SEVERITY_RANK, Finding, assign_fingerprints, sort_findings
 from .report import render_html, render_json, render_markdown, summary_counts
 from .rules import RULES
@@ -34,8 +35,34 @@ MAX_UPLOAD = 512 * 1024 * 1024
 
 
 def _dict_to_finding(d: dict) -> Finding:
+    """Rebuild a Finding from its saved to_dict() form. Derived keys (fingerprint, severity_ar and the English
+    counterparts advice_en / snippet_en / extra.path[*].text_en) are recomputed by to_dict, so they are dropped."""
+    extra = dict(d.get("extra") or {})
+    if isinstance(extra.get("path"), list):
+        extra["path"] = [{k: v for k, v in st.items() if k != "text_en"} if isinstance(st, dict) else st
+                         for st in extra["path"]]
     return Finding(d["rule_id"], d["severity"], d["title"], d["title_ar"], d["file"], d["line"], d["snippet"],
-                   d["advice"], d.get("cwe", ""), d.get("source", "vulnscan"), d.get("extra") or {})
+                   d["advice"], d.get("cwe", ""), d.get("source", "vulnscan"), extra)
+
+
+def _upgrade(d: dict) -> dict:
+    """A saved finding dict with the English keys added; every saved key (fingerprint included) is kept."""
+    new = _dict_to_finding(d).to_dict()
+    new.update({k: v for k, v in d.items() if k != "extra"})
+    return new
+
+
+def _with_english(scan: dict) -> dict:
+    """Scans saved before English support lack notes_en / error_en and the per-finding *_en keys: fill them in
+    on read (a copy; the stored file is left as it is)."""
+    scan = dict(scan)
+    if scan.get("notes") is not None and "notes_en" not in scan:
+        scan["notes_en"] = [to_en(n) for n in scan["notes"]]
+    if scan.get("error") and "error_en" not in scan:
+        scan["error_en"] = to_en(scan["error"])
+    if scan.get("findings") and any("advice_en" not in d for d in scan["findings"]):
+        scan["findings"] = [d if "advice_en" in d else _upgrade(d) for d in scan["findings"]]
+    return scan
 
 
 def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None:
@@ -85,9 +112,9 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
         min_sev = settings.get("min_severity", "info")
         findings = [f for f in sort_findings(findings) if SEVERITY_RANK[f.severity] <= SEVERITY_RANK[min_sev]]
         scan.update(status="done", finished_at=time.time(), files_scanned=files, notes=notes,
-                    summary=summary_counts(findings), findings=[f.to_dict() for f in findings])
+                    notes_en=[to_en(n) for n in notes], summary=summary_counts(findings), findings=[f.to_dict() for f in findings])
     except Exception as e:  # noqa: BLE001 - surfaced to the UI
-        scan.update(status="error", finished_at=time.time(), error=str(e))
+        scan.update(status="error", finished_at=time.time(), error=str(e), error_en=to_en(str(e)))
     finally:
         if scan.get("kind") == "upload" and scan.get("tmp_root"):
             shutil.rmtree(scan["tmp_root"], ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
@@ -204,6 +231,9 @@ class Handler(BaseHTTPRequestHandler):
             rules += [{**t, "langs": [".py .js .ts (تدفق بيانات)"]} for t in TAINT_RULES]
             from .vql import catalogue
             rules += [{**q, "langs": ["VQL"]} for q in catalogue()]
+            for r in rules:
+                r["advice_en"] = to_en(r.get("advice") or "")
+                r["langs_en"] = [to_en(x) for x in r.get("langs") or []]
             return self._json(rules)
         if path == "/api/meta":
             return self._json({"version": __version__, "external_tools": available(), "jadx": jadx_available(),
@@ -217,17 +247,20 @@ class Handler(BaseHTTPRequestHandler):
             if not scan:
                 return self._json({"error": "not found"}, 404)
             if len(parts) == 4:
-                return self._json(scan)
+                return self._json(_with_english(scan))
             fmt = parts[4]
             findings = [_dict_to_finding(d) for d in scan["findings"]]
             args = (findings, scan["target"], scan["files_scanned"], scan["notes"])
             name = f"vulnscan-{scan['id']}"
+            # ?lang=ar|en|both picks the report language (default both, as before)
+            lang = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("lang") or ["both"])[0]
+            lang = lang if lang in ("ar", "en", "both") else "both"
             if fmt == "report.md":
-                return self._text(render_markdown(*args), "text/markdown", name + ".md")
+                return self._text(render_markdown(*args, lang=lang), "text/markdown", name + ".md")
             if fmt == "report.json":
                 return self._text(render_json(*args), "application/json", name + ".json")
             if fmt == "report.html":
-                return self._text(render_html(*args), "text/html", name + ".html")
+                return self._text(render_html(*args, lang=lang), "text/html", name + ".html")
         return self._json({"error": "not found"}, 404)
 
     def _stats(self) -> dict:
@@ -325,11 +358,11 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def serve(port: int = 8765, open_browser: bool = True, home: pathlib.Path | None = None) -> None:
+def serve(port: int = 8765, open_browser: bool = True, home: pathlib.Path | None = None, lang: str = "both") -> None:
     Handler.store = Store(home)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    print(f"vulnscan UI: {url}   (Ctrl+C للإيقاف)")
+    print(f"vulnscan UI: {url}   (Ctrl+C to stop)" if lang == "en" else f"vulnscan UI: {url}   (Ctrl+C للإيقاف)")
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:

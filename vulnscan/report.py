@@ -9,6 +9,7 @@ import urllib.parse
 from datetime import datetime, timezone
 
 from . import __version__
+from .i18n import to_en
 from .model import (SARIF_LEVEL, SECURITY_SEVERITY, SEVERITIES, SEVERITY_AR, Finding,
                     ensure_fingerprints, sort_findings)
 
@@ -18,6 +19,68 @@ COLORS = {"critical": "\033[1;97;41m", "high": "\033[1;31m", "medium": "\033[1;3
           "low": "\033[1;36m", "info": "\033[1;37m"}
 RESET = "\033[0m"
 BADGE = {"critical": "🟥", "high": "🟧", "medium": "🟨", "low": "🟦", "info": "⬜"}
+
+
+LANGS = ("ar", "en", "both")
+
+# Report labels: (Arabic, English). "both" keeps the historical Arabic labels (with English titles alongside).
+_LABELS = {
+    "scanned": ("{files} ملفًا مفحوصًا، {n} نتيجة", "{files} files scanned, {n} findings"),
+    "summary": ("الملخص (من الأعلى خطورة إلى الأقل):", "Summary (highest severity first):"),
+    "none": ("✔ لم تُكتشف أي ثغرة بالقواعد المتاحة.", "✔ No vulnerabilities found by the available rules."),
+    "md_title": ("تقرير الفحص الأمني", "Security scan report"),
+    "date": ("التاريخ", "Date"),
+    "files": ("الملفات المفحوصة", "Files scanned"),
+    "total": ("إجمالي النتائج", "Total findings"),
+    "note": ("ملاحظة", "Note"),
+    "exec": ("الملخص التنفيذي", "Executive summary"),
+    "sev_col": ("الخطورة", "Severity"),
+    "count_col": ("العدد", "Count"),
+    "top": ("أهم ما يجب إصلاحه أولًا", "Fix these first"),
+    "by_sev": ("النتائج مرتبة حسب الخطورة", "Findings by severity"),
+    "rule": ("المعرّف", "Rule"),
+    "source": ("المصدر", "Source"),
+    "location": ("الموضع", "Location"),
+    "snippet": ("المقتطف", "Snippet"),
+    "fix": ("الإصلاح", "Remediation"),
+    "flow": ("مسار التدفق", "Data flow"),
+    "ref": ("المرجع", "Reference"),
+    "findings": ("النتائج", "Findings"),
+    "html_by_sev": ("النتائج من الأعلى خطورة إلى الأقل", "Findings, highest severity first"),
+    "col_rule": ("القاعدة", "Rule"),
+    "col_vuln": ("الثغرة", "Vulnerability"),
+    "no_results": ("✔ لا نتائج", "✔ No findings"),
+}
+
+
+class _Lang:
+    """Picks the Arabic or English side of report text for one of LANGS."""
+
+    def __init__(self, lang: str):
+        self.lang = lang if lang in LANGS else "both"
+        self.en = self.lang == "en"
+
+    def __call__(self, key: str, **kw) -> str:
+        text = _LABELS[key][1 if self.en else 0]
+        return text.format(**kw) if kw else text
+
+    def sev(self, s: str) -> str:
+        """Severity name for a heading/badge: Arabic, or English in "en"."""
+        return s.capitalize() if self.en else SEVERITY_AR[s]
+
+    def sev_pair(self, s: str) -> str:
+        return s.upper() if self.en else f"{SEVERITY_AR[s]} / {s.upper()}"
+
+    def title(self, f: Finding) -> str:
+        if self.en:
+            return f.title or to_en(f.title_ar)
+        if self.lang == "ar":
+            return f.title_ar or f.title
+        return f"{f.title_ar} — {f.title}"
+
+    def text(self, t: str) -> str:
+        """Engine text (advice, notes, trail steps, snippets that are notes): English in "en", else as emitted."""
+        return to_en(t) if self.en else t
 
 
 def summary_counts(findings: list[Finding]) -> dict[str, int]:
@@ -32,79 +95,95 @@ def _meta(target: str, files: int, notes: list[str]) -> dict:
             "notes": notes}
 
 
-def render_console(findings: list[Finding], target: str, files: int, notes: list[str], color: bool = True) -> str:
+def _steps(f: Finding) -> list[dict]:
+    return [st for st in (f.extra.get("path") or []) if isinstance(st, dict)]
+
+
+def render_console(findings: list[Finding], target: str, files: int, notes: list[str], color: bool = True,
+                   lang: str = "both") -> str:
+    L = _Lang(lang)
     findings = sort_findings(findings)
     counts = summary_counts(findings)
     c = (lambda s, t: f"{COLORS[s]}{t}{RESET}") if color else (lambda s, t: t)
-    lines = [f"vulnscan — {target}  ({files} ملفًا مفحوصًا، {len(findings)} نتيجة)", ""]
-    lines.append("الملخص (من الأعلى خطورة إلى الأقل):")
+    lines = [f"vulnscan — {target}  ({L('scanned', files=files, n=len(findings))})", ""]
+    lines.append(L("summary"))
     for s in SEVERITIES:
-        lines.append(f"  {c(s, SEVERITY_AR[s].rjust(9))}  {s.upper():<8} {counts[s]}")
+        if L.en:
+            lines.append(f"  {c(s, s.upper().ljust(9))} {counts[s]}")
+        else:
+            lines.append(f"  {c(s, SEVERITY_AR[s].rjust(9))}  {s.upper():<8} {counts[s]}")
     for n in notes:
-        lines.append(f"  ℹ {n}")
+        lines.append(f"  ℹ {L.text(n)}")
     lines.append("")
     if not findings:
-        lines.append("✔ لم تُكتشف أي ثغرة بالقواعد المتاحة.")
+        lines.append(L("none"))
         return "\n".join(lines)
     current = None
     for f in findings:
         if f.severity != current:
             current = f.severity
-            lines.append(c(current, f"━━ {SEVERITY_AR[current]} / {current.upper()} ({counts[current]}) ━━"))
+            lines.append(c(current, f"━━ {L.sev_pair(current)} ({counts[current]}) ━━"))
         loc = f"{f.file}:{f.line}" if f.line else f.file
         cwe = f" [{f.cwe}]" if f.cwe else ""
-        lines.append(f"  {BADGE[f.severity]} {f.rule_id}{cwe} {f.title_ar} — {f.title}")
+        lines.append(f"  {BADGE[f.severity]} {f.rule_id}{cwe} {L.title(f)}")
         lines.append(f"     📄 {loc}")
         if f.snippet:
-            lines.append(f"     ▸ {f.snippet[:140]}")
-        lines.append(f"     💡 {f.advice}")
-        for i, st in enumerate(f.extra.get("path") or [], 1):
-            lines.append(f"       {i}. {st['file']}:{st['line']}  {st['text']}")
+            lines.append(f"     ▸ {L.text(f.snippet)[:140]}")
+        lines.append(f"     💡 {L.text(f.advice)}")
+        for i, st in enumerate(_steps(f), 1):
+            lines.append(f"       {i}. {st.get('file', '')}:{st.get('line', '')}  {L.text(st.get('text', ''))}")
     return "\n".join(lines)
 
 
-def render_markdown(findings: list[Finding], target: str, files: int, notes: list[str]) -> str:
+def render_markdown(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both") -> str:
+    L = _Lang(lang)
     findings = sort_findings(findings)
     counts = summary_counts(findings)
     meta = _meta(target, files, notes)
-    md = [f"# تقرير الفحص الأمني — `{target}`", "",
-          f"- التاريخ: {meta['generated_at']}", f"- الملفات المفحوصة: {files}", f"- إجمالي النتائج: {len(findings)}", ""]
+    md = [f"# {L('md_title')} — `{target}`", "",
+          f"- {L('date')}: {meta['generated_at']}", f"- {L('files')}: {files}", f"- {L('total')}: {len(findings)}", ""]
     for n in notes:
-        md.append(f"- ملاحظة: {n}")
-    md += ["", "## الملخص التنفيذي", "", "| الخطورة | Severity | العدد |", "|---|---|---|"]
-    for s in SEVERITIES:
-        md.append(f"| {BADGE[s]} {SEVERITY_AR[s]} | {s} | {counts[s]} |")
+        md.append(f"- {L('note')}: {L.text(n)}")
+    if L.en:
+        md += ["", f"## {L('exec')}", "", "| Severity | Count |", "|---|---|"]
+        for s in SEVERITIES:
+            md.append(f"| {BADGE[s]} {s} | {counts[s]} |")
+    else:
+        md += ["", f"## {L('exec')}", "", "| الخطورة | Severity | العدد |", "|---|---|---|"]
+        for s in SEVERITIES:
+            md.append(f"| {BADGE[s]} {SEVERITY_AR[s]} | {s} | {counts[s]} |")
     md.append("")
     if not findings:
-        md.append("✔ لم تُكتشف أي ثغرة بالقواعد المتاحة.")
+        md.append(L("none"))
         return "\n".join(md) + "\n"
     top = [f for f in findings if f.severity in ("critical", "high")][:10]
     if top:
-        md += ["### أهم ما يجب إصلاحه أولًا", ""]
+        md += [f"### {L('top')}", ""]
         for i, f in enumerate(top, 1):
             loc = f"{f.file}:{f.line}" if f.line else f.file
-            md.append(f"{i}. **{f.title_ar}** (`{f.rule_id}`) — `{loc}`")
+            name = f.title if L.en else f.title_ar
+            md.append(f"{i}. **{name}** (`{f.rule_id}`) — `{loc}`")
         md.append("")
-    md += ["## النتائج مرتبة حسب الخطورة", ""]
+    md += [f"## {L('by_sev')}", ""]
     current = None
     for f in findings:
         if f.severity != current:
             current = f.severity
-            md += [f"### {BADGE[current]} {SEVERITY_AR[current]} / {current.upper()} ({counts[current]})", ""]
+            md += [f"### {BADGE[current]} {L.sev_pair(current)} ({counts[current]})", ""]
         loc = f"{f.file}:{f.line}" if f.line else f.file
         cwe = f" · {f.cwe}" if f.cwe else ""
-        md.append(f"#### {f.title_ar} — {f.title}")
-        md.append(f"- المعرّف: `{f.rule_id}`{cwe} · المصدر: {f.source}")
-        md.append(f"- الموضع: `{loc}`")
+        md.append(f"#### {L.title(f)}")
+        md.append(f"- {L('rule')}: `{f.rule_id}`{cwe} · {L('source')}: {f.source}")
+        md.append(f"- {L('location')}: `{loc}`")
         if f.snippet:
-            md.append(f"- المقتطف: `{f.snippet.replace('`', 'ˋ')[:160]}`")
-        md.append(f"- الإصلاح: {f.advice}")
-        if f.extra.get("path"):
-            md.append("- مسار التدفق:")
-            for i, st in enumerate(f.extra["path"], 1):
-                md.append(f"  {i}. `{st['file']}:{st['line']}` — {st['text']}")
+            md.append(f"- {L('snippet')}: `{L.text(f.snippet).replace('`', 'ˋ')[:160]}`")
+        md.append(f"- {L('fix')}: {L.text(f.advice)}")
+        if _steps(f):
+            md.append(f"- {L('flow')}:")
+            for i, st in enumerate(_steps(f), 1):
+                md.append(f"  {i}. `{st.get('file', '')}:{st.get('line', '')}` — {L.text(st.get('text', ''))}")
         if f.extra.get("url"):
-            md.append(f"- المرجع: {f.extra['url']}")
+            md.append(f"- {L('ref')}: {f.extra['url']}")
         md.append("")
     return "\n".join(md) + "\n"
 
@@ -112,27 +191,41 @@ def render_markdown(findings: list[Finding], target: str, files: int, notes: lis
 def render_json(findings: list[Finding], target: str, files: int, notes: list[str]) -> str:
     findings = sort_findings(findings)
     ensure_fingerprints(findings)
-    return json.dumps({**_meta(target, files, notes), "summary": summary_counts(findings),
+    return json.dumps({**_meta(target, files, notes), "notes_en": [to_en(n) for n in notes],
+                       "summary": summary_counts(findings),
                        "findings": [f.to_dict() for f in findings]}, ensure_ascii=False, indent=2)
 
 
-def render_html(findings: list[Finding], target: str, files: int, notes: list[str]) -> str:
+def render_html(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both") -> str:
+    L = _Lang(lang)
     findings = sort_findings(findings)
     counts = summary_counts(findings)
     e = html.escape
     rows = []
     for f in findings:
         loc = f"{f.file}:{f.line}" if f.line else f.file
-        rows.append(f"<tr class='{f.severity}'><td><span class='b {f.severity}'>{e(SEVERITY_AR[f.severity])}</span></td>"
+        if L.en:
+            title_html = f"<b>{e(L.title(f))}</b>"
+        elif L.lang == "ar":
+            title_html = f"<b>{e(f.title_ar or f.title)}</b>"
+        else:
+            title_html = f"<b>{e(f.title_ar)}</b><br><small>{e(f.title)}</small>"
+        steps = _steps(f)
+        rows.append(f"<tr class='{f.severity}'><td><span class='b {f.severity}'>{e(L.sev(f.severity))}</span></td>"
                     f"<td><code>{e(f.rule_id)}</code><br><small>{e(f.cwe)}</small></td>"
-                    f"<td><b>{e(f.title_ar)}</b><br><small>{e(f.title)}</small></td>"
-                    f"<td><code>{e(loc)}</code><br><small>{e(f.snippet[:140])}</small>"
-                    + ("<ol class='flow'>" + "".join(f"<li><code>{e(st['file'])}:{st['line']}</code> {e(st['text'])}</li>" for st in f.extra.get('path') or []) + "</ol>" if f.extra.get("path") else "")
-                    + f"</td><td>{e(f.advice)}</td></tr>")
-    summary = "".join(f"<div class='tile {s}'><div class='n'>{counts[s]}</div><div>{e(SEVERITY_AR[s])}<br><small>{s}</small></div></div>"
+                    f"<td>{title_html}</td>"
+                    f"<td><code>{e(loc)}</code><br><small>{e(L.text(f.snippet)[:140])}</small>"
+                    + ("<ol class='flow'>" + "".join(f"<li><code>{e(str(st.get('file', '')))}:{st.get('line', '')}</code> "
+                                                     f"{e(L.text(st.get('text', '')))}</li>" for st in steps) + "</ol>"
+                       if steps else "")
+                    + f"</td><td>{e(L.text(f.advice))}</td></tr>")
+    summary = "".join(f"<div class='tile {s}'><div class='n'>{counts[s]}</div><div>{e(L.sev(s))}"
+                      + ("" if L.en else f"<br><small>{s}</small>") + "</div></div>"
                       for s in SEVERITIES)
-    notes_html = "".join(f"<li>{e(n)}</li>" for n in notes)
-    return f"""<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+    notes_html = "".join(f"<li>{e(L.text(n))}</li>" for n in notes)
+    empty = f"<tr><td colspan=5>{e(L('no_results'))}</td></tr>"
+    html_lang, html_dir, align = ("en", "ltr", "left") if L.en else ("ar", "rtl", "right")
+    return f"""<!doctype html><html lang="{html_lang}" dir="{html_dir}"><head><meta charset="utf-8">
 <title>vulnscan — {e(target)}</title>
 <style>
 body{{font-family:system-ui,Segoe UI,Tahoma,sans-serif;margin:2rem;background:#fafafa;color:#222}}
@@ -141,18 +234,18 @@ body{{font-family:system-ui,Segoe UI,Tahoma,sans-serif;margin:2rem;background:#f
 .tile .n{{font-size:2rem;font-weight:700}}
 .critical{{background:#7f1d1d}}.high{{background:#c2410c}}.medium{{background:#a16207}}.low{{background:#0e7490}}.info{{background:#52525b}}
 table{{border-collapse:collapse;width:100%;background:#fff}}
-th,td{{border:1px solid #ddd;padding:.5rem;vertical-align:top;text-align:right}}
+th,td{{border:1px solid #ddd;padding:.5rem;vertical-align:top;text-align:{align}}}
 tr.critical td:first-child,tr.high td:first-child{{font-weight:700}}
 .b{{padding:.15rem .5rem;border-radius:.25rem;color:#fff;white-space:nowrap}}
 code{{direction:ltr;unicode-bidi:embed;font-size:.85em}}\n.flow{{margin:.4rem 0 0;padding-inline-start:1.2rem;font-size:.8em;color:#555}}
 </style></head><body>
-<h1>تقرير الفحص الأمني — <code>{e(target)}</code></h1>
-<p>الملفات المفحوصة: {files} · النتائج: {len(findings)} · {e(_meta(target, files, notes)['generated_at'])}</p>
+<h1>{e(L('md_title'))} — <code>{e(target)}</code></h1>
+<p>{e(L('files'))}: {files} · {e(L('findings'))}: {len(findings)} · {e(_meta(target, files, notes)['generated_at'])}</p>
 <ul>{notes_html}</ul>
 <div class="tiles">{summary}</div>
-<h2>النتائج من الأعلى خطورة إلى الأقل</h2>
-<table><thead><tr><th>الخطورة</th><th>القاعدة</th><th>الثغرة</th><th>الموضع</th><th>الإصلاح</th></tr></thead>
-<tbody>{''.join(rows) or '<tr><td colspan=5>✔ لا نتائج</td></tr>'}</tbody></table>
+<h2>{e(L('html_by_sev'))}</h2>
+<table><thead><tr><th>{e(L('sev_col'))}</th><th>{e(L('col_rule'))}</th><th>{e(L('col_vuln'))}</th><th>{e(L('location'))}</th><th>{e(L('fix'))}</th></tr></thead>
+<tbody>{''.join(rows) or empty}</tbody></table>
 </body></html>"""
 
 
@@ -199,10 +292,26 @@ def _base_ids(target: str, findings: list[Finding]) -> dict:
     return ids
 
 
-def render_sarif(findings: list[Finding], target: str, files: int, notes: list[str]) -> str:
+def _cwe_link(cwe: str) -> str:
+    num = cwe.upper().removeprefix("CWE-")
+    return f"[{cwe}](https://cwe.mitre.org/data/definitions/{num}.html)" if num.isdigit() else cwe
+
+
+def _help_markdown(title: str, advice_en: str, cwe: str) -> str:
+    md = [f"**{title}**", "", f"**Remediation:** {advice_en}" if advice_en else ""]
+    if cwe:
+        md += ["", f"Weakness: {_cwe_link(cwe)}"]
+    return "\n".join(md).strip() + "\n"
+
+
+def render_sarif(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both") -> str:
     """SARIF 2.1.0 — the OASIS standard consumed by GitHub Code Scanning, VS Code's SARIF viewer,
     Azure DevOps and others. Rules carry CWE tags and a GitHub security-severity; each result carries
-    a stable partialFingerprint so the platform can track an issue across commits."""
+    a stable partialFingerprint so the platform can track an issue across commits.
+
+    Every message is English (what code-scanning platforms display). The Arabic title and advice are kept in
+    the rule and result properties (title_ar, advice_ar) unless lang is "en", which emits English only."""
+    en_only = lang == "en"
     findings = sort_findings(findings)
     ensure_fingerprints(findings)
     web_base = urllib.parse.urlsplit(target) if target.startswith(("http://", "https://")) else None
@@ -215,11 +324,16 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
             if f.cwe:
                 tags.append(f.cwe.lower().replace("cwe-", "external/cwe/cwe-"))
             props["tags"] = tags
+            title_en = f.title or to_en(f.title_ar) or f.rule_id
+            advice_en = to_en(f.advice or "")
+            if not en_only:
+                props["title_ar"] = f.title_ar
+                props["advice_ar"] = f.advice or ""
             rule = {"id": f.rule_id, "name": f.rule_id,
-                    "shortDescription": {"text": f.title or f.rule_id},
-                    "fullDescription": {"text": f.title_ar or f.title or f.rule_id},
+                    "shortDescription": {"text": title_en},
+                    "fullDescription": {"text": title_en},
                     "helpUri": f.extra.get("url") or f"{REPO_URL}#{f.rule_id}",
-                    "help": {"text": f.advice or ""},
+                    "help": {"text": advice_en, "markdown": _help_markdown(title_en, advice_en, f.cwe)},
                     "defaultConfiguration": {"level": SARIF_LEVEL.get(f.severity, "warning")},
                     "properties": props}
             if f.cwe:
@@ -238,16 +352,18 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
         result = {
             "ruleId": f.rule_id,
             "level": SARIF_LEVEL.get(f.severity, "warning"),
-            "message": {"text": f"{f.title}: {f.snippet}".strip(": ") or f.rule_id},
+            "message": {"text": f"{f.title or to_en(f.title_ar)}: {to_en(f.snippet or '')}".strip(": ") or f.rule_id},
             "locations": [{"physicalLocation": phys}],
             "partialFingerprints": {"vulnscan/v1": f.fingerprint()},
-            "properties": {"severity": f.severity, "title_ar": f.title_ar, "advice": f.advice},
+            "properties": ({"severity": f.severity, "advice": to_en(f.advice or "")} if en_only else
+                           {"severity": f.severity, "title_ar": f.title_ar, "advice": to_en(f.advice or ""),
+                            "advice_ar": f.advice or ""}),
         }
         path = f.extra.get("path")
         if path:   # a data-flow finding: emit the source→sink trail as a SARIF codeFlow
             locs = [{"location": {"physicalLocation": _file_location(
                 str(st.get("file") or member or f.file), int(st.get("line", 1) or 1), base_id, target),
-                "message": {"text": str(st.get("text", ""))}}} for st in path]
+                "message": {"text": to_en(str(st.get("text", "")))}}} for st in path if isinstance(st, dict)]
             result["codeFlows"] = [{"threadFlows": [{"locations": locs}]}]
         results.append(result)
     sarif = {
@@ -256,14 +372,15 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
         "runs": [{
             "tool": {"driver": {
                 "name": "vulnscan",
-                "fullName": "vulnscan (كاشِف) security scanner",
+                "fullName": "vulnscan (Kashif) security scanner" if en_only else "vulnscan (كاشِف) security scanner",
                 "version": __version__,
                 "informationUri": REPO_URL,
                 "rules": list(rules.values()),
             }},
             "results": results,
             **({} if web_base else {"originalUriBaseIds": _base_ids(target, findings)}),
-            "properties": {"target": target, "filesScanned": files, "notes": notes},
+            "properties": ({"target": target, "filesScanned": files, "notes": [to_en(n) for n in notes]} if en_only else
+                           {"target": target, "filesScanned": files, "notes": notes, "notes_en": [to_en(n) for n in notes]}),
         }],
     }
     return json.dumps(sarif, ensure_ascii=False, indent=2)
