@@ -174,7 +174,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v0.9.0`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v0.9.1`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `vulnscan . --diff-base origin/main` reports only what the branch introduces
@@ -273,6 +273,10 @@ Please report vulnerabilities in Kashif privately via GitHub's
 see [SECURITY.md](SECURITY.md). All GitHub Actions in this repository are pinned by commit SHA, an OpenSSF
 Scorecard workflow runs on the repository, and every release ships checksums, an SBOM and signed SLSA
 provenance.
+
+## About
+
+Kashif is developed by the Programming Department at the Islamic University of Gaza. Contact: [sdep@iugaza.edu.ps](mailto:sdep@iugaza.edu.ps)
 
 ## License
 
@@ -913,6 +917,10 @@ python -m pytest -q
   (reflection) وأسماء الدوال النصية، والقيم التي تمرّ عبر ملفات أو قواعد بيانات خارج الكود المفحوص.
 - بدون jadx تُفحص محتويات APK/JAR النصية فقط؛ ومع jadx يُفحص الكود المفكوك وهو كود مُعاد توليده قد يختلف عن المصدر الأصلي.
 - فحص الويب سلبي بالكامل (طلب واحد) ولا يُجري أي اختبار نشط.
+
+## حول كاشِف
+
+كاشِف من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة. للتواصل: [sdep@iugaza.edu.ps](mailto:sdep@iugaza.edu.ps)
 
 ## الرخصة
 

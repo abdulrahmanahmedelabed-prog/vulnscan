@@ -1,6 +1,7 @@
 # PyInstaller spec — one-file executable that bundles the web UI assets.
 # Build:  pyinstaller --clean --noconfirm vulnscan.spec
 import glob
+import sys
 
 # Bundle the web UI assets (robust whether or not the package is installed).
 datas = [(f, "vulnscan/ui") for f in glob.glob("vulnscan/ui/*")]
@@ -35,5 +36,6 @@ exe = EXE(
     upx=True,
     console=True,            # keep a console window: the UI prints its URL and Ctrl+C stops it
     disable_windowed_traceback=False,
-    icon=None,
+    # Windows: the Kashif icon on the .exe (Explorer, taskbar); ignored on other systems
+    icon="packaging/windows/kashif.ico" if sys.platform == "win32" else None,
 )

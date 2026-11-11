@@ -505,3 +505,13 @@ details summary{cursor:pointer;color:var(--accent-text);font-size:13px}
   .upd-pill{margin:0;flex:none}
   .upd-versions{grid-template-columns:minmax(0,1fr)}
 }
+
+/* settings: about */
+.about{margin-top:var(--s5)}
+.about-head{display:flex;align-items:center;gap:var(--s4)}
+.about-head img{flex:none}
+.about-head p{margin-top:var(--s1)}
+.about-list{display:grid;gap:var(--s2);margin-top:var(--s4)}
+.about-list div{display:flex;gap:var(--s3);align-items:baseline}
+.about-list dt{min-width:90px;color:var(--muted)}
+.about-list a{display:inline-flex;align-items:center;gap:6px}

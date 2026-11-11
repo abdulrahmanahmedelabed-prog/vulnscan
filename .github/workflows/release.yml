@@ -8,7 +8,8 @@ on:
       release_tag:
         description: "انشر النسخ في إصدار بهذا الوسم (اتركه فارغًا لبناء دون نشر)"
         type: string
-        default: "v0.9.0"
+        # empty by default: a manual run only builds and tests; it publishes only when a tag is typed here
+        default: ""
 
 # Read-only by default; only the publish job may write the release and sign provenance.
 permissions:
@@ -86,6 +87,39 @@ jobs:
             arm64) file dist/vulnscan | grep -q arm64 ;;
             x64)   file dist/vulnscan | grep -q x86_64 ;;
           esac
+      - name: Build the Windows setup wizard (kashif-setup.exe)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y; if ($LASTEXITCODE -ne 0) { exit 1 } }
+          $ver = if ($env:TAG -match '^v(\d+\.\d+\.\d+)$') { $Matches[1] } else { "0.0.0" }
+          & $iscc "/DAppVersion=$ver" "/DSourceExe=$PWD\dist\vulnscan.exe" "/O$PWD" packaging\windows\kashif.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Smoke test — setup wizard (silent install to a chosen folder, run, uninstall)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "Kashif Test"
+          $p = Start-Process -Wait -PassThru .\kashif-setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/CURRENTUSER","/DIR=`"$dir`"","/TASKS=addtopath"
+          if ($p.ExitCode -ne 0) { throw "setup exited with $($p.ExitCode)" }
+          & "$dir\kashif.exe" --version; if ($LASTEXITCODE -ne 0) { exit 1 }
+          cmd /c "`"$dir\vulnscan.cmd`" --version"; if ($LASTEXITCODE -ne 0) { exit 1 }
+          $path = [Environment]::GetEnvironmentVariable("Path", "User")
+          if (-not (($path -split ';') -contains $dir)) { throw "the install folder was not added to PATH" }
+          $p = Start-Process -Wait -PassThru "$dir\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART"
+          if ($p.ExitCode -ne 0) { throw "uninstall exited with $($p.ExitCode)" }
+          Start-Sleep -Seconds 3
+          if (Test-Path "$dir\kashif.exe") { throw "uninstall left kashif.exe behind" }
+          $path = [Environment]::GetEnvironmentVariable("Path", "User")
+          if (($path -split ';') -contains $dir) { throw "uninstall left the folder on PATH" }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: runner.os == 'Windows'
+        with:
+          name: kashif-setup.exe
+          path: kashif-setup.exe
       - name: Name the binary per platform
         shell: bash
         run: |
@@ -120,7 +154,7 @@ jobs:
         run: |
           cd out
           chmod +x vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64
-          sha256sum vulnscan-windows.exe vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64 > SHA256SUMS.txt
+          sha256sum kashif-setup.exe vulnscan-windows.exe vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64 > SHA256SUMS.txt
           cat SHA256SUMS.txt
       - name: SBOM (CycloneDX) of the source and its bundled components
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
@@ -134,6 +168,7 @@ jobs:
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: |
+            out/kashif-setup.exe
             out/vulnscan-windows.exe
             out/vulnscan-linux
             out/vulnscan-macos-arm64
@@ -143,6 +178,7 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: ${{ env.TAG }}
           files: |
+            out/kashif-setup.exe
             out/vulnscan-windows.exe
             out/vulnscan-linux
             out/vulnscan-macos-arm64
@@ -156,7 +192,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          keep=" vulnscan-windows.exe vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64 SHA256SUMS.txt vulnscan-sbom.cdx.json "
+          keep=" kashif-setup.exe vulnscan-windows.exe vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64 SHA256SUMS.txt vulnscan-sbom.cdx.json "
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | while read -r name; do
             case "$keep" in
               *" $name "*) ;;

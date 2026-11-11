@@ -38,6 +38,7 @@ const I18N = {
     'set.keep': 'عدد الفحوصات المحفوظة', 'set.webTimeout': 'مهلة طلب الويب بالثواني (يُعاد الطلب الأول مرة بمهلة مضاعفة)', 'set.webDelay': 'تأخير بين طلبات الزحف بالثواني (ألطف على الخادم وجدار الحماية)', 'set.save': 'حفظ', 'set.saved': 'تم الحفظ', 'set.home': 'مجلد البيانات', 'set.none': 'لا توجد أدوات مثبّتة',
     'set.secScope': 'النطاق والحدود', 'set.secScopeHint': 'ما يُعرض من النتائج ومتى يفشل التكامل المستمر.', 'set.secAnalysis': 'التحليل والتكاملات', 'set.secAnalysisHint': 'مصادر إضافية للنتائج ودرجة الشمول.',
     'set.secBinary': 'الملفات الثنائية (jadx)', 'set.secWeb': 'فحص الويب', 'set.secWebHint': 'فحص سلبي ولطيف للمواقع المصرّح بها فقط.', 'set.secStorage': 'التخزين',
+    'about.title': 'حول كاشِف', 'about.hint': 'فاحص أمان مفتوح المصدر للكود والتطبيقات.', 'about.name': 'كاشِف', 'about.by': 'من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة.', 'about.contact': 'للتواصل', 'about.license': 'الترخيص',
     'upd.title': 'التحديثات', 'upd.hint': 'يتحقق كاشِف من إصدارات GitHub الرسمية. لا يُرسَل أي شيء عن الكود الذي تفحصه.', 'upd.check': 'التحقق من التحديثات', 'upd.apply': 'حدّث الآن', 'upd.restart': 'أعد التشغيل الآن',
     'upd.current': 'الإصدار الحالي', 'upd.latest': 'أحدث إصدار', 'upd.kind': 'نوع التثبيت', 'upd.notes': 'ملاحظات الإصدار', 'upd.onGithub': 'عرض الإصدار على GitHub',
     'upd.auto': 'التحقق من التحديثات تلقائيًا عند تشغيل الواجهة (مرة كل 6 ساعات على الأكثر)',
@@ -97,6 +98,7 @@ const I18N = {
     'set.keep': 'Scans to keep', 'set.webTimeout': 'Web request timeout in seconds (the first request is retried once with double the timeout)', 'set.webDelay': 'Delay between crawl requests in seconds (gentler on the server and its firewall)', 'set.save': 'Save changes', 'set.saved': 'Saved', 'set.home': 'Data folder', 'set.none': 'none installed',
     'set.secScope': 'Scope and thresholds', 'set.secScopeHint': 'Which findings are shown and when CI fails.', 'set.secAnalysis': 'Analysis and integrations', 'set.secAnalysisHint': 'Extra result sources and how broad the analysis is.',
     'set.secBinary': 'Binaries (jadx)', 'set.secWeb': 'Web scanning', 'set.secWebHint': 'Passive, rate-limited checks of sites you are authorized to test.', 'set.secStorage': 'Storage',
+    'about.title': 'About Kashif', 'about.hint': 'Open-source security scanner for code and applications.', 'about.name': 'Kashif', 'about.by': 'Developed by the Programming Department at the Islamic University of Gaza.', 'about.contact': 'Contact', 'about.license': 'License',
     'upd.title': 'Updates', 'upd.hint': 'Kashif checks the official GitHub releases. Nothing about the code you scan is sent.', 'upd.check': 'Check for updates', 'upd.apply': 'Update now', 'upd.restart': 'Restart now',
     'upd.current': 'Current version', 'upd.latest': 'Latest version', 'upd.kind': 'Installed as', 'upd.notes': 'Release notes', 'upd.onGithub': 'View the release on GitHub',
     'upd.auto': 'Check for updates automatically when the UI starts (at most every 6 hours)',
@@ -630,6 +632,7 @@ async function loadSettings(arg) {
   $('#ext-tools').textContent = `(${meta.external_tools.length ? meta.external_tools.join(', ') : t('set.none')})`;
   setHTML($('#settings-home'), `${esc(t('set.home'))}<span class="home-path" dir="ltr" title="${esc(meta.home)}">${esc(meta.home)}</span>`);
   $('#version').textContent = 'v' + meta.version;
+  $('#about-version').textContent = 'v' + meta.version;
   f.check_updates.checked = s.check_updates !== false;
   updAuto = f.check_updates.checked;
   renderUpdate();

@@ -50,6 +50,7 @@
   "@type": "SoftwareApplication",
   "name": "Kashif",
   "alternateName": ["vulnscan", "كاشِف"],
+  "author": {"@type": "Organization", "name": "Programming Department, Islamic University of Gaza", "email": "sdep@iugaza.edu.ps", "parentOrganization": {"@type": "CollegeOrUniversity", "name": "Islamic University of Gaza", "url": "https://www.iugaza.edu.ps"}},
   "description": "Free, open-source static application security testing (SAST) tool with source-to-sink dataflow analysis in 12 languages, Oracle APEX, Android APK/JAR, secrets detection and passive web checks. Zero dependencies; runs locally; SARIF 2.1.0 output.",
   "applicationCategory": "SecurityApplication",
   "applicationSubCategory": "Static application security testing",
@@ -422,6 +423,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
 .foot ul a{color:var(--muted);text-decoration:none}
 .foot ul a:hover{color:var(--text);text-decoration:underline}
 .foot p{margin:12px 0 0;color:var(--muted);max-width:340px}
+.foot .foot-by{color:var(--text)}.foot-by a{color:inherit;text-decoration:underline;text-underline-offset:3px}
 .foot-bottom{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;color:var(--dim)}
 .foot-bottom a{color:var(--muted)}
 
@@ -936,6 +938,7 @@ vulnscan ./project -f sarif -o out.sarif  <span class="c"># CLI</span></div></di
       <div>
         <a class="brand" href="#main"><img src="logo.svg" alt="" width="26" height="26"><span data-i18n="brand">Kashif</span><small>vulnscan</small></a>
         <p data-i18n="foot.tag">Open-source static application security testing with source-to-sink dataflow analysis. Built in the open.</p>
+        <p class="foot-by"><span data-i18n="foot.by">Developed by the Programming Department at the Islamic University of Gaza.</span> <span data-i18n="foot.contact">Contact:</span> <a href="mailto:sdep@iugaza.edu.ps" dir="ltr">sdep@iugaza.edu.ps</a></p>
       </div>
       <nav aria-labelledby="fh1"><h2 id="fh1" data-i18n="foot.product">Product</h2><ul>
         <li><a href="#features" data-i18n="nav.features">Features</a></li>
@@ -1143,6 +1146,7 @@ en: {
   "q7":"How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?","a7":"Those tools have far more rules and library models, IDE plugins and years of real-world tuning. Kashif's strengths are running fully locally with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard.",
   "q8":"How do I report a security issue in Kashif?","a8":"Use GitHub private vulnerability reporting, as described in SECURITY.md. Please do not open a public issue.",
   "final.h2":"Start scanning in a minute.","final.p":"Download one file, point it at a project, and read a report ordered from critical to info, with the data-flow path behind every dataflow finding.",
+  "foot.by":"Developed by the Programming Department at the Islamic University of Gaza.","foot.contact":"Contact:",
   "foot.tag":"Open-source static application security testing with source-to-sink dataflow analysis. Built in the open.",
   "foot.product":"Product","foot.res":"Resources","foot.trust":"Trust","foot.docs":"Documentation","foot.changelog":"Changelog",
   "foot.sec":"Security policy","foot.report":"Report a vulnerability","foot.license":"MIT License",
@@ -1267,6 +1271,7 @@ ar: {
   "q7":"كيف يقارَن بـ Semgrep وSonarQube وSnyk Code وCodeQL؟","a7":"لدى هذه الأدوات قواعد ونماذج مكتبات أكثر بكثير، وإضافات لبيئات التطوير، وسنوات من الضبط على مشاريع حقيقية. أما نقاط قوة كاشِف فهي العمل محليًا بالكامل بلا اعتماديات، وتغطية Oracle APEX وPL/SQL والأرشيفات وتطبيقات أندرويد وفحص الويب السلبي، وواجهة عربية، في أداة واحدة. ويستطيع أيضًا دمج نتائج Semgrep وBandit وgitleaks وnpm audit في لوحته.",
   "q8":"كيف أبلّغ عن ثغرة في كاشِف نفسه؟","a8":"استخدم الإبلاغ الخاص عن الثغرات في GitHub كما هو موضّح في SECURITY.md، ولا تفتح بلاغًا عامًا.",
   "final.h2":"ابدأ الفحص خلال دقيقة.","final.p":"نزّل ملفًا واحدًا، ووجّهه إلى مشروعك، واقرأ تقريرًا مرتّبًا من الحرج إلى المعلوماتي، مع مسار تدفق البيانات خلف كل نتيجة لتحليل التدفق.",
+  "foot.by":"من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة.","foot.contact":"للتواصل:",
   "foot.tag":"اختبار أمان التطبيقات بالتحليل الساكن، مفتوح المصدر، بتتبّع تدفق البيانات من المصدر إلى نقطة الخطر. يُطوَّر علنًا.",
   "foot.product":"المنتج","foot.res":"المصادر","foot.trust":"الثقة","foot.docs":"التوثيق","foot.changelog":"سجل التغييرات",
   "foot.sec":"سياسة الأمان","foot.report":"أبلغ عن ثغرة","foot.license":"رخصة MIT",
