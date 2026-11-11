@@ -10,18 +10,18 @@ class Kashif < Formula
   on_macos do
     on_arm do
       url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.9.0/vulnscan-macos-arm64"
-      sha256 "03b7f42d0174c3a8a929e3ace0f02df1c5e0ff6c001a50091ac7f469e957e42f"
+      sha256 "e2707965d0573081435c91a69d085a81cdfeb786dddc75f4e9a7b4e45867e7aa"
     end
     on_intel do
       url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.9.0/vulnscan-macos-x86_64"
-      sha256 "a62a767d29311f34f7743284c8e861495af1a07c43617a8e1865d532b9674ce5"
+      sha256 "38beff086a9ab8ddeffead784972307f651e5767b6e65ff54022a93f0b960133"
     end
   end
 
   on_linux do
     on_intel do
       url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.9.0/vulnscan-linux"
-      sha256 "a45ff1fe24e1f44cafb06edfff0862c24656658d40940c14b98bd70b65c4d99d"
+      sha256 "8f39a81d98f4d45d35772a58aafde67e624d296340475ee90e955811142d0ba6"
     end
   end
 
