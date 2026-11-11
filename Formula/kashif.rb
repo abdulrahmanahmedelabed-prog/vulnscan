@@ -4,24 +4,24 @@
 class Kashif < Formula
   desc "Zero-dependency SAST with inter-procedural dataflow analysis for 12 languages"
   homepage "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/"
-  version "0.9.0"
+  version "0.9.1"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.9.0/vulnscan-macos-arm64"
-      sha256 "944936134b7b0c7f09f2cf5178e82e4ceb282b6203d33dbff0b1b59d172236c5"
+      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.9.1/vulnscan-macos-arm64"
+      sha256 "fe0fe7b4f8ba825014ae514f3e147ee380463b5c8b7ffaea877438589445969a"
     end
     on_intel do
-      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.9.0/vulnscan-macos-x86_64"
-      sha256 "f098940973eeae94f8710a114dbb9777ae8d2a50030140ed5550885cd4c5c2ea"
+      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.9.1/vulnscan-macos-x86_64"
+      sha256 "f458c417e1081575045c0c520ecb2fc3887f2517ec9c561b96f0f998a506b4a6"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.9.0/vulnscan-linux"
-      sha256 "bdbcdacc88860fbdd7d4d860149441315bca3521c141b7de88cb81ba3844e5a8"
+      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v0.9.1/vulnscan-linux"
+      sha256 "d9a391990fe2de69a165211e85c182ea535b8cb8b035badd6d1265e82c5a2b5a"
     end
   end
 
