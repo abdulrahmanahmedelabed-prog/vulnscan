@@ -47,6 +47,7 @@ PAGES = {
     "CHANGELOG.md": "changelog.html",
     "SECURITY.md": "security.html",
     "LICENSE": "license.html",
+    "PRIVACY.md": "privacy.html",
 }
 # Stable ASCII ids for headings other pages link to (index.html footer links
 # security.html#report). The build fails if a listed heading disappears, so a
@@ -810,7 +811,7 @@ UI = {
         "skip": "Skip to content", "brand": "Kashif", "gh.sr": "Kashif on GitHub", "nav.label": "Primary",
         "nav.menu": "Menu", "lang.label": "Language", "theme.toLight": "Switch to light theme",
         "theme.toDark": "Switch to dark theme", "nav.home": "Home", "nav.docs": "Documentation",
-        "nav.changelog": "Changelog", "nav.security": "Security", "nav.license": "License",
+        "nav.changelog": "Changelog", "nav.security": "Security", "nav.license": "License", "nav.privacy": "Privacy",
         "toc": "On this page", "foot.ver": "Version", "foot.legal": "Scan only systems you are authorized to test.",
         "foot.src": "Generated from the repository's", "top": "Back to top",
         "docs.title": "Documentation — Kashif (vulnscan)",
@@ -821,13 +822,15 @@ UI = {
         "security.desc": "How to report a vulnerability in Kashif (vulnscan) privately, what counts as one, and how to verify release binaries.",
         "license.title": "MIT License — Kashif (vulnscan)",
         "license.desc": "Kashif (vulnscan) is free and open source under the MIT License.",
+        "privacy.title": "Privacy — Kashif (vulnscan)",
+        "privacy.desc": "Kashif sends nothing about you or your code; the website counts visits anonymously, without cookies.",
         "ar.note": "This document is written in Arabic.",
     },
     "ar": {
         "skip": "تخطَّ إلى المحتوى", "brand": "كاشِف", "gh.sr": "كاشِف على GitHub", "nav.label": "التنقّل الرئيسي",
         "nav.menu": "القائمة", "lang.label": "اللغة", "theme.toLight": "التبديل إلى الوضع الفاتح",
         "theme.toDark": "التبديل إلى الوضع الداكن", "nav.home": "الرئيسية", "nav.docs": "التوثيق",
-        "nav.changelog": "سجل التغييرات", "nav.security": "الأمان", "nav.license": "الرخصة",
+        "nav.changelog": "سجل التغييرات", "nav.security": "الأمان", "nav.license": "الرخصة", "nav.privacy": "الخصوصية",
         "toc": "في هذه الصفحة", "foot.ver": "الإصدار", "foot.legal": "افحص فقط الأنظمة المصرَّح لك باختبارها.",
         "foot.src": "مولَّدة من ملف المستودع", "top": "إلى الأعلى",
         "docs.title": "التوثيق — كاشِف (vulnscan)",
@@ -838,12 +841,14 @@ UI = {
         "security.desc": "كيف تبلّغ عن ثغرة في كاشِف (vulnscan) بشكل خاص، وما الذي يُعدّ ثغرة، وكيف تتحقق من سلامة النسخ.",
         "license.title": "رخصة MIT — كاشِف (vulnscan)",
         "license.desc": "كاشِف (vulnscan) مجاني ومفتوح المصدر برخصة MIT.",
+        "privacy.title": "الخصوصية — كاشِف (vulnscan)",
+        "privacy.desc": "لا يرسل كاشِف أي شيء عنك أو عن الكود؛ والموقع يعدّ الزيارات عدًّا مجهول الهوية دون ملفات تعريف ارتباط.",
         "ar.note": "هذا المستند مكتوب بالعربية.",
     },
 }
 
 NAV = [("docs.html", "nav.docs"), ("changelog.html", "nav.changelog"),
-       ("security.html", "nav.security"), ("license.html", "nav.license")]
+       ("security.html", "nav.security"), ("license.html", "nav.license"), ("privacy.html", "nav.privacy")]
 
 FALLBACK_TOKENS = """:root{--radius:14px;--wrap:1200px;--font:"Inter","IBM Plex Sans Arabic",system-ui,sans-serif;
 --font-ar:"IBM Plex Sans Arabic","Inter",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace;
@@ -1281,6 +1286,7 @@ def main(argv: list[str] | None = None) -> int:
         "changelog.html": build_arabic_doc(out, version, "CHANGELOG.md", "changelog.html"),
         "security.html": build_arabic_doc(out, version, "SECURITY.md", "security.html"),
         "license.html": build_license(version),
+        "privacy.html": build_arabic_doc(out, version, "PRIVACY.md", "privacy.html"),
     }
     for name, content in pages.items():
         # the only github.com link these pages may carry is the header's "GitHub" button

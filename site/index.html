@@ -955,6 +955,7 @@ vulnscan ./project -f sarif -o out.sarif  <span class="c"># CLI</span></div></di
         <li><a href="security.html" data-i18n="foot.sec">Security policy</a></li>
         <li><a href="security.html#report" data-i18n="foot.report">Report a vulnerability</a></li>
         <li><a href="license.html" data-i18n="foot.license">MIT License</a></li>
+        <li><a href="privacy.html" data-i18n="foot.privacy">Privacy</a></li>
         <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan" >GitHub</a></li>
       </ul></nav>
     </div>
@@ -1149,7 +1150,7 @@ en: {
   "foot.by":"Developed by the Programming Department at the Islamic University of Gaza.","foot.contact":"Contact:",
   "foot.tag":"Open-source static application security testing with source-to-sink dataflow analysis. Built in the open.",
   "foot.product":"Product","foot.res":"Resources","foot.trust":"Trust","foot.docs":"Documentation","foot.changelog":"Changelog",
-  "foot.sec":"Security policy","foot.report":"Report a vulnerability","foot.license":"MIT License",
+  "foot.sec":"Security policy","foot.report":"Report a vulnerability","foot.license":"MIT License","foot.privacy":"Privacy",
   "foot.ver":"Version","foot.lic":"MIT License","foot.legal":"Scan only systems you are authorized to test.",
   "latest":"latest"
 },
@@ -1274,7 +1275,7 @@ ar: {
   "foot.by":"من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة.","foot.contact":"للتواصل:",
   "foot.tag":"اختبار أمان التطبيقات بالتحليل الساكن، مفتوح المصدر، بتتبّع تدفق البيانات من المصدر إلى نقطة الخطر. يُطوَّر علنًا.",
   "foot.product":"المنتج","foot.res":"المصادر","foot.trust":"الثقة","foot.docs":"التوثيق","foot.changelog":"سجل التغييرات",
-  "foot.sec":"سياسة الأمان","foot.report":"أبلغ عن ثغرة","foot.license":"رخصة MIT",
+  "foot.sec":"سياسة الأمان","foot.report":"أبلغ عن ثغرة","foot.license":"رخصة MIT","foot.privacy":"الخصوصية",
   "foot.ver":"الإصدار","foot.lic":"رخصة MIT","foot.legal":"افحص فقط الأنظمة المصرَّح لك باختبارها.",
   "latest":"أحدث إصدار"
 }
@@ -1547,6 +1548,33 @@ ar: {
       })
       .catch(function () {});
   } catch (e) {}
+})();
+</script>
+<script>
+/* Anonymous visit counting (GoatCounter, see privacy.html). No cookies, no third-party script, no identifiers:
+   only the page path, its title, the referring site and the screen width are sent; GoatCounter derives the country
+   and does not store IP addresses. Nothing is sent when GOATCOUNTER is empty, off the public site, or when the
+   browser asks not to be tracked (Do Not Track / Global Privacy Control). */
+(function () {
+  var GOATCOUNTER = "";  // the GoatCounter site code, e.g. "kashif" for kashif.goatcounter.com
+  if (!GOATCOUNTER || location.hostname !== "abdulrahmanahmedelabed-prog.github.io") return;
+  if (navigator.doNotTrack === "1" || window.doNotTrack === "1" || navigator.globalPrivacyControl) return;
+  var END = "https://" + GOATCOUNTER + ".goatcounter.com/count";
+  function send(path, title, isEvent) {
+    var ref = document.referrer && document.referrer.indexOf(location.origin) !== 0 ? document.referrer : "";
+    var q = "?p=" + encodeURIComponent(path) + "&t=" + encodeURIComponent(title || "") + "&r=" + encodeURIComponent(ref) +
+            "&s=" + encodeURIComponent(String(screen.width)) + (isEvent ? "&e=true" : "") + "&rnd=" + Math.random().toString(36).slice(2);
+    try { if (navigator.sendBeacon && navigator.sendBeacon(END + q)) return; } catch (e) {}
+    var img = new Image(); img.referrerPolicy = "no-referrer-when-downgrade"; img.src = END + q;
+  }
+  send(location.pathname, document.title, false);
+  /* download clicks, by file (= system); no other link or click is counted */
+  document.addEventListener("click", function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest("a[href]") : null;
+    if (!a) return;
+    var m = /\/releases\/(?:latest\/)?download\/(?:[^/]+\/)?([^/?#]+)$/.exec(a.href);
+    if (m && !/SHA256SUMS|sbom/i.test(m[1])) send("download/" + m[1], "Download " + m[1], true);
+  }, true);
 })();
 </script>
 </body>
