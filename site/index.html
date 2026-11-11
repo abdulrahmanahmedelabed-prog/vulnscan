@@ -1556,7 +1556,7 @@ ar: {
    and does not store IP addresses. Nothing is sent when GOATCOUNTER is empty, off the public site, or when the
    browser asks not to be tracked (Do Not Track / Global Privacy Control). */
 (function () {
-  var GOATCOUNTER = "";  // the GoatCounter site code, e.g. "kashif" for kashif.goatcounter.com
+  var GOATCOUNTER = "kashif";  // the GoatCounter site code, e.g. "kashif" for kashif.goatcounter.com
   if (!GOATCOUNTER || location.hostname !== "abdulrahmanahmedelabed-prog.github.io") return;
   if (navigator.doNotTrack === "1" || window.doNotTrack === "1" || navigator.globalPrivacyControl) return;
   var END = "https://" + GOATCOUNTER + ".goatcounter.com/count";
