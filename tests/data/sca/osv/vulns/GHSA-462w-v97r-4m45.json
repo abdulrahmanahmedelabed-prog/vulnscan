@@ -1,0 +1,44 @@
+{
+ "id": "GHSA-462w-v97r-4m45",
+ "aliases": [
+  "CVE-2019-10906"
+ ],
+ "summary": "High severity vulnerability that affects Jinja2",
+ "modified": "2024-01-01T00:00:00Z",
+ "affected": [
+  {
+   "package": {
+    "ecosystem": "PyPI",
+    "name": "jinja2"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "2.10.1"
+      }
+     ]
+    }
+   ],
+   "ecosystem_specific": {
+    "affected_functions": [
+     "jinja2.sandbox.SandboxedEnvironment.from_string",
+     "jinja2.Environment.from_string"
+    ]
+   }
+  }
+ ],
+ "severity": [
+  {
+   "type": "CVSS_V3",
+   "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N"
+  }
+ ],
+ "database_specific": {
+  "severity": "HIGH"
+ }
+}

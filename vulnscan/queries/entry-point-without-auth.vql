@@ -5,5 +5,5 @@
 // @cwe CWE-306
 // @advice تأكد أن المسار عام عن قصد، وإلا أضف مصادقة (login_required، jwt_required، guard…).
 from func f
-where f.is_entry and f.decorators matches "route|get|post|put|delete|patch|Get|Post|Put|Delete|Patch" and not f.decorators matches "(?i)login_required|auth|jwt|permission|protected|guard|roles|csrf"
+where f.is_entry and f.decorators matches "(^|[.\\s,])(route|api_route|get|post|put|delete|patch|Get|Post|Put|Delete|Patch|HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch|RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)($|,)" and not f.decorators matches "(?i)login|logged|auth|jwt|permission|protected|guard|roles|csrf|passport|session|ensure|require_?user|verify|token|acl|policy|admin|signed_?in|current_?user|secure|access"
 select f, "Entry point " + f.name + " has no authentication decorator"

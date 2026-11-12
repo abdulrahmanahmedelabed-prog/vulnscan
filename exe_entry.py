@@ -1,8 +1,9 @@
 """Entry point for the standalone executable (PyInstaller).
 
-Double-clicking the built ``vulnscan.exe`` launches the local web UI. Passing
-arguments makes it behave exactly like the ``vulnscan`` command, e.g.
-``vulnscan.exe ./myproject`` or ``vulnscan.exe ui --port 9000``.
+Double-clicking the built ``kashif.exe`` launches the local web UI. Passing
+arguments makes it behave exactly like the ``kashif`` command (alias ``vulnscan``), e.g.
+``kashif.exe ./myproject`` or ``kashif.exe ui --port 9000``. Nothing depends on the
+executable's file name: the MCP scan worker and the updater use ``sys.executable``.
 """
 
 import multiprocessing

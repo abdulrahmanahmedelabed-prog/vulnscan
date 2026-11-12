@@ -17,7 +17,7 @@ gives the finding its id, severity, CWE and advice, as CodeQL queries do::
     select c, "TLS verification disabled in " + c.name
 
 Relations (fields):
-  call      id name func receiver file line in_func in_class nargs args arg0 arg1 arg2 arg3 kwargs
+  call      id name func receiver file line in_func in_class nargs args arg0 arg1 arg2 arg3 kwargs arg0_kind
   func      id name qual file line nparams params decorators class is_entry is_method
   class     id name file line bases decorators
   assign    id target value file line in_func
@@ -142,6 +142,7 @@ def build_database(projects, flows) -> dict[str, list[dict]]:
                            "nargs": len(node.args), "args": ", ".join(args_text + ([kws] if kws else [])), "kwargs": kws}
                     for i in range(4):
                         row[f"arg{i}"] = args_text[i] if i < len(args_text) else ""
+                    row["arg0_kind"] = _arg_kind(node.args[0]) if node.args else ""
                     db["call"].append(row)
                 if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and getattr(node, "value", None) is not None:
                     tgts = node.targets if isinstance(node, ast.Assign) else [node.target]
@@ -184,6 +185,44 @@ def _segment(blines, node) -> str | None:
         return b"\n".join(parts).decode("utf-8", "replace")
     except (IndexError, ValueError):
         return None
+
+
+def _arg_kind(e) -> str:
+    """How an argument is built: constant / format (`'..%s' % x`, '...'.format(x), sprintf) / concat (+) /
+    interp (f-string, template literal) / name / call / other. Queries test the shape, not the text, so a
+    parameterised query whose constant text contains `%s` placeholders is not mistaken for formatting."""
+    if isinstance(e, ast.Constant):
+        return "constant"
+    if isinstance(e, ast.JoinedStr):
+        return "interp" if any(isinstance(v, ast.FormattedValue) for v in e.values) else "constant"
+    if isinstance(e, ast.BinOp):
+        parts, stack = [], [e]
+        while stack:
+            x = stack.pop()
+            if isinstance(x, ast.BinOp) and isinstance(x.op, (ast.Add, ast.Mod)):
+                stack.extend((x.left, x.right))
+            else:
+                parts.append(x)
+        if all(isinstance(x, ast.Constant) for x in parts):
+            return "constant"
+        if isinstance(e.op, ast.Mod) and isinstance(e.left, ast.Constant) and isinstance(e.left.value, str):
+            return "format"
+        if isinstance(e.op, ast.Add):
+            return "concat"
+        return "other"
+    if isinstance(e, ast.Call):
+        f = e.func
+        if isinstance(f, ast.Attribute) and f.attr == "format" and isinstance(f.value, ast.Constant):
+            return "format"
+        name = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else ""
+        if name in ("format", "sprintf", "Sprintf", "formatted", "Format", "vsprintf", "printf"):
+            return "format"
+        if name in ("concat", "join", "Concat", "Join"):
+            return "concat"
+        return "call"
+    if isinstance(e, (ast.Name, ast.Attribute)):
+        return "name"
+    return "other"
 
 
 def _unparse(node) -> str:
@@ -593,6 +632,9 @@ class Query:
             return self._method(e, env, False)
         if k == "pred":
             tup = tuple(self._val(a, env) for a in e[2])
+            da = self._delta_atom
+            if da is not None and da[0] is e:
+                return tup in da[1]
             return tup in self.tuples.get(e[1], set())
         if k == "cmp":
             a, b = self._val(e[2], env), self._val(e[3], env)
@@ -676,7 +718,22 @@ class Query:
                     self._check_budget()
                     bound_pos = [i for i, a in enumerate(c[2]) if not (a[0] == "var" and a[1] not in env)
                                  and not (self._vars_in(a, set()) - set(env))]
-                    if bound_pos:
+                    da = self._delta_atom
+                    if da is not None and da[0] is c:
+                        # semi-naive evaluation: this occurrence only joins the tuples new in the last round
+                        if bound_pos:
+                            vals = tuple(self._val(c[2][i], env) for i in bound_pos)
+                            dk = (id(da[1]), tuple(bound_pos))
+                            didx = self._delta_idx.get(dk)
+                            if didx is None or didx[0] is not da[1]:
+                                idx: dict = {}
+                                for t in da[1]:
+                                    idx.setdefault(tuple(t[i] for i in bound_pos if i < len(t)), []).append(t)
+                                didx = self._delta_idx[dk] = (da[1], idx)
+                            cands = didx[1].get(vals, ())
+                        else:
+                            cands = da[1]
+                    elif bound_pos:
                         key = tuple(bound_pos)
                         vals = tuple(self._val(c[2][i], env) for i in bound_pos)
                         cands = self._index(c[1], key).get(vals, ())
@@ -785,24 +842,67 @@ class Query:
         if time.monotonic() > self._deadline:
             raise QueryError("time budget exceeded")
 
+    _delta_atom = None
+
+    def _idb_atoms(self, e, under_not=False, out=None):
+        """Occurrences of user predicates in a condition: [(node, under_not)]."""
+        out = [] if out is None else out
+        if isinstance(e, tuple) and e:
+            if e[0] == "pred" and e[1] in self.predicates:
+                out.append((e, under_not))
+            for ch in e[1:]:
+                if isinstance(ch, tuple):
+                    self._idb_atoms(ch, under_not or e[0] == "not", out)
+                elif isinstance(ch, list):
+                    for x in ch:
+                        self._idb_atoms(x, under_not or e[0] == "not", out)
+        return out
+
     def _eval_predicates(self, db):
+        """Fixpoint of the user predicates, semi-naive: after the first round a clause is re-solved once per
+        occurrence of a recursive predicate, joining only the tuples that occurrence gained in the previous round.
+        There is no round cap (the time budget bounds the work): long call chains are not silently cut off."""
         self.tuples = {name: set() for name in self.predicates}
         self._indexes = {}
-        for _ in range(64):
-            grown = False
+        atoms = {(name, i): self._idb_atoms(cond) for name, (_p, clauses) in self.predicates.items()
+                 for i, (_d, cond) in enumerate(clauses)}
+        delta: dict = {}
+        self._delta_idx: dict = {}
+        first = True
+        while True:
             self._check_budget()
+            new: dict = {name: set() for name in self.predicates}
             for name, (params, clauses) in self.predicates.items():
-                for decls, cond in clauses:
-                    for env in self._solve_clause(db, decls, cond):
+                for i, (decls, cond) in enumerate(clauses):
+                    occ = atoms[(name, i)]
+                    if first or any(neg for _n, neg in occ):
+                        runs = [None]                       # naive: first round, or recursion under negation
+                    elif not occ:
+                        continue                            # no recursive input: nothing new can come out
+                    else:
+                        runs = [(node, delta[node[1]]) for node, _neg in occ if delta.get(node[1])]
+                    for da in runs:
+                        self._delta_atom = da
                         try:
-                            tup = tuple(env[p] if not isinstance(env[p], dict) else env[p].get("id") for p in params)
-                        except KeyError:
-                            continue
-                        if tup not in self.tuples[name]:
-                            self.tuples[name].add(tup)
-                            grown = True
-                            if len(self.tuples[name]) > 200_000:
-                                raise QueryError(f"predicate {name} too large")
+                            envs = self._solve_clause(db, decls, cond)
+                        finally:
+                            self._delta_atom = None
+                        for env in envs:
+                            try:
+                                tup = tuple(env[p] if not isinstance(env[p], dict) else env[p].get("id") for p in params)
+                            except KeyError:
+                                continue
+                            if tup not in self.tuples[name]:
+                                new[name].add(tup)
+            grown = False
+            for name, tups in new.items():
+                if tups:
+                    self.tuples[name] |= tups
+                    grown = True
+                    if len(self.tuples[name]) > 200_000:
+                        raise QueryError(f"predicate {name} too large")
+            delta = new
+            first = False
             if not grown:
                 break
 
@@ -886,10 +986,11 @@ def load_queries(paths, builtin: bool = True) -> list:
     return out
 
 
-def run_queries(projects, flows, query_paths=None, builtin=True) -> tuple[list[Finding], list[str]]:
-    """Run built-in and user queries over the database. Returns (findings, notes)."""
+def run_queries(projects, flows, query_paths=None, builtin=True, skip_ids=()) -> tuple[list[Finding], list[str]]:
+    """Run built-in and user queries over the database. Returns (findings, notes). Queries whose @id is in
+    `skip_ids` (audit-only leads in the default profile) are not evaluated at all."""
     notes: list[str] = []
-    queries = load_queries(query_paths, builtin)
+    queries = [q for q in load_queries(query_paths, builtin) if not (isinstance(q, Query) and q.meta.get("id") in skip_ids)]
     if not queries:
         return [], notes
     db = build_database(projects, flows)

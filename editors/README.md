@@ -54,7 +54,7 @@ Install the extension from the `.vsix` attached to each
 code --install-extension kashif-vscode.vsix
 ```
 
-Settings are `kashif.serverPath` (default `vulnscan` on `PATH`), `kashif.serverArgs`, `kashif.minSeverity`,
+Settings are `kashif.serverPath` (default `kashif` on `PATH`, or `vulnscan` when only that older name is installed), `kashif.serverArgs`, `kashif.minSeverity`,
 `kashif.audit`, `kashif.exclude`, `kashif.baseline`, `kashif.language`, `kashif.webUiPort`, `kashif.trace.server`.
 Commands: **Kashif: Scan workspace**, **Kashif: Open web UI**, **Kashif: Restart language server**. A status bar item
 shows the number of findings. If Kashif is installed in a virtual environment, point `kashif.serverPath` at that

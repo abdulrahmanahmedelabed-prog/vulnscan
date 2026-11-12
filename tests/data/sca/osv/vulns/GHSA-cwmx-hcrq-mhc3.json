@@ -1,0 +1,46 @@
+{
+ "id": "GHSA-cwmx-hcrq-mhc3",
+ "aliases": [
+  "CVE-2022-31090"
+ ],
+ "summary": "CURLOPT_HTTPAUTH option not cleared on change of origin",
+ "modified": "2024-01-01T00:00:00Z",
+ "affected": [
+  {
+   "package": {
+    "ecosystem": "Packagist",
+    "name": "guzzlehttp/guzzle"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "6.5.8"
+      }
+     ]
+    },
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "7.0.0"
+      },
+      {
+       "fixed": "7.4.5"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "severity": [
+  {
+   "type": "CVSS_V4",
+   "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"
+  }
+ ]
+}

@@ -257,6 +257,7 @@
     }
   ],
   "sinks": [
+    {"rule": "DF026", "severity": "medium", "cwe": "CWE-470", "label": "dynamic attribute dispatch", "args": [1], "names": ["builtins.getattr"], "title": "Tainted data selects the class or function that is invoked (unsafe reflection)", "title_ar": "بيانات غير موثوقة تختار الصنف أو الدالة المستدعاة (انعكاس غير آمن)", "advice": "لا تختر صنفًا أو دالة أو وحدة باسم من المدخلات؛ اربط القيم المسموحة بقاموس ثابت (allow-list) من الأسماء إلى الدوال."},
     {
       "rule": "DF001",
       "severity": "critical",
@@ -268,7 +269,10 @@
       "names": [
         "builtins.eval",
         "builtins.exec",
-        "builtins.compile"
+        "builtins.compile",
+        "ImageMath.eval",
+        "ImageMath.unsafe_eval",
+        "ImageMath.lambda_eval"
       ],
       "title": "Tainted data reaches eval/exec",
       "title_ar": "بيانات غير موثوقة تصل إلى eval/exec",
@@ -453,6 +457,9 @@
         "yaml.unsafe_load_all",
         "jsonpickle.unpickler.decode"
       ],
+      "safe_kwargs": {
+        "Loader": ["SafeLoader", "CSafeLoader", "BaseLoader", "CBaseLoader"]
+      },
       "title": "Tainted data reaches unsafe deserialization",
       "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل غير آمن",
       "advice": "لا تفك تسلسل بيانات غير موثوقة؛ استخدم JSON أو yaml.safe_load."
@@ -829,7 +836,9 @@
       ],
       "args": [
         "self"
-      ]
+      ],
+      "receiver_not": "(?i)(^|\\.)(objects|filter|exclude|annotate|order_by|values|query|queryset|qs|session|cache|redis|db|cursor|request|response|dict|environ|zipfile|zf|tar|tf|archive)(\\.|$)",
+      "_comment_receiver": "pathlib methods are matched by bare name: a Django QuerySet chain (.filter(...).exists()), a session or a zip archive is not a path"
     },
     {
       "rule": "DF001",
@@ -1239,6 +1248,11 @@
     }
   ],
   "sanitizers": [
+    "pickle.dumps",
+    "cPickle.dumps",
+    "marshal.dumps",
+    "dill.dumps",
+    "cloudpickle.dumps",
     "int",
     "float",
     "bool",
@@ -1293,7 +1307,9 @@
     "conditional_escape",
     "xml.sax.saxutils.escape",
     "xml.sax.saxutils.quoteattr",
-    "nh3.clean"
+    "nh3.clean",
+    "aiohttp_session.get_session",
+    "aiohttp_session.new_session"
   ],
   "safe_return_calls": [
     "render_template",
@@ -1332,7 +1348,9 @@
     "allowed",
     "check",
     "verify",
-    "in_whitelist"
+    "in_whitelist",
+    "url_has_allowed_host_and_scheme",
+    "is_safe_url"
   ],
   "store_sinks": [
     {

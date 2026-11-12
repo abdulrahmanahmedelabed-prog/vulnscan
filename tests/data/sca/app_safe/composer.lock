@@ -1,0 +1,13 @@
+{
+ "packages": [
+  {
+   "name": "guzzlehttp/guzzle",
+   "version": "6.5.0",
+   "autoload": {
+    "psr-4": {
+     "GuzzleHttp\\": "src/"
+    }
+   }
+  }
+ ]
+}

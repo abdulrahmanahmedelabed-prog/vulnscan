@@ -6,13 +6,13 @@
 ; the release's SHA256SUMS.txt lists.
 ;
 ; Build (on Windows, from the repository root):
-;   iscc /DAppVersion=1.0.0 /DSourceExe=dist\vulnscan.exe /O. packaging\windows\kashif.iss
+;   iscc /DAppVersion=1.0.0 /DSourceExe=dist\kashif.exe /O. packaging\windows\kashif.iss
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
 #ifndef SourceExe
-  #define SourceExe "..\..\dist\vulnscan.exe"
+  #define SourceExe "..\..\dist\kashif.exe"
 #endif
 
 [Setup]

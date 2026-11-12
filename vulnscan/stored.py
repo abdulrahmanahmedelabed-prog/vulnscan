@@ -756,6 +756,8 @@ class _Scope:
 
     def _call_reads(self, call) -> list:
         name = call.func.id if isinstance(call.func, ast.Name) else (call.func.attr if isinstance(call.func, ast.Attribute) else "")
+        if name in _FORMAT_FUNCS:
+            return []           # fmt.Sprintf("SELECT … %s", x) BUILDS the query text, it does not run it
         sig = self.sigs.get(name)
         if sig and sig["kind"] in ("read", "read_orm"):
             table = self._sig_table(call, sig)
@@ -778,6 +780,9 @@ class _Scope:
 
     def is_fetch(self, call) -> bool:
         """An ORM / SQL lookup whose result is table data (its arguments are only the key)."""
+        fname = call.func.id if isinstance(call.func, ast.Name) else (call.func.attr if isinstance(call.func, ast.Attribute) else "")
+        if fname in _FORMAT_FUNCS:
+            return False
         if self.model_of(call):
             return True
         sql, _ = self.sql_of(call)
@@ -791,6 +796,10 @@ class _Scope:
             if tbl:
                 return [(tbl, node.attr.upper())]
         return []
+
+
+_FORMAT_FUNCS = frozenset({"Sprintf", "sprintf", "vsprintf", "format", "Format", "formatted", "Sprint", "Sprintln",
+                           "Errorf", "concat", "Concat", "join", "Join", "replace", "Replace", "str", "String", "f"})
 
 
 def _dict_items(tbl, d) -> list:

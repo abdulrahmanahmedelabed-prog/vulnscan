@@ -158,22 +158,43 @@ def _proc_translated() -> bool:
         return False
 
 
+# Release asset names. Since the switch to the Kashif command name the canonical binaries are ``kashif-*``; every release
+# also carries byte-identical copies under the legacy ``vulnscan-*`` names, because v0.9.x installs update themselves by
+# looking for those. Releases published before the switch have only the legacy names, hence the fallback below.
+LEGACY_ASSETS = {
+    "kashif-windows-x86_64.exe": "vulnscan-windows.exe",
+    "kashif-linux-x86_64": "vulnscan-linux",
+    "kashif-macos-arm64": "vulnscan-macos-arm64",
+    "kashif-macos-x86_64": "vulnscan-macos-x86_64",
+}
+
+
 def platform_asset(system: str | None = None, machine: str | None = None, translated: bool | None = None) -> str | None:
     """The release asset for this OS/CPU, or None when no prebuilt binary fits."""
     system = (system or platform.system()).lower()
     machine = (machine or platform.machine()).lower()
     if system == "windows":
-        return "vulnscan-windows.exe" if machine in ("amd64", "x86_64", "x64") else None
+        return "kashif-windows-x86_64.exe" if machine in ("amd64", "x86_64", "x64") else None
     if system == "linux":
-        return "vulnscan-linux" if machine in ("x86_64", "amd64") else None
+        return "kashif-linux-x86_64" if machine in ("x86_64", "amd64") else None
     if system == "darwin":
         if machine in ("arm64", "aarch64"):
-            return "vulnscan-macos-arm64"
+            return "kashif-macos-arm64"
         if machine in ("x86_64", "amd64"):
             if translated is None:
                 translated = _proc_translated()
-            return "vulnscan-macos-arm64" if translated else "vulnscan-macos-x86_64"
+            return "kashif-macos-arm64" if translated else "kashif-macos-x86_64"
     return None
+
+
+def resolve_asset(asset: str, names) -> str | None:
+    """The name under which `asset` is published in a release with these asset `names`: the name itself, else (for a
+    release made before the kashif-* names existed) its legacy vulnscan-* name, else None."""
+    names = set(names)
+    if asset in names:
+        return asset
+    legacy = LEGACY_ASSETS.get(asset)
+    return legacy if legacy in names else None
 
 
 def _package_root() -> pathlib.Path:
@@ -383,7 +404,7 @@ def check(force: bool = False, home: pathlib.Path | None = None, net: Net = NET,
         if not _dir_writable(exe.parent):
             out["reason"] = "not_writable"
             out["command"] = None if os.name == "nt" else f"sudo {_q(str(exe))} update"
-        elif newer and not any(a["name"] == asset for a in release.get("assets", [])):
+        elif newer and not resolve_asset(asset, (a["name"] for a in release.get("assets", []))):
             out["reason"] = "asset_missing"
         else:
             out["can_self_update"] = True
@@ -407,17 +428,31 @@ def parse_sums(text: str, name: str) -> str | None:
     return found.pop() if len(found) == 1 else None
 
 
+def _asset_os(asset: str) -> str | None:
+    """The OS an asset name is built for, from the name itself (kashif-* and legacy vulnscan-* alike)."""
+    if not asset.startswith(("kashif-", "vulnscan-")):
+        return None
+    if asset.endswith(".exe") and "-windows" in asset:
+        return "windows"
+    if asset in ("kashif-linux-x86_64", "vulnscan-linux"):
+        return "linux"
+    if asset.startswith(("kashif-macos-", "vulnscan-macos-")) and asset.endswith(("-arm64", "-x86_64")):
+        return "macos"
+    return None
+
+
 def check_header(head: bytes, asset: str) -> bool:
     """The first bytes of the download must be an executable for the asset's OS and CPU."""
-    if asset.endswith(".exe"):                                   # PE, x86-64
+    kind = _asset_os(asset)
+    if kind == "windows":                                        # PE, x86-64
         if len(head) < 0x40 or head[:2] != b"MZ":
             return False
         off = struct.unpack_from("<I", head, 0x3C)[0]
         return off + 6 <= len(head) and head[off:off + 4] == b"PE\0\0" and struct.unpack_from("<H", head, off + 4)[0] == 0x8664
-    if asset == "vulnscan-linux":                                # ELF64, little endian, x86-64
+    if kind == "linux":                                          # ELF64, little endian, x86-64
         return len(head) >= 20 and head[:4] == b"\x7fELF" and head[4] == 2 and head[5] == 1 \
             and struct.unpack_from("<H", head, 18)[0] == 0x3E
-    if asset.startswith("vulnscan-macos-"):                      # Mach-O 64 (thin) or universal
+    if kind == "macos":                                          # Mach-O 64 (thin) or universal
         if head[:4] == b"\xca\xfe\xba\xbe":
             return True
         if len(head) < 8 or head[:4] != b"\xcf\xfa\xed\xfe":
@@ -444,7 +479,9 @@ def reports_version(path: pathlib.Path, version: str) -> bool:
                              env=_child_env(), check=False, stdin=subprocess.DEVNULL)  # nosec B603 - our verified binary
     except (OSError, subprocess.SubprocessError):
         return False
-    return bool(re.search(rf"\bvulnscan\s+v?{re.escape(version)}(?![\w.+-])", out.stdout + out.stderr))
+    # `--version` prints "vulnscan X.Y.Z", the exact form v0.9.x updaters look for, so it must stay that way while such
+    # installs exist. "kashif X.Y.Z" is accepted too, so that a later release may switch without stranding 1.0+ installs.
+    return bool(re.search(rf"\b(?:vulnscan|kashif)\s+v?{re.escape(version)}(?![\w.+-])", out.stdout + out.stderr))
 
 
 def _download(url: str, dest, net: Net, cap: int, progress=None, phase: str = "download") -> str:
@@ -530,8 +567,10 @@ def apply(home: pathlib.Path | None = None, net: Net = NET, current: str = __ver
     if release.get("prerelease") or not is_newer(latest, current):
         raise UpdateError("not_newer", f"{current} -> {latest}")
     by_name = {a["name"]: a for a in release["assets"]}
-    if asset not in by_name:
+    published = resolve_asset(asset, by_name)      # an older release has only the legacy vulnscan-* name
+    if not published:
         raise UpdateError("asset_missing", asset)
+    asset = published
     if SUMS_NAME not in by_name:
         raise UpdateError("checksum_missing")
     if by_name[asset]["size"] > MAX_BINARY:
@@ -718,7 +757,7 @@ def cli_main(argv: list[str]) -> int:
     def m(text: str) -> str:
         return localize(text, lang)
 
-    p = argparse.ArgumentParser(prog="vulnscan update", description=m(CLI_TEXT["desc"]))
+    p = argparse.ArgumentParser(prog="kashif update", description=m(CLI_TEXT["desc"]))
     p.add_argument("--check", action="store_true", help=m(CLI_TEXT["check"]))
     p.add_argument("-y", "--yes", action="store_true", help=m(CLI_TEXT["yes"]))
     p.add_argument("--lang", choices=LANG_CHOICES, default="auto", help=argparse.SUPPRESS)

@@ -69,6 +69,7 @@ COMMANDS = (CMD_SCAN, CMD_BASELINE, CMD_CWE)
 
 # User-facing text. Arabic in the source (project convention); the English is in vulnscan/i18n/cat_integrations.py.
 MSG = {
+    "apply_fix": "طبّق إصلاح كاشِف",                # English in vulnscan/i18n/cat_autofix.py
     "suppress": "اكتم هذه النتيجة",
     "baseline": "أضِف إلى خط الأساس",
     "cwe": "افتح وصف الضعف في CWE",
@@ -1026,6 +1027,8 @@ class KashifLanguageServer:
                 visible.setdefault(path_key(fpath), []).append((f, diag))
             for diags in by_uri.values():
                 diags.sort(key=lambda d: (d["range"]["start"]["line"], d["severity"], d["code"]))
+            with self._lock:                            # before the notifications: a client may hover / ask for code
+                folder.visible = visible                # actions the moment it receives them
             sent = 0
             for uri in sorted(set(by_uri) | set(folder.published)):
                 diags = by_uri.get(uri, [])
@@ -1038,8 +1041,6 @@ class KashifLanguageServer:
                     folder.published[uri] = blob
                 else:
                     folder.published.pop(uri, None)
-            with self._lock:
-                folder.visible = visible
             log(f"published diagnostics for {sent} file(s) of {folder.path}")
 
     def _republish_all(self) -> None:
@@ -1155,6 +1156,9 @@ class KashifLanguageServer:
         for f, diag, folder in hits:
             idx = diag["range"]["start"]["line"]
             line_text = lines[idx] if 0 <= idx < len(lines) else ""
+            fix_action = self._fix_action(f, diag, uri, text, idx, lang)
+            if fix_action:
+                actions.append(fix_action)
             comment = None if (f.line <= 0 or idx in in_string) else suppression_text(path, line_text)
             if comment and idx not in suppressed_lines:
                 suppressed_lines.add(idx)
@@ -1177,6 +1181,30 @@ class KashifLanguageServer:
                                 "diagnostics": [diag],
                                 "command": {"title": f.cwe, "command": CMD_CWE, "arguments": [href]}})
         return actions
+
+    def _fix_action(self, f: Finding, diag: dict, uri: str, text: str, idx: int, lang: str) -> dict | None:
+        """"Apply Kashif fix": the deterministic fix of vulnscan.autofix, computed on the editor's current text
+        (so a stale finding whose code has changed simply gets no action) and returned as a workspace edit."""
+        from . import autofix
+        try:
+            fix = autofix.compute_fix(f, text, f.file, line=idx + 1 if f.line > 0 else f.line)
+        except Exception:                  # noqa: BLE001 - a fixer bug must not break the other code actions
+            log("autofix failed:\n" + traceback.format_exc())
+            return None
+        if not fix or not fix["edits"]:
+            return None
+        src = autofix.split_lines(text)
+        edits = []
+        for ed in fix["edits"]:
+            first, last = ed["start_line"] - 1, ed["end_line"]            # [first, last) 0-based lines
+            if last < len(src) or src[-1].endswith(("\n", "\r")):
+                end = {"line": last, "character": 0}                      # start of the line after the edit
+            else:                                                         # last line of a file without a final newline
+                end = {"line": len(src) - 1, "character": utf16_len(src[-1])}
+            edits.append({"range": {"start": {"line": first, "character": 0}, "end": end}, "newText": ed["replacement"]})
+        desc = fix["description"] if lang == "en" else fix["description_ar"]
+        return {"title": f"{SOURCE}: {localize(MSG['apply_fix'], lang)} ({f.rule_id}) — {desc}", "kind": "quickfix",
+                "diagnostics": [diag], "isPreferred": True, "edit": {"changes": {uri: edits}}}
 
     # ---------------------------------------------------------------- commands
 
@@ -1300,7 +1328,7 @@ def add_to_baseline(path: pathlib.Path, finding: Finding) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     """``vulnscan lsp [--stdio]``: run the language server on stdin/stdout."""
-    p = argparse.ArgumentParser(prog="vulnscan lsp", description="Kashif language server (LSP over stdio).")
+    p = argparse.ArgumentParser(prog="kashif lsp", description="Kashif language server (LSP over stdio).")
     p.add_argument("--stdio", action="store_true", help="accepted for editor compatibility; stdio is the only transport")
     p.add_argument("--debounce", type=float, default=0.4, help=argparse.SUPPRESS)
     args, unknown = p.parse_known_args(argv)

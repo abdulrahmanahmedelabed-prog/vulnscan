@@ -1,0 +1,48 @@
+{
+ "id": "GHSA-8q59-q68h-6hv4",
+ "aliases": [
+  "CVE-2020-14343"
+ ],
+ "summary": "Improper Input Validation in PyYAML",
+ "modified": "2024-01-01T00:00:00Z",
+ "affected": [
+  {
+   "package": {
+    "ecosystem": "PyPI",
+    "name": "pyyaml"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "5.4"
+      }
+     ]
+    }
+   ],
+   "ecosystem_specific": {
+    "affected_functions": [
+     "yaml.load",
+     "yaml.full_load",
+     "yaml.load_all"
+    ]
+   }
+  }
+ ],
+ "severity": [
+  {
+   "type": "CVSS_V3",
+   "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+  }
+ ],
+ "database_specific": {
+  "severity": "CRITICAL",
+  "cwe_ids": [
+   "CWE-20"
+  ]
+ }
+}

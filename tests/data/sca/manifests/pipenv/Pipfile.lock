@@ -1,0 +1,23 @@
+{
+ "_meta": {
+  "hash": {
+   "sha256": "0"
+  }
+ },
+ "default": {
+  "requests": {
+   "version": "==2.19.0"
+  },
+  "urllib3": {
+   "version": "==1.23"
+  },
+  "local": {
+   "path": "."
+  }
+ },
+ "develop": {
+  "pytest": {
+   "version": "==7.0.0"
+  }
+ }
+}

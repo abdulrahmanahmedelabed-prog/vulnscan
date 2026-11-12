@@ -65,7 +65,8 @@ class Finding:
     def to_dict(self) -> dict:
         """JSON form shared by the UI, the JSON report and saved scans. English counterparts of the Arabic
         engine text are added next to it (advice_en, snippet_en, extra.path[*].text_en,
-        extra.taint_source_en, extra.apex_component_en); the Arabic itself
+        extra.taint_source_en, extra.apex_component_en) and, when vulnscan.autofix found one, the
+        automatic fix as "fix" ({description, description_ar, diff, edits}); the Arabic itself
         is never altered, so fingerprints stay stable. asdict() deep-copies, so the finding is not mutated."""
         d = asdict(self)
         d["severity_ar"] = SEVERITY_AR[self.severity]
@@ -80,6 +81,9 @@ class Finding:
             val = d["extra"].get(key)
             if isinstance(val, str):
                 d["extra"][f"{key}_en"] = to_en(val)
+        fix = d["extra"].pop("fix", None)       # an automatic fix (vulnscan.autofix) is a top-level key, not extra
+        if isinstance(fix, dict):
+            d["fix"] = fix
         return d
 
     def fingerprint(self) -> str:

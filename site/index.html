@@ -72,10 +72,10 @@
 {"@type":"Question","name":"Is Kashif free?","acceptedAnswer":{"@type":"Answer","text":"Yes. Kashif is open source under the MIT license: free for personal and commercial use, with no paid tier, no account and no usage limits."}},
 {"@type":"Question","name":"Does Kashif upload my code?","acceptedAnswer":{"@type":"Answer","text":"No. Everything runs locally and the web UI listens on 127.0.0.1 only. The only network call in a code scan is the optional OSV.dev dependency lookup, which sends package names and versions, never source code. Turn it off with --no-deps."}},
 {"@type":"Question","name":"Can it run offline or in an air-gapped network?","acceptedAnswer":{"@type":"Answer","text":"Yes. Copy the single binary (or install the Python package) and run with --no-deps --no-external. No step of a code scan needs the network."}},
-{"@type":"Question","name":"How accurate is it?","acceptedAnswer":{"@type":"Answer","text":"On the OWASP Benchmark it scores 74.0% for Python and 76.3% for Java (mean of TPR minus FPR per category), and you can reproduce both with one command. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review."}},
+{"@type":"Question","name":"How accurate is it?","acceptedAnswer":{"@type":"Answer","text":"On the OWASP Benchmark it scores 74.0% for Python and 98.3% for Java (mean of TPR minus FPR per category, computed with the project's own scorer), and you can reproduce both with one command. The Benchmark is a synthetic suite, so the score shows how the engine reasons rather than how accurate it is on your code. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review."}},
 {"@type":"Question","name":"Which languages and targets are supported?","acceptedAnswer":{"@type":"Answer","text":"Dataflow analysis for Python, JavaScript/TypeScript, Java, Kotlin, C#, Go, PHP, C/C++, Rust, Swift, Ruby and PL/SQL, plus Oracle APEX exports, Android APK/JAR (via jadx), configuration, containers, CI files and passive web scanning."}},
-{"@type":"Question","name":"How do I use it in CI?","acceptedAnswer":{"@type":"Answer","text":"Run vulnscan with -f sarif and upload the file to GitHub Code Scanning, or use --fail-on high to fail the build. With --baseline, only findings that are new since the baseline fail the build."}},
-{"@type":"Question","name":"How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?","acceptedAnswer":{"@type":"Answer","text":"Those tools have far more rules and library models, IDE plugins and years of real-world tuning. Kashif's strengths are running fully locally with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard."}},
+{"@type":"Question","name":"How do I use it in CI?","acceptedAnswer":{"@type":"Answer","text":"Run kashif with -f sarif and upload the file to GitHub Code Scanning, or use --fail-on high to fail the build. With --baseline, only findings that are new since the baseline fail the build."}},
+{"@type":"Question","name":"How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?","acceptedAnswer":{"@type":"Answer","text":"Those tools have far more rules and library models and years of real-world tuning. Kashif's strengths are running fully locally with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard."}},
 {"@type":"Question","name":"How do I report a security issue in Kashif?","acceptedAnswer":{"@type":"Answer","text":"Use GitHub private vulnerability reporting, as described in SECURITY.md. Please do not open a public issue."}}
 ]}
 </script>
@@ -580,7 +580,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
 <div class="proof" role="region" aria-label="Key facts" data-i18n-attr="aria-label:proof.label">
   <ul>
     <li><b class="ltr"><span data-bench-suite="python">74.0</span>%</b><span data-i18n="proof.py">OWASP Benchmark score, Python</span></li>
-    <li><b class="ltr"><span data-bench-suite="java">76.3</span>%</b><span data-i18n="proof.java">OWASP Benchmark score, Java</span></li>
+    <li><b class="ltr"><span data-bench-suite="java">98.3</span>%</b><span data-i18n="proof.java">OWASP Benchmark score, Java</span></li>
     <li><b>12</b><span data-i18n="proof.langs">languages with dataflow analysis</span></li>
     <li><b>0</b><span data-i18n="proof.deps">runtime dependencies</span></li>
     <li><b class="ltr">SARIF 2.1.0</b><span data-i18n="proof.sarif">for GitHub Code Scanning</span></li>
@@ -640,7 +640,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
     </div>
 
     <div class="panel" role="figure" aria-label="Example finding" data-i18n-attr="aria-label:mock.label">
-      <div class="bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="ptab">app.py</span><span class="ptab cmd">$ vulnscan ./shop-api</span></div>
+      <div class="bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="ptab">app.py</span><span class="ptab cmd">$ kashif ./shop-api</span></div>
       <pre class="code" tabindex="0" aria-label="app.py"><span class="ln"><b>1</b><span class="k">import</span> os</span><span class="ln"><b>2</b><span class="k">from</span> flask <span class="k">import</span> Flask, request</span><span class="ln"><b>3</b></span><span class="ln"><b>4</b>app = Flask(__name__)</span><span class="ln"><b>5</b></span><span class="ln"><b>6</b><span class="d">@app.route</span>(<span class="s">"/ping"</span>)</span><span class="ln"><b>7</b><span class="k">def</span> <span class="f">ping</span>():</span><span class="ln src"><b>8</b>    host = request.args.get(<span class="s">"host"</span>)<span class="tag t-src">source</span></span><span class="ln mid"><b>9</b>    cmd = <span class="s">"ping -c 1 "</span> + host</span><span class="ln sink"><b>10</b>    os.system(cmd)<span class="tag t-sink">sink</span></span><span class="ln"><b>11</b>    <span class="k">return</span> <span class="s">"ok"</span></span></pre>
       <div class="finding">
         <div class="f-head"><span class="sev">CRITICAL</span><span class="rid">DF002</span><span class="cwe">CWE-78</span><span class="cwe">app.py:10</span></div>
@@ -661,24 +661,27 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
     <div class="sec-head">
       <span class="eyebrow" data-i18n="feat.eyebrow">Platform</span>
       <h2 id="feat-h" data-i18n="feat.h2">One scanner for code, apps, archives and sites.</h2>
-      <p data-i18n="feat.sub">Pattern rules, a cross-file dataflow engine and a query language, plus secrets, dependency CVEs and passive web checks, in a single tool that runs anywhere.</p>
+      <p data-i18n="feat.sub">Pattern rules, a cross-file dataflow engine and a query language, plus verified autofixes, secrets, dependency vulnerabilities with reachability and passive web checks, in a single tool that runs anywhere.</p>
     </div>
     <div class="stats">
-      <div class="stat"><b>74</b><span data-i18n="stat.rules">built-in pattern and semantic rules</span></div>
-      <div class="stat"><b>46</b><span data-i18n="stat.df">dataflow and APEX rules</span></div>
-      <div class="stat"><b>12</b><span data-i18n="stat.langs">languages with taint analysis</span></div>
-      <div class="stat"><b>11</b><span data-i18n="stat.vql">built-in VQL queries</span></div>
+      <div class="stat"><b>153</b><span data-i18n="stat.rules">built-in pattern rules</span></div>
+      <div class="stat"><b>48</b><span data-i18n="stat.df">dataflow and APEX rules</span></div>
+      <div class="stat"><b class="ltr">6,352</b><span data-i18n="stat.apis">modelled library APIs</span></div>
+      <div class="stat"><b>19</b><span data-i18n="stat.vql">built-in VQL queries</span></div>
     </div>
     <div class="grid">
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-flow"/></svg></div><h3 data-i18n="f1.h">Dataflow (taint) analysis</h3><p data-i18n="f1.p">Tracks untrusted input across functions, classes and files, and attaches the full source-to-sink path to every finding.</p></div>
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg></div><h3 data-i18n="f2.h">Flow- and context-sensitive</h3><p data-i18n="f2.p">Constant folding and dead-branch pruning, plus context-sensitive (k=2) points-to analysis, so one factory called from two places yields two distinct objects.</p></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg></div><h3 data-i18n="f3.h">Context-specific sanitizers</h3><p data-i18n-html="f3.p"><code>html.escape</code> protects HTML, not SQL or a shell. A sanitizer clears only the sinks it actually defends.</p></div>
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg></div><h3 data-i18n="f4.h">Second-order injection</h3><p data-i18n="f4.p">Follows user data written to a database table and later read back into SQL or a shell command: stored injection, in every language.</p></div>
-      <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></div><h3 data-i18n="f5.h">Secrets detection</h3><p data-i18n="f5.p">Provider-specific patterns for cloud, payment and messaging keys, plus entropy analysis that catches keys with no known format.</p></div>
-      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-pkg"/></svg></div><h3 data-i18n="f6.h">Dependency CVEs</h3><p data-i18n="f6.p">Looks up known vulnerabilities for your lockfiles in OSV.dev. Optional, and the only network call a code scan makes.</p></div>
+      <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></div><h3 data-i18n="f5.h">Secrets, now and in git history</h3><p data-i18n="f5.p">Provider-specific patterns for cloud, payment and messaging keys, plus entropy analysis that catches keys with no known format. kashif history finds every secret ever committed, even if a later commit deleted it.</p></div>
+      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-pkg"/></svg></div><h3 data-i18n="f6.h">Dependencies with reachability</h3><p data-i18n="f6.p">Reads 23 manifest and lockfile types, looks up known vulnerabilities in OSV.dev, and tells you whether your code imports the package and calls the vulnerable function. The lookup is optional and the only network call a code scan makes.</p></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-archive"/></svg></div><h3 data-i18n="f7.h">Archives, APK and JAR</h3><p data-i18n="f7.p">Scan a zip, tar.gz, APK, JAR, AAR or DEX directly. With jadx installed, Android and Java bytecode is decompiled and analyzed.</p></div>
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></div><h3 data-i18n="f8.h">Passive web checks</h3><p data-i18n="f8.p">Security headers, CSP, TLS, cookies and commonly exposed paths, with a rate-limited crawl and an honest User-Agent.</p></div>
-      <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-query"/></svg></div><h3 data-i18n="f9.h">VQL query language</h3><p data-i18n="f9.p">Write your own checks in a declarative from/where/select language over the program database, in the style of CodeQL.</p></div>
+      <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-query"/></svg></div><h3 data-i18n="f9.h">Your own rules</h3><p data-i18n="f9.p">Write checks in VQL, a declarative from/where/select language over the program database in the style of CodeQL, then test, pack and share them with kashif rules.</p></div>
+      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></div><h3 data-i18n="f10.h">Verified autofix</h3><p data-i18n="f10.p">Deterministic fixes for 39 rules, from parameterized SQL to yaml.safe_load. A fix is offered only after the patched file parses and the rule no longer matches; review the diff, or apply it with --fix.</p></div>
+      <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></div><h3 data-i18n="f11.h">Triage, policy and compliance</h3><p data-i18n="f11.p">Triage decisions kept in the repository, a kashif.yml policy gate, mapping to 10 frameworks (OWASP, ASVS, CWE Top 25, PCI DSS, NIST, ISO 27001…) with an auditor report, and an attack-surface map.</p></div>
+      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-term"/></svg></div><h3 data-i18n="f12.h">For AI coding assistants</h3><p data-i18n="f12.p">kashif mcp is an MCP server: Claude Code, Cursor, VS Code agents, Windsurf and Zed can check the code they write, locally and offline. It never runs your code.</p></div>
     </div>
   </div>
 </section>
@@ -725,7 +728,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
       - <span class="k">uses:</span> actions/setup-python@v5
         <span class="k">with:</span> { <span class="k">python-version:</span> <span class="s">"3.12"</span> }
       - <span class="k">run:</span> pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan
-      - <span class="k">run:</span> vulnscan . --no-deps -f sarif -o vulnscan.sarif
+      - <span class="k">run:</span> kashif . --no-deps -f sarif -o vulnscan.sarif
       - <span class="k">uses:</span> github/codeql-action/upload-sarif@v3
         <span class="k">if:</span> always()
         <span class="k">with:</span>
@@ -733,17 +736,17 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
       </div>
       <div class="stack">
         <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg></div><h3 data-i18n="int.base.h">Baseline: report only what's new</h3><p data-i18n="int.base.p">Record today's findings once and commit the file (fingerprints only, no code). Later scans report, and fail CI on, new findings alone. Fingerprints survive line shifts and reformatting.</p>
-          <div class="term">vulnscan . --write-baseline .vulnscan-baseline.json
-vulnscan . --baseline .vulnscan-baseline.json --fail-on high</div></div>
+          <div class="term">kashif . --write-baseline .vulnscan-baseline.json
+kashif . --baseline .vulnscan-baseline.json --fail-on high</div></div>
         <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-query"/></svg></div><h3 data-i18n="int.audit.h">Audit profile</h3><p data-i18n-html="int.audit.p">For security reviews, <code>--audit</code> also lists every dangerous call (eval, shell, SQL, pickle…) that dataflow analysis could not prove reachable, so reviewers see the whole attack surface.</p>
-          <div class="term">vulnscan . --audit -f html -o review.html</div></div>
-        <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg></div><h3 data-i18n="int.out.h">Five output formats</h3><p data-i18n="int.out.p">SARIF output is validated against the OASIS 2.1.0 schema and opens in GitHub and VS Code. Every finding carries a stable fingerprint.</p>
-          <div class="chips" dir="ltr"><span class="chip mono">console</span><span class="chip mono">markdown</span><span class="chip mono">json</span><span class="chip mono">html</span><span class="chip mono">sarif 2.1.0</span></div></div>
+          <div class="term">kashif . --audit -f html -o review.html</div></div>
+        <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg></div><h3 data-i18n="int.out.h">Reports for the tools you use</h3><p data-i18n="int.out.p">SARIF is validated against the OASIS 2.1.0 schema and opens in GitHub and VS Code; exports go to DefectDojo, SonarQube, GitLab, Code Climate, Jira, GitHub Issues, AWS Security Hub and more. Every finding carries a stable fingerprint.</p>
+          <div class="chips" dir="ltr"><span class="chip mono">sarif 2.1.0</span><span class="chip mono">json</span><span class="chip mono">html</span><span class="chip mono">markdown</span><span class="chip mono">gitlab-sast</span><span class="chip mono">codeclimate</span><span class="chip mono">sonarqube</span><span class="chip mono">defectdojo</span><span class="chip mono">junit</span><span class="chip mono">csv</span><span class="chip mono">jira-csv</span><span class="chip mono">github-issues</span><span class="chip mono">asff</span><span class="chip mono">ocsf</span></div></div>
       </div>
     </div>
     <div class="grid g2 int-more">
-      <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg></div><h3 data-i18n="int.ide.h">In your editor</h3><p data-i18n="int.ide.p">The same findings as the CLI, in VS Code and any LSP editor: severity, CWE and the cross-file data-flow trail on hover, with quick fixes to suppress a finding or add it to the baseline. Offline; nothing leaves your machine.</p>
-        <div class="chips"><span class="chip">VS Code</span><span class="chip" data-i18n="int.ide.lsp">Any LSP editor</span><span class="chip mono">vulnscan lsp</span></div></div>
+      <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg></div><h3 data-i18n="int.ide.h">In your editor</h3><p data-i18n="int.ide.p">The same findings as the CLI, in VS Code and any LSP editor: severity, CWE and the cross-file data-flow trail on hover, with quick fixes to apply a verified fix, suppress a finding or add it to the baseline. Offline; nothing leaves your machine.</p>
+        <div class="chips"><span class="chip">VS Code</span><span class="chip" data-i18n="int.ide.lsp">Any LSP editor</span><span class="chip mono">kashif lsp</span></div></div>
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-flow"/></svg></div><h3 data-i18n="int.pr.h">On every pull request</h3><p data-i18n="int.pr.p">PR review comments on GitHub, GitLab SAST and Code Quality reports, and a pre-commit hook. Diff-aware scans report only what the branch changed.</p>
         <div class="chips"><span class="chip" data-i18n="int.pr.gh">GitHub PR comments</span><span class="chip">GitLab SAST</span><span class="chip">GitLab Code Quality</span><span class="chip mono">pre-commit</span></div>
         <a class="more" href="docs.html?lang=en#ci-and-github-code-scanning-sarif" data-i18n-attr="href:int.pr.href"><span data-i18n="int.pr.more">CI and pull-request setup</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
@@ -780,8 +783,10 @@ vulnscan . --baseline .vulnscan-baseline.json --fail-on high</div></div>
         </div>
         <div class="notes">
           <div class="note"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg><span data-i18n="acc.n1">The engine is never tuned to benchmark files: no test-case names, paths or expected results are encoded anywhere. Rules model real library APIs.</span></div>
-          <div class="note"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg><span data-i18n="acc.n2">Where false-positive rates are high (path traversal, XSS, redirects), the gap is reported as measured: those cases need deeper value tracking, and that is where work continues.</span></div>
+          <div class="note"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg><span data-i18n="acc.n2">Where false-positive rates are high (Python path traversal, XSS and redirects; Java XSS), the gap is reported as measured: those cases need deeper value tracking, and that is where work continues.</span></div>
           <div class="note"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg><span data-i18n="acc.n3">Each suite is scanned whole, as one application (the Python repository, the Java src/main tree), with the default profile, exactly as you would scan your own code.</span></div>
+          <div class="note"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg><span data-i18n="acc.n4">Java rose from 76.3% to 98.3% in 1.0 through two general call-resolution fixes, and an independent audit found no Benchmark-specific code: a fully renamed copy scores the same. The Benchmark is synthetic, so read the score as evidence of how the engine reasons, not as accuracy on your code. Scores come from the project's own scorer (bench/score_owasp.py) using OWASP's method.</span></div>
+          <div class="note"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg><span data-i18n="acc.n5">On real code: across the 35 open-source projects (of 38) that 0.9 could finish, 1.0 reports 2,607 findings instead of 17,228, and 783 critical or high instead of 4,345. Half of 0.9's findings were in test, docs and example code.</span></div>
         </div>
       </div>
     </div>
@@ -802,7 +807,7 @@ vulnscan . --baseline .vulnscan-baseline.json --fail-on high</div></div>
         <tbody>
           <tr><th scope="row" data-i18n="cmp.r1">Dataflow (taint) analysis</th><td class="us"><span class="cy" data-i18n="cmp.r1.us">12 languages</span></td><td><span class="cp" data-i18n="cmp.pro">Pro (cross-file)</span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cy" data-i18n="cmp.deep">Deepest</span></td><td><span class="cn" data-i18n="cmp.ast">AST only</span></td><td><span class="cn"></span></td></tr>
           <tr><th scope="row" data-i18n="cmp.r2">Rule and library-model breadth</th><td class="us"><span class="cp" data-i18n="cmp.r2.us">Growing</span></td><td><span class="cy" data-i18n="cmp.large">Large</span></td><td><span class="cy" data-i18n="cmp.large">Large</span></td><td><span class="cy" data-i18n="cmp.large">Large</span></td><td><span class="cy" data-i18n="cmp.large">Large</span></td><td><span class="cp" data-i18n="cmp.py">Python only</span></td><td><span class="cp" data-i18n="cmp.iac">IaC and config</span></td></tr>
-          <tr><th scope="row" data-i18n="cmp.r3">IDE and pull-request integrations</th><td class="us"><span class="cp" data-i18n="cmp.r3.us">Via SARIF</span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cp" data-i18n="cmp.limited">Limited</span></td><td><span class="cy"></span></td></tr>
+          <tr><th scope="row" data-i18n="cmp.r3">IDE and pull-request integrations</th><td class="us"><span class="cy" data-i18n="cmp.r3.us">VS Code, LSP, PR comments</span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cp" data-i18n="cmp.limited">Limited</span></td><td><span class="cy"></span></td></tr>
           <tr><th scope="row" data-i18n="cmp.r4">Years of real-world tuning</th><td class="us"><span class="cp" data-i18n="cmp.r4.us">New</span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cy"></span></td><td><span class="cy"></span></td></tr>
           <tr><th scope="row" data-i18n="cmp.r5">Runs fully local, no account</th><td class="us"><span class="cy"></span></td><td><span class="cy" data-i18n="cmp.ce">Community Edition</span></td><td><span class="cp" data-i18n="cmp.server">Self-hosted server</span></td><td><span class="cn" data-i18n="cmp.cloud">Cloud account</span></td><td><span class="cy" data-i18n="cmp.cli">CLI</span></td><td><span class="cy"></span></td><td><span class="cy"></span></td></tr>
           <tr><th scope="row" data-i18n="cmp.r6">Runtime dependencies</th><td class="us"><span class="cy" data-i18n="cmp.r6.us">None</span></td><td data-i18n="cmp.bin">Binary</td><td data-i18n="cmp.javadb">Java + database</td><td data-i18n="cmp.snykcli">CLI + account</td><td data-i18n="cmp.bundle">CLI bundle</td><td>pip</td><td data-i18n="cmp.bin">Binary</td></tr>
@@ -822,8 +827,8 @@ vulnscan . --baseline .vulnscan-baseline.json --fail-on high</div></div>
       <div class="card"><h3><svg class="ic" aria-hidden="true" style="color:var(--warn)"><use href="#i-warn"/></svg><span data-i18n="lim.h">Known limitations</span></h3>
         <ul>
           <li data-i18n="lim.1">Static analysis does not replace human review or penetration testing.</li>
-          <li data-i18n="lim.2">No IDE plugins yet; integrate through SARIF.</li>
-          <li data-i18n="lim.3">Not yet modeled: form-library validation, reflection and dynamic dispatch through strings.</li>
+          <li data-i18n="lim.2">Far fewer library models than the established tools, and less tuning on large real-world codebases.</li>
+          <li data-i18n="lim.3">Not yet modeled: templates other than Jinja (EJS, ERB) and values passed between PHP files through include.</li>
           <li data-i18n="lim.4">Without jadx, APK and JAR contents are scanned as text only.</li>
         </ul>
       </div>
@@ -841,7 +846,7 @@ vulnscan . --baseline .vulnscan-baseline.json --fail-on high</div></div>
     <div class="sec-grid">
       <div class="sec-list">
         <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></div><h3 data-i18n="sec.slsa.h">SLSA build provenance</h3><p data-i18n="sec.slsa.p">Signed attestations prove each binary was built from this repository by its release workflow.</p></div>
-        <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg></div><h3 data-i18n="sec.sbom.h">CycloneDX SBOM</h3><p data-i18n="sec.sbom.p">A software bill of materials ships with every release as vulnscan-sbom.cdx.json.</p></div>
+        <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg></div><h3 data-i18n="sec.sbom.h">CycloneDX SBOM</h3><p data-i18n="sec.sbom.p">A software bill of materials ships with every release as kashif-sbom.cdx.json.</p></div>
         <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-hash"/></svg></div><h3 data-i18n="sec.sum.h">SHA-256 checksums</h3><p data-i18n="sec.sum.p">SHA256SUMS.txt lets you confirm that every download is intact.</p></div>
         <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-pin"/></svg></div><h3 data-i18n="sec.ci.h">Hardened CI</h3><p data-i18n="sec.ci.p">Every GitHub Action is pinned by commit SHA with least-privilege tokens, monitored by OpenSSF Scorecard and Dependabot.</p></div>
         <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg></div><h3 data-i18n="sec.zero.h">No dependency tree</h3><p data-i18n="sec.zero.p">Standard library only: nothing is pulled in at install or run time, so there is no transitive supply chain to attack.</p></div>
@@ -853,9 +858,9 @@ vulnscan . --baseline .vulnscan-baseline.json --fail-on high</div></div>
 sha256sum -c SHA256SUMS.txt --ignore-missing
 
 <span class="c"># 2. Verify the signed SLSA build provenance (GitHub CLI)</span>
-gh attestation verify vulnscan-linux \
+gh attestation verify kashif-linux-x86_64 \
   --repo abdulrahmanahmedelabed-prog/vulnscan</pre>
-        <div style="padding:0 18px 18px" class="chips"><a class="chip" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/SHA256SUMS.txt" style="background:#121b2e;color:#c9d4e3;border-color:#2a3956">SHA256SUMS.txt</a><a class="chip" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-sbom.cdx.json" style="background:#121b2e;color:#c9d4e3;border-color:#2a3956">vulnscan-sbom.cdx.json</a></div>
+        <div style="padding:0 18px 18px" class="chips"><a class="chip" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/SHA256SUMS.txt" style="background:#121b2e;color:#c9d4e3;border-color:#2a3956">SHA256SUMS.txt</a><a class="chip" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/kashif-sbom.cdx.json" style="background:#121b2e;color:#c9d4e3;border-color:#2a3956">kashif-sbom.cdx.json</a></div>
       </div>
     </div>
   </div>
@@ -869,21 +874,21 @@ gh attestation verify vulnscan-linux \
       <p data-i18n="dl.sub">Single-file binaries, nothing to install. Run with no arguments to open the web UI, or pass a path to scan from the command line.</p>
     </div>
     <div class="dl">
-      <div class="card os" data-os="win"><span class="badge" data-i18n="dl.rec">Your system</span><div class="os-ic" aria-hidden="true"><svg class="ic"><use href="#i-win"/></svg></div><h3>Windows</h3><span class="file">vulnscan-windows.exe</span><span class="req" data-i18n="dl.win.req">x64</span><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-windows.exe"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span data-i18n="dl.btn.win">Download for Windows</span></a></div>
-      <div class="card os" data-os="linux"><span class="badge" data-i18n="dl.rec">Your system</span><div class="os-ic" aria-hidden="true"><svg class="ic"><use href="#i-term"/></svg></div><h3>Linux</h3><span class="file">vulnscan-linux</span><span class="req" data-i18n="dl.lin.req">x86-64 · Ubuntu 22.04+, Debian 12, RHEL 9+</span><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-linux"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span data-i18n="dl.btn.linux">Download for Linux</span></a></div>
-      <div class="card os" data-os="mac-arm"><span class="badge" data-i18n="dl.rec">Your system</span><div class="os-ic" aria-hidden="true"><svg class="ic"><use href="#i-laptop"/></svg></div><h3 data-i18n="dl.mac1">macOS · Apple Silicon</h3><span class="file">vulnscan-macos-arm64</span><span class="req" data-i18n="dl.mac1.req">arm64 · M1 and later</span><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-macos-arm64"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span data-i18n="dl.btn.mac1">Download for Apple Silicon</span></a></div>
-      <div class="card os" data-os="mac-x64"><span class="badge" data-i18n="dl.rec">Your system</span><div class="os-ic" aria-hidden="true"><svg class="ic"><use href="#i-laptop"/></svg></div><h3 data-i18n="dl.mac2">macOS · Intel</h3><span class="file">vulnscan-macos-x86_64</span><span class="req" data-i18n="dl.mac2.req">x86_64</span><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/vulnscan-macos-x86_64"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span data-i18n="dl.btn.mac2">Download for Intel Mac</span></a></div>
+      <div class="card os" data-os="win"><span class="badge" data-i18n="dl.rec">Your system</span><div class="os-ic" aria-hidden="true"><svg class="ic"><use href="#i-win"/></svg></div><h3>Windows</h3><span class="file">kashif-windows-x86_64.exe</span><span class="req" data-i18n="dl.win.req">x64</span><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/kashif-windows-x86_64.exe"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span data-i18n="dl.btn.win">Download for Windows</span></a></div>
+      <div class="card os" data-os="linux"><span class="badge" data-i18n="dl.rec">Your system</span><div class="os-ic" aria-hidden="true"><svg class="ic"><use href="#i-term"/></svg></div><h3>Linux</h3><span class="file">kashif-linux-x86_64</span><span class="req" data-i18n="dl.lin.req">x86-64 · Ubuntu 22.04+, Debian 12, RHEL 9+</span><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/kashif-linux-x86_64"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span data-i18n="dl.btn.linux">Download for Linux</span></a></div>
+      <div class="card os" data-os="mac-arm"><span class="badge" data-i18n="dl.rec">Your system</span><div class="os-ic" aria-hidden="true"><svg class="ic"><use href="#i-laptop"/></svg></div><h3 data-i18n="dl.mac1">macOS · Apple Silicon</h3><span class="file">kashif-macos-arm64</span><span class="req" data-i18n="dl.mac1.req">arm64 · M1 and later</span><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/kashif-macos-arm64"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span data-i18n="dl.btn.mac1">Download for Apple Silicon</span></a></div>
+      <div class="card os" data-os="mac-x64"><span class="badge" data-i18n="dl.rec">Your system</span><div class="os-ic" aria-hidden="true"><svg class="ic"><use href="#i-laptop"/></svg></div><h3 data-i18n="dl.mac2">macOS · Intel</h3><span class="file">kashif-macos-x86_64</span><span class="req" data-i18n="dl.mac2.req">x86_64</span><a class="btn primary" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/kashif-macos-x86_64"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span data-i18n="dl.btn.mac2">Download for Intel Mac</span></a></div>
     </div>
     <div class="runs">
-      <div class="card"><h3 data-i18n="run.win.h">Windows</h3><p data-i18n="run.win.p">Double-click vulnscan-windows.exe to open the web UI, or run it from a terminal:</p><div class="term">vulnscan-windows.exe .\project --fail-on high</div></div>
-      <div class="card"><h3 data-i18n="run.lin.h">Linux</h3><p data-i18n="run.lin.p">Make the file executable, then run it:</p><div class="term">chmod +x vulnscan-linux
-./vulnscan-linux            <span class="c"># web UI</span>
-./vulnscan-linux ./project  <span class="c"># CLI</span></div></div>
-      <div class="card"><h3 data-i18n="run.mac.h">macOS</h3><p data-i18n="run.mac.p">Easiest: Homebrew or the one-command install below (no quarantine step). If you downloaded the file in a browser, remove the quarantine flag once before the first launch:</p><div class="term">chmod +x vulnscan-macos-arm64
-xattr -d com.apple.quarantine vulnscan-macos-arm64
-./vulnscan-macos-arm64</div></div>
+      <div class="card"><h3 data-i18n="run.win.h">Windows</h3><p data-i18n="run.win.p">Double-click kashif-windows-x86_64.exe to open the web UI, or run it from a terminal:</p><div class="term">kashif-windows-x86_64.exe .\project --fail-on high</div><p data-i18n-html="run.win.setup">Prefer an installer? <a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/kashif-setup.exe">kashif-setup.exe</a> installs Kashif, adds it to PATH and the Start menu if you choose, and uninstalls from Windows Settings.</p></div>
+      <div class="card"><h3 data-i18n="run.lin.h">Linux</h3><p data-i18n="run.lin.p">Make the file executable, then run it:</p><div class="term">chmod +x kashif-linux-x86_64
+./kashif-linux-x86_64            <span class="c"># web UI</span>
+./kashif-linux-x86_64 ./project  <span class="c"># CLI</span></div></div>
+      <div class="card"><h3 data-i18n="run.mac.h">macOS</h3><p data-i18n="run.mac.p">Easiest: Homebrew or the one-command install below (no quarantine step). If you downloaded the file in a browser, remove the quarantine flag once before the first launch:</p><div class="term">chmod +x kashif-macos-arm64
+xattr -d com.apple.quarantine kashif-macos-arm64
+./kashif-macos-arm64</div></div>
     </div>
-    <div class="card" style="margin-top:14px"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-term"/></svg></div><h3 data-i18n="inst.h">Install with one command</h3><p data-i18n="inst.p">Downloads the release for your machine, verifies its SHA-256 before installing, and puts vulnscan on your PATH. On macOS no quarantine step is needed.</p>
+    <div class="card" style="margin-top:14px"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-term"/></svg></div><h3 data-i18n="inst.h">Install with one command</h3><p data-i18n="inst.p">Downloads the release for your machine, verifies its SHA-256 before installing, and puts kashif on your PATH (vulnscan still works as an alias). On macOS no quarantine step is needed.</p>
       <div class="term copyable"><button type="button" class="copy" data-copy="inst-sh" data-i18n="copy">Copy</button><span class="c" data-i18n="inst.sh"># macOS and Linux</span>
 <span id="inst-sh">curl -fsSL https://abdulrahmanahmedelabed-prog.github.io/vulnscan/install.sh | sh</span></div>
       <div class="term copyable"><button type="button" class="copy" data-copy="inst-brew" data-i18n="copy">Copy</button><span class="c" data-i18n="inst.brew"># Homebrew</span>
@@ -892,8 +897,8 @@ xattr -d com.apple.quarantine vulnscan-macos-arm64
 <span id="inst-ps">irm https://abdulrahmanahmedelabed-prog.github.io/vulnscan/install.ps1 | iex</span></div></div>
     <div class="card" style="margin-top:14px"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-pkg"/></svg></div><h3 data-i18n="pip.h">Or install with pip</h3><p data-i18n="pip.p">Python 3.10 or later. No runtime dependencies are installed.</p>
       <div class="term copyable"><button type="button" class="copy" data-copy="pip-snip" data-i18n="copy">Copy</button><span id="pip-snip">pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan</span>
-vulnscan ui                               <span class="c"># web UI on 127.0.0.1:8765</span>
-vulnscan ./project -f sarif -o out.sarif  <span class="c"># CLI</span></div></div>
+kashif ui                                 <span class="c"># web UI on 127.0.0.1:8765</span>
+kashif ./project -f sarif -o out.sarif    <span class="c"># CLI</span></div></div>
     <div class="legal" role="note"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><span data-i18n="legal">Scan only what you own or are authorized in writing to test. Scanning other people's systems without permission may be illegal.</span></div>
   </div>
 </section>
@@ -996,17 +1001,17 @@ const BENCH = {
   java: {
     suite: "OWASP Benchmark for Java v1.2", repo: "BenchmarkJava", cases: 2740,
     categories: [
-      { id: "cmdi",            tpr: 100.0, fpr: 24.8, score:  75.2 },
+      { id: "cmdi",            tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "crypto",          tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "hash",            tpr: 100.0, fpr:  0.0, score: 100.0 },
-      { id: "ldapi",           tpr: 100.0, fpr: 37.5, score:  62.5 },
-      { id: "pathtraver",      tpr: 100.0, fpr: 38.5, score:  61.5 },
+      { id: "ldapi",           tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "pathtraver",      tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "securecookie",    tpr: 100.0, fpr:  0.0, score: 100.0 },
-      { id: "sqli",            tpr: 100.0, fpr: 37.1, score:  62.9 },
-      { id: "trustbound",      tpr:  85.5, fpr: 34.9, score:  50.7 },
+      { id: "sqli",            tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "trustbound",      tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "weakrand",        tpr: 100.0, fpr:  0.0, score: 100.0 },
-      { id: "xpathi",          tpr: 100.0, fpr: 15.0, score:  85.0 },
-      { id: "xss",             tpr:  88.2, fpr: 46.4, score:  41.8 }
+      { id: "xpathi",          tpr: 100.0, fpr:  0.0, score: 100.0 },
+      { id: "xss",             tpr: 100.0, fpr: 18.2, score:  81.8 }
     ]
   }
 };
@@ -1017,10 +1022,10 @@ const STAMPED_VERSION = "__VERSION__";
 const REPO = "abdulrahmanahmedelabed-prog/vulnscan";
 const SITE = "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/";
 const DL = {
-  "win":     "vulnscan-windows.exe",
-  "linux":   "vulnscan-linux",
-  "mac-arm": "vulnscan-macos-arm64",
-  "mac-x64": "vulnscan-macos-x86_64"
+  "win":     "kashif-windows-x86_64.exe",
+  "linux":   "kashif-linux-x86_64",
+  "mac-arm": "kashif-macos-arm64",
+  "mac-x64": "kashif-macos-x86_64"
 };
 
 const CAT = {
@@ -1066,17 +1071,20 @@ en: {
   "mock.label":"Example finding","mock.title":"Untrusted input reaches a shell command (OS command injection)",
   "mock.fix":"Do not build shell commands from input. Pass an argument list to subprocess.run() without a shell, and validate the host against an allowlist.",
   "feat.eyebrow":"Platform","feat.h2":"One scanner for code, apps, archives and sites.",
-  "feat.sub":"Pattern rules, a cross-file dataflow engine and a query language, plus secrets, dependency CVEs and passive web checks, in a single tool that runs anywhere.",
-  "stat.rules":"built-in pattern and semantic rules","stat.df":"dataflow and APEX rules","stat.langs":"languages with taint analysis","stat.vql":"built-in VQL queries",
+  "feat.sub":"Pattern rules, a cross-file dataflow engine and a query language, plus verified autofixes, secrets, dependency vulnerabilities with reachability and passive web checks, in a single tool that runs anywhere.",
+  "stat.rules":"built-in pattern rules","stat.df":"dataflow and APEX rules","stat.apis":"modelled library APIs","stat.vql":"built-in VQL queries",
   "f1.h":"Dataflow (taint) analysis","f1.p":"Tracks untrusted input across functions, classes and files, and attaches the full source-to-sink path to every finding.",
   "f2.h":"Flow- and context-sensitive","f2.p":"Constant folding and dead-branch pruning, plus context-sensitive (k=2) points-to analysis, so one factory called from two places yields two distinct objects.",
   "f3.h":"Context-specific sanitizers","f3.p":"<code>html.escape</code> protects HTML, not SQL or a shell. A sanitizer clears only the sinks it actually defends.",
   "f4.h":"Second-order injection","f4.p":"Follows user data written to a database table and later read back into SQL or a shell command: stored injection, in every language.",
-  "f5.h":"Secrets detection","f5.p":"Provider-specific patterns for cloud, payment and messaging keys, plus entropy analysis that catches keys with no known format.",
-  "f6.h":"Dependency CVEs","f6.p":"Looks up known vulnerabilities for your lockfiles in OSV.dev. Optional, and the only network call a code scan makes.",
+  "f5.h":"Secrets, now and in git history","f5.p":"Provider-specific patterns for cloud, payment and messaging keys, plus entropy analysis that catches keys with no known format. kashif history finds every secret ever committed, even if a later commit deleted it.",
+  "f6.h":"Dependencies with reachability","f6.p":"Reads 23 manifest and lockfile types, looks up known vulnerabilities in OSV.dev, and tells you whether your code imports the package and calls the vulnerable function. The lookup is optional and the only network call a code scan makes.",
   "f7.h":"Archives, APK and JAR","f7.p":"Scan a zip, tar.gz, APK, JAR, AAR or DEX directly. With jadx installed, Android and Java bytecode is decompiled and analyzed.",
   "f8.h":"Passive web checks","f8.p":"Security headers, CSP, TLS, cookies and commonly exposed paths, with a rate-limited crawl and an honest User-Agent.",
-  "f9.h":"VQL query language","f9.p":"Write your own checks in a declarative from/where/select language over the program database, in the style of CodeQL.",
+  "f9.h":"Your own rules","f9.p":"Write checks in VQL, a declarative from/where/select language over the program database in the style of CodeQL, then test, pack and share them with kashif rules.",
+  "f10.h":"Verified autofix","f10.p":"Deterministic fixes for 39 rules, from parameterized SQL to yaml.safe_load. A fix is offered only after the patched file parses and the rule no longer matches; review the diff, or apply it with --fix.",
+  "f11.h":"Triage, policy and compliance","f11.p":"Triage decisions kept in the repository, a kashif.yml policy gate, mapping to 10 frameworks (OWASP, ASVS, CWE Top 25, PCI DSS, NIST, ISO 27001…) with an auditor report, and an attack-surface map.",
+  "f12.h":"For AI coding assistants","f12.p":"kashif mcp is an MCP server: Claude Code, Cursor, VS Code agents, Windsurf and Zed can check the code they write, locally and offline. It never runs your code.",
   "lang.eyebrow":"Languages and targets","lang.h2":"12 languages with dataflow, and the places other scanners skip.",
   "lang.sub":"The same taint engine runs on every language below, alongside pattern rules for configuration, containers and CI files.",
   "cov1.h":"Oracle APEX and ORDS","cov1.p":"Analyzes APEX application exports, plug-ins and PL/SQL packages for SQL injection, substitution strings, XSS and AI-assistant prompt injection, and points to the page and component.",
@@ -1087,9 +1095,9 @@ en: {
   "copy":"Copy","copied":"Copied","int.yaml":"GitHub Actions workflow","copied.sr":"Copied to clipboard",
   "int.base.h":"Baseline: report only what's new","int.base.p":"Record today's findings once and commit the file (fingerprints only, no code). Later scans report, and fail CI on, new findings alone. Fingerprints survive line shifts and reformatting.",
   "int.audit.h":"Audit profile","int.audit.p":"For security reviews, <code>--audit</code> also lists every dangerous call (eval, shell, SQL, pickle…) that dataflow analysis could not prove reachable, so reviewers see the whole attack surface.",
-  "int.ide.h":"In your editor","int.ide.p":"The same findings as the CLI, in VS Code and any LSP editor: severity, CWE and the cross-file data-flow trail on hover, with quick fixes to suppress a finding or add it to the baseline. Offline; nothing leaves your machine.","int.ide.lsp":"Any LSP editor",
+  "int.ide.h":"In your editor","int.ide.p":"The same findings as the CLI, in VS Code and any LSP editor: severity, CWE and the cross-file data-flow trail on hover, with quick fixes to apply a verified fix, suppress a finding or add it to the baseline. Offline; nothing leaves your machine.","int.ide.lsp":"Any LSP editor",
   "int.pr.h":"On every pull request","int.pr.p":"PR review comments on GitHub, GitLab SAST and Code Quality reports, and a pre-commit hook. Diff-aware scans report only what the branch changed.","int.pr.gh":"GitHub PR comments","int.pr.more":"CI and pull-request setup","int.pr.href":"docs.html?lang=en#ci-and-github-code-scanning-sarif",
-  "int.out.h":"Five output formats","int.out.p":"SARIF output is validated against the OASIS 2.1.0 schema and opens in GitHub and VS Code. Every finding carries a stable fingerprint.",
+  "int.out.h":"Reports for the tools you use","int.out.p":"SARIF is validated against the OASIS 2.1.0 schema and opens in GitHub and VS Code; exports go to DefectDojo, SonarQube, GitLab, Code Climate, Jira, GitHub Issues, AWS Security Hub and more. Every finding carries a stable fingerprint.",
   "acc.eyebrow":"Accuracy","acc.h2":"Measured in public. Reproducible with one command.",
   "acc.sub":"We score Kashif on the OWASP Benchmark and publish every category, including the weak ones.",
   "acc.overall":"Overall score",
@@ -1098,13 +1106,15 @@ en: {
   "acc.caption":"OWASP Benchmark results per category","acc.th.cat":"Category","acc.th.score":"Score <bdi>(TPR − FPR)</bdi>",
   "acc.row":"{name}: TPR {tpr}%, FPR {fpr}%, score {score}%",
   "acc.n1":"The engine is never tuned to benchmark files: no test-case names, paths or expected results are encoded anywhere. Rules model real library APIs.",
-  "acc.n2":"Where false-positive rates are high (path traversal, XSS, redirects), the gap is reported as measured: those cases need deeper value tracking, and that is where work continues.",
+  "acc.n2":"Where false-positive rates are high (Python path traversal, XSS and redirects; Java XSS), the gap is reported as measured: those cases need deeper value tracking, and that is where work continues.",
   "acc.n3":"Each suite is scanned whole, as one application (the Python repository, the Java src/main tree), with the default profile, exactly as you would scan your own code.",
+  "acc.n4":"Java rose from 76.3% to 98.3% in 1.0 through two general call-resolution fixes, and an independent audit found no Benchmark-specific code: a fully renamed copy scores the same. The Benchmark is synthetic, so read the score as evidence of how the engine reasons, not as accuracy on your code. Scores come from the project's own scorer (bench/score_owasp.py) using OWASP's method.",
+  "acc.n5":"On real code: across the 35 open-source projects (of 38) that 0.9 could finish, 1.0 reports 2,607 findings instead of 17,228, and 783 critical or high instead of 4,345. Half of 0.9's findings were in test, docs and example code.",
   "cmp.eyebrow":"Compare","cmp.h2":"How Kashif compares, honestly.","cmp.sub":"The established tools are excellent. Here is where each one is strong, and where Kashif fills a gap.",
   "cmp.caption":"Comparison of Kashif with other security scanners","cmp.th":"Capability","cmp.yes":"Yes","cmp.no":"No","cmp.partial":"Partial",
   "cmp.r1":"Dataflow (taint) analysis","cmp.r1.us":"12 languages","cmp.pro":"Pro (cross-file)","cmp.deep":"Deepest","cmp.ast":"AST only",
   "cmp.r2":"Rule and library-model breadth","cmp.r2.us":"Growing","cmp.large":"Large","cmp.py":"Python only","cmp.iac":"IaC and config",
-  "cmp.r3":"IDE and pull-request integrations","cmp.r3.us":"Via SARIF","cmp.limited":"Limited",
+  "cmp.r3":"IDE and pull-request integrations","cmp.r3.us":"VS Code, LSP, PR comments","cmp.limited":"Limited",
   "cmp.r4":"Years of real-world tuning","cmp.r4.us":"New",
   "cmp.r5":"Runs fully local, no account","cmp.ce":"Community Edition","cmp.server":"Self-hosted server","cmp.cloud":"Cloud account","cmp.cli":"CLI",
   "cmp.r6":"Runtime dependencies","cmp.r6.us":"None","cmp.bin":"Binary","cmp.javadb":"Java + database","cmp.snykcli":"CLI + account","cmp.bundle":"CLI bundle",
@@ -1116,11 +1126,11 @@ en: {
   "cmp.r12":"Price","cmp.r12.us":"Free (MIT)","cmp.freepaid":"Free tier + paid","cmp.oss":"Free for public repos","cmp.free":"Free",
   "cmp.they.h":"Where the established tools lead","cmp.they.p":"Semgrep, SonarQube, Snyk Code and CodeQL have far more rules and library models, IDE and pull-request integrations, and years of tuning on real codebases. If you already run them, keep them.",
   "cmp.we.h":"Where Kashif fits","cmp.we.p":"Fully local with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard.",
-  "lim.h":"Known limitations","lim.1":"Static analysis does not replace human review or penetration testing.","lim.2":"No IDE plugins yet; integrate through SARIF.","lim.3":"Not yet modeled: form-library validation, reflection and dynamic dispatch through strings.","lim.4":"Without jadx, APK and JAR contents are scanned as text only.",
+  "lim.h":"Known limitations","lim.1":"Static analysis does not replace human review or penetration testing.","lim.2":"Far fewer library models than the established tools, and less tuning on large real-world codebases.","lim.3":"Not yet modeled: templates other than Jinja (EJS, ERB) and values passed between PHP files through include.","lim.4":"Without jadx, APK and JAR contents are scanned as text only.",
   "sec.eyebrow":"Security and supply chain","sec.h2":"Verify every byte you run.",
   "sec.sub":"A security tool should meet the bar it sets. Every release is built in GitHub Actions and ships with the evidence you need to check it.",
   "sec.slsa.h":"SLSA build provenance","sec.slsa.p":"Signed attestations prove each binary was built from this repository by its release workflow.",
-  "sec.sbom.h":"CycloneDX SBOM","sec.sbom.p":"A software bill of materials ships with every release as vulnscan-sbom.cdx.json.",
+  "sec.sbom.h":"CycloneDX SBOM","sec.sbom.p":"A software bill of materials ships with every release as kashif-sbom.cdx.json.",
   "sec.sum.h":"SHA-256 checksums","sec.sum.p":"SHA256SUMS.txt lets you confirm that every download is intact.",
   "sec.ci.h":"Hardened CI","sec.ci.p":"Every GitHub Action is pinned by commit SHA with least-privilege tokens, monitored by OpenSSF Scorecard and Dependabot.",
   "sec.zero.h":"No dependency tree","sec.zero.p":"Standard library only: nothing is pulled in at install or run time, so there is no transitive supply chain to attack.",
@@ -1131,20 +1141,21 @@ en: {
   "dl.rec":"Your system","dl.btn.win":"Download for Windows","dl.btn.linux":"Download for Linux","dl.btn.mac1":"Download for Apple Silicon","dl.btn.mac2":"Download for Intel Mac",
   "dl.win.req":"x64","dl.lin.req":"x86-64 · Ubuntu 22.04+, Debian 12, RHEL 9+",
   "dl.mac1":"macOS · Apple Silicon","dl.mac1.req":"arm64 · M1 and later","dl.mac2":"macOS · Intel","dl.mac2.req":"x86_64",
-  "run.win.h":"Windows","run.win.p":"Double-click vulnscan-windows.exe to open the web UI, or run it from a terminal:",
+  "run.win.h":"Windows","run.win.p":"Double-click kashif-windows-x86_64.exe to open the web UI, or run it from a terminal:",
+  "run.win.setup":"Prefer an installer? <a href=\"https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/kashif-setup.exe\">kashif-setup.exe</a> installs Kashif, adds it to PATH and the Start menu if you choose, and uninstalls from Windows Settings.",
   "run.lin.h":"Linux","run.lin.p":"Make the file executable, then run it:",
   "run.mac.h":"macOS","run.mac.p":"Easiest: Homebrew or the one-command install below (no quarantine step). If you downloaded the file in a browser, remove the quarantine flag once before the first launch:",
-  "inst.h":"Install with one command","inst.p":"Downloads the release for your machine, verifies its SHA-256 before installing, and puts vulnscan on your PATH. On macOS no quarantine step is needed.","inst.sh":"# macOS and Linux","inst.brew":"# Homebrew","inst.ps":"# Windows (PowerShell)",
+  "inst.h":"Install with one command","inst.p":"Downloads the release for your machine, verifies its SHA-256 before installing, and puts kashif on your PATH (vulnscan still works as an alias). On macOS no quarantine step is needed.","inst.sh":"# macOS and Linux","inst.brew":"# Homebrew","inst.ps":"# Windows (PowerShell)",
   "pip.h":"Or install with pip","pip.p":"Python 3.10 or later. No runtime dependencies are installed.",
   "legal":"Scan only what you own or are authorized in writing to test. Scanning other people's systems without permission may be illegal.",
   "faq.eyebrow":"FAQ","faq.h2":"Questions, answered.",
   "q1":"Is Kashif free?","a1":"Yes. Kashif is open source under the MIT license: free for personal and commercial use, with no paid tier, no account and no usage limits.",
   "q2":"Does Kashif upload my code?","a2":"No. Everything runs locally and the web UI listens on 127.0.0.1 only. The only network call in a code scan is the optional OSV.dev dependency lookup, which sends package names and versions, never source code. Turn it off with --no-deps.",
   "q3":"Can it run offline or in an air-gapped network?","a3":"Yes. Copy the single binary (or install the Python package) and run with --no-deps --no-external. No step of a code scan needs the network.",
-  "q4":"How accurate is it?","a4":"On the OWASP Benchmark it scores {overall_py}% for Python and {overall_java}% for Java (mean of TPR minus FPR per category), and you can reproduce both with one command. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review.",
+  "q4":"How accurate is it?","a4":"On the OWASP Benchmark it scores {overall_py}% for Python and {overall_java}% for Java (mean of TPR minus FPR per category, computed with the project's own scorer), and you can reproduce both with one command. The Benchmark is a synthetic suite, so the score shows how the engine reasons rather than how accurate it is on your code. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review.",
   "q5":"Which languages and targets are supported?","a5":"Dataflow analysis for Python, JavaScript/TypeScript, Java, Kotlin, C#, Go, PHP, C/C++, Rust, Swift, Ruby and PL/SQL, plus Oracle APEX exports, Android APK/JAR (via jadx), configuration, containers, CI files and passive web scanning.",
-  "q6":"How do I use it in CI?","a6":"Run vulnscan with -f sarif and upload the file to GitHub Code Scanning, or use --fail-on high to fail the build. With --baseline, only findings that are new since the baseline fail the build.",
-  "q7":"How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?","a7":"Those tools have far more rules and library models, IDE plugins and years of real-world tuning. Kashif's strengths are running fully locally with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard.",
+  "q6":"How do I use it in CI?","a6":"Run kashif with -f sarif and upload the file to GitHub Code Scanning, or use --fail-on high to fail the build. With --baseline, only findings that are new since the baseline fail the build.",
+  "q7":"How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?","a7":"Those tools have far more rules and library models and years of real-world tuning. Kashif's strengths are running fully locally with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard.",
   "q8":"How do I report a security issue in Kashif?","a8":"Use GitHub private vulnerability reporting, as described in SECURITY.md. Please do not open a public issue.",
   "final.h2":"Start scanning in a minute.","final.p":"Download one file, point it at a project, and read a report ordered from critical to info, with the data-flow path behind every dataflow finding.",
   "foot.by":"Developed by the Programming Department at the Islamic University of Gaza.","foot.contact":"Contact:",
@@ -1191,17 +1202,20 @@ ar: {
   "mock.label":"مثال على نتيجة","mock.title":"مُدخل غير موثوق يصل إلى أمر shell (حقن أوامر النظام)",
   "mock.fix":"لا تبنِ أوامر النظام من المدخلات. مرّر قائمة وسائط إلى subprocess.run()‎ بلا shell، وتحقّق من اسم المضيف مقابل قائمة سماح.",
   "feat.eyebrow":"المنصّة","feat.h2":"فاحص واحد للكود والتطبيقات والأرشيفات والمواقع.",
-  "feat.sub":"قواعد أنماط، ومحرّك تدفق بيانات عبر الملفات، ولغة استعلام، إضافة إلى كشف الأسرار وثغرات الاعتماديات وفحص الويب السلبي، في أداة واحدة تعمل في أي مكان.",
-  "stat.rules":"قاعدة أنماط ودلالات مدمجة","stat.df":"قاعدة لتدفق البيانات وAPEX","stat.langs":"لغة بتحليل التلوّث","stat.vql":"استعلام VQL مدمج",
+  "feat.sub":"قواعد أنماط، ومحرّك تدفق بيانات عبر الملفات، ولغة استعلام، إضافة إلى إصلاحات تلقائية مُتحقَّق منها وكشف الأسرار وثغرات الاعتماديات مع قابلية الوصول وفحص الويب السلبي، في أداة واحدة تعمل في أي مكان.",
+  "stat.rules":"قاعدة أنماط مدمجة","stat.df":"قاعدة لتدفق البيانات وAPEX","stat.apis":"واجهة مكتبة منمذجة","stat.vql":"استعلام VQL مدمج",
   "f1.h":"تحليل تدفق البيانات (Taint)","f1.p":"يتتبّع المدخلات غير الموثوقة عبر الدوال والأصناف والملفات، ويرفق بكل نتيجة المسار الكامل من المصدر إلى نقطة الخطر.",
   "f2.h":"حسّاس للتدفق والسياق","f2.p":"طيّ الثوابت وحذف الفروع الميتة، مع تحليل points-to حسّاس للسياق (k=2)، فالمصنع المستدعى من موضعين يعيد كائنين مختلفين.",
   "f3.h":"مُعقِّمات بحسب السياق","f3.p":"<code>html.escape</code> يحمي HTML فقط، لا SQL ولا shell. والمُعقِّم لا يُلغي إلا نقاط الخطر التي يحمي منها فعلًا.",
   "f4.h":"الحقن من الدرجة الثانية","f4.p":"يتتبّع بيانات المستخدم المكتوبة في جدول قاعدة بيانات ثم المقروءة لاحقًا في SQL أو أمر shell: الحقن المخزَّن، في كل اللغات.",
-  "f5.h":"كشف الأسرار","f5.p":"أنماط خاصة بمزوّدي السحابة والدفع والمراسلة، مع تحليل العشوائية (الإنتروبيا) لالتقاط مفاتيح بلا صيغة معروفة.",
-  "f6.h":"ثغرات الاعتماديات (CVE)","f6.p":"يستعلم OSV.dev عن الثغرات المعروفة في ملفات القفل. اختياري، وهو الاتصال الشبكي الوحيد في فحص الكود.",
+  "f5.h":"الأسرار، الآن وفي تاريخ git","f5.p":"أنماط خاصة بمزوّدي السحابة والدفع والمراسلة، مع تحليل العشوائية (الإنتروبيا) لالتقاط مفاتيح بلا صيغة معروفة. ويجد kashif history كل سرّ أُودِع يومًا ولو حذفه إيداع لاحق.",
+  "f6.h":"الاعتماديات مع قابلية الوصول","f6.p":"يقرأ 23 نوعًا من ملفات التبعيات والقفل، ويستعلم OSV.dev عن الثغرات المعروفة، ويخبرك هل يستورد كودك الحزمة وهل يستدعي الدالة المصابة. الاستعلام اختياري، وهو الاتصال الشبكي الوحيد في فحص الكود.",
   "f7.h":"الأرشيفات وAPK وJAR","f7.p":"افحص ملفات zip وtar.gz وAPK وJAR وAAR وDEX مباشرة. ومع تثبيت jadx يُفكّ تجميع كود أندرويد وJava ويُحلَّل.",
   "f8.h":"فحص ويب سلبي","f8.p":"ترويسات الأمان وCSP وTLS والكوكيز والمسارات المكشوفة الشائعة، مع زحف محدود المعدّل ووكيل مستخدم صريح.",
-  "f9.h":"لغة الاستعلام VQL","f9.p":"اكتب فحوصك الخاصة بلغة تصريحية (from/where/select) فوق قاعدة بيانات البرنامج، على نهج CodeQL.",
+  "f9.h":"قواعدك الخاصة","f9.p":"اكتب فحوصك بلغة VQL التصريحية (from/where/select) فوق قاعدة بيانات البرنامج على نهج CodeQL، ثم اختبرها واحزمها وشاركها عبر kashif rules.",
+  "f10.h":"إصلاح تلقائي مُتحقَّق منه","f10.p":"إصلاحات حتمية لـ 39 قاعدة، من استعلامات SQL بمعاملات إلى yaml.safe_load. لا يُعرض الإصلاح إلا بعد التأكد أن الملف المعدَّل سليم وأن القاعدة لم تعد تنطبق؛ راجع الفرق أو طبّقه بـ ‎--fix.",
+  "f11.h":"الفرز والسياسة والامتثال","f11.p":"قرارات فرز تعيش داخل المستودع، وبوابة سياسة في kashif.yml، وربط بعشرة أطر (OWASP وASVS وCWE Top 25 وPCI DSS وNIST وISO 27001…) مع تقرير للمدقق، وخريطة لسطح الهجوم.",
+  "f12.h":"للمساعدات الذكية في البرمجة","f12.p":"kashif mcp خادم MCP: يتيح لـ Claude Code وCursor ووكلاء VS Code وWindsurf وZed فحص الكود الذي يكتبونه، محليًا ودون إنترنت، ولا يشغّل كودك أبدًا.",
   "lang.eyebrow":"اللغات والأهداف","lang.h2":"12 لغة بتحليل تدفق البيانات، والأماكن التي تتجاوزها الفاحصات الأخرى.",
   "lang.sub":"محرّك التلوّث نفسه يعمل على كل اللغات أدناه، إلى جانب قواعد أنماط للإعدادات والحاويات وملفات CI.",
   "cov1.h":"Oracle APEX وORDS","cov1.p":"يحلّل ملفات تصدير تطبيقات APEX والإضافات وحزم PL/SQL بحثًا عن حقن SQL والاستبدال النصي وXSS وحقن تعليمات المساعد الذكي، ويشير إلى الصفحة والمكوّن.",
@@ -1212,9 +1226,9 @@ ar: {
   "copy":"نسخ","copied":"نُسخ","int.yaml":"سير عمل GitHub Actions","copied.sr":"نُسخ إلى الحافظة",
   "int.base.h":"خط الأساس: الجديد فقط","int.base.p":"احفظ نتائج اليوم مرة واحدة وأضف الملف إلى المستودع (بصمات فقط، بلا كود). بعدها يعرض كل فحص الجديد فقط ويُفشل CI عليه وحده. البصمات تصمد أمام إزاحة الأسطر وإعادة التنسيق.",
   "int.audit.h":"ملف التدقيق","int.audit.p":"للمراجعات الأمنية، يعرض <code>--audit</code> أيضًا كل استدعاء خطِر (eval وshell وSQL وpickle…) لم يُثبت تحليل التدفق وصول مُدخل إليه، فيرى المراجع سطح الهجوم كاملًا.",
-  "int.ide.h":"داخل محرّرك","int.ide.p":"النتائج نفسها التي يعطيها سطر الأوامر، في VS Code وأي محرّر يدعم LSP: الخطورة وCWE ومسار تدفق البيانات عبر الملفات عند التمرير، مع إصلاحات سريعة لكتم نتيجة أو إضافتها إلى خط الأساس. يعمل دون إنترنت، ولا يغادر شيء جهازك.","int.ide.lsp":"أي محرّر يدعم LSP",
+  "int.ide.h":"داخل محرّرك","int.ide.p":"النتائج نفسها التي يعطيها سطر الأوامر، في VS Code وأي محرّر يدعم LSP: الخطورة وCWE ومسار تدفق البيانات عبر الملفات عند التمرير، مع إصلاحات سريعة لتطبيق إصلاح مُتحقَّق منه أو كتم نتيجة أو إضافتها إلى خط الأساس. يعمل دون إنترنت، ولا يغادر شيء جهازك.","int.ide.lsp":"أي محرّر يدعم LSP",
   "int.pr.h":"على كل طلب دمج","int.pr.p":"تعليقات مراجعة على طلبات الدمج في GitHub، وتقارير GitLab SAST وCode Quality، وخطّاف pre-commit. والفحص المقيَّد بالفرق يعرض ما غيّره الفرع فقط.","int.pr.gh":"تعليقات طلبات الدمج في GitHub","int.pr.more":"إعداد CI وطلبات الدمج","int.pr.href":"docs.html?lang=ar#%D8%A7%D9%84%D8%AA%D9%83%D8%A7%D9%85%D9%84-%D9%85%D8%B9-github-code-scanning-sarif",
-  "int.out.h":"خمس صيغ للمخرجات","int.out.p":"تقرير SARIF مُتحقَّق منه مقابل مخطط OASIS 2.1.0 ويُفتح في GitHub وVS Code، ولكل نتيجة بصمة ثابتة.",
+  "int.out.h":"تقارير للأدوات التي تستخدمها","int.out.p":"تقرير SARIF مُتحقَّق منه مقابل مخطط OASIS 2.1.0 ويُفتح في GitHub وVS Code، والتصدير إلى DefectDojo وSonarQube وGitLab وCode Climate وJira وGitHub Issues وAWS Security Hub وغيرها. ولكل نتيجة بصمة ثابتة.",
   "acc.eyebrow":"الدقة","acc.h2":"نقيسها علنًا، وتعيد إنتاجها بأمر واحد.",
   "acc.sub":"نقيس كاشِف على OWASP Benchmark وننشر نتيجة كل فئة، بما فيها الفئات الأضعف.",
   "acc.overall":"النتيجة الإجمالية",
@@ -1223,13 +1237,15 @@ ar: {
   "acc.caption":"نتائج OWASP Benchmark لكل فئة","acc.th.cat":"الفئة","acc.th.score":"النتيجة <bdi>(TPR − FPR)</bdi>",
   "acc.row":"{name}: TPR ‏{tpr}%، FPR ‏{fpr}%، النتيجة {score}%",
   "acc.n1":"المحرّك لا يُضبط أبدًا على ملفات الاختبار: لا أسماء حالات ولا مسارات ولا نتائج متوقعة مضمّنة في أي مكان. القواعد تنمذج واجهات مكتبات حقيقية.",
-  "acc.n2":"حيث ترتفع الإيجابيات الكاذبة (اجتياز المسارات، XSS، إعادة التوجيه) ننشر الفجوة كما قيست: هذه الحالات تحتاج تتبّعًا أعمق للقيم، وعليها يتركّز العمل.",
+  "acc.n2":"حيث ترتفع الإيجابيات الكاذبة (اجتياز المسارات وXSS وإعادة التوجيه في Python، وXSS في Java) ننشر الفجوة كما قيست: هذه الحالات تحتاج تتبّعًا أعمق للقيم، وعليها يتركّز العمل.",
   "acc.n3":"تُفحص كل مجموعة كاملة كتطبيق واحد (مستودع Python، وشجرة src/main في Java) بالإعدادات الافتراضية، تمامًا كما تفحص كودك.",
+  "acc.n4":"ارتفعت Java من 76.3% إلى 98.3% في 1.0 بإصلاحين عامّين في حلّ الاستدعاءات، ولم يجد تدقيق مستقل أي كود خاص بـ Benchmark: نسخة أُعيدت تسمية كل ما فيها أعطت النتيجة نفسها. لكن Benchmark مجموعة اصطناعية، فاقرأ النتيجة دليلًا على طريقة تفكير المحرّك لا دقةً على كودك. النتائج من أداة التقييم الخاصة بالمشروع (bench/score_owasp.py) بطريقة OWASP في الحساب.",
+  "acc.n5":"وعلى الكود الحقيقي: في 35 مشروعًا مفتوح المصدر (من 38) كان 0.9 يُنهي فحصها، يعطي 1.0 ‏2,607 نتيجة بدل 17,228، منها 783 حرجة أو عالية بدل 4,345. وكان نصف نتائج 0.9 في كود الاختبارات والتوثيق والأمثلة.",
   "cmp.eyebrow":"المقارنة","cmp.h2":"كيف يقارَن كاشِف، بصدق.","cmp.sub":"الأدوات الراسخة ممتازة. هنا أين تتفوّق كلٌّ منها، وأين يسدّ كاشِف فجوة.",
   "cmp.caption":"مقارنة كاشِف بفاحصات أمنية أخرى","cmp.th":"القدرة","cmp.yes":"نعم","cmp.no":"لا","cmp.partial":"جزئيًا",
   "cmp.r1":"تحليل تدفق البيانات","cmp.r1.us":"12 لغة","cmp.pro":"Pro (عبر الملفات)","cmp.deep":"الأعمق","cmp.ast":"AST فقط",
   "cmp.r2":"اتّساع القواعد ونماذج المكتبات","cmp.r2.us":"في نموّ","cmp.large":"واسع","cmp.py":"Python فقط","cmp.iac":"بنية تحتية وإعدادات",
-  "cmp.r3":"تكامل IDE وطلبات الدمج","cmp.r3.us":"عبر SARIF","cmp.limited":"محدود",
+  "cmp.r3":"تكامل IDE وطلبات الدمج","cmp.r3.us":"VS Code وLSP وتعليقات طلبات الدمج","cmp.limited":"محدود",
   "cmp.r4":"سنوات من الضبط على مشاريع حقيقية","cmp.r4.us":"جديد",
   "cmp.r5":"يعمل محليًا بالكامل بلا حساب","cmp.ce":"النسخة المجتمعية","cmp.server":"خادم مستضاف ذاتيًا","cmp.cloud":"حساب سحابي","cmp.cli":"سطر أوامر",
   "cmp.r6":"اعتماديات التشغيل","cmp.r6.us":"لا شيء","cmp.bin":"ملف تنفيذي","cmp.javadb":"Java + قاعدة بيانات","cmp.snykcli":"سطر أوامر + حساب","cmp.bundle":"حزمة CLI",
@@ -1241,11 +1257,11 @@ ar: {
   "cmp.r12":"السعر","cmp.r12.us":"مجاني (MIT)","cmp.freepaid":"مجاني محدود + مدفوع","cmp.oss":"مجاني للمستودعات العامة","cmp.free":"مجاني",
   "cmp.they.h":"أين تتقدّم الأدوات الراسخة","cmp.they.p":"لدى Semgrep وSonarQube وSnyk Code وCodeQL قواعد ونماذج مكتبات أكثر بكثير، وتكاملات IDE وطلبات الدمج، وسنوات من الضبط على مشاريع حقيقية. إن كنت تستخدمها فاحتفظ بها.",
   "cmp.we.h":"أين يناسب كاشِف","cmp.we.p":"محلي بالكامل بلا اعتماديات، ويغطي Oracle APEX وPL/SQL والأرشيفات وتطبيقات أندرويد وفحص الويب السلبي بواجهة عربية في أداة واحدة. ويستطيع دمج نتائج Semgrep وBandit وgitleaks وnpm audit في لوحته.",
-  "lim.h":"حدود معروفة","lim.1":"التحليل الساكن لا يغني عن المراجعة البشرية ولا عن اختبار الاختراق.","lim.2":"لا إضافات لبيئات التطوير بعد؛ التكامل عبر SARIF.","lim.3":"لم يُنمذج بعد: التحقق عبر مكتبات النماذج، والانعكاس والاستدعاء الديناميكي عبر النصوص.","lim.4":"دون jadx تُفحص محتويات APK وJAR كنصوص فقط.",
+  "lim.h":"حدود معروفة","lim.1":"التحليل الساكن لا يغني عن المراجعة البشرية ولا عن اختبار الاختراق.","lim.2":"نماذج مكتبات أقل بكثير من الأدوات الراسخة، وضبط أقل على قواعد كود حقيقية كبيرة.","lim.3":"لم يُنمذج بعد: القوالب غير Jinja (مثل EJS وERB)، والقيم التي تنتقل بين ملفات PHP عبر include.","lim.4":"دون jadx تُفحص محتويات APK وJAR كنصوص فقط.",
   "sec.eyebrow":"الأمان وسلسلة التوريد","sec.h2":"تحقّق من كل بايت تشغّله.",
   "sec.sub":"على أداة الأمان أن تلتزم بما تطلبه من غيرها. كل إصدار يُبنى في GitHub Actions ويُرفق بالأدلة التي تحتاجها للتحقق منه.",
   "sec.slsa.h":"شهادة منشأ SLSA","sec.slsa.p":"شهادات موقَّعة تُثبت أن كل ملف تنفيذي بُني من هذا المستودع بسير عمل الإصدار نفسه.",
-  "sec.sbom.h":"قائمة مكوّنات CycloneDX","sec.sbom.p":"قائمة مكوّنات البرمجيات (SBOM) مرفقة بكل إصدار باسم vulnscan-sbom.cdx.json.",
+  "sec.sbom.h":"قائمة مكوّنات CycloneDX","sec.sbom.p":"قائمة مكوّنات البرمجيات (SBOM) مرفقة بكل إصدار باسم kashif-sbom.cdx.json.",
   "sec.sum.h":"بصمات SHA-256","sec.sum.p":"ملف SHA256SUMS.txt يتيح لك التأكد من سلامة كل ملف نزّلته.",
   "sec.ci.h":"CI محصَّن","sec.ci.p":"كل إجراء في GitHub Actions مثبّت ببصمة الإيداع (SHA) وبأقل الصلاحيات، تحت مراقبة OpenSSF Scorecard وDependabot.",
   "sec.zero.h":"بلا شجرة اعتماديات","sec.zero.p":"المكتبة المعيارية فقط: لا يُنزَّل أي شيء عند التثبيت أو التشغيل، فلا سلسلة توريد غير مباشرة يمكن مهاجمتها.",
@@ -1256,20 +1272,21 @@ ar: {
   "dl.rec":"نظامك","dl.btn.win":"حمّل لويندوز","dl.btn.linux":"حمّل للينكس","dl.btn.mac1":"حمّل لـ Apple Silicon","dl.btn.mac2":"حمّل لـ Mac بمعالج Intel",
   "dl.win.req":"x64","dl.lin.req":"x86-64 · Ubuntu 22.04+ وDebian 12 وRHEL 9+",
   "dl.mac1":"macOS · Apple Silicon","dl.mac1.req":"arm64 · M1 وما بعده","dl.mac2":"macOS · Intel","dl.mac2.req":"x86_64",
-  "run.win.h":"ويندوز","run.win.p":"انقر مرّتين على vulnscan-windows.exe لفتح الواجهة، أو شغّله من الطرفية:",
+  "run.win.h":"ويندوز","run.win.p":"انقر مرّتين على kashif-windows-x86_64.exe لفتح الواجهة، أو شغّله من الطرفية:",
+  "run.win.setup":"تفضّل مثبّتًا؟ <a href=\"https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/kashif-setup.exe\">kashif-setup.exe</a> يثبّت كاشِف ويضيفه إلى PATH وقائمة ابدأ إن اخترت، ويُزال من إعدادات ويندوز.",
   "run.lin.h":"لينكس","run.lin.p":"اجعل الملف قابلًا للتنفيذ ثم شغّله:",
   "run.mac.h":"macOS","run.mac.p":"الأسهل: Homebrew أو التثبيت بأمر واحد أدناه (دون خطوة الحجر). وإن نزّلت الملف من المتصفح فأزل علامة الحجر مرة واحدة قبل أول تشغيل:",
-  "inst.h":"ثبّته بأمر واحد","inst.p":"ينزّل النسخة المناسبة لجهازك، ويتحقق من بصمتها SHA-256 قبل التثبيت، ويضيف vulnscan إلى PATH. لا حاجة لخطوة الحجر على macOS.","inst.sh":"# macOS ولينكس","inst.brew":"# Homebrew","inst.ps":"# ويندوز (PowerShell)",
+  "inst.h":"ثبّته بأمر واحد","inst.p":"ينزّل النسخة المناسبة لجهازك، ويتحقق من بصمتها SHA-256 قبل التثبيت، ويضيف kashif إلى PATH (ويبقى vulnscan اسمًا بديلًا). لا حاجة لخطوة الحجر على macOS.","inst.sh":"# macOS ولينكس","inst.brew":"# Homebrew","inst.ps":"# ويندوز (PowerShell)",
   "pip.h":"أو ثبّته عبر pip","pip.p":"Python 3.10 أو أحدث، دون تثبيت أي اعتماديات تشغيل.",
   "legal":"افحص فقط ما تملكه أو ما لديك تصريح كتابي بفحصه. فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.",
   "faq.eyebrow":"الأسئلة الشائعة","faq.h2":"أسئلة وأجوبة.",
   "q1":"هل كاشِف مجاني؟","a1":"نعم. كاشِف مفتوح المصدر برخصة MIT: مجاني للاستخدام الشخصي والتجاري، بلا نسخة مدفوعة ولا حساب ولا حدود للاستخدام.",
   "q2":"هل يرفع كاشِف الكود الخاص بي؟","a2":"لا. كل شيء يعمل محليًا، والواجهة تستمع على 127.0.0.1 فقط. الاتصال الشبكي الوحيد في فحص الكود، وهو اختياري، استعلام OSV.dev عن الاعتماديات، وترسل أسماء الحزم وإصداراتها فقط، لا الكود أبدًا. عطّلها بـ ‎--no-deps.",
   "q3":"هل يعمل دون إنترنت أو في شبكة معزولة؟","a3":"نعم. انسخ الملف التنفيذي (أو ثبّت حزمة Python) وشغّله بـ ‎--no-deps --no-external، ولن تحتاج أي خطوة من فحص الكود إلى الشبكة.",
-  "q4":"ما مدى دقته؟","a4":"على OWASP Benchmark يحقق {overall_py}% في Python و{overall_java}% في Java (متوسط TPR − FPR لكل فئة)، ويمكنك إعادة إنتاج النتيجتين بأمر واحد. وككل محلّل ساكن قد يُخطئ إيجابًا أو يفوّت ثغرات؛ فاعتبر نتائجه طبقة أولى قوية لا بديلًا عن المراجعة.",
+  "q4":"ما مدى دقته؟","a4":"على OWASP Benchmark يحقق {overall_py}% في Python و{overall_java}% في Java (متوسط TPR − FPR لكل فئة، بأداة التقييم الخاصة بالمشروع)، ويمكنك إعادة إنتاج النتيجتين بأمر واحد. وBenchmark مجموعة اصطناعية، فالنتيجة تبيّن طريقة تفكير المحرّك لا دقته على كودك. وككل محلّل ساكن قد يُخطئ إيجابًا أو يفوّت ثغرات؛ فاعتبر نتائجه طبقة أولى قوية لا بديلًا عن المراجعة.",
   "q5":"ما اللغات والأهداف المدعومة؟","a5":"تحليل تدفق البيانات لـ Python وJavaScript/TypeScript وJava وKotlin وC# وGo وPHP وC/C++ وRust وSwift وRuby وPL/SQL، إضافة إلى ملفات تصدير Oracle APEX وتطبيقات أندرويد APK/JAR (عبر jadx) والإعدادات والحاويات وملفات CI وفحص الويب السلبي.",
-  "q6":"كيف أستخدمه في CI؟","a6":"شغّل vulnscan مع ‎-f sarif وارفع الملف إلى GitHub Code Scanning، أو استخدم ‎--fail-on high لإفشال البناء. ومع ‎--baseline لا يُفشل البناء إلا ما استجدّ بعد خط الأساس.",
-  "q7":"كيف يقارَن بـ Semgrep وSonarQube وSnyk Code وCodeQL؟","a7":"لدى هذه الأدوات قواعد ونماذج مكتبات أكثر بكثير، وإضافات لبيئات التطوير، وسنوات من الضبط على مشاريع حقيقية. أما نقاط قوة كاشِف فهي العمل محليًا بالكامل بلا اعتماديات، وتغطية Oracle APEX وPL/SQL والأرشيفات وتطبيقات أندرويد وفحص الويب السلبي، وواجهة عربية، في أداة واحدة. ويستطيع أيضًا دمج نتائج Semgrep وBandit وgitleaks وnpm audit في لوحته.",
+  "q6":"كيف أستخدمه في CI؟","a6":"شغّل kashif مع ‎-f sarif وارفع الملف إلى GitHub Code Scanning، أو استخدم ‎--fail-on high لإفشال البناء. ومع ‎--baseline لا يُفشل البناء إلا ما استجدّ بعد خط الأساس.",
+  "q7":"كيف يقارَن بـ Semgrep وSonarQube وSnyk Code وCodeQL؟","a7":"لدى هذه الأدوات قواعد ونماذج مكتبات أكثر بكثير، وسنوات من الضبط على مشاريع حقيقية. أما نقاط قوة كاشِف فهي العمل محليًا بالكامل بلا اعتماديات، وتغطية Oracle APEX وPL/SQL والأرشيفات وتطبيقات أندرويد وفحص الويب السلبي، وواجهة عربية، في أداة واحدة. ويستطيع أيضًا دمج نتائج Semgrep وBandit وgitleaks وnpm audit في لوحته.",
   "q8":"كيف أبلّغ عن ثغرة في كاشِف نفسه؟","a8":"استخدم الإبلاغ الخاص عن الثغرات في GitHub كما هو موضّح في SECURITY.md، ولا تفتح بلاغًا عامًا.",
   "final.h2":"ابدأ الفحص خلال دقيقة.","final.p":"نزّل ملفًا واحدًا، ووجّهه إلى مشروعك، واقرأ تقريرًا مرتّبًا من الحرج إلى المعلوماتي، مع مسار تدفق البيانات خلف كل نتيجة لتحليل التدفق.",
   "foot.by":"من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة.","foot.contact":"للتواصل:",

@@ -22,11 +22,9 @@ from __future__ import annotations
 import re
 
 # one module per area of the engine; explicit imports so frozen builds (PyInstaller) include them
-from . import (cat_apex, cat_cli, cat_dynamic, cat_integrations, cat_misc, cat_models, cat_models_js, cat_models_jvm,
-               cat_models_other, cat_models_python, cat_rules, cat_rules_extra, cat_updater, cat_web)
+from . import (cat_apex, cat_autofix, cat_cli, cat_core2, cat_dynamic, cat_integrations, cat_misc, cat_models, cat_models_js, cat_models_jvm, cat_models_native, cat_models_other, cat_models_python, cat_projects, cat_rules, cat_rules_extra, cat_sca, cat_updater, cat_web)
 
-_MODULES = (cat_rules, cat_models, cat_web, cat_apex, cat_misc, cat_cli, cat_dynamic, cat_models_python, cat_models_jvm,
-            cat_models_js, cat_models_other, cat_rules_extra, cat_integrations, cat_updater)
+_MODULES = (cat_rules, cat_models, cat_web, cat_apex, cat_misc, cat_cli, cat_dynamic, cat_models_python, cat_models_jvm, cat_models_js, cat_models_other, cat_rules_extra, cat_integrations, cat_updater, cat_core2, cat_models_native, cat_autofix, cat_sca, cat_projects)
 
 _ARABIC = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]")
 

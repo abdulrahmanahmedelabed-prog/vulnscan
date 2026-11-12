@@ -189,6 +189,8 @@
     "NamedQuery",
     "NamedExec"
    ],
+   "receiver_not": "(?i)(^|\\.)(stmt|stmts|statement|prepared|ps|pstmt)\\w*(\\(\\))?$",
+   "_comment_receiver_not": "a prepared statement's Query/QueryRow/Exec arguments are bound parameters, not SQL text",
    "title": "Tainted data reaches a database query",
    "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
    "advice": "استخدم placeholders (?) أو $1 بدل تركيب النص."
@@ -289,6 +291,8 @@
     "template.JS",
     "template.URL"
    ],
+   "receiver_not": "(?i)(^|\\.)(url|json|time|strconv|netip|net|mail|uuid|semver|ip|filepath|path|flag|xml|yaml|toml|big|mime|jwt|u|addr|dur|duration|tz|cron|expr)$",
+   "_comment_receiver_not": "Parse by bare name: url.Parse / time.Parse / uuid.Parse are not template parsing",
    "title": "Tainted data reaches a template parse or unescaped HTML",
    "title_ar": "بيانات غير موثوقة تصل إلى تحليل قالب أو HTML غير مُهرَّب",
    "advice": "لا تبنِ القالب من المدخلات ولا تحوّلها إلى template.HTML."
@@ -330,10 +334,11 @@
     "client.Do",
     "Get",
     "Post",
-    "url.Parse",
     "resty.R().Get",
     "grequests.Get"
    ],
+   "receiver_not": "(?i)(^|\\.)(store|sessions?|cache|redis|rdb|memcache|query|values|form|postform|header|headers|params|cookies?|ctx|c|context|config|cfg|conf|viper|env|db|tx|m|kv|bucket|keys|registry|pool|sync|claims|token|set|list|tree|q)(\\(\\))?$",
+   "_comment_receiver_not": "Get/Post by bare name: a session store, cache, map or query-values Get is not an HTTP request",
    "title": "Tainted URL reaches an outbound request",
    "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
    "advice": "قيّد الوجهات بقائمة بيضاء وارفض العناوين الداخلية."

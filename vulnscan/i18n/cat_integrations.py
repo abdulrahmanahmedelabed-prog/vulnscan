@@ -37,4 +37,8 @@ PATTERNS: list[tuple[str, str]] = [
     (r"تقييد بالتغييرات منذ (?P<ref>\S+): (?P<n>\d+) ملفًا متغيّرًا\.",
      r"Limited to changes since \g<ref>: \g<n> changed file(s)."),
     (r"نتائج خارج التغييرات لم تُعرض: (?P<n>\d+)\.", r"Findings outside the changes not shown: \g<n>."),
+    (r"إعدادات git في هذا المستودع تعرّف مرشّح محتوى يشغّل أمرًا \((?P<keys>[^)]*)\)؛ لم يُشغَّل git diff\. "
+     r"راجع ‎\.git/config أو افحص دون تقييد بالتغييرات\.",
+     r"This repository's git configuration defines a content filter that runs a command (\g<keys>); git diff was "
+     r"not run. Review .git/config or scan without limiting to the changes."),
 ]

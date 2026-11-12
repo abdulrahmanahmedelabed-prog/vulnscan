@@ -1,0 +1,32 @@
+{
+ "id": "GHSA-fjq5-5j5f-mvxh",
+ "aliases": [
+  "CVE-2015-7501"
+ ],
+ "summary": "Deserialization of Untrusted Data in Apache commons collections",
+ "modified": "2024-01-01T00:00:00Z",
+ "affected": [
+  {
+   "package": {
+    "ecosystem": "Maven",
+    "name": "commons-collections:commons-collections"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "3.2.2"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "database_specific": {
+  "severity": "CRITICAL"
+ }
+}

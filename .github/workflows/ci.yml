@@ -45,8 +45,10 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -e .
+      - name: Both command names are installed (kashif, and vulnscan as an alias)
+        run: kashif --version && vulnscan --version
       - name: Scan (SARIF)
-        run: vulnscan . --no-deps --no-external --exclude "tests/*" --exclude "bench/*" -f sarif -o vulnscan.sarif
+        run: kashif . --no-deps --no-external --exclude "tests/*" --exclude "bench/*" -f sarif -o vulnscan.sarif
       - name: Upload to Code Scanning
         if: github.event_name == 'push'
         continue-on-error: true   # private repositories without code scanning cannot accept uploads

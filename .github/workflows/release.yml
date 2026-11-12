@@ -21,24 +21,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `artifact` is the canonical (kashif-*) asset name; `legacy` is the byte-identical copy published under the
+          # pre-rename name, which v0.9.x installs look for when they update themselves.
           - os: windows-latest
-            built: dist/vulnscan.exe
-            artifact: vulnscan-windows.exe
+            built: dist/kashif.exe
+            artifact: kashif-windows-x86_64.exe
+            legacy: vulnscan-windows.exe
           # Ubuntu 22.04 (glibc 2.35) so the binary also runs on older distributions
           # (Debian 12, RHEL/Rocky 9, Ubuntu 22.04+), not only on the newest.
           - os: ubuntu-22.04
-            built: dist/vulnscan
-            artifact: vulnscan-linux
+            built: dist/kashif
+            artifact: kashif-linux-x86_64
+            legacy: vulnscan-linux
           # macOS: Apple Silicon natively, Intel by running the x86-64 slice of Python under Rosetta.
           # PyInstaller ad-hoc signs the binary (required on arm64). Apple notarization needs the owner's
           # Developer ID certificate, so these binaries are not notarized (see README for first launch).
           - os: macos-latest
-            built: dist/vulnscan
-            artifact: vulnscan-macos-arm64
+            built: dist/kashif
+            artifact: kashif-macos-arm64
+            legacy: vulnscan-macos-arm64
             arch: arm64
           - os: macos-latest
-            built: dist/vulnscan
-            artifact: vulnscan-macos-x86_64
+            built: dist/kashif
+            artifact: kashif-macos-x86_64
+            legacy: vulnscan-macos-x86_64
             arch: x64
             # the x64 Python on this runner is universal: force its x86-64 slice so PyInstaller builds for Intel
             run_as: arch -x86_64
@@ -72,7 +78,7 @@ jobs:
           PID=$!
           OK=
           for i in $(seq 1 40); do
-            if curl -fsS http://127.0.0.1:8799/ 2>/dev/null | grep -q "vulnscan"; then
+            if curl -fsS http://127.0.0.1:8799/ 2>/dev/null | grep -q "Kashif"; then
               curl -fsS http://127.0.0.1:8799/styles.css > /dev/null && OK=1 && break
             fi
             sleep 1
@@ -82,10 +88,10 @@ jobs:
       - name: Check the binary's CPU architecture (macOS)
         if: runner.os == 'macOS'
         run: |
-          file dist/vulnscan
+          file dist/kashif
           case "${{ matrix.arch }}" in
-            arm64) file dist/vulnscan | grep -q arm64 ;;
-            x64)   file dist/vulnscan | grep -q x86_64 ;;
+            arm64) file dist/kashif | grep -q arm64 ;;
+            x64)   file dist/kashif | grep -q x86_64 ;;
           esac
       - name: Build the Windows setup wizard (kashif-setup.exe)
         if: runner.os == 'Windows'
@@ -96,7 +102,7 @@ jobs:
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y; if ($LASTEXITCODE -ne 0) { exit 1 } }
           $ver = if ($env:TAG -match '^v(\d+\.\d+\.\d+)$') { $Matches[1] } else { "0.0.0" }
-          & $iscc "/DAppVersion=$ver" "/DSourceExe=$PWD\dist\vulnscan.exe" "/O$PWD" packaging\windows\kashif.iss
+          & $iscc "/DAppVersion=$ver" "/DSourceExe=$PWD\dist\kashif.exe" "/O$PWD" packaging\windows\kashif.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Smoke test — setup wizard (silent install to a chosen folder, run, uninstall)
         if: runner.os == 'Windows'
@@ -120,15 +126,21 @@ jobs:
         with:
           name: kashif-setup.exe
           path: kashif-setup.exe
-      - name: Name the binary per platform
+      - name: Name the binary per platform (kashif-* and the byte-identical legacy vulnscan-* copy)
         shell: bash
         run: |
           cp "${{ matrix.built }}" "${{ matrix.artifact }}"
-          chmod +x "${{ matrix.artifact }}" || true
+          cp "${{ matrix.built }}" "${{ matrix.legacy }}"
+          chmod +x "${{ matrix.artifact }}" "${{ matrix.legacy }}" || true
+          cmp "${{ matrix.artifact }}" "${{ matrix.legacy }}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.legacy }}
+          path: ${{ matrix.legacy }}
 
   publish:
     # One job publishes every binary after all builds succeed, so the release never
@@ -153,15 +165,22 @@ jobs:
       - name: Checksums
         run: |
           cd out
-          chmod +x vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64
-          sha256sum kashif-setup.exe vulnscan-windows.exe vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64 > SHA256SUMS.txt
+          chmod +x kashif-linux-x86_64 kashif-macos-arm64 kashif-macos-x86_64 vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64
+          # the legacy names must be byte-identical copies (v0.9.x self-updates verify them against this file)
+          cmp kashif-windows-x86_64.exe vulnscan-windows.exe
+          cmp kashif-linux-x86_64 vulnscan-linux
+          cmp kashif-macos-arm64 vulnscan-macos-arm64
+          cmp kashif-macos-x86_64 vulnscan-macos-x86_64
+          sha256sum kashif-setup.exe \
+            kashif-windows-x86_64.exe kashif-linux-x86_64 kashif-macos-arm64 kashif-macos-x86_64 \
+            vulnscan-windows.exe vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64 > SHA256SUMS.txt
           cat SHA256SUMS.txt
       - name: SBOM (CycloneDX) of the source and its bundled components
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           format: cyclonedx-json
-          output-file: out/vulnscan-sbom.cdx.json
+          output-file: out/kashif-sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Signed SLSA build provenance for every binary
@@ -169,6 +188,10 @@ jobs:
         with:
           subject-path: |
             out/kashif-setup.exe
+            out/kashif-windows-x86_64.exe
+            out/kashif-linux-x86_64
+            out/kashif-macos-arm64
+            out/kashif-macos-x86_64
             out/vulnscan-windows.exe
             out/vulnscan-linux
             out/vulnscan-macos-arm64
@@ -176,15 +199,21 @@ jobs:
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ env.TAG }}
+          # a manual run creates the tag on the commit it built, not on the default branch
+          target_commitish: ${{ github.sha }}
           name: ${{ env.TAG }}
           files: |
             out/kashif-setup.exe
+            out/kashif-windows-x86_64.exe
+            out/kashif-linux-x86_64
+            out/kashif-macos-arm64
+            out/kashif-macos-x86_64
             out/vulnscan-windows.exe
             out/vulnscan-linux
             out/vulnscan-macos-arm64
             out/vulnscan-macos-x86_64
             out/SHA256SUMS.txt
-            out/vulnscan-sbom.cdx.json
+            out/kashif-sbom.cdx.json
           body_path: CHANGELOG.md
           make_latest: true
           fail_on_unmatched_files: true
@@ -192,7 +221,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          keep=" kashif-setup.exe vulnscan-windows.exe vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64 SHA256SUMS.txt vulnscan-sbom.cdx.json "
+          keep=" kashif-setup.exe kashif-windows-x86_64.exe kashif-linux-x86_64 kashif-macos-arm64 kashif-macos-x86_64 vulnscan-windows.exe vulnscan-linux vulnscan-macos-arm64 vulnscan-macos-x86_64 SHA256SUMS.txt kashif-sbom.cdx.json "
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | while read -r name; do
             case "$keep" in
               *" $name "*) ;;
@@ -258,6 +287,106 @@ jobs:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         if: env.OVSX_PAT != ''
         run: npx --yes ovsx@0.10.1 publish out/kashif-vscode.vsix --pat "$OVSX_PAT"
+
+  docker:
+    # The container image (Dockerfile): linux/amd64 and linux/arm64 on GitHub Container Registry, tagged vX.Y.Z,
+    # X.Y.Z, X.Y, X and latest, with an SBOM attached and signed SLSA build provenance. Runs after `publish`, so an
+    # image is never released without the binaries of the same version.
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # push the image to ghcr.io (this job only)
+      id-token: write        # sign build provenance (Sigstore, keyless)
+      attestations: write    # store the provenance attestation on GitHub
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Image name, tags and labels
+        id: meta
+        run: |
+          set -euo pipefail
+          # vX.Y.Z or a pre-release such as v1.0.0-rc.1; anything else is refused before it can become an image tag
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::not a release tag: $TAG"; exit 1
+          fi
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/kashif"
+          version="${TAG#v}"
+          tags="$image:$TAG"
+          case "$version" in
+            *-*) ;;                                   # a pre-release moves no floating tag
+            *) major="${version%%.*}"; minor="${version#*.}"; minor="${minor%%.*}"
+               tags="$tags,$image:$version,$image:$major.$minor,$image:$major,$image:latest" ;;
+          esac
+          {
+            echo "image=$image"
+            echo "version=$version"
+            echo "tags=$tags"
+            echo "created=$(git log -1 --format=%cI)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build for this runner (not pushed) to test the image first
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: kashif:smoke
+          provenance: false
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ steps.meta.outputs.created }}
+      - name: Smoke test — non-root, read-only root filesystem, no network, a scan with SARIF and --fail-on
+        run: |
+          set -euo pipefail
+          test "$(docker run --rm --entrypoint id kashif:smoke -u)" = 10001
+          docker run --rm kashif:smoke --version
+          docker run --rm --entrypoint vulnscan kashif:smoke --version   # the legacy command name still works
+          docker run --rm --entrypoint git kashif:smoke --version
+          mkdir -p smoke && printf 'import os\ndef f(request):\n    os.system(request.GET["c"])\n' > smoke/app.py
+          run="docker run --rm --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --network none"
+          $run -v "$PWD/smoke:/src:ro" kashif:smoke . --no-deps --no-external -f sarif > smoke.sarif
+          grep -q '"ruleId": "DF' smoke.sarif
+          # exit code 1 exactly (findings at --fail-on), not 2 (the scan did not run): the stability contract
+          rc=0; $run -v "$PWD/smoke:/src:ro" kashif:smoke . --no-deps --no-external --fail-on high > /dev/null || rc=$?
+          if [ "$rc" -ne 1 ]; then
+            echo "::error::--fail-on high exited $rc on a command injection, expected 1"; exit 1
+          fi
+          # and 0 on clean code
+          mkdir -p clean && printf 'def f(x):\n    return x + 1\n' > clean/app.py
+          $run -v "$PWD/clean:/src:ro" kashif:smoke . --no-deps --no-external --fail-on high > /dev/null
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build linux/amd64 and linux/arm64 and push, with an SBOM attached to the image
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          sbom: true                 # SPDX SBOM of each platform image, stored as an attestation in the registry
+          provenance: mode=max       # BuildKit's own provenance; the signed one is the next step
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ steps.meta.outputs.created }}
+      - name: Signed SLSA build provenance for the image
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ${{ steps.meta.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
   homebrew-formula:
     # Point Formula/kashif.rb (brew tap kashif/vulnscan <repo>; brew install kashif) at the release just published.

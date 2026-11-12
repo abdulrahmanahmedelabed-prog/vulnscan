@@ -1,5 +1,5 @@
 {
- "_comment": "Kotlin additions on top of java.json (Ktor/Spring).",
+ "_comment": "Kotlin additions on top of java.json: Ktor (server routing, client, multipart, template content), Spring Kotlin / WebFlux coroutine extensions, Exposed, kotliquery, SQLDelight, kotlin.io / kotlin.io.path, Fuel, Android (Intent extras and data, WebView, SQLiteDatabase, ContentResolver).",
  "sources": [
   {
    "kind": "attr",
@@ -21,7 +21,15 @@
     "path",
     "receive",
     "receiveText",
-    "receiveParameters"
+    "receiveParameters",
+    "header",
+    "queryString",
+    "receiveMultipart",
+    "receiveChannel",
+    "receiveStream",
+    "receiveNullable",
+    "document",
+    "pathVariables"
    ],
    "label": "call.{attr}"
   },
@@ -33,7 +41,25 @@
     "receiveParameters",
     "receiveOrNull",
     "readLine",
-    "readln"
+    "readln",
+    "getOrFail",
+    "receiveMultipart",
+    "receiveChannel",
+    "receiveStream",
+    "receiveNullable",
+    "awaitBody",
+    "awaitBodyOrNull",
+    "awaitFormData",
+    "awaitMultipartData",
+    "queryParamOrNull",
+    "getStringExtra",
+    "getStringArrayExtra",
+    "getStringArrayListExtra",
+    "getCharSequenceExtra",
+    "getCharSequenceArrayExtra",
+    "getCharSequenceArrayListExtra",
+    "getQueryParameter",
+    "getQueryParameters"
    ],
    "label": "{name}()"
   },
@@ -52,6 +78,38 @@
    ],
    "label": "{attr} (uploaded file name)",
    "_comment": "Ktor multipart PartData.FileItem.originalFileName"
+  },
+  {
+   "kind": "attr",
+   "roots": [
+    "intent",
+    "getIntent()",
+    "activity.intent",
+    "requireActivity().intent"
+   ],
+   "attrs": [
+    "data",
+    "dataString",
+    "extras",
+    "clipData"
+   ],
+   "label": "intent.{attr}",
+   "_comment": "Android: the Intent that started an exported Activity / Service / BroadcastReceiver is attacker-controlled (Intent.getData(), getExtras())"
+  },
+  {
+   "kind": "attr",
+   "roots": [
+    "zipEntry",
+    "jarEntry",
+    "tarEntry",
+    "archiveEntry",
+    "ze"
+   ],
+   "attrs": [
+    "name"
+   ],
+   "label": "archive entry name {attr}",
+   "_comment": "Zip Slip in Kotlin property syntax: ZipEntry.name / JarEntry.name / TarArchiveEntry.name (java.json models entry.getName())"
   }
  ],
  "entry_points": [
@@ -272,6 +330,203 @@
    ],
    "receiver": "(^|\\.)(\\w*[hH]ttpClient\\w*|client|ktorClient|HttpClient)$",
    "_comment": "Ktor HttpClient.get(urlString) / request(url)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (Android SQLiteDatabase)",
+   "title": "Tainted data reaches raw SQL in Android SQLiteDatabase",
+   "title_ar": "بيانات غير موثوقة تصل إلى SQL خام في SQLiteDatabase (أندرويد)",
+   "advice": "لا تركّب نص SQL من المدخلات في rawQuery() أو execSQL()؛ مرّر القيم في selectionArgs / bindArgs مع علامات ?.",
+   "args": [
+    0
+   ],
+   "names": [
+    "rawQuery",
+    "execSQL",
+    "compileStatement",
+    "SQLiteDatabase.rawQuery",
+    "SQLiteDatabase.execSQL"
+   ],
+   "_comment": "android.database.sqlite.SQLiteDatabase.rawQuery(sql, selectionArgs) / execSQL(sql[, bindArgs]) / compileStatement(sql)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (Android SQLiteDatabase)",
+   "title": "Tainted data reaches raw SQL in Android SQLiteDatabase",
+   "title_ar": "بيانات غير موثوقة تصل إلى SQL خام في SQLiteDatabase (أندرويد)",
+   "advice": "لا تركّب نص SQL من المدخلات في rawQuery() أو execSQL()؛ مرّر القيم في selectionArgs / bindArgs مع علامات ?.",
+   "args": [
+    1
+   ],
+   "names": [
+    "rawQueryWithFactory"
+   ],
+   "_comment": "SQLiteDatabase.rawQueryWithFactory(cursorFactory, sql, selectionArgs, editTable)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (ContentResolver selection)",
+   "title": "Tainted data reaches a ContentResolver selection",
+   "title_ar": "بيانات غير موثوقة تصل إلى شرط selection في ContentResolver",
+   "advice": "لا تركّب شرط selection أو sortOrder من المدخلات؛ استخدم علامات ? مع selectionArgs وقائمة بيضاء لأعمدة الترتيب.",
+   "args": [
+    0,
+    2,
+    4
+   ],
+   "names": [
+    "query"
+   ],
+   "receiver": "(?i)(^|\\.)(\\w*contentResolver|getContentResolver|resolver)$",
+   "_comment": "ContentResolver.query(uri, projection, selection, selectionArgs, sortOrder): selection and sortOrder are SQL"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL (kotliquery)",
+   "title": "Tainted data reaches raw SQL in kotliquery",
+   "title_ar": "بيانات غير موثوقة تصل إلى SQL خام في kotliquery",
+   "advice": "مرّر القيم كمعاملات مسمّاة أو مواضع ? إلى queryOf(statement, params) ولا تركّب نص الاستعلام من المدخلات.",
+   "args": [
+    0
+   ],
+   "names": [
+    "queryOf",
+    "kotliquery.queryOf"
+   ],
+   "_comment": "kotliquery queryOf(statement, vararg params)"
+  },
+  {
+   "rule": "DF013",
+   "severity": "high",
+   "cwe": "CWE-79",
+   "label": "Android WebView URL",
+   "title": "Tainted URL is loaded into an Android WebView",
+   "title_ar": "عنوان غير موثوق يُحمَّل في WebView (أندرويد)",
+   "advice": "لا تحمّل في WebView عنوانًا من Intent أو من رابط عميق؛ قيّد المخطط والمضيف بقائمة بيضاء وارفض javascript: و file:، ولا تفعّل JavaScript أو addJavascriptInterface لمحتوى غير موثوق.",
+   "args": [
+    0
+   ],
+   "names": [
+    "loadUrl",
+    "postUrl"
+   ],
+   "receiver": "(?i)(^|\\.)(\\w*web_?view\\w*|wv|browser)$",
+   "_comment": "android.webkit.WebView.loadUrl(url[, headers]) / postUrl(url, body)"
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (Fuel)",
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات.",
+   "args": [
+    0
+   ],
+   "names": [
+    "Fuel.get",
+    "Fuel.post",
+    "Fuel.put",
+    "Fuel.delete",
+    "Fuel.patch",
+    "Fuel.head",
+    "Fuel.download",
+    "Fuel.upload",
+    "Fuel.request"
+   ],
+   "_comment": "com.github.kittinunf.fuel.Fuel.get(path[, parameters])"
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound HTTP URL (Fuel)",
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات بقائمة بيضاء من النطاقات.",
+   "args": [
+    "self"
+   ],
+   "names": [
+    "httpGet",
+    "httpPost",
+    "httpPut",
+    "httpDelete",
+    "httpPatch",
+    "httpHead",
+    "httpDownload",
+    "httpUpload"
+   ],
+   "_comment": "Fuel String extensions: url.httpGet() / url.httpPost(): the receiver string is the URL"
+  },
+  {
+   "rule": "DF007",
+   "severity": "high",
+   "cwe": "CWE-1336",
+   "label": "Ktor template name",
+   "title": "Tainted data selects a server-side template",
+   "title_ar": "بيانات غير موثوقة تحدّد قالبًا على الخادم",
+   "advice": "اختر اسم القالب من قائمة ثابتة ولا تبنِه من المدخلات؛ مرّر قيم المستخدم في نموذج البيانات فقط.",
+   "args": [
+    0
+   ],
+   "names": [
+    "FreeMarkerContent",
+    "ThymeleafContent",
+    "MustacheContent",
+    "VelocityContent",
+    "PebbleContent",
+    "JteContent"
+   ],
+   "_comment": "Ktor call.respond(FreeMarkerContent(template, model)): the template name / path is argument 0"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل قراءته أو كتابته (File/Path في kotlin.io).",
+   "args": [
+    "self"
+   ],
+   "names": [
+    "readText",
+    "readBytes",
+    "readLines",
+    "writeText",
+    "writeBytes",
+    "appendText",
+    "appendBytes",
+    "forEachLine",
+    "useLines",
+    "deleteRecursively",
+    "copyTo",
+    "inputStream",
+    "outputStream",
+    "bufferedReader",
+    "bufferedWriter",
+    "reader",
+    "writer",
+    "delete",
+    "deleteIfExists",
+    "createFile",
+    "createDirectories",
+    "moveTo",
+    "listDirectoryEntries"
+   ],
+   "receiver": "(?i)\\.(resolve|resolveSibling|absolute)$",
+   "_comment": "kotlin.io chained on a just-resolved path: baseDir.resolve(name).readText() (a call receiver reads as its dotted callee, `baseDir.resolve`)"
   }
  ],
  "sanitizers": [

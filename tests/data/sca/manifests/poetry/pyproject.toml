@@ -1,0 +1,10 @@
+[tool.poetry]
+name = "demo"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "^2.19"
+pyyaml = {version = "5.3", optional = true}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "7.0.0"

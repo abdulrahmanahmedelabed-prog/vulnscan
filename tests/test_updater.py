@@ -140,24 +140,40 @@ def test_is_newer(latest, current, expected):
 # ------------------------------------------------------------------------------------------- platform
 
 @pytest.mark.parametrize("system,machine,translated,asset", [
-    ("Windows", "AMD64", None, "vulnscan-windows.exe"),
+    ("Windows", "AMD64", None, "kashif-windows-x86_64.exe"),
     ("Windows", "ARM64", None, None),
-    ("Linux", "x86_64", None, "vulnscan-linux"),
+    ("Linux", "x86_64", None, "kashif-linux-x86_64"),
     ("Linux", "aarch64", None, None),
-    ("Darwin", "arm64", None, "vulnscan-macos-arm64"),
-    ("Darwin", "x86_64", False, "vulnscan-macos-x86_64"),
-    ("Darwin", "x86_64", True, "vulnscan-macos-arm64"),     # an Intel build under Rosetta gets the native build
+    ("Darwin", "arm64", None, "kashif-macos-arm64"),
+    ("Darwin", "x86_64", False, "kashif-macos-x86_64"),
+    ("Darwin", "x86_64", True, "kashif-macos-arm64"),     # an Intel build under Rosetta gets the native build
     ("FreeBSD", "amd64", None, None),
 ])
 def test_platform_asset(system, machine, translated, asset):
     assert updater.platform_asset(system, machine, translated) == asset
 
 
+def test_every_asset_has_a_legacy_name():
+    names = {updater.platform_asset(s, m, t) for s, m, t in
+             [("Windows", "AMD64", None), ("Linux", "x86_64", None), ("Darwin", "arm64", None), ("Darwin", "x86_64", False)]}
+    assert names == set(updater.LEGACY_ASSETS)
+    assert set(updater.LEGACY_ASSETS.values()) == {"vulnscan-windows.exe", "vulnscan-linux", "vulnscan-macos-arm64",
+                                                   "vulnscan-macos-x86_64"}
+
+
+def test_resolve_asset_prefers_kashif_then_legacy():
+    assert updater.resolve_asset("kashif-linux-x86_64", ["kashif-linux-x86_64", "vulnscan-linux"]) == "kashif-linux-x86_64"
+    assert updater.resolve_asset("kashif-linux-x86_64", ["vulnscan-linux", "SHA256SUMS.txt"]) == "vulnscan-linux"
+    assert updater.resolve_asset("kashif-linux-x86_64", ["vulnscan-windows.exe", "SHA256SUMS.txt"]) is None
+    assert updater.resolve_asset("vulnscan-linux", ["vulnscan-linux"]) == "vulnscan-linux"
+    assert updater.resolve_asset("vulnscan-linux", ["kashif-linux-x86_64"]) is None
+
+
 def test_rosetta_probe_is_used_on_intel_mac(monkeypatch):
     monkeypatch.setattr(updater, "_proc_translated", lambda: True)
-    assert updater.platform_asset("Darwin", "x86_64") == "vulnscan-macos-arm64"
+    assert updater.platform_asset("Darwin", "x86_64") == "kashif-macos-arm64"
     monkeypatch.setattr(updater, "_proc_translated", lambda: False)
-    assert updater.platform_asset("Darwin", "x86_64") == "vulnscan-macos-x86_64"
+    assert updater.platform_asset("Darwin", "x86_64") == "kashif-macos-x86_64"
 
 
 # ----------------------------------------------------------------------------------- checksums, headers
@@ -191,19 +207,33 @@ def _macho(cpu):
     return b"\xcf\xfa\xed\xfe" + struct.pack("<I", cpu) + bytes(56)
 
 
-def test_check_header():
-    assert updater.check_header(_pe(), "vulnscan-windows.exe")
-    assert not updater.check_header(_pe(0x14C), "vulnscan-windows.exe")          # 32-bit x86
-    assert not updater.check_header(_elf(), "vulnscan-windows.exe")
-    assert updater.check_header(_elf(), "vulnscan-linux")
-    assert not updater.check_header(_elf(0xB7), "vulnscan-linux")                # aarch64
-    assert not updater.check_header(_elf(cls=1), "vulnscan-linux")               # 32-bit
-    assert not updater.check_header(b"#!/bin/sh\n", "vulnscan-linux")
-    assert updater.check_header(_macho(0x0100000C), "vulnscan-macos-arm64")
-    assert not updater.check_header(_macho(0x0100000C), "vulnscan-macos-x86_64")
-    assert updater.check_header(_macho(0x01000007), "vulnscan-macos-x86_64")
-    assert updater.check_header(b"\xca\xfe\xba\xbe" + bytes(60), "vulnscan-macos-arm64")   # universal
-    assert not updater.check_header(b"<html>", "vulnscan-macos-arm64")
+@pytest.mark.parametrize("win,linux,arm,intel", [
+    ("vulnscan-windows.exe", "vulnscan-linux", "vulnscan-macos-arm64", "vulnscan-macos-x86_64"),          # legacy
+    ("kashif-windows-x86_64.exe", "kashif-linux-x86_64", "kashif-macos-arm64", "kashif-macos-x86_64"),    # current
+])
+def test_check_header(win, linux, arm, intel):
+    assert updater.check_header(_pe(), win)
+    assert not updater.check_header(_pe(0x14C), win)          # 32-bit x86
+    assert not updater.check_header(_elf(), win)
+    assert updater.check_header(_elf(), linux)
+    assert not updater.check_header(_pe(), linux)
+    assert not updater.check_header(_elf(0xB7), linux)                # aarch64
+    assert not updater.check_header(_elf(cls=1), linux)               # 32-bit
+    assert not updater.check_header(b"#!/bin/sh\n", linux)
+    assert updater.check_header(_macho(0x0100000C), arm)
+    assert not updater.check_header(_macho(0x0100000C), intel)
+    assert updater.check_header(_macho(0x01000007), intel)
+    assert not updater.check_header(_elf(), arm)
+    assert updater.check_header(b"\xca\xfe\xba\xbe" + bytes(60), arm)   # universal
+    assert not updater.check_header(b"<html>", arm)
+
+
+def test_check_header_unknown_names_fail_closed():
+    for name in ("kashif-linux-aarch64", "other-linux", "kashif-setup.exe", "vulnscan-sbom.cdx.json", "kashif-macos",
+                 "kashif-windows-x86_64.exe.sig", ""):
+        assert not updater.check_header(_pe(), name), name
+        assert not updater.check_header(_elf(), name), name
+        assert not updater.check_header(b"\xca\xfe\xba\xbe" + bytes(60), name), name
 
 
 # ----------------------------------------------------------------------------------------------- check
@@ -318,6 +348,57 @@ def test_apply_swaps_and_keeps_backup(fake, installed, no_header_check):
     assert not leftovers(installed)
     updater.cleanup_stale(installed)                    # next start removes the backup
     assert not updater.backup_path(installed).exists() and installed.exists()
+
+
+def apply_kashif(fake, exe, **kw):
+    return updater.apply(net=fake.net, current="0.8.0", exe=exe, asset="kashif-linux-x86_64", kind="binary", **kw)
+
+
+@pytestmark_posix
+def test_apply_prefers_the_kashif_asset(fake, installed, no_header_check):
+    # a current release carries both names; the kashif-* one is downloaded and verified against its own sums line
+    fake.release("v0.9.0", {"kashif-linux-x86_64": script("0.9.0"), "vulnscan-linux": script("0.9.0") + b"#legacy\n"})
+    assert apply_kashif(fake, installed)["ok"]
+    assert installed.read_bytes() == script("0.9.0")
+    assert "/dl/kashif-linux-x86_64" in fake.hits and "/dl/vulnscan-linux" not in fake.hits
+
+
+@pytestmark_posix
+def test_apply_falls_back_to_the_legacy_asset(fake, installed, no_header_check):
+    # a release made before the rename has only vulnscan-linux, and SHA256SUMS.txt lists only that name
+    fake.release("v0.9.0", {"vulnscan-linux": script("0.9.0")})
+    assert apply_kashif(fake, installed)["ok"]
+    assert installed.read_bytes() == script("0.9.0") and "/dl/vulnscan-linux" in fake.hits
+    assert not leftovers(installed)
+
+
+@pytestmark_posix
+def test_apply_legacy_fallback_keeps_the_checksum_check(fake, installed, no_header_check):
+    # the fallback name is verified against its own line: a sums file listing only the kashif name is refused
+    body = script("0.9.0")
+    fake.release("v0.9.0", {"vulnscan-linux": body}, sums=f"{hashlib.sha256(body).hexdigest()}  kashif-linux-x86_64\n")
+    with pytest.raises(updater.UpdateError) as e:
+        apply_kashif(fake, installed)
+    assert e.value.code == "checksum_missing"
+    assert installed.read_bytes() == script("0.8.0") and not leftovers(installed)
+
+
+def test_apply_asset_missing_under_both_names(fake, installed):
+    fake.release("v0.9.0", {"vulnscan-windows.exe": b"MZ", "kashif-windows-x86_64.exe": b"MZ"})
+    with pytest.raises(updater.UpdateError) as e:
+        apply_kashif(fake, installed)
+    assert e.value.code == "asset_missing"
+
+
+def test_check_accepts_legacy_only_release(fake, tmp_path, installed):
+    kw = dict(home=tmp_path / "h", net=fake.net, current="0.8.0", info={"kind": "binary", "command": None},
+              asset="kashif-linux-x86_64", exe=installed, force=True)
+    fake.release("v0.9.0", {"vulnscan-linux": b"x"})
+    st = updater.check(**kw)
+    assert st["newer"] and st["can_self_update"] and st["reason"] is None
+    fake.release("v0.9.0", {"vulnscan-macos-arm64": b"x"})
+    st = updater.check(**kw)
+    assert not st["can_self_update"] and st["reason"] == "asset_missing"
 
 
 @pytestmark_posix
@@ -826,6 +907,29 @@ def test_reports_version_is_exact(tmp_path):
     assert updater.reports_version(exe, "0.9.0.1")
     exe.write_bytes(script("0.9.0-rc1"))
     assert not updater.reports_version(exe, "0.9.0")
+
+
+@pytestmark_posix
+def test_reports_version_accepts_the_kashif_name(tmp_path):
+    exe = tmp_path / "v"
+    exe.write_bytes(b"#!/bin/sh\necho 'kashif 1.0.1'\n")
+    exe.chmod(0o755)
+    assert updater.reports_version(exe, "1.0.1")
+    assert not updater.reports_version(exe, "1.0.0")
+
+
+def test_version_output_is_what_v09_updaters_accept(capsys):
+    """v0.9.x self-updaters run the new binary with --version and require exactly this pattern (copied from their
+    updater.reports_version); changing the output would make every 0.9.x install refuse the update."""
+    import re
+
+    from vulnscan import __version__, cli
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--version"])
+    assert e.value.code == 0
+    out = capsys.readouterr().out
+    assert out.strip() == f"vulnscan {__version__}"
+    assert re.search(rf"\bvulnscan\s+v?{re.escape(__version__)}(?![\w.+-])", out)
 
 
 def test_job_refuses_second_install_and_double_restart():

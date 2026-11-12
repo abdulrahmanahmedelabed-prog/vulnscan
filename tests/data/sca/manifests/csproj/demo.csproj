@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />
+    <PackageReference Include="log4net">
+      <Version>2.0.8</Version>
+    </PackageReference>
+    <PackageReference Include="Floating" Version="1.*" />
+    <!-- <PackageReference Include="Commented" Version="1.0.0" /> -->
+    <PackageReference Include="NoVersion" />
+  </ItemGroup>
+</Project>

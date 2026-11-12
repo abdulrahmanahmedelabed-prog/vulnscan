@@ -1,0 +1,18 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    nokogiri (1.10.4)
+      mini_portile2 (~> 2.4.0)
+    nokogiri (1.10.4-x86_64-linux)
+    mini_portile2 (2.4.0)
+    rack (2.0.6)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  nokogiri (~> 1.10)
+  rack
+
+BUNDLED WITH
+   2.1.4

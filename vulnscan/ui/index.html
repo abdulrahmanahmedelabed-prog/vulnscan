@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>كاشِف — vulnscan</title>
+<title>كاشِف · Kashif</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -28,6 +28,8 @@
     <symbol id="i-external" viewBox="0 0 24 24"><path d="M13.75 4.75h5.5v5.5M19.25 4.75 11 13M17.25 14v4.75a1.5 1.5 0 0 1-1.5 1.5h-10a1.5 1.5 0 0 1-1.5-1.5v-10a1.5 1.5 0 0 1 1.5-1.5H10"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5 4.75 6.25v5.5c0 4.3 2.9 7.75 7.25 9.25 4.35-1.5 7.25-4.95 7.25-9.25v-5.5L12 3.5Z"/><path d="m8.9 12.1 2.2 2.2 4.1-4.3"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M13.75 3.75h-6.5a1.5 1.5 0 0 0-1.5 1.5v13.5a1.5 1.5 0 0 0 1.5 1.5h9.5a1.5 1.5 0 0 0 1.5-1.5V8.25l-4.5-4.5Z"/><path d="M13.75 3.75v4.5h4.5"/></symbol>
+    <symbol id="i-projects" viewBox="0 0 24 24"><path d="M12 3.75 3.75 8 12 12.25 20.25 8 12 3.75Z"/><path d="m3.75 12 8.25 4.25L20.25 12"/><path d="m3.75 16 8.25 4.25L20.25 16"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0-5.2 5.2l-5 5a1.75 1.75 0 0 0 2.5 2.5l5-5a4 4 0 0 0 5.2-5.2l-2.4 2.4-2.2-.3-.3-2.2 2.4-2.4Z"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.75 7.25a1.5 1.5 0 0 1 1.5-1.5h3.9l2 2.25h7.6a1.5 1.5 0 0 1 1.5 1.5v7.75a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V7.25Z"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9.5 6.5 5.5 5.5-5.5 5.5"/></symbol>
     <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></symbol>
@@ -48,6 +50,11 @@
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.25"/><path d="M12 7.5V12l3 2"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></symbol>
     <symbol id="i-update" viewBox="0 0 24 24"><path d="M19.25 12a7.25 7.25 0 0 1-12.9 4.55M4.75 12a7.25 7.25 0 0 1 12.9-4.55"/><path d="M17.9 3.9v3.85h-3.85M6.1 20.1v-3.85h3.85"/></symbol>
+    <symbol id="i-compliance" viewBox="0 0 24 24"><path d="M9 4.75H6.75a1.5 1.5 0 0 0-1.5 1.5v12.5a1.5 1.5 0 0 0 1.5 1.5h10.5a1.5 1.5 0 0 0 1.5-1.5V6.25a1.5 1.5 0 0 0-1.5-1.5H15"/><rect x="9" y="3.25" width="6" height="3" rx="1"/><path d="m9.25 13.5 2 2 3.75-4"/></symbol>
+    <symbol id="i-surface" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.25"/><circle cx="12" cy="12" r="4.25"/><path d="M12 3.75V7.5M12 16.5v3.75M3.75 12H7.5M16.5 12h3.75"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5.75 20.25V4.25"/><path d="M5.75 4.75h11l-2.25 4 2.25 4h-11"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5.25" y="10.75" width="13.5" height="9.5" rx="1.75"/><path d="M8.25 10.75V8a3.75 3.75 0 0 1 7.5 0v2.75"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5.25" y="10.75" width="13.5" height="9.5" rx="1.75"/><path d="M8.25 10.75V8a3.75 3.75 0 0 1 7.2-1.45"/></symbol>
     <symbol id="i-pattern" viewBox="0 0 24 24"><rect x="3.75" y="5.75" width="16.5" height="12.5" rx="2"/><path d="M7.5 10h4M7.5 14h9"/></symbol>
   </defs>
 </svg>
@@ -55,15 +62,17 @@
 <a class="skip" href="#main" data-i18n="a11y.skip">انتقل إلى المحتوى</a>
 <div class="app">
   <aside class="sidebar">
-    <a class="brand" href="#dashboard" aria-label="Kashif — vulnscan">
+    <a class="brand" href="#dashboard" aria-label="Kashif · كاشِف">
       <img class="brand-logo" src="logo.svg" width="32" height="32" alt="">
-      <span class="brand-text"><b id="brand-name">كاشِف</b><small><span dir="ltr">vulnscan <span id="version"></span></span></small></span>
+      <span class="brand-text"><b id="brand-name">كاشِف</b><small><span dir="ltr">Kashif <span id="version"></span></span></small></span>
     </a>
     <a id="upd-pill" class="upd-pill hidden" href="#settings/update"><svg class="i sm" aria-hidden="true"><use href="#i-update"/></svg><span class="upd-pill-text"></span><span class="upd-dot" aria-hidden="true"></span></a>
     <nav aria-label="Primary">
       <a href="#dashboard" data-nav="dashboard"><svg class="i" aria-hidden="true"><use href="#i-dashboard"/></svg><span data-i18n="nav.dashboard">لوحة التحكم</span></a>
+      <a href="#projects" data-nav="projects"><svg class="i" aria-hidden="true"><use href="#i-projects"/></svg><span data-i18n="nav.projects">المشاريع</span></a>
       <a href="#scan" data-nav="scan"><svg class="i" aria-hidden="true"><use href="#i-scan"/></svg><span data-i18n="nav.scan">فحص جديد</span></a>
       <a href="#findings" data-nav="findings"><svg class="i" aria-hidden="true"><use href="#i-findings"/></svg><span data-i18n="nav.findings">النتائج</span></a>
+      <a href="#compliance" data-nav="compliance"><svg class="i" aria-hidden="true"><use href="#i-compliance"/></svg><span data-i18n="nav.compliance">الامتثال</span></a>
       <a href="#reports" data-nav="reports"><svg class="i" aria-hidden="true"><use href="#i-reports"/></svg><span data-i18n="nav.reports">التقارير</span></a>
       <a href="#rules" data-nav="rules"><svg class="i" aria-hidden="true"><use href="#i-rules"/></svg><span data-i18n="nav.rules">القواعد</span></a>
       <a href="#settings" data-nav="settings"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg><span data-i18n="nav.settings">الإعدادات</span></a>
@@ -83,6 +92,8 @@
           <p class="muted" id="dash-sub" data-i18n="dash.sub">نظرة عامة على آخر فحص والاتجاه العام.</p>
         </div>
         <div class="ph-actions">
+          <label class="sr-only" for="dash-project" data-i18n="proj.switch">المشروع</label>
+          <select id="dash-project" class="input select-scan"></select>
           <a class="btn" id="dash-open" href="#findings"><svg class="i" aria-hidden="true"><use href="#i-findings"/></svg><span data-i18n="scan.viewResults">عرض النتائج</span></a>
           <a class="btn primary" href="#scan"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg><span data-i18n="nav.scan">فحص جديد</span></a>
         </div>
@@ -103,7 +114,7 @@
           </div>
           <div class="card">
             <div class="card-head"><h2 data-i18n="dash.trend">اتجاه النتائج عبر الفحوصات الأخيرة</h2><div class="mini-legend" id="trend-legend"></div></div>
-            <div class="trend-wrap"><svg id="trend" role="img"></svg><p class="trend-note muted hidden" id="trend-note"></p></div>
+            <div class="trend-wrap"><svg id="trend" class="trend-svg" role="img"></svg><p class="trend-note muted hidden" id="trend-note"></p></div>
           </div>
         </div>
         <div class="grid-2">
@@ -120,6 +131,62 @@
           <div class="card-head pad"><h2 data-i18n="dash.recent">الفحوصات الأخيرة</h2><a class="link" href="#reports"><span data-i18n="dash.allScans">كل الفحوصات</span><svg class="i sm flip" aria-hidden="true"><use href="#i-chevron"/></svg></a></div>
           <div class="table-wrap"><table class="table" id="recent-table"></table></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ======================== PROJECTS ======================== -->
+    <section id="page-projects" class="page">
+      <div id="proj-list-view">
+        <header class="page-head">
+          <div class="ph-text">
+            <h1 data-i18n="proj.title">المشاريع</h1>
+            <p class="muted" data-i18n="proj.sub">كل هدف فحصته، مع آخر نتائجه واتجاهه وما تغيّر بين آخر فحصين.</p>
+          </div>
+          <div class="ph-actions">
+            <a class="btn primary" href="#scan"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg><span data-i18n="nav.scan">فحص جديد</span></a>
+          </div>
+        </header>
+        <div class="toolbar" id="proj-toolbar">
+          <div class="search wide"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><input id="proj-search" class="input" type="search" data-i18n-ph="proj.search" placeholder="ابحث باسم المشروع أو مساره…"></div>
+          <label class="sr-only" for="proj-sort" data-i18n="proj.sort">الترتيب</label>
+          <select id="proj-sort" class="input"><option value="recent" data-i18n="proj.sortRecent">الأحدث فحصًا</option><option value="risk" data-i18n="proj.sortRisk">الأعلى خطورة</option><option value="name" data-i18n="proj.sortName">الاسم</option></select>
+        </div>
+        <p class="proj-count muted" id="proj-count" role="status"></p>
+        <div id="proj-grid" class="proj-grid"></div>
+      </div>
+      <div id="proj-detail-view" class="hidden">
+        <a class="link back" href="#projects"><svg class="i sm flip back-i" aria-hidden="true"><use href="#i-chevron"/></svg><span data-i18n="proj.all">كل المشاريع</span></a>
+        <header class="page-head">
+          <div class="ph-text">
+            <h1><bdi id="pd-name"></bdi></h1>
+            <p class="muted mono pd-target" id="pd-target" dir="ltr"></p>
+          </div>
+          <div class="ph-actions">
+            <button class="btn" id="pd-rescan" type="button"><svg class="i" aria-hidden="true"><use href="#i-scan"/></svg><span data-i18n="proj.rescan">أعد الفحص</span></button>
+            <a class="btn primary" id="pd-open" href="#findings"><svg class="i" aria-hidden="true"><use href="#i-findings"/></svg><span data-i18n="scan.viewResults">عرض النتائج</span></a>
+          </div>
+        </header>
+        <div class="context-bar" id="pd-context"></div>
+        <div class="tiles" id="pd-tiles"></div>
+        <div class="grid-2 g-chart">
+          <div class="card">
+            <div class="card-head"><h2 data-i18n="proj.changes">التغيّر منذ الفحص السابق</h2></div>
+            <div id="pd-changes"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2 data-i18n="proj.trend">اتجاه النتائج عبر فحوصات المشروع</h2><div class="mini-legend" id="pd-trend-legend"></div></div>
+            <div class="trend-wrap"><svg id="pd-trend" class="trend-svg" role="img"></svg><p class="trend-note muted hidden" id="pd-trend-note"></p></div>
+          </div>
+        </div>
+        <div class="card flush" id="sf-card" aria-labelledby="sf-title">
+          <div class="card-head pad sf-head">
+            <h2 id="sf-title"><svg class="i" aria-hidden="true"><use href="#i-surface"/></svg><span data-i18n="sf.title">سطح الهجوم</span></h2>
+            <div class="sf-actions" id="sf-actions"></div>
+          </div>
+          <p class="sf-hint muted" data-i18n="sf.hint">نقاط الدخول إلى المشروع كما يجدها التحليل الساكن: المسارات ومعالجاتها وهل تظهر عليها مصادقة. لا يُرسَل أي طلب ولا يُشغَّل أي كود.</p>
+          <div id="sf-body" aria-live="polite"></div>
+        </div>
+        <div class="card flush"><div class="card-head pad"><h2 data-i18n="proj.scans">فحوصات المشروع</h2><span class="count" id="pd-scans-n"></span></div><div class="table-wrap"><table class="table" id="pd-scans"></table></div></div>
       </div>
     </section>
 
@@ -196,6 +263,7 @@
         <div class="ph-actions">
           <label class="sr-only" for="findings-scan" data-i18n="find.scan">الفحص</label>
           <select id="findings-scan" class="input select-scan"></select>
+          <a class="btn" id="findings-comp" href="#compliance"><svg class="i" aria-hidden="true"><use href="#i-compliance"/></svg><span data-i18n="nav.compliance">الامتثال</span></a>
         </div>
       </header>
       <div class="context-bar" id="findings-context"></div>
@@ -203,13 +271,58 @@
         <div class="sev-filter" id="sev-filter" role="group"></div>
         <div class="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><input id="findings-search" class="input" type="search" data-i18n-ph="find.search" placeholder="ابحث في الملف أو القاعدة أو النص…"></div>
         <select id="source-filter" class="input" aria-label="Source"><option value="">كل المصادر</option></select>
-        <div class="btn-group" role="group">
-          <span class="bg-label"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg><span data-i18n="find.export">تصدير</span></span>
-          <a id="dl-md" class="btn sm" download>Markdown</a><a id="dl-json" class="btn sm" download>JSON</a><a id="dl-html" class="btn sm" download>HTML</a>
+      </div>
+      <div class="toolbar sub" id="findings-toolbar2">
+        <label class="sr-only" for="triage-filter" data-i18n="tri.filter">حالة الفرز</label>
+        <select id="triage-filter" class="input"><option value="">كل الحالات</option></select>
+        <button class="chip toggle" type="button" id="fix-filter" aria-pressed="false"><svg class="i sm" aria-hidden="true"><use href="#i-wrench"/></svg><span data-i18n="fix.badge">إصلاح متاح</span><span class="n" id="fix-filter-n"></span></button>
+        <label class="check inline" for="show-fp"><input type="checkbox" id="show-fp"><span data-i18n="tri.showFp">إظهار الإنذارات الكاذبة</span> <span class="muted" id="show-fp-n"></span></label>
+        <div class="toolbar-end">
+          <div class="btn-group" role="group">
+            <span class="bg-label"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg><span data-i18n="find.export">تصدير</span></span>
+            <a id="dl-md" class="btn sm" download>Markdown</a><a id="dl-json" class="btn sm" download>JSON</a><a id="dl-html" class="btn sm" download>HTML</a><a id="dl-sarif" class="btn sm" download>SARIF</a>
+          </div>
+          <div class="menu-wrap">
+            <button class="btn sm" id="export-btn" type="button" aria-expanded="false" aria-controls="export-menu"><span data-i18n="exp.more">صيغ أخرى</span><svg class="i sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+            <div class="menu hidden" id="export-menu" role="region" aria-labelledby="export-btn"></div>
+          </div>
         </div>
       </div>
       <div id="findings-notes" class="notes"></div>
       <div id="findings-list" class="findings"></div>
+    </section>
+
+    <!-- ======================== COMPLIANCE ======================== -->
+    <section id="page-compliance" class="page">
+      <header class="page-head">
+        <div class="ph-text">
+          <h1 data-i18n="comp.title">الامتثال</h1>
+          <p class="muted" data-i18n="comp.sub">كيف تتوزع نتائج الفحص على ضوابط الأطر الأمنية والتنظيمية.</p>
+        </div>
+        <div class="ph-actions">
+          <label class="sr-only" for="comp-scan" data-i18n="find.scan">الفحص</label>
+          <select id="comp-scan" class="input select-scan"></select>
+          <a class="btn primary" id="comp-audit" href="#compliance" download><svg class="i" aria-hidden="true"><use href="#i-download"/></svg><span data-i18n="comp.audit">تقرير المدقق</span></a>
+        </div>
+      </header>
+      <div class="context-bar" id="comp-context"></div>
+      <div id="comp-empty" class="hidden"></div>
+      <div id="comp-body">
+        <div class="callout" id="comp-disclaimer"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg><span></span></div>
+        <h2 class="sr-only" data-i18n="comp.frameworks">الأطر</h2>
+        <div class="fw-grid" id="fw-grid" role="group"></div>
+        <div class="card flush" id="fw-detail">
+          <div class="card-head pad fw-head">
+            <h2 id="fw-title"></h2>
+            <div class="fw-actions">
+              <label class="check inline" for="fw-all"><input type="checkbox" id="fw-all"><span data-i18n="comp.showAll">إظهار الضوابط بلا نتائج</span></label>
+              <a class="btn sm" id="fw-audit" href="#compliance" download><svg class="i sm" aria-hidden="true"><use href="#i-download"/></svg><span data-i18n="comp.auditOne">تقرير المدقق لهذا الإطار</span></a>
+            </div>
+          </div>
+          <div class="fw-meta" id="fw-meta"></div>
+          <div class="table-wrap"><table class="table fw-table" id="fw-table"></table></div>
+        </div>
+      </div>
     </section>
 
     <!-- ======================== REPORTS ======================== -->

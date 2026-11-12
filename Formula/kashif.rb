@@ -9,30 +9,32 @@ class Kashif < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v1.0.0/vulnscan-macos-arm64"
+      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v1.0.0/kashif-macos-arm64"
       sha256 "8c7d05d288de5b8e1fc3a6fd6807c6a818a6ae14c29947a05b0ce52977a8b99d"
     end
     on_intel do
-      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v1.0.0/vulnscan-macos-x86_64"
+      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v1.0.0/kashif-macos-x86_64"
       sha256 "d3d1732578f131de571a2d767d2f93e10dff6c92b6216c125332bc87c540dfea"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v1.0.0/vulnscan-linux"
+      url "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/download/v1.0.0/kashif-linux-x86_64"
       sha256 "32864c2c66dd2e8e17eebec98dd50ae8864bc94870d3564c0edcebf7e7636111"
     end
   end
 
   def install
-    binary = Dir["vulnscan-*"].first
+    binary = Dir["kashif-*", "vulnscan-*"].first
     odie "release binary not found" if binary.nil?
-    bin.install binary => "vulnscan"
-    bin.install_symlink "vulnscan" => "kashif"
+    bin.install binary => "kashif"
+    # the pre-rename command name, kept as an alias
+    bin.install_symlink "kashif" => "vulnscan"
   end
 
   test do
+    assert_match version.to_s, shell_output("#{bin}/kashif --version")
     assert_match version.to_s, shell_output("#{bin}/vulnscan --version")
   end
 end

@@ -6,7 +6,8 @@ inline review comments on the changed lines, one summary comment, SARIF in the S
 status.
 
 GitHub is the only hosted platform this project integrates with. Outside GitHub, use the command line
-(`--diff-base`, `-f sarif`, `--fail-on`) or the pre-commit hook below.
+(`--diff-base`, `-f sarif`, `--fail-on`) or the pre-commit hook below. On GitLab, `-f gitlab-sast` and
+`-f codeclimate` write the Security and Code Quality reports (a job example is in `docs/production.md`).
 
 ## GitHub Action
 

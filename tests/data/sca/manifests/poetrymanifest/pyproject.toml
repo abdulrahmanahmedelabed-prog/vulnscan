@@ -1,0 +1,5 @@
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "2.19.0"
+flask = "^2.0"
+pyyaml = {version = "==5.3"}
