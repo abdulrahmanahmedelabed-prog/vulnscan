@@ -18,10 +18,10 @@ import tempfile
 import zipfile
 
 from .model import Finding
-from .rules import RULES, SENSITIVE_FILES, Rule
+from .rules import RULES, SENSITIVE_FILES, Rule, weak_credential_entry
 from . import taint, vql
 from .plsql_frontend import PLSQL_EXTS
-from . import apex_export, stored
+from . import apex_export, cfamily_frontend, stored
 
 SKIP_DIRS = {
     ".git", ".hg", ".svn", "node_modules", ".venv", "venv", "env", "__pycache__",
@@ -546,7 +546,8 @@ def _scan_bytes(path: pathlib.Path, rel: str, raw: bytes, rules: list[Rule], ign
     in_key = False                   # inside a private-key block: SEC001 reports the block once
     ctx_name = None
     script_lines = _script_lines(text) if path.suffix.lower() in (".html", ".htm", ".xhtml") else None
-    for lineno, line in enumerate(text.splitlines(), 1):
+    all_lines = text.splitlines()
+    for lineno, line in enumerate(all_lines, 1):
         # PEM-armored certificates / public keys: their base64 body is public data, not a secret
         if _PEM_BEGIN.search(line):
             in_pem = not _PEM_END.search(line)
@@ -572,7 +573,8 @@ def _scan_bytes(path: pathlib.Path, rel: str, raw: bytes, rules: list[Rule], ign
             if script_lines is not None and rule.langs is not None and ".js" in rule.langs and lineno not in script_lines:
                 continue                    # JavaScript rules in an HTML page: <script> blocks and on*= handlers only
             m = rule.pattern.search(line)
-            if m and not (rule.skip and rule.skip.search(line)):
+            if m and not (rule.skip and rule.skip.search(line)
+                          and not weak_credential_entry(rule.id, line, all_lines, lineno)):
                 if py_tree_ok and ("#" in line or "'" in line or '"' in line):
                     if py_spans is None:
                         py_spans = _py_inert_spans(text) or {}
@@ -913,8 +915,9 @@ def frontend_notes(projects) -> list[str]:
 # the incremental cache with --cache. The inter-procedural analysis then runs once, over every file, in this process.
 _DATAFLOW_EXTS = (".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".java", ".kt", ".kts", ".cs", ".go",
                   ".php", ".phtml", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".rs", ".swift", ".rb",
-                  ".rake") + PLSQL_EXTS
-_SERVER_TEMPLATE_EXTS = (".html", ".htm", ".jinja", ".jinja2", ".j2", ".tmpl", ".djhtml")
+                  ".rake", ".erb") + PLSQL_EXTS
+_SERVER_TEMPLATE_EXTS = (".html", ".htm", ".jinja", ".jinja2", ".j2", ".tmpl", ".djhtml",
+                         ".ejs", ".hbs", ".handlebars", ".mustache", ".pug", ".jade", ".njk", ".nunjucks", ".swig")
 _VENDOR_CHECK_EXTS = (".js", ".cjs", ".mjs", ".css")
 # Below this many files a process pool costs more than it saves (tests lower it to exercise the pool).
 PARALLEL_MIN_FILES = 64
@@ -968,7 +971,7 @@ def _file_stage(p: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set[
                 findings.extend(scan_sql_dump(rel, src, ignore_rules))
     if suffix in _SERVER_TEMPLATE_EXTS and src is None and len(raw) <= 512_000:
         t = get_text()               # server-side templates: the data-flow engine checks what they print unescaped
-        if "{{" in t or "{%" in t:
+        if "{{" in t or "{%" in t or "<%" in t or (suffix in (".pug", ".jade") and ("!{" in t or "!=" in t)):
             src = t
     if stored.is_config_file(rel) and len(raw) <= 1_000_000:
         rec["config"] = stored.parse_config(rel, get_text())
@@ -977,6 +980,8 @@ def _file_stage(p: pathlib.Path, rel: str, rules: list[Rule], ignore_rules: set[
         t = get_text()               # APEX readable exports, Liquibase/SQLcl changelogs and ORDS definitions carry Oracle code
         if apex_export.is_oracle_container(t, rel):
             src = t
+        elif suffix == ".xml" and cfamily_frontend.is_mybatis_mapper(t):
+            src = t                  # MyBatis mapper XML: the `${…}` SQL of the project's Java mapper interfaces
     rec["src"] = src
     if src is not None:
         if trees and trees[0][0] == src:

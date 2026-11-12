@@ -132,4 +132,5 @@ def test_policy_without_command_under_arabic_locale(monkeypatch, capsys):
     monkeypatch.setenv("VULNSCAN_LANG", "ar")
     assert main(["policy"]) == 2
     err = capsys.readouterr().err
-    assert "invalid choice" not in err and "required" in err
+    # the missing command is reported, in the resolved language (argparse's own errors are localized in 1.0.1)
+    assert "invalid choice" not in err and "قيمة غير صالحة" not in err and "معاملات مطلوبة لم تُحدَّد" in err

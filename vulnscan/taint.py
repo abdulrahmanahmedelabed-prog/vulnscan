@@ -39,6 +39,7 @@ import re
 import time
 
 from . import flow as _flow
+from . import php_include as _php_include
 from .model import Finding
 
 MAX_PASSES = 16
@@ -49,7 +50,7 @@ PY_EXTS = (".py",)
 JS_EXTS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 CFAMILY = {".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".cs": "csharp", ".go": "go", ".php": "php", ".phtml": "php",
            ".c": "cpp", ".h": "cpp", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp",
-           ".rs": "rust", ".swift": "swift", ".rb": "ruby", ".rake": "ruby"}
+           ".rs": "rust", ".swift": "swift", ".rb": "ruby", ".rake": "ruby", ".erb": "ruby"}   # .erb: Rails views (erb_frontend)
 CFAMILY_LANGS = ("java", "kotlin", "csharp", "go", "php", "cpp", "rust", "swift", "ruby")
 MODELS_DIR = pathlib.Path(__file__).parent / "models"
 _KEYED_READS = {"get", "getOrDefault", "getFirst", "getLast", "peek", "peekFirst", "peekLast", "element", "first", "last",
@@ -290,6 +291,7 @@ _NUMERIC_STATIC_TYPES = frozenset({"int", "long", "short", "byte", "double", "fl
                                    "ushort", "sbyte", "Int", "Int32", "Int64", "Int16", "UInt", "Double", "Decimal"})
 
 
+_ENUM_DECL = re.compile(r"\benum\s+(?:class\s+)?([A-Z]\w*)")
 _JS_TYPED_SCHEMA = re.compile(r"(^|\.)(z|zod|Joi|joi|yup|v|t)\.(coerce\.)?(number|boolean|bigint|date|enum|nativeEnum|literal|"
                               r"uuid|int|integer|bool|isodate)\b|\.(int|integer|uuid|positive|negative|port)$")
 _EXPRESS_STRICT = frozenset({"isInt", "isNumeric", "isFloat", "isDecimal", "isBoolean", "isUUID", "isMongoId", "isIn",
@@ -1464,11 +1466,17 @@ class Project:
                 if any(not _abstract(self.gfuncs[q]["node"]) for q in owners if q in self.gfuncs):
                     return None
         if si and isinstance(call.func, ast.Name) and si[0] != "DFSTORE" and not si[0].startswith("stored") \
-                and cls and cls in self.classes and self.m.get("language") not in ("python", "javascript", "plsql") \
-                and call.func.id not in env.funcs and not self._resolve_function(mod, call.func.id):
-            # Ruby / Java / C#: a bare `warn(env, msg)` inside a class that defines `warn` is `self.warn(...)`; its own
-            # summary decides where the data goes (rack-protection logs only `msg`), not Kernel#warn's model
-            if any(q in self.gfuncs and not _abstract(self.gfuncs[q]["node"]) for q in self._lookup_method(cls, call.func.id)):
+                and self.m.get("language") not in ("python", "javascript", "plsql") and call.func.id not in env.funcs:
+            ruby = self.m.get("language") == "ruby"
+            fq = self._resolve_function(mod, call.func.id)
+            # Ruby / Java / C#: a bare `warn(env, msg)` inside a class that defines `warn` (itself, a base class or
+            # an included module) is `self.warn(...)`; its own summary decides where the data goes (rack-protection
+            # logs only `msg`), not Kernel#warn's model
+            if cls and cls in self.classes and (not fq or ruby) and any(
+                    q in self.gfuncs and not _abstract(self.gfuncs[q]["node"]) for q in self._lookup_method(cls, call.func.id)):
+                return None
+            # Ruby: a top-level `def warn` in the same file is a method of every object: it replaces Kernel#warn too
+            if ruby and fq and fq.startswith(mod + "::") and fq in self.gfuncs and not _abstract(self.gfuncs[fq]["node"]):
                 return None
         if si is None and isinstance(call.func, ast.Attribute) and call.func.attr in ("write", "write_text") \
                 and call.args and self.m.get("language") == "python" and self._template_source(mod, call.args[0]):
@@ -1772,9 +1780,11 @@ class Project:
             return None              # werkzeug MultiDict.get(k, type=int): converted to a number (or the default)
         src = self._is_source(mod, node, cls, env)
         if src:
+            inc = getattr(node, _php_include.MARK, None)
+            trail = (_step((self.files.get(mod) or {}).get("path", ""), node.lineno, f"include {inc}"),) if inc else ()
             if self._is_local_source(mod, node):
-                return ("source", src, (), _LOCAL_SAFE_CWES)
-            return ("source", src, ())
+                return ("source", src, trail, _LOCAL_SAFE_CWES)
+            return ("source", src, trail)
         if isinstance(node, ast.Name):
             return env.tainted.get(node.id)
         if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in env.dk:
@@ -2080,6 +2090,76 @@ class Project:
         unsafe = _template_unsafe_vars(tname)
         return [(n, v) for n, v in ctx if n in unsafe]
 
+    def _project_enum(self, ann) -> bool:
+        """Is this parameter type an enum the project declares (`enum Sort { NAME, AGE }`, Kotlin `enum class`)?"""
+        name = (_annotation_name(ann) or "").split(".")[-1] if ann is not None else ""
+        if not name:
+            return False
+        enums = self.__dict__.get("_enum_names")
+        if enums is None:
+            enums = set()
+            for f in self.files.values():
+                for ln in f.get("lines") or ():
+                    if "enum" in ln:
+                        enums.update(_ENUM_DECL.findall(ln))
+            self.__dict__["_enum_names"] = enums
+        return name in enums
+
+    _JS_VIEW_RECEIVERS = frozenset({"res", "response", "resp", "ctx", "context", "reply", "h"})
+
+    def _js_template_context(self, fn, call):
+        """(variable, value) pairs a JavaScript view render passes to a view that prints that variable unescaped:
+        `res.render("app/products", {output})`, `await ctx.render("x", data)`, `reply.view("/t.ejs", {...})`.
+        A spread (`{...user}`) or an object that is not a literal here stands for every variable ("*")."""
+        f = call.func
+        if not (isinstance(f, ast.Attribute) and f.attr in ("render", "view") and len(call.args) >= 2
+                and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, str)
+                and _dotted(f.value).split(".")[-1] in self._JS_VIEW_RECEIVERS):
+            return []
+        unsafe = _js_template_unsafe_vars(call.args[0].value, self._js_autoescape_off())
+        if not unsafe:
+            return []
+        ctx = call.args[1]
+        if isinstance(ctx, ast.Name):
+            binds = [n.value for n in _scope_nodes(fn) if isinstance(n, ast.Assign) and len(n.targets) == 1
+                     and isinstance(n.targets[0], ast.Name) and n.targets[0].id == ctx.id]
+            if len(binds) == 1 and isinstance(binds[0], ast.Dict):
+                ctx = binds[0]
+        if not isinstance(ctx, ast.Dict):
+            return [("*", ctx)]
+        out = []
+        for k, v in zip(ctx.keys, ctx.values):
+            if k is None:
+                out.append(("*", v))
+            elif isinstance(k, ast.Constant) and k.value in unsafe:
+                fields = unsafe[k.value]
+                obj = v
+                if isinstance(obj, ast.Name):
+                    binds = [n.value for n in _scope_nodes(fn) if isinstance(n, ast.Assign) and len(n.targets) == 1
+                             and isinstance(n.targets[0], ast.Name) and n.targets[0].id == obj.id]
+                    obj = binds[0] if len(binds) == 1 else obj
+                if None in fields or not isinstance(obj, ast.Dict) or None in obj.keys:
+                    out.append((k.value, v))
+                    continue
+                # only the printed fields of an object literal: {searchTerm: req.body.q, safe: x} with output.searchTerm
+                out += [(k.value, fv) for fk, fv in zip(obj.keys, obj.values)
+                        if isinstance(fk, ast.Constant) and fk.value in fields]
+        return out
+
+    def _js_autoescape_off(self) -> bool:
+        """Does the project turn HTML escaping off for its Swig / Nunjucks views
+        (`swig.setDefaults({autoescape: false})`, `nunjucks.configure(dir, {autoescape: false})`)?"""
+        hit = self.__dict__.get("_js_noescape")
+        if hit is None:
+            hit = False
+            for f in self.files.values():
+                lines = f.get("lines") or ()
+                if any(_JS_AE_OFF.search(ln) for ln in lines) and any(_JS_AE_ENGINE.search(ln) for ln in lines):
+                    hit = True
+                    break
+            self.__dict__["_js_noescape"] = hit
+        return hit
+
     def _template_source(self, mod, node) -> bool:
         """Is `node` template SOURCE text built with data: an f-string / concatenation / .format() whose literal parts
         hold Jinja / Django tags (`{% … %}`, `{{ … }}`), or a name the module binds to one?"""
@@ -2247,7 +2327,57 @@ class Project:
             al = (self.files.get(mod) or {}).get("aliases", {})
             cache[key] = any(isinstance(x, str) and (x == "django" or x.startswith("django."))
                              for v in al.values() for x in (v if isinstance(v, tuple) else (v,)))
-        return cache[key] and not self._called_by_name(mod, fn.name)
+        if not cache[key] or self._called_by_name(mod, fn.name):
+            return False
+        routed = self._django_routed_names()
+        # with URL configurations in the project, a view is a function they route to: `render(request, template,
+        # context)` in django/shortcuts.py takes a request but is a helper. Without any (a scan of one app's views
+        # without its urls.py), the signature is all there is to go by.
+        return routed is None or fn.name in routed
+
+    _DJANGO_ROUTE_CALLS = frozenset({"path", "re_path", "url"})
+    _DJANGO_HANDLERS = frozenset({"handler400", "handler403", "handler404", "handler500"})
+    _VIEW_ONLY_DECORATORS = frozenset({"login_required", "permission_required", "user_passes_test", "staff_member_required",
+                                       "csrf_exempt", "csrf_protect", "ensure_csrf_cookie", "requires_csrf_token",
+                                       "cache_page", "never_cache", "vary_on_headers", "vary_on_cookie", "xframe_options_exempt",
+                                       "xframe_options_deny", "xframe_options_sameorigin", "sensitive_post_parameters",
+                                       "condition", "etag", "last_modified", "gzip_page", "cache_control"})
+
+    def _django_routed_names(self):
+        """Names of the functions the project's Django URL configurations route to (`path("x/", views.fn)`,
+        `re_path(r"…", fn)`, `url(r"…", "app.views.fn")`, `handler404 = "app.views.not_found"`), plus functions
+        wearing a decorator only views wear (`@login_required`, `@csrf_exempt` …). None: the project has no URL
+        configuration at all."""
+        hit = self.__dict__.get("_django_routed")
+        if hit is not None:
+            return hit[0]
+        names: set = set()
+        found = False
+
+        def ref(e):
+            if isinstance(e, ast.Constant) and isinstance(e.value, str) and re.fullmatch(r"[\w.]+", e.value):
+                names.add(e.value.split(".")[-1])
+            elif isinstance(e, (ast.Name, ast.Attribute)):
+                names.add(_dotted(e).split(".")[-1])
+            elif isinstance(e, ast.Call):
+                # a wrapped view: path("x/", login_required(views.fn)), path("y/", cache_page(60)(views.fn))
+                for a in e.args:
+                    ref(a)
+        for info in self.files.values():
+            for n in ast.walk(info["tree"]):
+                if isinstance(n, ast.Call) and len(n.args) >= 2 \
+                        and _dotted(n.func).split(".")[-1] in self._DJANGO_ROUTE_CALLS:
+                    found = True
+                    ref(n.args[1])
+                elif isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in self._DJANGO_HANDLERS for t in n.targets):
+                    ref(n.value)
+                elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
+                        _dotted(d.func if isinstance(d, ast.Call) else d).split(".")[-1] in self._VIEW_ONLY_DECORATORS
+                        for d in n.decorator_list):
+                    names.add(n.name)
+        res = names if found else None
+        self.__dict__["_django_routed"] = (res,)
+        return res
 
     def _name_calls(self, mod) -> set:
         """Names called as a bare `name(...)` in a module (cached)."""
@@ -2336,8 +2466,9 @@ class Project:
                 elif p.arg in entry_params and self.m.get("language") == "python" and self._safe_annotation(mod, p.annotation):
                     pass             # FastAPI / typed handler parameter `age: int`: parsed and validated by the framework
                 elif p.arg in entry_params and self.m.get("language") in ("java", "kotlin", "csharp") \
-                        and _safe_static_param(p.annotation):
+                        and (_safe_static_param(p.annotation) or self._project_enum(p.annotation)):
                     pass             # Spring `@RequestParam int id` / `@Pattern(regexp="^[a-z]+$") String code`: bound and checked
+                    #                  (`@RequestParam Sort sort` of a project enum: binding accepts only its constants)
                 elif p.arg in entry_params or is_req:
                     env.tainted[p.arg] = ("source", f"معامل نقطة الدخول {p.arg}", (_step(path, fn.lineno, f"def {fn.name}({p.arg})"),))
                     if p.arg in entry_params and self._cli_entry(fn):
@@ -2513,7 +2644,7 @@ class Project:
         if oenv is None:
             cache[outer_q] = _Env()           # guard against cycles while it is computed
             oenv = cache[outer_q] = self._env(oinfo["mod"], oinfo["cls"], oinfo["node"], oinfo["path"], seed_params=False, entry=True)
-        if not oenv.tainted:
+        if not oenv.tainted and not oenv.webreq:
             return
         local = set(env.params)
         for n in _scope_nodes(fn):
@@ -2523,6 +2654,8 @@ class Project:
                     if isinstance(x, ast.Name):
                         local.add(x.id)
         for n in _scope_nodes(fn):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id not in local and n.id in oenv.webreq:
+                env.webreq.add(n.id)      # `db.find().then(rows => res.render(v, {q: req.query.q}))`: the route's req
             if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id not in local and n.id in oenv.tainted \
                     and n.id not in env.tainted:
                 env.tainted[n.id] = oenv.tainted[n.id]
@@ -2602,6 +2735,13 @@ class Project:
             if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or):
                 # all parts are False on this path: every rejection held
                 return set().union(*[self._validated(mod, v, False, cwe) for v in test.values])
+            if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And):
+                # some part is False on this path, which one is unknown: only what each part's failure validates.
+                # `(url or accepts_html) and not is_safe(url)` failing: url is empty, or it passed is_safe
+                parts = [self._validated(mod, v, False, cwe) for v in test.values]
+                return set.intersection(*parts) if parts else set()
+            if isinstance(test, (ast.Name, ast.Attribute)) and _chain(test):
+                return {_chain(test)}        # `if url: …` not taken: url is falsy (None / "" / 0) and carries no data
             if isinstance(test, ast.Compare) and len(test.ops) == 1:
                 op = test.ops[0]
                 path_sink = cwe in _PATH_CWES
@@ -2886,7 +3026,8 @@ class Project:
                 if o and o[0] in {"source", "retsource"} and not new["source_return"]:
                     new["source_return"] = o
                     new["ret_line"] = node.lineno
-                elif o and o[0] == "param":
+                elif o and o[0] == "param" and not self._guarded(mod, fn, node, self._tainted_names_in(node.value, renv)):
+                    # (a guarded return gives back a validated value: `if (!SAFE.matcher(s).matches()) return null;`)
                     new["ret_params"].update(_origin_params(o))
                     new["ret_line"] = new["ret_line"] or node.lineno
                 elif o and o[0] == "field":
@@ -2977,14 +3118,16 @@ class Project:
         if env is None:
             return                                  # unreachable code
         si = self._sink(mod, cls, call, env)
-        if si and not self._suppressed(path, call.lineno):
+        # a sink whose text lives in another file (a MyBatis mapper XML statement) is reported there
+        at_path, at_line = getattr(call, "vulnscan_at", None) or (path, call.lineno)
+        if si and not self._suppressed(at_path, at_line):
             for arg in self._sink_args(si, call):
                 if not self._sink_arg_ok(fn, si, arg, env):
                     continue
                 origins = [o for o in self._taints(mod, cls, arg, env) if _unsafe_for(o, si)]
                 if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
                     for o in origins:
-                        record(o, (si, path, call.lineno))
+                        record(o, (si, at_path, at_line))
         cb_param = self._callback_param(fn, call)
         if cb_param is not None:
             pos = [(i, self._taint(mod, cls, a, env)) for i, a in enumerate(call.args)]
@@ -3185,6 +3328,17 @@ class Project:
                                     if o and o[0] in {"source", "retsource"}:
                                         self._emit(TEMPLATE_UNESCAPED, path, node.lineno, o, None, None)
                                         break
+            # Express / Koa / Fastify views: res.render("view", {x: tainted}) where the view prints x unescaped
+            # (EJS <%- x %>, Handlebars {{{x}}}, Pug !{x} / p!= x, Swig / Nunjucks with autoescape off)
+            if self.m.get("language") == "javascript" and _TEMPLATES:
+                for call in self._calls(fn):
+                    for kw_name, value in self._js_template_context(fn, call):
+                        env = self._flow_at(mod, cls, fn, fenv, call)
+                        o = self._sink_taint(mod, cls, value, env, JS_TEMPLATE_UNESCAPED) if env is not None else None
+                        if o and o[0] in {"source", "retsource"} and not self._guarded(
+                                mod, fn, call, self._tainted_names_in(value, env), JS_TEMPLATE_UNESCAPED):
+                            self._emit(JS_TEMPLATE_UNESCAPED, path, call.lineno, o, None, None)
+                            break
             # reflected output from an entry point: `return tainted`
             if is_entry:
                 for node in _scope_nodes(fn):
@@ -3221,6 +3375,13 @@ class Project:
     def _emit(self, si, path, line, origin, callee, deep):
         if self._suppressed(path, line) or (deep and self._suppressed(deep[1], deep[2])):
             return
+        if _php_include.INLINED and (path, line) in _php_include.INLINED:
+            # the sink is in code a PHP include spliced in at this line (see php_include): a source spliced in at
+            # the same include means the flow lies wholly inside the included file, which reports it itself
+            if any(st.get("file") == path and st.get("line") == line and str(st.get("text", "")).startswith("include ")
+                   for st in _trail(origin) if isinstance(st, dict)):
+                return
+            callee = callee or "include"
         rule, sev, title, title_ar, advice, cwe, label = si[:7]
         source_label = self._label(origin)
         steps = list(_trail(origin))
@@ -3276,6 +3437,12 @@ def load_models_for(language: str, extra_dirs=()) -> dict:
     return m
 
 
+def _view_code(rel: str, text: str) -> str:
+    """The code the engine analyses for a file: an ERB view becomes Ruby (see erb_frontend), the rest is as is."""
+    from . import erb_frontend
+    return erb_frontend.to_ruby(text, rel) if erb_frontend.is_erb(rel) else text
+
+
 def analyze_project(files: dict[str, str], models_dirs=None, config: dict | None = None) -> list[Finding]:
     """Analyze a whole project: Python natively, the other languages through the lowering frontends."""
     return analyze_project_full(files, models_dirs, config)[1]
@@ -3301,7 +3468,7 @@ def preparse(rel: str, text: str):
         if len(text) > 600_000:
             return None
         from . import cfamily_frontend
-        return cfamily_frontend.parse_cfamily(text, rel, lang)
+        return cfamily_frontend.parse_cfamily(_view_code(rel, text), rel, lang)
     return None
 
 
@@ -3319,7 +3486,7 @@ def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict |
             if _st.is_config_file(rel):
                 config.update(_st.parse_config(rel, text))
     _TEMPLATES.clear()
-    _TEMPLATES.update({rel: text for rel, text in files.items() if rel.lower().endswith(TEMPLATE_EXTS)})
+    _TEMPLATES.update({rel: text for rel, text in files.items() if rel.lower().endswith(TEMPLATE_EXTS + JS_TEMPLATE_EXTS)})
     budget = DATAFLOW_BUDGET_SECONDS if budget is None else budget
     t0 = time.monotonic()
     _BUDGET["deadline"], _BUDGET["hard"] = t0 + budget, t0 + budget * 1.5
@@ -3333,8 +3500,16 @@ def _analyze_groups(files, models_dirs, config, trees=None):
     trees = trees if trees is not None else {}
     projects: list = []
     groups: dict[str, dict[str, str]] = {}
+    mybatis: dict = {}
     for rel, text in files.items():
         lang = _language(rel)
+        if lang == "plsql" and rel.lower().endswith(".xml"):
+            from . import cfamily_frontend
+            if cfamily_frontend.is_mybatis_mapper(text):    # MyBatis mapper XML: SQL of Java mapper interfaces
+                ns, stmts = cfamily_frontend.mybatis_statements(text)
+                if ns and stmts:
+                    mybatis[ns] = (rel, stmts)
+                continue
         if lang:
             groups.setdefault(lang, {})[rel] = text
     findings: list[Finding] = []
@@ -3374,12 +3549,19 @@ def _analyze_groups(files, models_dirs, config, trees=None):
                 continue
             tree = trees.pop(rel, None)
             if tree is None:
-                tree = cfamily_frontend.parse_cfamily(text, rel, lang)
+                tree = cfamily_frontend.parse_cfamily(_view_code(rel, text), rel, lang)
+            if mybatis and lang in ("java", "kotlin"):
+                cfamily_frontend.apply_mybatis_xml(tree, cfamily_frontend.module_name(rel), mybatis)
             entries.append(_Entry(cfamily_frontend.module_name(rel), rel, text, tree))
             diag = getattr(tree, "vulnscan_diagnostics", None)
             if diag:
                 diags[rel] = diag
-        proj, flows = _stored_build(load_models_for(lang, models_dirs or ()), entries, diagnostics=diags, config=config)
+        if lang == "php":
+            _php_include.inline_includes({e.rel: e.tree for e in entries})
+        try:
+            proj, flows = _stored_build(load_models_for(lang, models_dirs or ()), entries, diagnostics=diags, config=config)
+        finally:
+            _php_include.INLINED.clear()
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
@@ -3474,6 +3656,145 @@ def _template_printed_vars(name: str) -> set:
             root = loops[root]
         if root not in ("request", "csrf_token", "url_for", "config", "loop", "super", "self", "g", "static"):
             out.add(root)
+    return out
+
+
+JS_TEMPLATE_EXTS = (".ejs", ".hbs", ".handlebars", ".mustache", ".pug", ".jade", ".njk", ".nunjucks", ".swig")
+JS_TEMPLATE_UNESCAPED = ("DF013", "medium", "Tainted data rendered unescaped by a view template (<%- %>, {{{ }}}, != or autoescape off)",
+                         "بيانات غير موثوقة تُعرض في قالب عرض دون تهريب (<%- %> أو {{{ }}} أو != أو autoescape off)",
+                         "اطبع القيمة بالوسم المهرِّب (<%= %> أو {{ }} أو #{}) وأبقِ autoescape مفعّلًا، أو عقّمها (DOMPurify) أولًا.",
+                         "CWE-79", "unescaped view output", [0], False)
+_JS_AE_OFF = re.compile(r"\bautoescape\s*:\s*false\b")
+_JS_AE_ENGINE = re.compile(r"\b(swig|nunjucks)\b")
+_EJS_RAW = re.compile(r"<%-(.*?)[-_]?%>", re.S)
+_HBS_RAW = re.compile(r"\{\{\{\s*([^}]*?)\s*\}\}\}|\{\{&\s*([^}]*?)\s*\}\}")
+_HBS_EACH = re.compile(r"\{\{#(?:each|with)\s+([A-Za-z_$][\w$]*)")
+_PUG_RAW = re.compile(r"!\{([^}]*)\}|^[ \t]*(?:[\w.#:-]+(?:\([^)\n]*\))?)?!=[ \t]*(\S.*)$", re.M)
+_JS_LOOP = re.compile(r"([A-Za-z_$][\w$]*)(?:\.[\w$]+)*\s*\.\s*(?:forEach|map|filter|some|every)\s*\(\s*(?:async\s+)?"
+                      r"(?:function\s*[\w$]*\s*)?\(?\s*([A-Za-z_$][\w$]*)"
+                      r"|for\s*\(\s*(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s+(?:of|in)\s+([A-Za-z_$][\w$]*)"
+                      r"|^[ \t]*each\s+([A-Za-z_$][\w$]*)(?:\s*,\s*[A-Za-z_$][\w$]*)?\s+in\s+([A-Za-z_$][\w$]*)", re.M)
+_JS_IDENT = re.compile(r"(?<![\w$.'\"])([A-Za-z_$][\w$]*)(?:\s*\.\s*([A-Za-z_$][\w$]*))?")
+_JS_NOT_VARS = frozenset({"include", "locals", "JSON", "String", "Number", "Math", "Object", "Array", "Date", "true", "false",
+                          "null", "undefined", "typeof", "new", "this", "function", "var", "let", "const", "if", "else",
+                          "return", "for", "of", "in", "encodeURIComponent", "encodeURI", "escape", "escapeHtml"})
+# a call that escapes / sanitizes what it prints: `<%- escapeHtml(x) %>`, `!{DOMPurify.sanitize(x)}`, `{{{sanitize x}}}`
+_JS_SAFE_CALL = re.compile(r"(?i)^(?!.*(?:unescape|decode|unsafe|raw))[\w$.]*(?:escape|sanitiz|purif|encode|striptags|strip_tags|xss)[\w$]*$")
+_JS_STR = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"")
+_JS_NON_TEXT_FIELDS = frozenset({"length", "size"})
+
+
+def _js_printed_expr(e: str, helper_syntax: bool = False) -> str:
+    """The part of a raw-output expression whose value is printed: string literals, the condition of a ternary
+    (`<%- sel ? "selected" : "" %>`) and the arguments of escaping / sanitizing calls (`<%- escapeHtml(x) %>`,
+    Handlebars `{{{sanitize body}}}`) are removed."""
+    e = _JS_STR.sub('""', e)
+    if helper_syntax:
+        head = e.split(None, 1)
+        if head and _JS_SAFE_CALL.match(head[0]):
+            return ""
+    depth = 0
+    for i, c in enumerate(e):                       # a top-level `cond ? a : b`: only a and b are printed
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif c == "?" and depth == 0 and e[i + 1:i + 2] not in ("?", ".") and e[i - 1:i] != "?":
+            e = e[i + 1:]
+            break
+    out, i = [], 0
+    for m in re.finditer(r"([A-Za-z_$][\w$.]*)\s*\(", e):
+        if m.start() < i or not _JS_SAFE_CALL.match(m.group(1)):
+            continue
+        depth, j = 0, m.end() - 1
+        while j < len(e):
+            depth += {"(": 1, ")": -1}.get(e[j], 0)
+            j += 1
+            if depth == 0:
+                break
+        out.append(e[i:m.start()])
+        out.append('""')
+        i = j
+    out.append(e[i:])
+    return "".join(out)
+
+
+def _js_view_file(name: str) -> str | None:
+    """The project file of a JavaScript view name: "app/products" -> views/app/products.ejs."""
+    norm = name.replace("\\", "/").lstrip("./").lstrip("/")
+    if not norm:
+        return None
+    exts = JS_TEMPLATE_EXTS + TEMPLATE_EXTS
+    cands = []
+    for r, text in _TEMPLATES.items():
+        if not isinstance(text, str):
+            continue
+        rr = r.replace("\\", "/")
+        low = rr.lower()
+        if low.endswith(exts) and (rr == norm or rr.endswith("/" + norm)):
+            cands.append(rr)
+            continue
+        stem, dot, ext = rr.rpartition(".")
+        if dot and ("." + ext.lower()) in exts and (stem == norm or stem.endswith("/" + norm)):
+            cands.append(rr)
+    if not cands:
+        return None
+    cands.sort(key=lambda r: (0 if "/views/" in "/" + r else 1, len(r)))
+    return cands[0]
+
+
+def _js_template_unsafe_vars(name: str, autoescape_off: bool = False) -> dict:
+    """Variables a JavaScript view prints without HTML escaping: roots of the expressions in EJS `<%- … %>`,
+    Handlebars / Mustache `{{{ … }}}` / `{{& … }}`, Pug `!{…}` / `tag!= …`, Jinja-style `{{ x|safe }}` (Nunjucks,
+    Swig) and, when the project turns autoescape off, every `{{ x }}`. Loop variables map to the collection they
+    iterate (`products.forEach(function (p) {` / `{{#each products}}` / `each p in products`).
+    Returns {variable: the fields of it that are printed (`output.searchTerm` -> "searchTerm"), None = all of it}."""
+    cache = _TEMPLATES.setdefault("\0cache", {})
+    key = ("\0js\0", name, autoescape_off)
+    if key in cache:
+        return cache[key]
+    out: dict = {}
+
+    def add(root, fld):
+        out.setdefault(root, set()).add(fld)
+    rel = _js_view_file(name)
+    if rel is not None:
+        text = _TEMPLATES[rel]
+        loops = {}
+        for m in _JS_LOOP.finditer(text):
+            if m.group(2):
+                loops[m.group(2)] = m.group(1)
+            elif m.group(3):
+                loops[m.group(3)] = m.group(4)
+            elif m.group(5):
+                loops[m.group(5)] = m.group(6)
+        exprs = [e.strip() for e in _EJS_RAW.findall(text)]
+        exprs = [e for e in exprs if not e.startswith("include")]
+        exprs = [_js_printed_expr(e) for e in exprs]
+        each = [m.group(1) for m in _HBS_EACH.finditer(text)]
+        for m in _HBS_RAW.finditer(text):
+            e = _js_printed_expr((m.group(1) or m.group(2) or "").strip(), helper_syntax=True)
+            if not e.strip() and (m.group(1) or m.group(2) or "").strip():
+                continue                    # {{{sanitize body}}}: a sanitizing helper prints it
+            if e.startswith(("this", ".")) or not e:
+                for v in each:              # {{{this.body}}} inside {{#each posts}}: the collection's items
+                    add(v, None)
+            exprs.append(e)
+        if rel.lower().endswith((".pug", ".jade")):
+            exprs += [_js_printed_expr((m.group(1) or m.group(2) or "").strip()) for m in _PUG_RAW.finditer(text)]
+        for e in exprs:
+            for ident, fld in _JS_IDENT.findall(e):
+                if ident in _JS_NOT_VARS or fld in _JS_NON_TEXT_FIELDS:
+                    continue                # (`<%- items.length %>` prints a number)
+                root, seen = ident, set()
+                while root in loops and root not in seen:
+                    seen.add(root)
+                    root = loops[root]
+                add(root, fld if root == ident and fld else None)
+        if "{{" in text or "{%" in text:
+            for root in _template_unsafe_vars(rel, all_vars=autoescape_off):
+                add(root, None)
+    cache[key] = out
     return out
 
 

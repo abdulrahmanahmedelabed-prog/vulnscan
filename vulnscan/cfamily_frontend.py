@@ -130,6 +130,27 @@ def tokenize(src: str, lang: str) -> list[Tok]:
         src = PHP_HEREDOC_RE.sub(_php_heredoc_token, "".join(out))
         n = len(src)
     while i < n:
+        if lang == "ruby" and src[i] == "%":
+            lit = _ruby_percent_literal(src, i, toks[-1] if toks else None, nl_before)
+            if lit:
+                kind, body, end = lit
+                if kind in "wWiI":           # %w[a b] -> ["a", "b"]
+                    toks.append(Tok("punct", "[", line, nl_before))
+                    for k, w in enumerate(body.split()):
+                        if k:
+                            toks.append(Tok("punct", ",", line, False))
+                        toks.append(Tok("str", "'" + w.replace("\\", "\\\\").replace("'", "\\'") + "'", line, False))
+                    toks.append(Tok("punct", "]", line, False))
+                elif kind == "x":            # %x(cmd) runs a shell command, like `cmd`
+                    toks.append(Tok("str", "`" + body.replace("`", "'") + "`", line, nl_before))
+                elif kind in "qs":
+                    toks.append(Tok("str", "'" + body.replace("'", "\\'") + "'", line, nl_before))
+                else:                        # %Q(...) / %(...) / %r{...}: interpolating
+                    toks.append(Tok("str", '"' + body.replace('"', '\\"') + '"', line, nl_before))
+                nl_before = False
+                line += src.count("\n", i, end)
+                i = end
+                continue
         m = regex.match(src, i)
         if not m:
             i += 1
@@ -163,6 +184,61 @@ def tokenize(src: str, lang: str) -> list[Tok]:
         i = m.end()
     toks.append(Tok("eof", "", line, True))
     return toks
+
+
+def _ruby_mixins(body) -> list:
+    """`include Helpers` / `prepend Foo::Bar` in a Ruby class body: the module's methods become the class's own, as a
+    base class's are (a `warn` the module defines shadows Kernel#warn)."""
+    out, after_kw = [], False
+    for st in body:
+        v = st.value if isinstance(st, ast.Expr) else None
+        if after_kw and isinstance(v, (ast.Name, ast.Attribute)) and _dotted_text(v)[:1].isupper():
+            out.append(v)
+        after_kw = isinstance(v, ast.Name) and v.id in ("include", "prepend")
+        if isinstance(v, ast.Call) and isinstance(v.func, ast.Name) and v.func.id in ("include", "prepend"):
+            out.extend(a for a in v.args if isinstance(a, (ast.Name, ast.Attribute)) and _dotted_text(a)[:1].isupper())
+    return out
+
+
+_RUBY_PCT_CLOSE = {"(": ")", "[": "]", "{": "}", "<": ">"}
+
+
+def _ruby_percent_literal(src: str, i: int, prev, nl_before: bool):
+    """A Ruby percent literal at src[i] (`%w[a b]`, `%i(x)`, `%q{…}`, `%Q(…)`, `%(…)`, `%r{…}`, `%x(…)`):
+    (kind letter or "Q", body, end offset), or None when the `%` is the modulo operator."""
+    j = i + 1
+    letter = src[j] if j < len(src) and src[j] in "wWiIqQrsx" else ""
+    j += bool(letter)
+    if j >= len(src) or src[j] not in "([{<|!/":
+        return None
+    if not letter and src[j] not in "([{":
+        return None
+    if prev is not None and not nl_before and (
+            prev.kind in ("num", "str", "istr", "ivar", "sym") or prev.val in (")", "]", "}")
+            or (prev.kind == "id" and (not letter or src[i - 1] not in " \t" or src[j] not in "([{<"
+                                       or prev.val in ("end", "self", "nil", "true", "false")))):
+        return None                      # after a value: `a % (b)`, `n %w`, `x.size % 2` are modulo
+    opener = src[j]
+    closer = _RUBY_PCT_CLOSE.get(opener, opener)
+    depth, k = 1, j + 1
+    while k < len(src):
+        c = src[k]
+        if c == "\\":
+            k += 2
+            continue
+        if c == closer and opener != closer:
+            depth -= 1
+        elif c == opener and opener != closer:
+            depth += 1
+        elif c == closer:
+            depth = 0
+        if depth == 0:
+            k += 1
+            while letter == "r" and k < len(src) and src[k] in "imxounse":
+                k += 1                   # %r{…}i: regexp flags
+            return (letter or "Q"), src[j + 1:src.rfind(closer, j, k)], k
+        k += 1
+    return None
 
 
 def _heredoc_token(m) -> str:
@@ -625,6 +701,19 @@ class Parser:
                 if v == "continue":
                     return [_mk(ast.Continue, line)]
                 return []
+            if v in ("exit", "die") and self.lang == "php" and self.peek().val in (";", "(") \
+                    or v in ("exit", "die") and self.lang == "php" and self.peek().kind == "eof":
+                # `exit;` / `die("msg")` ends the script: the code after it never runs (a whitelist check that
+                # exits on failure guards what follows). The message is still printed, so it stays a call.
+                self.i += 1
+                args = []
+                if self.opt("("):
+                    if not self.at(")"):
+                        args.append(self.untuple(self.parse_assignment()))
+                    self.eat(")")
+                self.end_stmt()
+                out = [_mk(ast.Expr, line, value=_mk(ast.Call, line, func=_name(v, line), args=args, keywords=[]))] if args else []
+                return out + [_mk(ast.Raise, line, exc=None, cause=None)]
             if v in ("echo", "print") and self.lang == "php":
                 self.i += 1
                 args = [self.untuple(self.parse_assignment())]
@@ -1242,6 +1331,9 @@ class Parser:
                     pat = _strict_pattern(pdecs)
                     if pat:
                         ann[name].vulnscan_pattern = pat     # Bean Validation @Pattern(regexp = "^[a-z]+$")
+                    alias = _mybatis_param_alias(pdecs) if self.lang in ("java", "kotlin") else None
+                    if alias:
+                        ann[name].vulnscan_param = alias     # MyBatis @Param("order"): the name SQL text uses
             if tname and self.lang == "go" and "http.Request" in tname or (tname and ("gin.Context" in tname or "echo.Context" in tname or "fiber.Ctx" in tname)):
                 self.go_request_param = True
             if prop:
@@ -2100,9 +2192,14 @@ class Parser:
                     if self.at(")") and (self.peek().kind in ("id", "str", "num", "istr") or self.peek().val in ("(", "$", "!", "-")) and not (self.peek().kind == "id" and self.peek().val in ("instanceof",) + _WORD_OPS.get(self.lang, ("is", "as", "and", "or", "in"))):
                         # looks like a cast if the type name is a known type keyword or capitalised and followed by an operand
                         tn = self.toks[save + 1].val
-                        if tn in TYPE_KW or tn[:1].isupper() or tn in ("int", "float", "string", "array", "bool", "object"):
+                        if tn in TYPE_KW or tn[:1].isupper() or tn in ("int", "float", "string", "array", "bool", "object") \
+                                or (self.lang == "php" and tn.lower() in ("integer", "real", "binary")):
                             self.i += 1
-                            return self.untuple(self.parse_unary())
+                            operand = self.untuple(self.parse_unary())
+                            if self.lang == "php" and tn.lower() in ("int", "integer", "float", "double", "real", "bool", "boolean"):
+                                # PHP `(int) $_GET['id']` is a number, as intval() gives: no longer text an attacker shapes
+                                return _mk(ast.Call, line, func=_name("intval", line), args=[operand], keywords=[])
+                            return operand
                 except ParseError:
                     pass
             self.i = save
@@ -2834,6 +2931,7 @@ class Parser:
         self.field_names_stack.pop()
         if len(body) == 1 and isinstance(body[0], ast.Try):
             body = body[0].body + [h for hb in body[0].handlers for h in hb.body]
+        bases.extend(_ruby_mixins(body))
         return [_mk(ast.ClassDef, line, name=name, bases=bases, keywords=[], body=body or [_mk(ast.Pass, line)],
                     decorator_list=list(decs), type_params=[])]
 
@@ -3275,6 +3373,197 @@ def _strict_pattern(decs) -> str | None:
     return None
 
 
+# ------------------------------------------------------------------------------------------------- MyBatis mappers
+# A MyBatis mapper is an interface whose methods have no body: the SQL lives in an annotation (`@Select("…")`) or in
+# a mapper XML file (`<select id="method">…</select>` under `<mapper namespace="pkg.Mapper">`). `#{x}` is a bound
+# parameter; `${x}` pastes the value into the SQL text (CWE-89). Such a method is given the body it amounts to: the
+# referenced parameters concatenated into the SQL, run as a query, so a request value passed to it is SQL injection.
+_MYBATIS_ANNOTATIONS = ("Select", "Update", "Insert", "Delete")
+_MYBATIS_DOLLAR = re.compile(r"\$\{\s*([A-Za-z_][\w.]*)?[^}]*\}")
+_MYBATIS_MAPPER = re.compile(r"<mapper\b[^>]*\bnamespace\s*=\s*[\"']([\w.$]+)[\"']")
+_MYBATIS_STMT = re.compile(r"<(select|insert|update|delete|sql)\b([^>]*)>(.*?)</\1\s*>", re.S | re.I)
+_MYBATIS_ID = re.compile(r"\bid\s*=\s*[\"']([\w.$]+)[\"']")
+_MYBATIS_INCLUDE = re.compile(r"<include\b[^>]*\brefid\s*=\s*[\"']([\w.$]+)[\"']")
+_MYBATIS_LOCAL_TAG = re.compile(r"<(foreach|bind)\b([^>]*)>", re.I)
+_MYBATIS_ATTR = re.compile(r"([\w.-]+)\s*=\s*[\"']([^\"']*)[\"']")
+_XML_COMMENT = re.compile(r"<!--.*?-->|<!\[CDATA\[|\]\]>", re.S)
+
+
+def _mybatis_param_alias(decs) -> str | None:
+    """The name a MyBatis `@Param("name")` gives a mapper method parameter."""
+    toks = list(decs or ())
+    for i, t in enumerate(toks):
+        if t.kind == "id" and t.val == "Param" and i > 0 and toks[i - 1].val == "@" and i + 1 < len(toks) and toks[i + 1].val == "(":
+            for u in toks[i + 2:]:
+                if u.kind == "punct" and u.val == ")":
+                    break
+                if u.kind == "str" and len(u.val) >= 2:
+                    return u.val[1:-1]
+    return None
+
+
+def is_mybatis_mapper(text: str) -> bool:
+    """A MyBatis mapper XML file with at least one `${…}` text substitution."""
+    return "${" in text and "<mapper" in text and bool(_MYBATIS_MAPPER.search(text))
+
+
+def mybatis_statements(text: str) -> tuple:
+    """(namespace, {statement id: (line of the first `${…}`, SQL text)}) of a mapper XML file, for the statements that
+    substitute text with `${…}` (directly or through an `<include refid>` of an `<sql>` fragment)."""
+    m = _MYBATIS_MAPPER.search(text)
+    if not m:
+        return None, {}
+    # comments (and CDATA markers) blanked out in place: offsets, and so line numbers, stay those of the file
+    clean = _XML_COMMENT.sub(lambda x: re.sub(r"[^\n]", " ", x.group(0)) if x.group(0).startswith("<!--") else " " * len(x.group(0)), text)
+    frags, stmts = {}, {}
+    for s in _MYBATIS_STMT.finditer(clean):
+        idm = _MYBATIS_ID.search(s.group(2))
+        if not idm:
+            continue
+        body = s.group(3)
+        d = _MYBATIS_DOLLAR.search(body)
+        line = clean.count("\n", 0, s.start(3) + d.start()) + 1 if d else 0
+        entry = (line, body, s.group(1).lower())
+        (frags if entry[2] == "sql" else stmts)[idm.group(1)] = entry
+    out = {}
+    for sid, (line, body, _kind) in stmts.items():
+        for inc in _MYBATIS_INCLUDE.findall(body):
+            frag = frags.get(inc) or frags.get(inc.rsplit(".", 1)[-1])
+            if frag and frag[0]:
+                line = line or frag[0]
+                body = body + " " + frag[1]
+        if line:
+            out[sid] = (line, body)
+    return m.group(1), out
+
+
+def _annotation_sql(node) -> str | None:
+    """The SQL text of a MyBatis annotation argument (a string, a concatenation, or an array of strings)."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):           # Kotlin "\${order}" / "${order}" lowered to an f-string
+        out = []
+        for v in node.values:
+            if isinstance(v, ast.Constant):
+                out.append(str(v.value))
+            elif isinstance(v, ast.FormattedValue):
+                out.append("${" + _dotted_text(v.value) + "}")
+        return "".join(out)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        a, b = _annotation_sql(node.left), _annotation_sql(node.right)
+        return a + b if a is not None and b is not None else None
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        parts = [_annotation_sql(e) for e in node.elts]
+        return " ".join(p for p in parts if p is not None)
+    return None
+
+
+def _dotted_text(node) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return _dotted_text(node.value) + "." + node.attr
+    return "_"
+
+
+def _mybatis_body(fn, sql: str, line: int, at=None) -> bool:
+    """Replace the (empty) body of mapper method `fn` with `MyBatis.executeQuery("…" + p + "…")` built from the `${…}`
+    references in `sql`. `at` = (file, line) where the SQL text is, when it is not in fn's own file."""
+    params = [a for a in fn.args.args if a.arg != "self"]
+    if not params or not _MYBATIS_DOLLAR.search(sql):
+        return False
+    names: dict = {}
+    for i, a in enumerate(params):
+        for alias in (a.arg, getattr(a.annotation, "vulnscan_param", None), f"param{i + 1}", f"arg{i}"):
+            if alias:
+                names.setdefault(alias, a.arg)
+    # names the statement itself binds: `<foreach collection="ids" item="id">` (id -> ids), `<bind name="p" value="…">`
+    local: dict = {}
+    for tag in _MYBATIS_LOCAL_TAG.finditer(sql):
+        attrs = dict((k.lower(), v) for k, v in _MYBATIS_ATTR.findall(tag.group(2)))
+        if tag.group(1).lower() == "foreach":
+            src = (attrs.get("collection") or "").split(".")[0]
+            for k in ("item", "index"):
+                if attrs.get(k):
+                    local[attrs[k]] = [names[src]] if src in names else ([params[0].arg] if len(params) == 1 else [])
+        elif attrs.get("name"):
+            local[attrs["name"]] = sorted({names[w] for w in re.findall(r"[A-Za-z_]\w*", attrs.get("value") or "") if w in names})
+    parts, pos = [], 0
+    for m in _MYBATIS_DOLLAR.finditer(sql):
+        if m.start() > pos:
+            parts.append(_const(sql[pos:m.start()], line))
+        pos = m.end()
+        root = (m.group(1) or "").split(".")[0]
+        if root in names:
+            refs = [names[root]]
+        elif root in local:
+            refs = local[root]
+        elif root == "_parameter" or len(params) == 1:
+            refs = [params[0].arg] if len(params) == 1 else [a.arg for a in params]
+        else:
+            # several parameters and a name none of them has: MyBatis binds only parameter names, so this is a
+            # configuration property (`${schema}`, `${prefix}`) substituted when the mapper is loaded, not user data
+            refs = []
+        parts.extend(_name(r, line) for r in refs)
+    if not any(isinstance(x, ast.Name) for x in parts):
+        return False
+    if pos < len(sql):
+        parts.append(_const(sql[pos:], line))
+    expr = parts[0]
+    for p in parts[1:]:
+        expr = _mk(ast.BinOp, line, left=expr, op=ast.Add(), right=p)
+    call = _mk(ast.Call, line, func=_mk(ast.Attribute, line, value=_name("MyBatis", line), attr="executeQuery", ctx=ast.Load()),
+               args=[expr], keywords=[])
+    if at:
+        call.vulnscan_at = at
+    fn.body = [_mk(ast.Expr, line, value=call)]
+    return True
+
+
+def _abstract_body(fn) -> bool:
+    return all(isinstance(s, ast.Pass) or (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant)) for s in fn.body)
+
+
+def _mybatis_annotated(mod) -> None:
+    """Mapper methods annotated `@Select("… ${x} …")` (and @Update/@Insert/@Delete) get their SQL as a body."""
+    for cls in mod.body:
+        if not isinstance(cls, ast.ClassDef):
+            continue
+        for fn in cls.body:
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _abstract_body(fn):
+                continue
+            for d in fn.decorator_list:
+                if not isinstance(d, ast.Call):
+                    continue
+                f = d.func
+                dname = f.id if isinstance(f, ast.Name) else (f.attr if isinstance(f, ast.Attribute) else "")
+                if dname not in _MYBATIS_ANNOTATIONS:
+                    continue
+                for a in list(d.args) + [k.value for k in d.keywords if k.arg in ("value", None)]:
+                    sql = _annotation_sql(a)
+                    if sql and _mybatis_body(fn, sql, getattr(d, "lineno", fn.lineno)):
+                        break
+
+
+def apply_mybatis_xml(mod, modname: str, mappers: dict) -> int:
+    """Give the methods of mapper interfaces declared in `mod` the `${…}` SQL of their mapper XML statements.
+    `mappers` maps a namespace (`org.app.UserMapper`) to (xml file, {statement id: (line, SQL)})."""
+    n = 0
+    pkg = modname.rsplit(".", 1)[0] if "." in modname else ""
+    for cls in getattr(mod, "body", ()):
+        if not isinstance(cls, ast.ClassDef):
+            continue
+        full = f"{pkg}.{cls.name}" if pkg else cls.name
+        for ns, (rel, stmts) in mappers.items():
+            if ns.rsplit(".", 1)[-1] != cls.name or not (full == ns or full.endswith("." + ns)):
+                continue
+            for fn in cls.body:
+                if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name in stmts and _abstract_body(fn):
+                    line, sql = stmts[fn.name]
+                    n += _mybatis_body(fn, sql, fn.lineno, at=(rel, line))   # the node stays inside fn's own lines
+    return n
+
+
 def parse_cfamily_ex(text: str, rel: str, lang: str):
     """Parse and return (module, diagnostics). diagnostics = {"language", "statements", "skipped", "lines": [(line, reason)...]}."""
     diag = {"language": lang, "statements": 0, "skipped": 0, "lines": []}
@@ -3300,6 +3589,8 @@ def parse_cfamily_ex(text: str, rel: str, lang: str):
                 cls.body = [s for s in cls.body if not isinstance(s, ast.Pass)] + fns
                 if not cls.body:
                     cls.body = [_mk(ast.Pass, 1)]
+        if lang in ("java", "kotlin") and "${" in text:
+            _mybatis_annotated(mod)
         diag["statements"] = p.n_statements
         diag["skipped"] = len(p.diagnostics)
         diag["lines"] = list(p.diagnostics)

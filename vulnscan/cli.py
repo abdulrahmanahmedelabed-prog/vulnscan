@@ -13,6 +13,7 @@ from . import __version__
 from .deps import audit_dependencies
 from .external import run_external
 from .i18n import localize, to_en
+from .i18n.cliargs import RawDescriptionHelpFormatter as _HelpFormatter, localized_argparse, pick, usage_prefix
 from .model import SEVERITIES, SEVERITY_RANK, Finding, assign_fingerprints, sort_findings
 from .report import render_console, render_html, render_json, render_markdown, render_sarif, summary_counts
 from .baseline import apply_baseline, load_baseline, save_baseline
@@ -49,6 +50,10 @@ SUBCOMMANDS = {
 DELEGATES = {"mcp": "mcp", "export": "exporters", "compliance": "compliance", "history": "history",
              "secrets-history": "history", "triage": "triage", "policy": "policy", "surface": "surface",
              "rules": "ruletest"}
+# Delegates whose --lang also takes "both": their --help and usage errors are then Arabic and English, like
+# `kashif --help`; their reports and messages are English under "both", as the add-on outputs of a scan are
+# (exports, --compliance, the policy explanation). The other delegates take en|ar, so "both" means English there.
+BOTH_LANG = frozenset({"mcp", "export", "compliance", "triage", "policy"})
 
 
 def _is_arabic_locale(environ=None) -> bool:
@@ -99,16 +104,18 @@ def _subcommand_help(lang: str = "both") -> str:
     return "\n".join(lines)
 
 
-def _forward_lang(argv: list[str], after_command: bool = False) -> list[str]:
-    """Arguments for a sub-command module, whose --lang takes only en or ar: an explicit --lang en|ar is kept,
-    "both"/"auto" are dropped, and without one the language Kashif resolved (VULNSCAN_LANG, then the system
-    locale) is appended when it is ar or en, so `kashif <sub-command>` speaks the same language as a scan.
+def _forward_lang(argv: list[str], after_command: bool = False, both: bool = False) -> list[str]:
+    """Arguments for a sub-command module, whose --lang takes en or ar (and "both" when ``both`` is true): an
+    explicit --lang is kept unless the module cannot take it ("both"/"auto" are dropped then), and without one the
+    language Kashif resolved (VULNSCAN_LANG, then the system locale, else "both") is appended when the module takes
+    it, so `kashif <sub-command>` speaks the same language as a scan.
 
-    after_command: the module takes --lang only after its own command word (`kashif policy check --lang ar`), so
-    --lang is moved right after that word, and left out when there is none (`kashif policy` alone must report the
-    missing command, not "invalid choice: 'ar'")."""
+    after_command: --lang is moved right after the module's own command word (`kashif policy check --lang ar`); with
+    no command word it stays at the end only when ``both`` is true (the module then also takes it there), else it
+    is left out (`kashif policy` alone must report the missing command, not "invalid choice: 'ar'")."""
     if "--scan-worker" in argv:
         return list(argv)
+    accepted = ("ar", "en", "both") if both else ("ar", "en")
     cut = argv.index("--") if "--" in argv else len(argv)
     head, tail = argv[:cut], argv[cut:]
     out: list[str] = []
@@ -117,7 +124,7 @@ def _forward_lang(argv: list[str], after_command: bool = False) -> list[str]:
     while i < len(head):
         a = head[i]
         if a == "--lang" and i + 1 < len(head):
-            if head[i + 1] in ("ar", "en"):
+            if head[i + 1] in accepted:
                 out += [a, head[i + 1]]
                 explicit = True
             elif head[i + 1] not in ("both", "auto"):
@@ -126,7 +133,7 @@ def _forward_lang(argv: list[str], after_command: bool = False) -> list[str]:
             i += 2
             continue
         if a.startswith("--lang="):
-            if a[7:] not in ("both", "auto"):
+            if a[7:] in accepted or a[7:] not in ("both", "auto"):
                 out.append(a)
                 explicit = True
             i += 1
@@ -135,7 +142,7 @@ def _forward_lang(argv: list[str], after_command: bool = False) -> list[str]:
         i += 1
     if not explicit:
         lang = resolve_lang("auto")
-        if lang in ("ar", "en"):
+        if lang in accepted:
             out += ["--lang", lang]
     if after_command:
         lang_args: list[str] = []
@@ -151,8 +158,29 @@ def _forward_lang(argv: list[str], after_command: bool = False) -> list[str]:
                 rest.append(out[i])
             i += 1
         cmd = next((k for k, a in enumerate(rest) if not a.startswith("-")), None)
-        out = rest if cmd is None else rest[:cmd + 1] + lang_args + rest[cmd + 1:]
+        if cmd is None:
+            out = rest + (lang_args if both else [])
+        else:
+            out = rest[:cmd + 1] + lang_args + rest[cmd + 1:]
     return out + tail
+
+
+_HELP_FLAGS = ("-h", "--help")
+
+
+def _mcp_args(argv: list[str]) -> list[str]:
+    """`kashif mcp`: the server's language stays its own choice (--lang, else VULNSCAN_LANG, else English: what
+    the assistant reads); only --help follows the language Kashif resolved, like every other sub-command."""
+    head = argv[:argv.index("--")] if "--" in argv else argv
+    if any(a in _HELP_FLAGS for a in head) and not any(a == "--lang" or a.startswith("--lang=") for a in head):
+        return list(argv) + ["--lang", resolve_lang("auto")]
+    return list(argv)
+
+
+def _module_lang(args: list[str]) -> str:
+    """The language a sub-command module will speak with these (forwarded) arguments; English without --lang."""
+    from .i18n.cliargs import help_lang
+    return help_lang(args, default="en")
 
 
 def run_subcommand(name: str, argv: list[str]) -> int:
@@ -160,9 +188,16 @@ def run_subcommand(name: str, argv: list[str]) -> int:
     import importlib
     module = importlib.import_module(f".{DELEGATES[name]}", __package__)
     # mcp: the assistant's language, see mcp.py; policy: --lang belongs to its commands (check, init, ...)
-    args = list(argv) if name == "mcp" else _forward_lang(list(argv), after_command=name == "policy")
+    if name == "mcp":
+        args = _mcp_args(list(argv))
+    else:
+        args = _forward_lang(list(argv), after_command=name == "policy", both=name in BOTH_LANG)
+    hlang = _module_lang(args)
+    if name == "mcp" and not any(a == "--lang" or a.startswith("--lang=") for a in args):
+        hlang = resolve_lang("auto")                # usage errors follow Kashif's language, as --help does
     try:
-        code = module.main(args)
+        with localized_argparse(hlang):             # argparse's own headings and errors, in that language
+            code = module.main(args)
         sys.stdout.flush()                          # a closed pipe surfaces here, not at interpreter exit (120)
     except SystemExit as e:                         # argparse inside the module (--help, usage errors)
         code = e.code if isinstance(e.code, int) else (0 if e.code is None else 2)
@@ -174,17 +209,23 @@ def run_subcommand(name: str, argv: list[str]) -> int:
     return int(code or 0)
 
 
+def _bi(text: str, lang: str) -> str:
+    """A message in ``lang``: Arabic, English, or for "both" the Arabic line then the English line."""
+    return pick(lang, text, to_en(text))
+
+
 def build_parser(lang: str = "both") -> argparse.ArgumentParser:
     def h(text: str) -> str:
-        return localize(text, lang)
+        return _bi(text, lang)
 
+    indent = " " * len(usage_prefix(lang))          # the second usage line under the first, after "usage: "
     p = argparse.ArgumentParser(
         prog="kashif",
-        usage="kashif [options] TARGET\n       kashif <sub-command> [options]   (" + ", ".join(SUBCOMMANDS) + ")",
+        usage="kashif [options] TARGET\n" + indent + "kashif <sub-command> [options]   (" + ", ".join(SUBCOMMANDS) + ")",
         description=h("فحص أي برنامج (مجلد مصدر، ملف، أرشيف/APK/JAR، أو عنوان ويب) وإخراج تقرير مرتب من الأعلى خطورة إلى الأقل.")
                     + "\n" + h(AUTHORIZATION_NOTICE),
         epilog=_subcommand_help(lang),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=_HelpFormatter,
     )
     p.add_argument("target", nargs="?", help=h("مسار مجلد/ملف/أرشيف، أو عنوان http(s):// للفحص السلبي، أو «ui» لتشغيل الواجهة الرسومية"))
     p.add_argument("--authorized", action="store_true",
@@ -193,6 +234,10 @@ def build_parser(lang: str = "both") -> argparse.ArgumentParser:
                    help=h("صيغة التقرير: console أو markdown أو json أو html أو sarif (لـ GitHub Code Scanning وVS Code)، "
                           "أو صيغة تصدير: gitlab-sast وcodeclimate (GitLab) وdefectdojo وsonarqube وjunit وcsv "
                           "وjira-csv وgithub-issues وasff وocsf وrisk (القائمة: kashif export --list-formats)"))
+    p.add_argument("--aws-account", metavar="ID",
+                   help=h("لصيغة asff: رقم حساب AWS (12 رقمًا)، مع --aws-region"))
+    p.add_argument("--aws-region", metavar="REGION",
+                   help=h("لصيغة asff: منطقة AWS لـ Security Hub، مثل eu-west-1"))
     p.add_argument("-o", "--output", help=h("اكتب التقرير إلى هذا الملف بدلًا من الشاشة"))
     p.add_argument("--all-formats", metavar="PREFIX", help=h("اكتب PREFIX.md و PREFIX.json و PREFIX.html معًا"))
     p.add_argument("--export", action="append", default=[], metavar="FORMAT=FILE",
@@ -269,7 +314,7 @@ def build_parser(lang: str = "both") -> argparse.ArgumentParser:
     p.add_argument("--no-cache", action="store_true", help=h("لا تستخدم الذاكرة المؤقتة للفحص"))
     p.add_argument("--lang", choices=LANG_CHOICES, default="auto",
                    help=h("لغة المخرجات: ar عربية، en إنجليزية، both الاثنتان؛ auto (الافتراضي) يتبع VULNSCAN_LANG ثم لغة النظام"))
-    p.add_argument("--no-color", action="store_true")
+    p.add_argument("--no-color", action="store_true", help=h("لا تلوّن مخرجات الطرفية"))
     p.add_argument("--list-rules", action="store_true", help=h("اعرض القواعد المدمجة واخرج"))
     # Keep "vulnscan X.Y.Z": the in-app updater of every release (0.9.x included) checks a new binary by this exact text.
     p.add_argument("--version", action="version", version=f"vulnscan {__version__}")
@@ -281,13 +326,15 @@ def ui_main(argv: list[str]) -> int:
     lang = _lang_from_argv(argv)
 
     def h(text: str) -> str:
-        return localize(text, lang)
+        return _bi(text, lang)
 
-    p = argparse.ArgumentParser(prog="kashif ui", description=h("تشغيل الواجهة الرسومية المحلية (لوحة تحكم، فحص، تقارير، إعدادات)."))
-    p.add_argument("--lang", choices=LANG_CHOICES, default="auto", help=argparse.SUPPRESS)
-    p.add_argument("--port", type=int, default=8765)
-    p.add_argument("--no-browser", action="store_true", help=h("لا تفتح المتصفح تلقائيًا"))
-    a = p.parse_args(argv)
+    with localized_argparse(lang):
+        p = argparse.ArgumentParser(prog="kashif ui", formatter_class=_HelpFormatter,
+                                    description=h("تشغيل الواجهة الرسومية المحلية (لوحة تحكم، فحص، تقارير، إعدادات)."))
+        p.add_argument("--lang", choices=LANG_CHOICES, default="auto", help=argparse.SUPPRESS)
+        p.add_argument("--port", type=int, default=8765, help=h("منفذ الواجهة المحلية (الافتراضي 8765)"))
+        p.add_argument("--no-browser", action="store_true", help=h("لا تفتح المتصفح تلقائيًا"))
+        a = p.parse_args(argv)
     from .server import serve
     serve(a.port, open_browser=not a.no_browser, lang=resolve_lang(a.lang))
     return 0
@@ -451,6 +498,43 @@ def _check_output_paths(args: argparse.Namespace, parser: argparse.ArgumentParse
             parser.error(m(f"مجلد ملف الإخراج غير موجود: {parent}") + f" ({dest})")
 
 
+def _aws_meta(args: argparse.Namespace) -> dict:
+    """--aws-account / --aws-region as the export metadata of the asff format (as `kashif export` passes them)."""
+    meta = {}
+    if getattr(args, "aws_account", None):
+        meta["aws_account_id"] = args.aws_account
+    if getattr(args, "aws_region", None):
+        meta["aws_region"] = args.aws_region
+    return meta
+
+
+def _check_asff(args: argparse.Namespace, exports: list[tuple[str, str]], parser: argparse.ArgumentParser, bi) -> None:
+    """-f asff / --export asff=FILE need a valid --aws-account and --aws-region: checked before the scan starts."""
+    if args.format != "asff" and not any(fmt == "asff" for fmt, _ in exports):
+        return
+    from .exporters import ExportError, export as do_export
+    try:
+        do_export([], "asff", _aws_meta(args))          # validates the account and region, writes nothing
+    except ExportError:
+        parser.error(bi("تحتاج صيغة asff إلى رقم حساب AWS من 12 رقمًا ومنطقة AWS صالحة: "
+                        "--aws-account ID --aws-region REGION (مثل --aws-account 123456789012 --aws-region eu-west-1)"))
+
+
+def _check_baseline(path: str, lang: str) -> bool:
+    """--baseline FILE, checked before the scan. A missing file is the first run of a pipeline (every finding is
+    new, as before). A file that exists but is not JSON stops the scan with exit 2, like any unreadable input. JSON
+    that is not a baseline gets a warning on stderr and counts as empty (the exit code stays as before)."""
+    from .baseline import baseline_problem
+    problem = baseline_problem(path)
+    if problem == "unreadable":
+        print(f"✖ {_bi(f'تعذّرت قراءة ملف خط الأساس (ليس JSON صالحًا): {path}', lang)}", file=sys.stderr)
+        return False
+    if problem == "shape":
+        print(f"⚠ {_bi(f'ملف خط الأساس ليس من إنتاج --write-baseline (لا قائمة fingerprints فيه)، فعُدّ فارغًا وكل النتائج تُعرض كجديدة: {path}', lang)}",
+              file=sys.stderr)
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     _force_utf8_output()
     try:
@@ -469,7 +553,33 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
 
+# Everything `kashif <word>` routes to before the scan parser: the sub-commands and the built-in ui/lsp/update.
+_ROUTED = frozenset(DELEGATES) | {"ui", "lsp", "update"}
+
+
+def _hoist_lang(argv: list[str]) -> list[str]:
+    """`kashif --lang en <sub-command> ...` means `kashif <sub-command> ... --lang en`: a --lang written before the
+    sub-command word moves into the sub-command's own arguments (before a "--"), unless they name one themselves.
+    lsp has no language option, so it is dropped there."""
+    i, lang_args = 0, []
+    while i < len(argv):
+        if argv[i] == "--lang" and i + 1 < len(argv):
+            lang_args, i = argv[i:i + 2], i + 2
+        elif argv[i].startswith("--lang="):
+            lang_args, i = argv[i:i + 1], i + 1
+        else:
+            break
+    if not lang_args or i >= len(argv) or argv[i] not in _ROUTED:
+        return argv
+    name, rest = argv[i], argv[i + 1:]
+    cut = rest.index("--") if "--" in rest else len(rest)
+    if name == "lsp" or any(a == "--lang" or a.startswith("--lang=") for a in rest[:cut]):
+        return [name] + rest
+    return [name] + rest[:cut] + lang_args + rest[cut:]
+
+
 def _main(argv: list[str]) -> int:
+    argv = _hoist_lang(argv)
     if argv and argv[0] == "ui":
         return ui_main(argv[1:])
     if argv and argv[0] == "lsp":                    # language server for editors (stdio; --stdio accepted)
@@ -477,10 +587,16 @@ def _main(argv: list[str]) -> int:
         return lsp_main(argv[1:])
     if argv and argv[0] == "update":
         from .updater import cli_main as update_main
-        return update_main(argv[1:])
+        with localized_argparse(_lang_from_argv(argv[1:])):
+            return update_main(argv[1:])
     if argv and argv[0] in DELEGATES:               # mcp, export, compliance, history, triage, policy, surface, rules
         return run_subcommand(argv[0], argv[1:])
     lang = _lang_from_argv(argv)
+    with localized_argparse(lang):                    # argparse's headings, usage prefix and errors in that language
+        return _scan_main(argv, lang)
+
+
+def _scan_main(argv: list[str], lang: str) -> int:
     parser = build_parser(lang)
     args = parser.parse_args(argv)
     args.lang_resolved = lang = resolve_lang(args.lang)
@@ -488,26 +604,32 @@ def _main(argv: list[str]) -> int:
     def m(text: str) -> str:
         return localize(text, lang)
 
+    def bi(text: str) -> str:                        # usage errors: both languages under "both"
+        return _bi(text, lang)
+
     if args.list_rules:
         print(_list_rules(lang))
         return 0
     if not args.target:
-        parser.error("the following arguments are required: target")
+        parser.error(bi("الهدف مطلوب: مسار مجلد أو ملف أو أرشيف، أو عنوان http(s)://"))
     is_web = args.target.startswith(("http://", "https://"))
     if (args.diff_base or args.diff_staged) and is_web:
-        parser.error("--diff-base/--diff-staged need a local path inside a git repository")
+        parser.error(bi("الخياران --diff-base و--diff-staged يحتاجان مسارًا محليًا داخل مستودع git"))
     if (args.fix or args.fix_dry_run) and is_web:
         from .autofix import MSG as FIX_MSG
-        parser.error(m(FIX_MSG["local_only"]))
-    exports = _parse_exports(args.export, parser, m)
-    _check_output_paths(args, parser, m)
+        parser.error(bi(FIX_MSG["local_only"]))
+    exports = _parse_exports(args.export, parser, bi)
+    _check_output_paths(args, parser, bi)
+    _check_asff(args, exports, parser, bi)
+    if args.baseline and not _check_baseline(args.baseline, lang):
+        return 2
     if args.compliance and _compliance_frameworks(args.compliance, m) is None:
         return 2                               # a typo in a framework name must not cost a whole scan first
     if args.triage == "" and is_web:
-        parser.error(m("--triage مع عنوان ويب يحتاج مسار ملف الفرز: --triage=FILE"))
+        parser.error(bi("--triage مع عنوان ويب يحتاج مسار ملف الفرز: --triage=FILE"))
     if (args.sla or args.fail_on_sla or args.triage_update) and args.triage is None:
-        parser.error(m("الخيارات --sla و--fail-on-sla و--triage-update تعمل مع --triage"))
-    sla_days = _parse_triage_options(args, parser, m)
+        parser.error(bi("الخيارات --sla و--fail-on-sla و--triage-update تعمل مع --triage"))
+    sla_days = _parse_triage_options(args, parser, bi)
     mod_lang = "ar" if lang == "ar" else "en"          # the add-on modules speak en or ar
     started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     result = run(args)
@@ -570,15 +692,14 @@ def _main(argv: list[str]) -> int:
                    "started_at": started_at, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     if args.fail_on:
         export_meta["fail_on"] = args.fail_on
+    export_meta.update(_aws_meta(args))
 
     def export(fmt: str) -> str:
         from .exporters import ExportError, export as do_export
         try:
             return do_export(findings, fmt, export_meta)
-        except ExportError as e:
-            hint = (" — " + m("لصيغة asff استخدم: kashif export REPORT.json -f asff --aws-account ID --aws-region REGION")
-                    if fmt == "asff" else "")
-            print(f"✖ {e}{hint}", file=sys.stderr)
+        except ExportError as err:
+            print(f"✖ {err}", file=sys.stderr)
             raise SystemExit(2) from None
 
     renderers = {"console": lambda: render_console(findings, target, files, notes,
@@ -675,6 +796,10 @@ def _apply_triage(args, findings: list[Finding], mod_lang: str, m):
     # "fixed (auto)" only after a complete scan: a whole directory, every rule, no diff scoping
     complete = (not args.target.startswith(("http://", "https://")) and target_path.is_dir()
                 and not args.ignore_rule and not args.diff_base and not args.diff_staged)
+    if args.triage_update and not args.triage and triage.redirected(path):
+        print(f"✖ {m('لم يُحدَّث ملف الفرز: المجلد ‎.kashif أو ملف triage.json في المشروع رابط رمزي يشير إلى خارجه')}"
+              f": {path}", file=sys.stderr)
+        return None, findings, [], 2
     try:
         if args.triage_update:
             box: dict = {}

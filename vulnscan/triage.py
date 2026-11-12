@@ -91,7 +91,7 @@ reports MTTR, open-finding age and SLA breaches — locally, offline, with no se
 AR: «**فرز يعيش داخل مستودعك.** يسجّل الملف `.kashif/triage.json` كل قرار (إنذار كاذب، قبول خطر بتاريخ انتهاء،
 لن يُصلَح، أُصلِح) مع صاحبه ومبرّره وتذكرته وسجل تدقيق. الملف مرتّب وثابت فتُراجَع القرارات في
 طلبات الدمج كما يُراجَع الكود. تُكتشَف الإصلاحات تلقائيًا، ويُنبَّه على الارتداد، ويُعاد فتح قبول الخطر المنتهي،
-ويعرض `vulnscan triage stats` متوسط زمن الإصلاح وأعمار النتائج المفتوحة وتجاوزات اتفاقية مستوى الخدمة — محليًا
+ويعرض `vulnscan triage stats` متوسط زمن الإصلاح وأعمار النتائج المفتوحة وتجاوزات مهلة الإصلاح — محليًا
 ودون اتصال ودون خادم أو حساب.»
 Add ``.kashif/*.lock`` and ``.kashif/*.tmp`` to the project's ``.gitignore`` suggestions (short-lived files of
 ``update`` / ``save``; normally gone within milliseconds).
@@ -290,7 +290,7 @@ STR = {
         "age": "المفتوحة حسب العمر (بالأيام)",
         "mttr": "متوسط زمن الإصلاح (بالأيام)",
         "mttr_row": "{sev}: المتوسط {mean}، الوسيط {median} من {n} مُصلَحة",
-        "sla": "تجاوزات اتفاقية مستوى الخدمة",
+        "sla": "تجاوزات مهلة الإصلاح",
         "sla_row": "{fp} {sev} {rule} {file}: مفتوحة منذ {age} يومًا، المهلة {sla} يومًا، التأخير {over} يومًا",
         "noisy": "أكثر القواعد ضجيجًا (نسبة الإنذارات الكاذبة)",
         "regressions": "الارتدادات",
@@ -312,6 +312,11 @@ def _t(lang: str, key: str, **kw) -> str:
     table = STR.get(lang) or STR["en"]
     text = table.get(key) or STR["en"][key]
     return text.format(**kw) if kw else text
+
+
+def severity_label(severity: str, lang: str = "en") -> str:
+    """Human label of a severity: the Arabic name in "ar" (as in the reports), else the severity itself."""
+    return SEVERITY_AR.get(severity, severity) if lang == "ar" else severity
 
 
 def status_label(status: str, lang: str = "en") -> str:
@@ -409,6 +414,22 @@ def default_path(root=".") -> pathlib.Path:
     if base.is_file():
         base = base.parent
     return base / DEFAULT_PATH
+
+
+def redirected(path) -> bool:
+    """True when the default ``.kashif/triage.json`` of a project would be written through a symbolic link (or
+    a Windows junction) to somewhere else: a hostile checkout can commit ``.kashif`` as a link."""
+    path = pathlib.Path(path)
+    try:
+        if path.is_symlink() or path.parent.is_symlink():
+            return True
+        if not path.parent.exists():
+            return False
+        real = os.path.normcase(str(path.parent.resolve()))
+        expected = os.path.normcase(str(path.parent.parent.resolve() / path.parent.name))
+    except (OSError, RuntimeError):
+        return True
+    return real != expected
 
 
 def _validate(data, path: str) -> dict:
@@ -1493,76 +1514,189 @@ def _one_line(text) -> str:
     return re.sub(r"\s+", " ", _clean(text))
 
 
-def _parser() -> argparse.ArgumentParser:
+# --help in English and Arabic ("both": the Arabic line, then the English line; see vulnscan/i18n/cliargs.py)
+_HELP = {
+    "en": {
+        "desc": "Kashif finding triage: decisions, audit log, fix deadlines (SLA) and MTTR.",
+        "file": "triage file (default: <root>/.kashif/triage.json)",
+        "root": "project root (default: current directory)",
+        "author": "who makes the change (default: $KASHIF_AUTHOR, then the OS user)",
+        "lang": "message language: en or ar",
+        "json": "machine-readable output",
+        "set": "record a decision for a finding",
+        "fingerprint": "fingerprint of the finding (from the report; a unique prefix is enough)",
+        "status": "the decision",
+        "justification": "why (required for false_positive, accepted_risk and wont_fix)",
+        "expires": "accepted_risk only: YYYY-MM-DD or +90d",
+        "max_accept": "policy ceiling for --expires (days)",
+        "ticket": "http(s) URL of the tracking ticket",
+        "comment": "a comment for the audit log",
+        "report": "Kashif JSON report: adds rule/file/severity context to the entry",
+        "c_comment": "append a comment to the audit log",
+        "text": "the comment",
+        "severity": "override the severity (or 'none' to remove)",
+        "new_severity": "the new severity, or none",
+        "reason": "why the severity changes",
+        "list": "list triaged findings",
+        "f_status": "show only this status (repeatable)",
+        "f_severity": "show only this severity (repeatable)",
+        "show": "one finding with its full audit log",
+        "stats": "MTTR, age buckets, fix-deadline (SLA) breaches",
+        "sla": "fix deadline in days per severity, e.g. critical=7,high=30,medium=90,low=180",
+        "fail_breach": "exit 1 when a fix deadline is exceeded",
+        "expire": "expired risk acceptances (exit 1 when any)",
+        "within": "also list acceptances expiring within N days (default 14)",
+        "apply": "re-open the expired ones in the file",
+        "sync": "reconcile with a scan: first-seen, auto-fixed, regressions",
+        "sync_report": "Kashif JSON report (kashif PATH --format json)",
+        "partial": "the scan did not cover the whole project: mark nothing as fixed",
+        "dry_run": "show the result without saving the file",
+        "import": "import existing suppressions",
+        "baseline": "baseline file written by --write-baseline",
+        "i_status": "status of the imported findings (default: open)",
+        "i_justification": "justification recorded with the imported findings",
+        "inline": "list inline nosec / vulnscan: ignore comments",
+        "diff": "decision changes since BASE (PR gate): new suppressions, extended expiries, lowered severities, "
+                "removed history",
+        "base": "the triage file of the target branch, e.g. from "
+                "'git show origin/main:.kashif/triage.json > base.json' (missing/empty = no triage yet)",
+        "fail_change": "exit 1 when there is anything to review",
+        "merge": "merge two triage files (usable as a git merge driver)",
+        "ours": "our version of the triage file",
+        "theirs": "their version of the triage file",
+        "m_base": "the common ancestor (git merge driver: %%O)",
+        "output": "where to write (default: standard output)",
+    },
+    "ar": {
+        "desc": "فرز نتائج كاشِف: القرارات وسجل التدقيق ومهلة الإصلاح ومتوسط زمن الإصلاح.",
+        "file": "ملف الفرز (الافتراضي: ‎<root>/.kashif/triage.json)",
+        "root": "جذر المشروع (الافتراضي: المجلد الحالي)",
+        "author": "صاحب التغيير (الافتراضي: ‎$KASHIF_AUTHOR، ثم مستخدم النظام)",
+        "lang": "لغة الرسائل: en أو ar",
+        "json": "مخرجات آلية بصيغة JSON",
+        "set": "سجّل قرارًا لنتيجة",
+        "fingerprint": "بصمة النتيجة (من التقرير؛ تكفي بداية فريدة منها)",
+        "status": "القرار",
+        "justification": "المبرّر (مطلوب لحالات false_positive وaccepted_risk وwont_fix)",
+        "expires": "لحالة accepted_risk فقط: YYYY-MM-DD أو ‎+90d",
+        "max_accept": "أقصى مدة تسمح بها السياسة لـ --expires (بالأيام)",
+        "ticket": "رابط http(s) لتذكرة المتابعة",
+        "comment": "تعليق يُضاف إلى سجل التدقيق",
+        "report": "تقرير JSON من كاشِف: يضيف إلى القيد القاعدة والملف والخطورة",
+        "c_comment": "أضِف تعليقًا إلى سجل التدقيق",
+        "text": "نص التعليق",
+        "severity": "عدّل الخطورة (أو none لإزالة التعديل)",
+        "new_severity": "الخطورة الجديدة، أو none",
+        "reason": "سبب تعديل الخطورة",
+        "list": "اعرض النتائج المفروزة",
+        "f_status": "اعرض هذه الحالة فقط (يمكن تكراره)",
+        "f_severity": "اعرض هذه الخطورة فقط (يمكن تكراره)",
+        "show": "نتيجة واحدة مع سجل تدقيقها كاملًا",
+        "stats": "متوسط زمن الإصلاح، وأعمار النتائج المفتوحة، وتجاوزات مهلة الإصلاح",
+        "sla": "مهلة الإصلاح بالأيام لكل خطورة، مثل critical=7,high=30,medium=90,low=180",
+        "fail_breach": "أعد رمز خروج 1 إذا تجاوزت نتيجة مهلة إصلاحها",
+        "expire": "قبول الخطر المنتهي (رمز خروج 1 إن وُجد)",
+        "within": "اعرض أيضًا ما ينتهي قبوله خلال N يومًا (الافتراضي 14)",
+        "apply": "أعد فتح المنتهية في ملف الفرز",
+        "sync": "طابِق مع فحص: أول ظهور، والإصلاح التلقائي، والارتداد",
+        "sync_report": "تقرير JSON من كاشِف (kashif PATH --format json)",
+        "partial": "الفحص لم يشمل المشروع كله: لا تَعُدّ أي نتيجة مُصلَحة",
+        "dry_run": "اعرض النتيجة دون حفظ الملف",
+        "import": "استورد الكتم الموجود",
+        "baseline": "ملف خط أساس كتبه --write-baseline",
+        "i_status": "حالة النتائج المستوردة (الافتراضي: open)",
+        "i_justification": "المبرّر المسجَّل مع النتائج المستوردة",
+        "inline": "اعرض تعليقات الكتم داخل الكود (nosec و vulnscan: ignore)",
+        "diff": "تغييرات القرارات منذ BASE (بوابة لطلبات الدمج): كتم جديد، وتمديد انتهاء القبول، وخفض الخطورة، "
+                "وحذف السجل",
+        "base": "ملف الفرز في الفرع الهدف، مثلًا من "
+                "'git show origin/main:.kashif/triage.json > base.json' (غيابه أو فراغه = لا فرز بعد)",
+        "fail_change": "أعد رمز خروج 1 إذا وُجد ما يحتاج مراجعة",
+        "merge": "ادمج ملفَّي فرز (يصلح مشغّلَ دمج لـ git)",
+        "ours": "نسختنا من ملف الفرز",
+        "theirs": "نسختهم من ملف الفرز",
+        "m_base": "السلف المشترك (في مشغّل دمج git: ‎%%O)",
+        "output": "مكان الكتابة (الافتراضي: الخرج القياسي)",
+    },
+}
+
+
+def _parser(lang: str = "en") -> argparse.ArgumentParser:
+    from .i18n.cliargs import HelpFormatter, pick
+
+    def h(key: str) -> str:
+        return pick(lang, _HELP["ar"][key], _HELP["en"][key])
+
     common = argparse.ArgumentParser(add_help=False)
     s = argparse.SUPPRESS
-    common.add_argument("--file", "-f", default=s, help="triage file (default: <root>/.kashif/triage.json)")
-    common.add_argument("--root", default=s, help="project root (default: current directory)")
-    common.add_argument("--author", default=s, help="who makes the change (default: $KASHIF_AUTHOR, then the OS user)")
-    common.add_argument("--lang", choices=("en", "ar"), default=s, help="message language")
-    common.add_argument("--json", action="store_true", default=s, help="machine-readable output")
+    common.add_argument("--file", "-f", default=s, help=h("file"))
+    common.add_argument("--root", default=s, help=h("root"))
+    common.add_argument("--author", default=s, help=h("author"))
+    common.add_argument("--lang", choices=("en", "ar", "both"), default=s, metavar="{en,ar}", help=h("lang"))
+    common.add_argument("--json", action="store_true", default=s, help=h("json"))
     common.add_argument("--now", default=s, help=argparse.SUPPRESS)       # tests / reproducible runs
 
-    p = argparse.ArgumentParser(prog="kashif triage", parents=[common],
-                                description="Kashif finding triage: decisions, audit log, SLA and MTTR. / فرز النتائج.")
+    p = argparse.ArgumentParser(prog="kashif triage", parents=[common], description=h("desc"),
+                                formatter_class=HelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
 
-    c = sub.add_parser("set", parents=[common], help="record a decision for a finding")
-    c.add_argument("fingerprint")
-    c.add_argument("status", choices=STATUSES)
-    c.add_argument("--justification", "-j", default="")
-    c.add_argument("--expires", help="accepted_risk only: YYYY-MM-DD or +90d")
-    c.add_argument("--max-accept-days", type=int, help="policy ceiling for --expires")
-    c.add_argument("--ticket", help="http(s) URL of the tracking ticket")
-    c.add_argument("--comment", default="")
-    c.add_argument("--report", help="Kashif JSON report: adds rule/file/severity context to the entry")
+    def command(name: str, key: str):
+        return sub.add_parser(name, parents=[common], help=h(key), description=h(key), formatter_class=HelpFormatter)
 
-    c = sub.add_parser("comment", parents=[common], help="append a comment to the audit log")
-    c.add_argument("fingerprint")
-    c.add_argument("text")
+    c = command("set", "set")
+    c.add_argument("fingerprint", help=h("fingerprint"))
+    c.add_argument("status", choices=STATUSES, help=h("status"))
+    c.add_argument("--justification", "-j", default="", help=h("justification"))
+    c.add_argument("--expires", help=h("expires"))
+    c.add_argument("--max-accept-days", type=int, help=h("max_accept"))
+    c.add_argument("--ticket", help=h("ticket"))
+    c.add_argument("--comment", default="", help=h("comment"))
+    c.add_argument("--report", help=h("report"))
 
-    c = sub.add_parser("severity", parents=[common], help="override the severity (or 'none' to remove)")
-    c.add_argument("fingerprint")
-    c.add_argument("severity", choices=SEVERITIES + ("none",))
-    c.add_argument("--reason", default="")
+    c = command("comment", "c_comment")
+    c.add_argument("fingerprint", help=h("fingerprint"))
+    c.add_argument("text", help=h("text"))
 
-    c = sub.add_parser("list", parents=[common], help="list triaged findings")
-    c.add_argument("--status", action="append", choices=STATUSES, help="filter (repeatable)")
-    c.add_argument("--severity", action="append", choices=SEVERITIES, help="filter (repeatable)")
+    c = command("severity", "severity")
+    c.add_argument("fingerprint", help=h("fingerprint"))
+    c.add_argument("severity", choices=SEVERITIES + ("none",), help=h("new_severity"))
+    c.add_argument("--reason", default="", help=h("reason"))
 
-    c = sub.add_parser("show", parents=[common], help="one finding with its full audit log")
-    c.add_argument("fingerprint")
+    c = command("list", "list")
+    c.add_argument("--status", action="append", choices=STATUSES, help=h("f_status"))
+    c.add_argument("--severity", action="append", choices=SEVERITIES, help=h("f_severity"))
 
-    c = sub.add_parser("stats", parents=[common], help="MTTR, age buckets, SLA breaches")
-    c.add_argument("--sla", help="e.g. critical=7,high=30,medium=90,low=180")
-    c.add_argument("--fail-on-breach", action="store_true", help="exit 1 when an SLA is breached")
+    c = command("show", "show")
+    c.add_argument("fingerprint", help=h("fingerprint"))
 
-    c = sub.add_parser("expire-check", parents=[common], help="expired risk acceptances (exit 1 when any)")
-    c.add_argument("--within", type=int, default=14, help="also list acceptances expiring within N days")
-    c.add_argument("--apply", action="store_true", help="re-open the expired ones in the file")
+    c = command("stats", "stats")
+    c.add_argument("--sla", help=h("sla"))
+    c.add_argument("--fail-on-breach", action="store_true", help=h("fail_breach"))
 
-    c = sub.add_parser("sync", parents=[common], help="reconcile with a scan: first-seen, auto-fixed, regressions")
-    c.add_argument("--report", required=True, help="Kashif JSON report (vulnscan ... --format json)")
-    c.add_argument("--partial", action="store_true", help="the scan did not cover the whole project: fix nothing")
-    c.add_argument("--dry-run", action="store_true")
+    c = command("expire-check", "expire")
+    c.add_argument("--within", type=int, default=14, help=h("within"))
+    c.add_argument("--apply", action="store_true", help=h("apply"))
 
-    c = sub.add_parser("import", parents=[common], help="import existing suppressions")
-    c.add_argument("--baseline", help="baseline file written by --write-baseline")
-    c.add_argument("--status", choices=STATUSES, default="open")
-    c.add_argument("--justification", "-j", default="")
-    c.add_argument("--inline", action="store_true", help="list inline nosec / vulnscan: ignore comments")
+    c = command("sync", "sync")
+    c.add_argument("--report", required=True, help=h("sync_report"))
+    c.add_argument("--partial", action="store_true", help=h("partial"))
+    c.add_argument("--dry-run", action="store_true", help=h("dry_run"))
 
-    c = sub.add_parser("diff", parents=[common], help="decision changes since BASE (PR gate): new suppressions, "
-                                                      "extended expiries, lowered severities, removed history")
-    c.add_argument("base", help="the triage file of the target branch, e.g. from "
-                                "'git show origin/main:.kashif/triage.json > base.json' (missing/empty = no triage yet)")
-    c.add_argument("--fail-on-change", action="store_true", help="exit 1 when there is anything to review")
+    c = command("import", "import")
+    c.add_argument("--baseline", help=h("baseline"))
+    c.add_argument("--status", choices=STATUSES, default="open", help=h("i_status"))
+    c.add_argument("--justification", "-j", default="", help=h("i_justification"))
+    c.add_argument("--inline", action="store_true", help=h("inline"))
 
-    c = sub.add_parser("merge", parents=[common], help="merge two triage files (usable as a git merge driver)")
-    c.add_argument("ours")
-    c.add_argument("theirs")
-    c.add_argument("--base")
-    c.add_argument("--output", "-o", help="where to write (default: stdout)")
+    c = command("diff", "diff")
+    c.add_argument("base", help=h("base"))
+    c.add_argument("--fail-on-change", action="store_true", help=h("fail_change"))
+
+    c = command("merge", "merge")
+    c.add_argument("ours", help=h("ours"))
+    c.add_argument("theirs", help=h("theirs"))
+    c.add_argument("--base", help=h("m_base"))
+    c.add_argument("--output", "-o", help=h("output"))
     return p
 
 
@@ -1575,15 +1709,22 @@ def main(argv: list[str] | None = None) -> int:
                 stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError, OSError):
             pass
-    args = _parser().parse_args(argv)
-    lang = getattr(args, "lang", None) or ("ar" if os.environ.get("KASHIF_LANG", "").lower().startswith("ar") else "en")
+    from .i18n.cliargs import help_lang, localized_argparse
+    argv = list(sys.argv[1:] if argv is None else argv)
+    env = "ar" if os.environ.get("KASHIF_LANG", "").lower().startswith("ar") else "en"
+    hlang = help_lang(argv, default=env)          # --help and usage errors follow --lang (en, ar or both)
+    with localized_argparse(hlang):
+        args = _parser(hlang).parse_args(argv)
+    lang = getattr(args, "lang", None) or env
+    lang = "ar" if lang == "ar" else "en"          # "both": English messages, as from a "both" scan
+    prefix = "خطأ" if lang == "ar" else "error"
     try:
         return _run(args, lang)
     except TriageError as exc:
-        print(f"error: {exc.message(lang)}", file=sys.stderr)
+        print(f"{prefix}: {exc.message(lang)}", file=sys.stderr)
         return 2
     except (OSError, ValueError) as exc:                   # unwritable directory, full disk, bad --now, ...
-        print(f"error: {_one_line(exc)}", file=sys.stderr)
+        print(f"{prefix}: {_one_line(exc)}", file=sys.stderr)
         return 2
 
 
@@ -1620,7 +1761,7 @@ def _run(args, lang: str) -> int:
         status, expired = _effective_status(entry, now)
         flags = ([_t(lang, "expired_flag")] if expired else []) + ([_t(lang, "regression_flag")]
                                                                    if entry.get("regression") else [])
-        parts = [fp, f"{_effective_severity(entry) or '-':8}", f"{status_label(status, lang):15}",
+        parts = [fp, f"{severity_label(_effective_severity(entry) or '-', lang):8}", f"{status_label(status, lang):15}",
                  _one_line(entry.get("rule", "")), _one_line(entry.get("file", ""))]
         if entry.get("expires") and not expired:
             parts.append(f"<= {entry['expires']}")
@@ -1656,7 +1797,8 @@ def _run(args, lang: str) -> int:
                 before = _effective_severity(old) or "-"
                 new = None if args.severity == "none" else args.severity
                 entry = override_severity(triage, fp, new, reason=args.reason, author=who, now=now)
-                result["line"] = (_t(lang, "sev_done", fp=fp, old=before, new=new) if new
+                result["line"] = (_t(lang, "sev_done", fp=fp, old=severity_label(before, lang),
+                                     new=severity_label(new, lang)) if new
                                   else _t(lang, "sev_cleared", fp=fp))
             result["entry"] = entry
 
@@ -1700,22 +1842,25 @@ def _run(args, lang: str) -> int:
     if cmd == "stats":
         triage = load_file()
         data = stats(triage, now, _parse_sla(args.sla))
-        lines = [_t(lang, "h_stats") + f" ({data['total']})", _t(lang, "by_status") + ": " + ", ".join(
+        comma = "، " if lang == "ar" else ", "
+        lines = [_t(lang, "h_stats") + f" ({data['total']})", _t(lang, "by_status") + ": " + comma.join(
             f"{status_label(s, lang)} {n}" for s, n in data["by_status"].items())]
-        lines.append(_t(lang, "open_by_sev") + ": " + ", ".join(f"{s} {n}" for s, n in data["open_by_severity"].items()))
-        lines.append(_t(lang, "age") + ": " + ", ".join(f"{k}: {n}" for k, n in data["open_by_age"].items()))
+        lines.append(_t(lang, "open_by_sev") + ": " + comma.join(f"{severity_label(s, lang)} {n}"
+                                                                 for s, n in data["open_by_severity"].items()))
+        lines.append(_t(lang, "age") + ": " + comma.join(f"{k}: {n}" for k, n in data["open_by_age"].items()))
         lines.append(_t(lang, "mttr") + ":" + ("" if data["mttr_days"] else " -"))
-        lines += ["  " + _t(lang, "mttr_row", sev=sev, mean=m["mean"], median=m["median"], n=m["count"])
-                  for sev, m in data["mttr_days"].items()]
+        lines += ["  " + _t(lang, "mttr_row", sev=severity_label(sev, lang), mean=m["mean"], median=m["median"],
+                            n=m["count"]) for sev, m in data["mttr_days"].items()]
         lines.append(_t(lang, "regressions") + f": {data['regressions']}")
         lines.append(_t(lang, "sla") + f": {len(data['sla']['breaches'])}")
-        lines += ["  " + _t(lang, "sla_row", fp=b["fingerprint"], sev=b["severity"], rule=_one_line(b["rule"]),
+        lines += ["  " + _t(lang, "sla_row", fp=b["fingerprint"], sev=severity_label(b["severity"], lang),
+                            rule=_one_line(b["rule"]),
                             file=_one_line(b["file"]), age=b["age_days"], sla=b["sla_days"], over=b["overdue_days"])
                   for b in data["sla"]["breaches"]]
         lines.append(_t(lang, "expired") + f": {len(data['expired'])}")
         lines.append(_t(lang, "expiring", days=14) + f": {len(data['expiring'])}")
         if data["false_positive_rules"]:
-            lines.append(_t(lang, "noisy") + ": " + ", ".join(
+            lines.append(_t(lang, "noisy") + ": " + comma.join(
                 f"{_one_line(r['rule'])} {r['false_positive']}/{r['total']}" for r in data["false_positive_rules"][:8]))
         emit(data, lines)
         return 1 if args.fail_on_breach and data["sla"]["breaches"] else 0

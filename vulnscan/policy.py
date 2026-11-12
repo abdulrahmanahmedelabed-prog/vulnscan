@@ -445,7 +445,7 @@ STR = {
         "v_acceptance-too-long": "الاستثناء رقم {index} ({selector}) ينتهي في {date} أي بعد {days} يومًا؛ "
                                  "السياسة تسمح بـ {max} يومًا على الأكثر",
         "v_required-scanner": "الفاحص الإلزامي '{scanner}' لم يعمل أو لا دليل على أنه عمل",
-        "v_sla-breach": "{count} نتيجة بخطورة {severity} تجاوزت مهلة المعالجة {days} يومًا (الأقدم: {oldest} يومًا)",
+        "v_sla-breach": "{count} نتيجة بخطورة {severity} تجاوزت مهلة الإصلاح {days} يومًا (الأقدم: {oldest} يومًا)",
         "v_warnings-as-errors": "{count} تحذير، والتحذيرات تُعامَل كأخطاء",
         "w_new-only-no-reference": "الخيار new_only مفعّل دون خط أساس أو قائمة ملفات متغيّرة أو علامة 'new'؛ "
                                    "قُيّمت كل النتائج",
@@ -454,8 +454,8 @@ STR = {
         "w_ignore-unused": "الاستثناء رقم {index} ({selector}) لا يطابق أي نتيجة؛ احذفه",
         "w_ignore-expired-unused": "الاستثناء رقم {index} ({selector}) انتهى في {date} ولا يطابق أي نتيجة؛ احذفه",
         "w_expired-not-enforced": "{count} استثناء أو قبول خطر منتهٍ؛ الخيار fail_on_expired معطّل",
-        "w_sla-no-dates": "لم تُفحص مهلة المعالجة لـ {count} نتيجة: لا يوجد تاريخ أول ظهور (استخدم الفرز أو خريطة first_seen)",
-        "w_sla-breach": "{count} نتيجة بخطورة {severity} تجاوزت مهلة المعالجة {days} يومًا (الأقدم: {oldest} يومًا)",
+        "w_sla-no-dates": "لم تُفحص مهلة الإصلاح لـ {count} نتيجة: لا يوجد تاريخ أول ظهور (استخدم الفرز أو خريطة first_seen)",
+        "w_sla-breach": "{count} نتيجة بخطورة {severity} تجاوزت مهلة الإصلاح {days} يومًا (الأقدم: {oldest} يومًا)",
         "w_unknown-severity": "{count} نتيجة بخطورة غير معروفة عوملت كمتوسطة",
         "w_owasp-fallback": "الوحدة vulnscan.compliance غير متاحة؛ فئات OWASP مأخوذة من جدول مدمج صغير",
         "x_title": "بوابة الأمان في كاشِف",
@@ -475,7 +475,7 @@ STR = {
         "c_bad_report": "تعذّرت قراءة التقرير {path}: {err}",
         "c_bad_today": "قيمة --today يجب أن تكون YYYY-MM-DD",
         "p_startup": "فريق صغير: امنع النتائج الحرجة والأسرار وتساهل مع الاختبارات",
-        "p_strict": "امنع المتوسطة فما فوق، لا استثناء أطول من 90 يومًا، مهلة المعالجة مُلزِمة",
+        "p_strict": "امنع المتوسطة فما فوق، لا استثناء أطول من 90 يومًا، مهلة الإصلاح مُلزِمة",
         "p_pci-dss": "بوابة مستوحاة من PCI DSS v4.0 / v4.0.1 المتطلبات 6.2.4 و6.3.1 و6.3.3 و8.6.2 (ليست شهادة امتثال)",
         "p_owasp-asvs-l1": "بوابة مستوحاة من OWASP ASVS 4.0.3 المستوى الأول (V4 وV5 وV14.2) مع منع الأسرار في الكود",
     },
@@ -2248,10 +2248,13 @@ def _context(context) -> Context:
 
 
 def _load_baseline_file(path: pathlib.Path) -> set | None:
+    from .baseline import read_baseline_text
     try:
-        if path.stat().st_size > 64_000_000:
+        # gate.baseline comes from the repository's kashif.yml: regular files only (not /dev/zero, a FIFO, ...)
+        text = read_baseline_text(path)
+        if text is None:
             return None
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        data = json.loads(text)
     except (OSError, ValueError, RecursionError):
         return None
     if isinstance(data, dict) and isinstance(data.get("fingerprints"), list):
@@ -2714,45 +2717,114 @@ def _read_report(path: str) -> tuple[list, dict]:
     raise ValueError('no "findings" list')
 
 
-def _parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="kashif policy",
-                                description="Kashif policy-as-code: security gates from kashif.yml / kashif.json.")
+# --help in English and Arabic ("both": the Arabic line, then the English line; see vulnscan/i18n/cliargs.py)
+_HELP = {
+    "en": {
+        "desc": "Kashif policy-as-code: security gates from kashif.yml / kashif.json.",
+        "lang": "message language: en or ar (default: from KASHIF_LANG or the system locale)",
+        "check": "evaluate a JSON/SARIF report against a policy",
+        "report": "Kashif JSON report or SARIF file",
+        "policy": "policy file or builtin preset (default: kashif.yml in the current directory)",
+        "baseline": "baseline file (fingerprints) for new_only",
+        "changed": "file with one changed path per line ('-' = stdin), for new_only",
+        "scanners": "comma-separated scanners that ran (e.g. sast,secrets,deps)",
+        "today": "evaluation date YYYY-MM-DD (default: today)",
+        "format": "format of the explanation (default: text)",
+        "output": "write the explanation to this file instead of standard output",
+        "strict": "treat policy warnings as errors",
+        "external": "let 'extends' name files outside the policy's repository (only for a policy you trust)",
+        "init": "write a starter kashif.yml",
+        "preset": "the preset to start from (default: startup)",
+        "init_output": "target file ('-' = standard output)",
+        "name": "policy name (default: the name of the current directory)",
+        "expand": "write the preset's settings instead of 'extends'",
+        "force": "overwrite an existing file",
+        "validate": "validate a policy file",
+        "file": "the policy file",
+        "show": "print the effective policy (inheritance resolved) as YAML",
+        "presets": "list the builtin presets",
+    },
+    "ar": {
+        "desc": "السياسة ككود في كاشِف: بوابات أمان من kashif.yml أو kashif.json.",
+        "lang": "لغة الرسائل: en أو ar (الافتراضي: من KASHIF_LANG أو لغة النظام)",
+        "check": "قيّم تقرير JSON أو SARIF وفق سياسة",
+        "report": "تقرير JSON من كاشِف أو ملف SARIF",
+        "policy": "ملف السياسة أو قالب مدمج (الافتراضي: kashif.yml في المجلد الحالي)",
+        "baseline": "ملف خط الأساس (البصمات) لشرط new_only",
+        "changed": "ملف فيه مسار معدَّل في كل سطر ('-' = الدخل القياسي)، لشرط new_only",
+        "scanners": "الفاحصات التي عملت مفصولة بفواصل (مثل sast,secrets,deps)",
+        "today": "تاريخ التقييم YYYY-MM-DD (الافتراضي: اليوم)",
+        "format": "صيغة الشرح (الافتراضي: text)",
+        "output": "اكتب الشرح إلى هذا الملف بدلًا من الخرج القياسي",
+        "strict": "عامِل تحذيرات السياسة كأخطاء",
+        "external": "اسمح لـ extends بتسمية ملفات خارج مستودع السياسة (فقط لسياسة تثق بها)",
+        "init": "اكتب ملف kashif.yml أوليًّا",
+        "preset": "القالب الذي تبدأ منه (الافتراضي: startup)",
+        "init_output": "الملف الهدف ('-' = الخرج القياسي)",
+        "name": "اسم السياسة (الافتراضي: اسم المجلد الحالي)",
+        "expand": "اكتب إعدادات القالب نفسها بدلًا من extends",
+        "force": "اكتب فوق ملف موجود",
+        "validate": "تحقّق من صحة ملف سياسة",
+        "file": "ملف السياسة",
+        "show": "اطبع السياسة الفعلية (بعد حلّ الوراثة) بصيغة YAML",
+        "presets": "اعرض القوالب المدمجة",
+    },
+}
+
+
+def _parser(lang: str = "en") -> argparse.ArgumentParser:
+    from .i18n.cliargs import HelpFormatter, pick
+
+    def h(key: str) -> str:
+        return pick(lang, _HELP["ar"][key], _HELP["en"][key])
+
+    langs = ("en", "ar", "auto", "both")
+    p = argparse.ArgumentParser(prog="kashif policy", description=h("desc"), formatter_class=HelpFormatter)
+    # --lang before or after the command word: the command's own option (no default) keeps the value given before it
+    p.add_argument("--lang", choices=langs, default="auto", metavar="{en,ar}", help=h("lang"))
     sub = p.add_subparsers(dest="cmd", required=True)
-    c = sub.add_parser("check", help="evaluate a JSON/SARIF report against a policy")
-    c.add_argument("report")
-    c.add_argument("--policy", help="policy file or builtin preset (default: kashif.yml in the current directory)")
-    c.add_argument("--baseline", help="baseline file (fingerprints) for new_only")
-    c.add_argument("--changed-files", metavar="FILE", help="file with one changed path per line ('-' = stdin), for new_only")
-    c.add_argument("--scanners", help="comma-separated scanners that ran (e.g. sast,secrets,deps)")
-    c.add_argument("--today", help="evaluation date YYYY-MM-DD (default: today)")
-    c.add_argument("-f", "--format", choices=("text", "markdown", "json"), default="text")
-    c.add_argument("-o", "--output", help="write the explanation to this file instead of stdout")
-    c.add_argument("--warnings-as-errors", action="store_true")
-    ext_help = "let 'extends' name files outside the policy's repository (only for a policy you trust)"
-    c.add_argument("--allow-external-extends", action="store_true", help=ext_help)
-    i = sub.add_parser("init", help="write a starter kashif.yml")
-    i.add_argument("--preset", choices=sorted(PRESETS), default="startup")
-    i.add_argument("-o", "--output", default="kashif.yml", help="target file ('-' = stdout)")
-    i.add_argument("--name", default=None)
-    i.add_argument("--expand", action="store_true", help="write the preset's settings instead of 'extends'")
-    i.add_argument("--force", action="store_true")
-    v = sub.add_parser("validate", help="validate a policy file")
-    v.add_argument("file")
-    v.add_argument("--show", action="store_true", help="print the effective policy (inheritance resolved) as YAML")
-    v.add_argument("--allow-external-extends", action="store_true", help=ext_help)
-    pr = sub.add_parser("presets", help="list the builtin presets")
+
+    def command(name: str, key: str):
+        return sub.add_parser(name, help=h(key), description=h(key), formatter_class=HelpFormatter)
+
+    c = command("check", "check")
+    c.add_argument("report", help=h("report"))
+    c.add_argument("--policy", help=h("policy"))
+    c.add_argument("--baseline", help=h("baseline"))
+    c.add_argument("--changed-files", metavar="FILE", help=h("changed"))
+    c.add_argument("--scanners", help=h("scanners"))
+    c.add_argument("--today", help=h("today"))
+    c.add_argument("-f", "--format", choices=("text", "markdown", "json"), default="text", help=h("format"))
+    c.add_argument("-o", "--output", help=h("output"))
+    c.add_argument("--warnings-as-errors", action="store_true", help=h("strict"))
+    c.add_argument("--allow-external-extends", action="store_true", help=h("external"))
+    i = command("init", "init")
+    i.add_argument("--preset", choices=sorted(PRESETS), default="startup", help=h("preset"))
+    i.add_argument("-o", "--output", default="kashif.yml", help=h("init_output"))
+    i.add_argument("--name", default=None, help=h("name"))
+    i.add_argument("--expand", action="store_true", help=h("expand"))
+    i.add_argument("--force", action="store_true", help=h("force"))
+    v = command("validate", "validate")
+    v.add_argument("file", help=h("file"))
+    v.add_argument("--show", action="store_true", help=h("show"))
+    v.add_argument("--allow-external-extends", action="store_true", help=h("external"))
+    pr = command("presets", "presets")
     for s in (c, i, v, pr):
-        s.add_argument("--lang", choices=("en", "ar", "auto"), default="auto")
+        s.add_argument("--lang", choices=langs, default=argparse.SUPPRESS, metavar="{en,ar}", help=h("lang"))
     return p
 
 
 def main(argv=None) -> int:
     """Command line entry point. Returns 0 (passed / valid), 1 (gate failed) or 2 (usage, policy or input error)."""
+    from .i18n.cliargs import help_lang, localized_argparse
+    argv = list(sys.argv[1:] if argv is None else argv)
+    hlang = help_lang(argv, default=_auto_lang(), choices=("en", "ar", "both"))   # --help and usage errors
     try:
-        args = _parser().parse_args(argv)
+        with localized_argparse(hlang):
+            args = _parser(hlang).parse_args(argv)
     except SystemExit as e:
         return 0 if e.code in (0, None) else 2
-    lang = _auto_lang() if args.lang == "auto" else args.lang
+    lang = _auto_lang() if args.lang == "auto" else "ar" if args.lang == "ar" else "en"   # "both": English
     for stream in (sys.stdout, sys.stderr):                  # Arabic output crashes on a cp1252 Windows console
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")

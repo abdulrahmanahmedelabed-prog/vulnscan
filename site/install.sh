@@ -68,6 +68,8 @@ chmod 0755 "$TMP/$ASSET"
 "$TMP/$ASSET" --version >/dev/null 2>&1 || die "the downloaded binary does not run on this machine"
 
 mkdir -p "$DIR"
+# a relative KASHIF_INSTALL_DIR: the vulnscan symlink and the PATH hint need the absolute folder
+DIR="$(CDPATH='' cd -- "$DIR" && pwd)"
 # an older install had the binary at vulnscan with kashif as a symlink: rm first so mv never follows a link
 rm -f "$DIR/kashif"
 mv -f "$TMP/$ASSET" "$DIR/kashif"

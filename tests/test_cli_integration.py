@@ -8,6 +8,7 @@ docs/ show in a code block exists.
 
 from __future__ import annotations
 
+import os
 import json
 import pathlib
 import re
@@ -251,7 +252,8 @@ def test_asff_needs_the_aws_account(project, capsys):
     with pytest.raises(SystemExit) as e:
         scan(project, "-f", "asff")
     assert e.value.code == 2
-    assert "kashif export" in capsys.readouterr().err
+    err = capsys.readouterr().err                # 1.0.1: the scan takes --aws-account/--aws-region itself
+    assert "--aws-account" in err and "--aws-region" in err
 
 
 def test_existing_formats_unchanged(project, tmp_path, capsys):
@@ -534,3 +536,24 @@ def test_readme_documents_every_subcommand():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     for name in list(SUBCOMMANDS) + ["secrets-history"]:
         assert f"kashif {name}" in text or f"`{name}`" in text, name
+
+
+@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
+@pytest.mark.parametrize("lang", ["en", "ar"])
+def test_triage_update_refuses_a_kashif_dir_symlinked_outside(project, tmp_path, capsys, lang):
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (project / ".kashif").symlink_to(outside, target_is_directory=True)
+    assert main([str(project), "--no-deps", "--no-external", "--lang", lang, "--triage", "--triage-update"]) == 2
+    assert not (outside / "triage.json").exists()
+    err = capsys.readouterr().err
+    assert ("symbolic link" in err) == (lang == "en") and ("رابط رمزي" in err) == (lang == "ar")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
+def test_triage_update_refuses_a_symlinked_triage_file(project, tmp_path):
+    (project / ".kashif").mkdir()
+    victim = tmp_path / "victim.json"
+    (project / ".kashif" / "triage.json").symlink_to(victim)
+    assert scan(project, "--triage", "--triage-update") == 2
+    assert not victim.exists()

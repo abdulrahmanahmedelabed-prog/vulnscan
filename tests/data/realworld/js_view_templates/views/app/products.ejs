@@ -1,0 +1,6 @@
+<h1>Search: <%- output.searchTerm %></h1>
+<p>Escaped: <%= output.safeTerm %></p>
+<% products.forEach(function (p) { %>
+  <td><%- p.name %></td>
+<% }) %>
+<%- include('../footer') %>

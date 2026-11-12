@@ -13,24 +13,23 @@ const I18N = {
     'nav.dashboard': 'لوحة التحكم', 'nav.scan': 'فحص جديد', 'nav.findings': 'النتائج', 'nav.reports': 'التقارير', 'nav.rules': 'القواعد', 'nav.settings': 'الإعدادات',
     'dash.title': 'لوحة التحكم', 'dash.sub': 'نظرة عامة على آخر فحص والاتجاه العام.', 'dash.empty': 'لا توجد فحوصات بعد', 'dash.emptyHint': 'ابدأ بفحص مجلد مشروع أو ارفع ملفًا مضغوطًا.',
     'dash.donut': 'توزيع الخطورة (آخر فحص)', 'dash.trend': 'اتجاه النتائج عبر الفحوصات الأخيرة', 'dash.topRules': 'أكثر الثغرات تكرارًا', 'dash.topFiles': 'أكثر الملفات تأثرًا', 'dash.recent': 'الفحوصات الأخيرة',
-    'dash.allScans': 'كل الفحوصات', 'dash.latest': 'آخر فحص', 'dash.findingsCap': 'نتيجة', 'dash.oneScan': 'فحص واحد حتى الآن. أجرِ فحوصات أخرى لترى الاتجاه عبر الزمن.', 'dash.total': 'نتيجة إجمالًا',
+    'dash.allScans': 'كل الفحوصات', 'dash.latest': 'آخر فحص', 'dash.oneScan': 'فحص واحد حتى الآن. أجرِ فحوصات أخرى لترى الاتجاه عبر الزمن.', 'dash.total': 'نتيجة إجمالًا',
     'scan.title': 'فحص جديد', 'scan.sub': 'افحص مجلدًا على هذا الجهاز، أو ارفع برنامجًا مضغوطًا أو ملفات، أو افحص عنوان ويب تملكه.',
     'scan.tabPath': 'مسار على الجهاز', 'scan.tabUpload': 'رفع ملفات / أرشيف', 'scan.tabUrl': 'عنوان ويب', 'scan.pathLabel': 'مسار المجلد أو الملف أو الأرشيف', 'scan.start': 'ابدأ الفحص',
     'scan.pathHint': 'يُفحص المجلد بكل محتوياته (تُتجاهل node_modules و .git و build تلقائيًا).', 'scan.drop': 'اسحب وأفلت هنا برنامجًا مضغوطًا (zip / apk / jar / tar.gz / whl) أو أي ملفات',
     'scan.chooseFiles': 'اختر ملفات', 'scan.chooseFolder': 'اختر مجلدًا كاملًا', 'scan.uploadStart': 'ارفع وافحص', 'scan.urlLabel': 'عنوان الموقع (فحص سلبي: طلب واحد فقط)',
     'scan.authorize': 'أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه', 'scan.deep': 'فحص أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)', 'scan.crawl': 'زحف على صفحات الموقع وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)', 'scan.legal': 'فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.', 'scan.viewResults': 'عرض النتائج',
-    'scan.running': 'جارٍ الفحص…', 'scan.done': 'اكتمل الفحص', 'scan.failed': 'فشل الفحص', 'scan.needAuth': 'يجب تأكيد الصلاحية أولًا', 'scan.selected': 'ملف محدد', 'scan.uploading': 'جارٍ الرفع…', 'scan.uploadFailed': 'تعذّر الرفع',
+    'scan.running': 'جارٍ الفحص…', 'scan.done': 'اكتمل الفحص', 'scan.failed': 'فشل الفحص', 'scan.needAuth': 'يجب تأكيد الصلاحية أولًا', 'scan.uploading': 'جارٍ الرفع…', 'scan.uploadFailed': 'تعذّر الرفع',
     'scan.jadxOn': 'jadx مثبّت: سيُفكّ تجميع APK/JAR/AAR/DEX ويُفحص الكود الناتج أيضًا.', 'scan.jadxOff': 'jadx غير مثبّت: تُفحص الملفات النصية داخل APK/JAR فقط. ثبّت jadx (يحتاج Java) لفك تجميع الكود.',
-    'scan.uploaded': '{n} ملف مرفوع',
     'find.title': 'النتائج', 'find.sub': 'مرتبة من الأعلى خطورة إلى الأقل. اضغط على أي نتيجة لعرض التفاصيل وطريقة الإصلاح.', 'find.search': 'ابحث في الملف أو القاعدة أو النص…', 'find.allSources': 'كل المصادر',
-    'find.none': 'لا نتائج مطابقة للمرشحات الحالية.', 'find.flow': 'مسار التدفق (من المصدر إلى نقطة الخطر)', 'find.files': 'ملفًا مفحوصًا', 'find.pages': 'صفحة مفحوصة', 'find.onPages': 'ظهرت في {n} صفحة',
+    'find.none': 'لا نتائج مطابقة للمرشحات الحالية.', 'find.flow': 'مسار التدفق (من المصدر إلى نقطة الخطر)',
     'find.advice': 'طريقة الإصلاح', 'find.snippet': 'المقتطف', 'find.ref': 'المرجع', 'find.scan': 'الفحص', 'find.export': 'تصدير',
     'find.dataflow': 'مُثبتة بتدفق البيانات', 'find.pattern': 'مطابقة نمط', 'find.location': 'الموقع', 'find.source': 'المصدر', 'find.sink': 'نقطة الخطر', 'find.step': 'خطوة',
-    'find.fingerprint': 'البصمة', 'find.copy': 'نسخ', 'find.copied': 'تم النسخ', 'find.showing': 'عرض {n} من {total} نتيجة', 'find.cwe': 'افتح تعريف {cwe} على موقع MITRE', 'find.input': 'المدخل غير الموثوق', 'find.clear': 'إظهار الكل',
+    'find.fingerprint': 'البصمة', 'find.copy': 'نسخ', 'find.copied': 'تم النسخ', 'find.cwe': 'افتح تعريف {cwe} على موقع MITRE', 'find.input': 'المدخل غير الموثوق', 'find.clear': 'إظهار الكل',
     'rep.title': 'التقارير', 'rep.sub': 'سجل كل الفحوصات، تنزيل التقارير، ومقارنة فحصين لمعرفة ما أُصلح وما استجد.', 'rep.compare': 'مقارنة فحصين', 'rep.compareBtn': 'قارن', 'rep.fixed': 'أُصلحت (اختفت)', 'rep.new': 'جديدة (ظهرت)',
     'rep.target': 'الهدف', 'rep.date': 'التاريخ', 'rep.status': 'الحالة', 'rep.total': 'الإجمالي', 'rep.actions': 'إجراءات', 'rep.delete': 'حذف', 'rep.view': 'عرض', 'rep.nothing': 'لا شيء',
     'rep.base': 'الفحص الأساسي', 'rep.head': 'الفحص الأحدث', 'rep.history': 'سجل الفحوصات', 'rep.download': 'تنزيل تقرير HTML', 'rep.confirmDel': 'حذف هذا الفحص؟', 'rep.noScans': 'لا توجد فحوصات بعد.',
-    'rules.title': 'القواعد المدمجة', 'rules.search': 'ابحث في القواعد…', 'rules.count': 'قاعدة', 'rules.id': 'المعرّف', 'rules.sev': 'الخطورة', 'rules.name': 'الثغرة', 'rules.langs': 'الملفات', 'rules.advice': 'الإصلاح',
+    'rules.title': 'القواعد المدمجة', 'rules.search': 'ابحث في القواعد…', 'rules.id': 'المعرّف', 'rules.sev': 'الخطورة', 'rules.name': 'الثغرة', 'rules.langs': 'الملفات', 'rules.advice': 'الإصلاح',
     'set.title': 'الإعدادات', 'set.sub': 'تُحفظ على هذا الجهاز وتُطبَّق على كل الفحوصات القادمة.', 'set.minSev': 'أدنى خطورة تُعرض', 'set.failOn': 'إفشال CI عند خطورة', 'set.exclude': 'مسارات مستثناة (سطر لكل نمط)',
     'set.ignore': 'قواعد متجاهَلة (معرّف لكل سطر)', 'set.authTargets': 'عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)', 'set.osv': 'الاستعلام من OSV.dev عن ثغرات الاعتماديات (يحتاج إنترنت)',
     'set.external': 'دمج نتائج الأدوات الخارجية المثبّتة', 'set.audit': 'ملف التدقيق: اعرض أيضًا كل استدعاء خطر لم يُثبت تحليل التدفق وصول مدخل إليه (أشمل، وإنذارات أكثر)', 'set.jadx': 'فك تجميع APK / JAR / AAR / DEX بواسطة jadx وفحص الكود الناتج', 'set.jadxLibs': 'فحص مكتبات الطرف الثالث داخل الكود المفكوك أيضًا (نتائج أكثر وضجيج أكثر)', 'set.jadxTimeout': 'مهلة jadx بالثواني', 'set.jadxOn': 'jadx مثبّت على هذا الجهاز.', 'set.jadxOff': 'jadx غير مثبّت — ثبّته من github.com/skylot/jadx ليُفكّ الكود الثنائي.',
@@ -64,10 +63,10 @@ const I18N = {
     'nav.projects': 'المشاريع', 'proj.title': 'المشاريع', 'proj.sub': 'كل هدف فحصته، مع آخر نتائجه واتجاهه وما تغيّر بين آخر فحصين.',
     'proj.search': 'ابحث باسم المشروع أو مساره…', 'proj.sort': 'الترتيب', 'proj.sortRecent': 'الأحدث فحصًا', 'proj.sortRisk': 'الأعلى خطورة', 'proj.sortName': 'الاسم',
     'proj.all': 'كل المشاريع', 'proj.switch': 'المشروع', 'proj.rescan': 'أعد الفحص', 'proj.changes': 'التغيّر منذ الفحص السابق', 'proj.trend': 'اتجاه النتائج عبر فحوصات المشروع',
-    'proj.scans': 'فحوصات المشروع', 'proj.count': 'عدد المشاريع: {n}', 'proj.shown': 'عرض {n} من {total} مشروع', 'proj.none': 'لا مشروع يطابق البحث.', 'proj.lastScan': 'آخر فحص',
-    'proj.nScans': 'عدد الفحوصات: {n}', 'proj.newN': '{n} جديدة', 'proj.fixedN': '{n} أُصلحت', 'proj.noChange': 'لا تغيّر عن الفحص السابق', 'proj.firstScan': 'فحص واحد حتى الآن',
-    'proj.firstScanHint': 'أعد فحص المشروع بعد تعديله لترى هنا ما استجد وما أُصلح.', 'proj.clean': 'لا نتائج', 'proj.history': 'الفحوصات والسجل', 'proj.findings': 'نتيجة',
-    'proj.spark': 'إجمالي النتائج عبر {n} فحص، من الأقدم إلى الأحدث: {vals}', 'proj.neverDone': 'لم يكتمل أي فحص بعد', 'proj.more': 'و{n} أخرى', 'proj.between': 'بين فحص {a} وفحص {b}',
+    'proj.scans': 'فحوصات المشروع', 'proj.none': 'لا مشروع يطابق البحث.', 'proj.lastScan': 'آخر فحص',
+    'proj.noChange': 'لا تغيّر عن الفحص السابق', 'proj.firstScan': 'فحص واحد حتى الآن',
+    'proj.firstScanHint': 'أعد فحص المشروع بعد تعديله لترى هنا ما استجد وما أُصلح.', 'proj.clean': 'لا نتائج', 'proj.history': 'الفحوصات والسجل',
+    'proj.neverDone': 'لم يكتمل أي فحص بعد', 'proj.between': 'بين فحص {a} وفحص {b}',
     'proj.newTitle': 'جديدة (ظهرت)', 'proj.fixedTitle': 'أُصلحت (اختفت)', 'proj.notFound': 'المشروع غير موجود (ربما حُذفت فحوصاته).', 'proj.dupHint': 'مشاريع',
     'fix.title': 'إصلاح مقترح', 'fix.copy': 'نسخ الرقعة', 'fix.copied': 'نُسخت الرقعة', 'fix.adviceOnly': 'إرشاد فقط: هذا التغيير يحتاج إلى إعادة هيكلة لا يمكن أتمتتها بأمان.',
     'fix.apply': 'لتطبيق الإصلاحات الآلية على المشروع شغّل:', 'fix.added': 'سطر مضاف:', 'fix.removed': 'سطر محذوف:', 'fix.diffLabel': 'رقعة الإصلاح المقترح للملف {file}', 'fix.badge': 'إصلاح متاح',
@@ -79,10 +78,9 @@ const I18N = {
     'comp.audit': 'تقرير المدقق', 'comp.auditOne': 'تقرير المدقق لهذا الإطار', 'comp.frameworks': 'الأطر', 'comp.showAll': 'إظهار الضوابط بلا نتائج',
     'comp.risk': 'درجة الخطر', 'comp.r_none': 'لا خطر', 'comp.r_low': 'منخفض', 'comp.r_moderate': 'متوسط', 'comp.r_high': 'عالٍ', 'comp.r_critical': 'حرج',
     'comp.st_fail': 'راسب', 'comp.st_warn': 'مراجعة', 'comp.st_pass': 'لا نتائج',
-    'comp.controlsWith': '{n} من {total} ضابطًا عليها نتائج', 'comp.mapped': '{n} نتيجة مربوطة', 'comp.unmapped': '{n} غير مربوطة',
     'comp.control': 'الضابط', 'comp.ctitle': 'العنوان', 'comp.total': 'النتائج', 'comp.status': 'الحالة',
-    'comp.note': 'ملاحظة', 'comp.source': 'المصدر', 'comp.hidden': '{n} ضابطًا بلا نتائج مخفية.', 'comp.none': 'لا ضوابط عليها نتائج في هذا الإطار.',
-    'comp.showFindings': 'عرض نتائج الضابط {c}', 'comp.empty': 'لا يوجد فحص مكتمل بعد.', 'comp.loading': 'جارٍ التحميل…', 'comp.fwLabel': '{name}: {status}، {with} من {total} ضابطًا عليها نتائج',
+    'comp.note': 'ملاحظة', 'comp.source': 'المصدر', 'comp.none': 'لا ضوابط عليها نتائج في هذا الإطار.',
+    'comp.showFindings': 'عرض نتائج الضابط {c}', 'comp.empty': 'لا يوجد فحص مكتمل بعد.', 'comp.loading': 'جارٍ التحميل…',
     'tri.title': 'الفرز', 'tri.status': 'الحالة', 'tri.justification': 'المبرّر', 'tri.justReq': '(مطلوب لهذه الحالة)', 'tri.expires': 'ينتهي القبول في', 'tri.ticket': 'رابط التذكرة',
     'tri.comment': 'تعليق', 'tri.save': 'احفظ القرار', 'tri.addComment': 'أضف التعليق', 'tri.saved': 'حُفظ قرار الفرز', 'tri.commented': 'أُضيف التعليق', 'tri.history': 'السجل ({n})',
     'tri.by': '{who} · {when}', 'tri.fileProject': 'تُحفظ القرارات مع المشروع في {file}؛ أضفه إلى المستودع ليشاركها الفريق.', 'tri.fileHome': 'تُحفظ القرارات في مجلد بيانات كاشِف: {file}',
@@ -98,6 +96,32 @@ const I18N = {
     'sf.auth_none': 'غير ظاهرة', 'sf.auth_public': 'عامة صراحةً', 'sf.auth_protected': 'محمية', 'sf.showAll': 'عرض الكل ({n})', 'sf.showLess': 'عرض الأخطر فقط', 'sf.openapi': 'OpenAPI',
     'sf.builtAt': 'بُنيت {when}', 'sf.unauthOnly': 'بلا مصادقة فقط', 'sf.empty': 'لم يُعثر على نقاط دخول.', 'sf.search': 'ابحث في المسار أو المعالج…', 'sf.shown': 'عرض {n} من {total}', 'sf.noMatch': 'لا نقاط دخول تطابق المرشحات.',
     'reach.imported': 'مستوردة في كودك', 'reach.not_imported': 'غير مستوردة', 'reach.vulnerable_function_called': 'دالة مصابة مُستدعاة', 'reach.label': 'قابلية الوصول',
+    /* Count strings, read with tn(key, count). Arabic nouns take a different form after 1, 2, 3–10, 11–99 and
+       100+ (and 0): keys one, two, few, many, other (see pluralCat). The keys marked "by total" agree with {total}. */
+    pl: {
+      'scan.uploaded': {one: 'ملف واحد مرفوع', two: 'ملفان مرفوعان', few: '{n} ملفات مرفوعة', many: '{n} ملفًا مرفوعًا', other: '{n} ملف مرفوع'},
+      'scan.nSelected': {one: 'ملف واحد محدد', two: 'ملفان محددان', few: '{n} ملفات محددة', many: '{n} ملفًا محددًا', other: '{n} ملف محدد'},
+      'find.nFiles': {one: 'ملف واحد مفحوص', two: 'ملفان مفحوصان', few: '{n} ملفات مفحوصة', many: '{n} ملفًا مفحوصًا', other: '{n} ملف مفحوص'},
+      'find.nPages': {one: 'صفحة واحدة مفحوصة', two: 'صفحتان مفحوصتان', few: '{n} صفحات مفحوصة', many: '{n} صفحةً مفحوصةً', other: '{n} صفحة مفحوصة'},
+      'find.nFindings': {one: 'نتيجة واحدة', two: 'نتيجتان', few: '{n} نتائج', many: '{n} نتيجةً', other: '{n} نتيجة'},
+      'find.onPages': {one: 'ظهرت في صفحة واحدة', two: 'ظهرت في صفحتين', few: 'ظهرت في {n} صفحات', many: 'ظهرت في {n} صفحةً', other: 'ظهرت في {n} صفحة'},
+      'find.showing': {one: 'عرض {n} من نتيجة واحدة', two: 'عرض {n} من نتيجتين', few: 'عرض {n} من {total} نتائج', many: 'عرض {n} من {total} نتيجةً', other: 'عرض {n} من {total} نتيجة'},
+      'dash.findingsCap': {one: 'نتيجة', two: 'نتيجتان', few: 'نتائج', many: 'نتيجةً', other: 'نتيجة'},
+      'proj.findings': {one: 'نتيجة', two: 'نتيجتان', few: 'نتائج', many: 'نتيجةً', other: 'نتيجة'},
+      'proj.count': {one: 'مشروع واحد', two: 'مشروعان', few: '{n} مشاريع', many: '{n} مشروعًا', other: '{n} مشروع'},
+      'proj.shown': {one: 'عرض {n} من مشروع واحد', two: 'عرض {n} من مشروعين', few: 'عرض {n} من {total} مشاريع', many: 'عرض {n} من {total} مشروعًا', other: 'عرض {n} من {total} مشروع'},
+      'proj.nScans': {one: 'فحص واحد', two: 'فحصان', few: '{n} فحوصات', many: '{n} فحصًا', other: '{n} فحص'},
+      'proj.spark': {one: 'إجمالي النتائج عبر فحص واحد، من الأقدم إلى الأحدث: {vals}', two: 'إجمالي النتائج عبر فحصين، من الأقدم إلى الأحدث: {vals}', few: 'إجمالي النتائج عبر {n} فحوصات، من الأقدم إلى الأحدث: {vals}', many: 'إجمالي النتائج عبر {n} فحصًا، من الأقدم إلى الأحدث: {vals}', other: 'إجمالي النتائج عبر {n} فحص، من الأقدم إلى الأحدث: {vals}'},
+      'proj.newN': {one: 'نتيجة واحدة جديدة', two: 'نتيجتان جديدتان', few: '{n} نتائج جديدة', many: '{n} نتيجةً جديدةً', other: '{n} نتيجة جديدة'},
+      'proj.fixedN': {one: 'أُصلحت نتيجة واحدة', two: 'أُصلحت نتيجتان', few: 'أُصلحت {n} نتائج', many: 'أُصلحت {n} نتيجةً', other: 'أُصلحت {n} نتيجة'},
+      'proj.more': {one: 'ونتيجة أخرى', two: 'ونتيجتان أخريان', few: 'و{n} نتائج أخرى', many: 'و{n} نتيجةً أخرى', other: 'و{n} نتيجة أخرى'},
+      'comp.controlsWith': {one: '{n} من ضابط واحد عليه نتائج', two: '{n} من ضابطين عليهما نتائج', few: '{n} من {total} ضوابط عليها نتائج', many: '{n} من {total} ضابطًا عليها نتائج', other: '{n} من {total} ضابط عليها نتائج'},
+      'comp.fwLabel': {one: '{name}: {status}، {with} من ضابط واحد عليه نتائج', two: '{name}: {status}، {with} من ضابطين عليهما نتائج', few: '{name}: {status}، {with} من {total} ضوابط عليها نتائج', many: '{name}: {status}، {with} من {total} ضابطًا عليها نتائج', other: '{name}: {status}، {with} من {total} ضابط عليها نتائج'},
+      'comp.mapped': {one: 'نتيجة واحدة مربوطة', two: 'نتيجتان مربوطتان', few: '{n} نتائج مربوطة', many: '{n} نتيجةً مربوطةً', other: '{n} نتيجة مربوطة'},
+      'comp.unmapped': {one: 'نتيجة واحدة غير مربوطة', two: 'نتيجتان غير مربوطتين', few: '{n} نتائج غير مربوطة', many: '{n} نتيجةً غير مربوطة', other: '{n} نتيجة غير مربوطة'},
+      'comp.hidden': {one: 'ضابط واحد بلا نتائج مخفي.', two: 'ضابطان بلا نتائج مخفيان.', few: '{n} ضوابط بلا نتائج مخفية.', many: '{n} ضابطًا بلا نتائج مخفية.', other: '{n} ضابط بلا نتائج مخفية.'},
+      'rules.n': {one: 'قاعدة واحدة', two: 'قاعدتان', few: '{n} قواعد', many: '{n} قاعدةً', other: '{n} قاعدة'},
+    },
   },
   en: {
     brand: 'Kashif',
@@ -110,24 +134,23 @@ const I18N = {
     'nav.dashboard': 'Dashboard', 'nav.scan': 'New scan', 'nav.findings': 'Findings', 'nav.reports': 'Reports', 'nav.rules': 'Rules', 'nav.settings': 'Settings',
     'dash.title': 'Dashboard', 'dash.sub': 'Overview of the latest scan and how findings trend over time.', 'dash.empty': 'No scans yet', 'dash.emptyHint': 'Scan a project folder or upload an archive to get started.',
     'dash.donut': 'Severity distribution', 'dash.trend': 'Findings over recent scans', 'dash.topRules': 'Most frequent issues', 'dash.topFiles': 'Most affected files', 'dash.recent': 'Recent scans',
-    'dash.allScans': 'All scans', 'dash.latest': 'Latest scan', 'dash.findingsCap': 'findings', 'dash.oneScan': 'Only one scan so far. Run more scans to see the trend over time.', 'dash.total': 'findings in total',
+    'dash.allScans': 'All scans', 'dash.latest': 'Latest scan', 'dash.oneScan': 'Only one scan so far. Run more scans to see the trend over time.', 'dash.total': 'findings in total',
     'scan.title': 'New scan', 'scan.sub': 'Scan a folder on this machine, upload an archive or files, or passively check a website you own.',
     'scan.tabPath': 'Local path', 'scan.tabUpload': 'Upload files / archive', 'scan.tabUrl': 'Web URL', 'scan.pathLabel': 'Folder, file or archive path', 'scan.start': 'Start scan',
     'scan.pathHint': 'The whole folder is scanned recursively (node_modules, .git and build are skipped).', 'scan.drop': 'Drop an archive (zip / apk / jar / tar.gz / whl) or any files here',
     'scan.chooseFiles': 'Choose files', 'scan.chooseFolder': 'Choose a folder', 'scan.uploadStart': 'Upload and scan', 'scan.urlLabel': 'Site URL (passive: a single request)',
     'scan.authorize': 'I own this site or have written permission to test it', 'scan.deep': 'Deeper scan: analyze the page and probe common exposed paths (a few extra requests)', 'scan.crawl': 'Crawl same-site pages and scan each one (for apps such as Moodle and university portals)', 'scan.legal': 'Testing systems without permission may be illegal.', 'scan.viewResults': 'View findings',
-    'scan.running': 'Scanning…', 'scan.done': 'Scan complete', 'scan.failed': 'Scan failed', 'scan.needAuth': 'Confirm that you are authorized to test this site first', 'scan.selected': 'file(s) selected', 'scan.uploading': 'Uploading…', 'scan.uploadFailed': 'Upload failed',
+    'scan.running': 'Scanning…', 'scan.done': 'Scan complete', 'scan.failed': 'Scan failed', 'scan.needAuth': 'Confirm that you are authorized to test this site first', 'scan.uploading': 'Uploading…', 'scan.uploadFailed': 'Upload failed',
     'scan.jadxOn': 'jadx is installed: APK/JAR/AAR/DEX files are decompiled and the resulting code is scanned too.', 'scan.jadxOff': 'jadx is not installed: only text files inside APK/JAR are scanned. Install jadx (requires Java) to decompile bytecode.',
-    'scan.uploaded': '{n} uploaded files',
     'find.title': 'Findings', 'find.sub': 'Sorted from highest to lowest severity. Select a finding to see its details and remediation.', 'find.search': 'Search file, rule or text…', 'find.allSources': 'All sources',
-    'find.none': 'No findings match the current filters.', 'find.flow': 'Data-flow path (source to sink)', 'find.files': 'files scanned', 'find.pages': 'pages scanned', 'find.onPages': 'Seen on {n} pages',
+    'find.none': 'No findings match the current filters.', 'find.flow': 'Data-flow path (source to sink)',
     'find.advice': 'Remediation', 'find.snippet': 'Code', 'find.ref': 'Reference', 'find.scan': 'Scan', 'find.export': 'Export',
     'find.dataflow': 'Proven by data flow', 'find.pattern': 'Pattern match', 'find.location': 'Location', 'find.source': 'Source', 'find.sink': 'Sink', 'find.step': 'Step',
-    'find.fingerprint': 'Fingerprint', 'find.copy': 'Copy', 'find.copied': 'Copied', 'find.showing': 'Showing {n} of {total} findings', 'find.cwe': 'Open the {cwe} definition at MITRE', 'find.input': 'Untrusted input', 'find.clear': 'Show all',
+    'find.fingerprint': 'Fingerprint', 'find.copy': 'Copy', 'find.copied': 'Copied', 'find.cwe': 'Open the {cwe} definition at MITRE', 'find.input': 'Untrusted input', 'find.clear': 'Show all',
     'rep.title': 'Reports', 'rep.sub': 'Scan history, report downloads, and a comparison of two scans to see what was fixed and what is new.', 'rep.compare': 'Compare two scans', 'rep.compareBtn': 'Compare', 'rep.fixed': 'Fixed (no longer present)', 'rep.new': 'New (introduced)',
     'rep.target': 'Target', 'rep.date': 'Date', 'rep.status': 'Status', 'rep.total': 'Total', 'rep.actions': 'Actions', 'rep.delete': 'Delete', 'rep.view': 'View', 'rep.nothing': 'None',
     'rep.base': 'Base scan', 'rep.head': 'Compare with', 'rep.history': 'Scan history', 'rep.download': 'Download HTML report', 'rep.confirmDel': 'Delete this scan?', 'rep.noScans': 'No scans yet.',
-    'rules.title': 'Built-in rules', 'rules.search': 'Search rules…', 'rules.count': 'rules', 'rules.id': 'Rule', 'rules.sev': 'Severity', 'rules.name': 'Issue', 'rules.langs': 'Applies to', 'rules.advice': 'Remediation',
+    'rules.title': 'Built-in rules', 'rules.search': 'Search rules…', 'rules.id': 'Rule', 'rules.sev': 'Severity', 'rules.name': 'Issue', 'rules.langs': 'Applies to', 'rules.advice': 'Remediation',
     'set.title': 'Settings', 'set.sub': 'Stored on this machine and applied to every new scan.', 'set.minSev': 'Minimum severity shown', 'set.failOn': 'Fail CI at severity', 'set.exclude': 'Excluded paths (one glob per line)',
     'set.ignore': 'Ignored rules (one ID per line)', 'set.authTargets': 'Authorized web targets (one per line)', 'set.osv': 'Query OSV.dev for known vulnerabilities in dependencies (requires internet)',
     'set.external': 'Merge results from installed external scanners', 'set.audit': 'Audit profile: also report risky calls that data-flow analysis did not prove reachable from input (broader, noisier)', 'set.jadx': 'Decompile APK / JAR / AAR / DEX with jadx and scan the output', 'set.jadxLibs': 'Also scan third-party libraries in decompiled code (more findings, more noise)', 'set.jadxTimeout': 'jadx timeout (seconds)', 'set.jadxOn': 'jadx is installed on this machine.', 'set.jadxOff': 'jadx is not installed. Get it from github.com/skylot/jadx to decompile bytecode.',
@@ -161,10 +184,10 @@ const I18N = {
     'nav.projects': 'Projects', 'proj.title': 'Projects', 'proj.sub': 'Every target you have scanned, with its latest results, its trend and what changed between the last two scans.',
     'proj.search': 'Search by project name or path…', 'proj.sort': 'Sort by', 'proj.sortRecent': 'Recently scanned', 'proj.sortRisk': 'Highest risk', 'proj.sortName': 'Name',
     'proj.all': 'All projects', 'proj.switch': 'Project', 'proj.rescan': 'Scan again', 'proj.changes': 'Changes since the previous scan', 'proj.trend': 'Findings across this project’s scans',
-    'proj.scans': 'Scans of this project', 'proj.count': '{n} projects', 'proj.shown': 'Showing {n} of {total} projects', 'proj.none': 'No project matches the search.', 'proj.lastScan': 'Last scan',
-    'proj.nScans': '{n} scans', 'proj.newN': '{n} new', 'proj.fixedN': '{n} fixed', 'proj.noChange': 'No change since the previous scan', 'proj.firstScan': 'One scan so far',
-    'proj.firstScanHint': 'Scan the project again after changing it to see what is new and what was fixed.', 'proj.clean': 'No findings', 'proj.history': 'Scans and history', 'proj.findings': 'findings',
-    'proj.spark': 'Total findings across {n} scans, oldest to newest: {vals}', 'proj.neverDone': 'No completed scan yet', 'proj.more': 'and {n} more', 'proj.between': 'Between the scans of {a} and {b}',
+    'proj.scans': 'Scans of this project', 'proj.none': 'No project matches the search.', 'proj.lastScan': 'Last scan',
+    'proj.noChange': 'No change since the previous scan', 'proj.firstScan': 'One scan so far',
+    'proj.firstScanHint': 'Scan the project again after changing it to see what is new and what was fixed.', 'proj.clean': 'No findings', 'proj.history': 'Scans and history',
+    'proj.neverDone': 'No completed scan yet', 'proj.between': 'Between the scans of {a} and {b}',
     'proj.newTitle': 'New (appeared)', 'proj.fixedTitle': 'Fixed (gone)', 'proj.notFound': 'Project not found (its scans may have been deleted).', 'proj.dupHint': 'projects',
     'fix.title': 'Suggested fix', 'fix.copy': 'Copy patch', 'fix.copied': 'Patch copied', 'fix.adviceOnly': 'Advice only: this change needs a refactoring that cannot be automated safely.',
     'fix.apply': 'To apply the automatic fixes to the project, run:', 'fix.added': 'Added line:', 'fix.removed': 'Removed line:', 'fix.diffLabel': 'Suggested patch for {file}', 'fix.badge': 'Fix available',
@@ -176,10 +199,9 @@ const I18N = {
     'comp.audit': 'Auditor report', 'comp.auditOne': 'Auditor report for this framework', 'comp.frameworks': 'Frameworks', 'comp.showAll': 'Show controls without findings',
     'comp.risk': 'Risk score', 'comp.r_none': 'None', 'comp.r_low': 'Low', 'comp.r_moderate': 'Moderate', 'comp.r_high': 'High', 'comp.r_critical': 'Critical',
     'comp.st_fail': 'Fail', 'comp.st_warn': 'Review', 'comp.st_pass': 'No findings',
-    'comp.controlsWith': '{n} of {total} controls with findings', 'comp.mapped': '{n} findings mapped', 'comp.unmapped': '{n} not mapped',
     'comp.control': 'Control', 'comp.ctitle': 'Title', 'comp.total': 'Findings', 'comp.status': 'Status',
-    'comp.note': 'Note', 'comp.source': 'Source', 'comp.hidden': '{n} controls without findings are hidden.', 'comp.none': 'No control of this framework has findings.',
-    'comp.showFindings': 'Show the findings of {c}', 'comp.empty': 'No completed scan yet.', 'comp.loading': 'Loading…', 'comp.fwLabel': '{name}: {status}, {with} of {total} controls with findings',
+    'comp.note': 'Note', 'comp.source': 'Source', 'comp.none': 'No control of this framework has findings.',
+    'comp.showFindings': 'Show the findings of {c}', 'comp.empty': 'No completed scan yet.', 'comp.loading': 'Loading…',
     'tri.title': 'Triage', 'tri.status': 'Status', 'tri.justification': 'Justification', 'tri.justReq': '(required for this status)', 'tri.expires': 'Acceptance expires on', 'tri.ticket': 'Ticket URL',
     'tri.comment': 'Comment', 'tri.save': 'Save decision', 'tri.addComment': 'Add comment', 'tri.saved': 'Triage decision saved', 'tri.commented': 'Comment added', 'tri.history': 'History ({n})',
     'tri.by': '{who} · {when}', 'tri.fileProject': 'Decisions are saved with the project in {file}. Commit it so the team shares them.', 'tri.fileHome': 'Decisions are saved in Kashif’s data folder: {file}',
@@ -195,6 +217,30 @@ const I18N = {
     'sf.auth_none': 'None visible', 'sf.auth_public': 'Explicitly public', 'sf.auth_protected': 'Protected', 'sf.showAll': 'Show all ({n})', 'sf.showLess': 'Show the riskiest only', 'sf.openapi': 'OpenAPI',
     'sf.builtAt': 'Built {when}', 'sf.unauthOnly': 'Unauthenticated only', 'sf.empty': 'No entry points were found.', 'sf.search': 'Search path or handler…', 'sf.shown': 'Showing {n} of {total}', 'sf.noMatch': 'No entry point matches the filters.',
     'reach.imported': 'Imported by your code', 'reach.not_imported': 'Not imported', 'reach.vulnerable_function_called': 'Vulnerable function called', 'reach.label': 'Reachability',
+    pl: {
+      'scan.uploaded': {one: '{n} uploaded file', other: '{n} uploaded files'},
+      'scan.nSelected': {one: '{n} file selected', other: '{n} files selected'},
+      'find.nFiles': {one: '{n} file scanned', other: '{n} files scanned'},
+      'find.nPages': {one: '{n} page scanned', other: '{n} pages scanned'},
+      'find.nFindings': {one: '{n} finding', other: '{n} findings'},
+      'find.onPages': {one: 'Seen on {n} page', other: 'Seen on {n} pages'},
+      'find.showing': {one: 'Showing {n} of {total} finding', other: 'Showing {n} of {total} findings'},
+      'dash.findingsCap': {one: 'finding', other: 'findings'},
+      'proj.findings': {one: 'finding', other: 'findings'},
+      'proj.count': {one: '{n} project', other: '{n} projects'},
+      'proj.shown': {one: 'Showing {n} of {total} project', other: 'Showing {n} of {total} projects'},
+      'proj.nScans': {one: '{n} scan', other: '{n} scans'},
+      'proj.spark': {one: 'Total findings across {n} scan, oldest to newest: {vals}', other: 'Total findings across {n} scans, oldest to newest: {vals}'},
+      'proj.newN': {one: '{n} new', other: '{n} new'},
+      'proj.fixedN': {one: '{n} fixed', other: '{n} fixed'},
+      'proj.more': {one: 'and {n} more', other: 'and {n} more'},
+      'comp.controlsWith': {one: '{n} of {total} control with findings', other: '{n} of {total} controls with findings'},
+      'comp.fwLabel': {one: '{name}: {status}, {with} of {total} control with findings', other: '{name}: {status}, {with} of {total} controls with findings'},
+      'comp.mapped': {one: '{n} finding mapped', other: '{n} findings mapped'},
+      'comp.unmapped': {one: '{n} not mapped', other: '{n} not mapped'},
+      'comp.hidden': {one: '{n} control without findings is hidden.', other: '{n} controls without findings are hidden.'},
+      'rules.n': {one: '{n} rule', other: '{n} rules'},
+    },
   },
 };
 
@@ -209,14 +255,38 @@ const t = (k, vars) => {
   if (vars) Object.keys(vars).forEach((v) => { s = s.replace(`{${v}}`, vars[v]); });
   return s;
 };
+/* Plural category of a count. English: one / other. Arabic: one (1), two (2), few (3–10), many (11–99) and other
+   (0 and 100, 101, 102…: the singular noun), by the last two digits like CLDR, so 103 is "few" and 111 "many". */
+const pluralCat = (count, lg = lang) => {
+  const n = Math.abs(Math.trunc(Number(count) || 0));
+  if (lg !== 'ar') return n === 1 ? 'one' : 'other';
+  if (n === 1 || n === 2) return n === 1 ? 'one' : 'two';
+  const r = n % 100;
+  return r >= 3 && r <= 10 ? 'few' : r >= 11 ? 'many' : 'other';
+};
+/* A count string (I18N[lang].pl) in the form that agrees with `count`; {n} is `count` unless vars sets it (the
+   "by total" strings agree with {total}: tn('find.showing', total, {n: shown, total})). */
+const tn = (k, count, vars) => {
+  const forms = I18N[lang].pl[k] || I18N.ar.pl[k];
+  if (!forms) return t(k, {n: count, ...vars});
+  let s = forms[pluralCat(count)] ?? forms.other;
+  const all = {n: count, ...vars};
+  Object.keys(all).forEach((v) => { s = s.split(`{${v}}`).join(all[v]); });
+  return s;
+};
 const sevName = (s) => I18N[lang].sev[s] || s;
 const srcName = (s) => I18N[lang].src[s] || s;  // external tools (semgrep, bandit, ...) keep their own names
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
-const locale = () => (lang === 'ar' ? 'ar-EG' : 'en-GB');
-const fmtDate = (ts) => (ts ? new Date(ts * 1000).toLocaleString(locale(), {dateStyle: 'medium', timeStyle: 'short'}) : '—');
-const fmtShort = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString(locale(), {month: 'short', day: 'numeric'}) : '');
+/* Arabic month and day names with the Western digits every count, score and report of Kashif uses (ar-EG alone
+   switches dates to Eastern Arabic digits, so one line read "١٢‏/١١‏/٢٠٢٦" next to "161 نتيجةً"). */
+const locale = () => (lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB');
+/* An Arabic date is a right-to-left isolate (U+2067 … U+2069): with Western digits, a date right after a Latin name
+   ("proj — 12/11/2026" in a scan menu) would otherwise join the name's left-to-right run and display out of order. */
+const dateIso = (s) => (lang === 'ar' && s ? `\u2067${s}\u2069` : s);
+const fmtDate = (ts) => (ts ? dateIso(new Date(ts * 1000).toLocaleString(locale(), {dateStyle: 'medium', timeStyle: 'short'})) : '—');
+const fmtShort = (ts) => (ts ? dateIso(new Date(ts * 1000).toLocaleDateString(locale(), {month: 'short', day: 'numeric'})) : '');
 const errText = (code) => I18N[lang].err[code] || code;
 const api = async (path, opts = {}) => {
   const r = await fetch(path, {headers: {'Content-Type': 'application/json'}, ...opts});
@@ -228,12 +298,21 @@ const toast = (msg) => { const el = $('#toast'); el.textContent = msg; el.classL
 const total = (s) => SEV.reduce((a, k) => a + (s[k] || 0), 0);
 const ic = (name, cls = '') => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const pill = (s) => `<span class="pill sev-${s}"><span class="dot"></span>${esc(sevName(s))}</span>`;
-/* In Arabic text, isolate code identifiers such as order_query() so the bidi algorithm does not mirror their brackets. */
+/* In Arabic text, isolate each Latin run so the bidi algorithm neither mirrors its brackets (order_query()) nor
+   reorders its words: a run is words of letters, digits and code punctuation joined by spaces, so the numbers of
+   "OWASP Top 10:2021", "45 CFR 164.312" or "NIST SP 800-53 Rev. 5" and the dashes of "--sha256" stay in place.
+   Trailing punctuation is left to the Arabic sentence; a run without a Latin letter (a plain number) needs no isolate. */
 const bidi = (text) => {
   const str = String(text ?? '');
-  if (lang !== 'ar' || !/[\u0600-\u06FF]/.test(str)) return esc(str);
-  let out = '', last = 0; const tok = String.raw`[A-Za-z_$][\w$:/-]*(?:\.[\w$]+)*(?:\([^)؀-ۿ]*\))?`; const rx = new RegExp(`${tok}(?: +${tok})*`, 'g'); let m;
-  while ((m = rx.exec(str))) { out += esc(str.slice(last, m.index)) + `<bdi dir="ltr">${esc(m[0])}</bdi>`; last = m.index + m[0].length; }
+  if (lang !== 'ar' || !/[؀-ۿ]/.test(str)) return esc(str);
+  const word = String.raw`(?:--?)?[A-Za-z0-9_$./~][\w$:/.~-]*(?:\([^()؀-ۿ]*\))*`;
+  const rx = new RegExp(String.raw`${word}(?:\.? +${word})*`, 'g');
+  let out = '', last = 0, m;
+  while ((m = rx.exec(str))) {
+    const run = m[0].replace(/[.:,;-]+$/, '');
+    if (!/[A-Za-z]/.test(run)) continue;
+    out += esc(str.slice(last, m.index)) + `<bdi dir="ltr">${esc(run)}</bdi>`; last = m.index + run.length;
+  }
   return out + esc(str.slice(last));
 };
 const ARABIC = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
@@ -255,7 +334,7 @@ function scanName(s) {
   if (!s) return '';
   if (s.label) {
     const m = /^(\d+) ملف مرفوع$/.exec(s.label);
-    return m ? t('scan.uploaded', {n: m[1]}) : s.label;
+    return m ? tn('scan.uploaded', Number(m[1])) : s.label;
   }
   const tg = String(s.target || '');
   if (/^https?:\/\//i.test(tg)) {
@@ -368,14 +447,14 @@ async function loadDashboard(arg) {
   const L = st.latest; const sum = L.summary;
   $('#dash-open').href = `#findings/${L.id}`;
   setHTML($('#dash-context'), `<span class="ctx" title="${esc(L.target)}">${ic(L.kind === 'url' ? 'globe' : 'folder', 'sm')}<span class="muted">${esc(t('dash.latest'))}:</span> <b class="ellipsis" dir="auto">${esc(scanName(L))}</b></span>`
-    + `<span class="ctx">${ic('file', 'sm')}${L.files_scanned} ${esc(t(L.kind === 'url' ? 'find.pages' : 'find.files'))}</span>`
+    + `<span class="ctx">${ic('file', 'sm')}${esc(tn(L.kind === 'url' ? 'find.nPages' : 'find.nFiles', L.files_scanned))}</span>`
     + `<span class="ctx">${ic('clock', 'sm')}${esc(fmtDate(L.finished_at))}</span>`);
   setHTML($('#tiles'), tilesHTML(sum));
   $$('#tiles .tile').forEach((el) => { el.onclick = () => { location.hash = `findings/${L.id}?sev=${el.dataset.sev}`; }; });
   drawDonut($('#donut'), $('#donut-legend'), sum);
   lastTrend = st.trend; drawTrend($('#trend'), st.trend);
   const maxR = Math.max(1, ...st.top_rules.map((r) => r.count));
-  setHTML($('#top-rules'), st.top_rules.map((r) => `<li class="sev-${r.severity}"><span class="main">${pill(r.severity)}<a class="title" href="#findings/${L.id}?q=${encodeURIComponent(r.rule_id)}" title="${esc(titleOf(r))}">${esc(titleOf(r))}</a></span><span class="rid" dir="ltr">${esc(r.rule_id)}</span><span class="bar"><i style="width:${(r.count / maxR) * 100}%"></i></span><span class="cnt">${r.count}</span></li>`).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`);
+  setHTML($('#top-rules'), st.top_rules.map((r) => `<li class="sev-${r.severity}"><span class="main">${pill(r.severity)}<a class="title" href="#findings/${L.id}?q=${encodeURIComponent(r.rule_id)}" title="${esc(titleOf(r))}">${esc(titleOf(r))}</a></span><span class="rid" dir="ltr" title="${esc(r.rule_id)}">${esc(r.rule_id)}</span><span class="bar"><i style="width:${(r.count / maxR) * 100}%"></i></span><span class="cnt">${r.count}</span></li>`).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`);
   const maxF = Math.max(1, ...st.top_files.map(([, n]) => n));
   setHTML($('#top-files'), st.top_files.map(([f, n]) => `<li><span class="ffile">${ic('file', 'sm')}${fpath(f)}</span><span class="bar"><i style="width:${(n / maxF) * 100}%"></i></span><span class="cnt">${n}</span></li>`).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`);
   const scans = await api('/api/scans' + (pid ? `?project=${pid}` : ''));
@@ -391,7 +470,7 @@ function drawDonut(svg, legend, sum) {
     off += len;
   });
   const track = `<circle cx="${c}" cy="${c}" r="${r}" fill="none" class="ch-grid" stroke-width="14"/>`;
-  setHTML(svg, `${track}<g transform="rotate(-90 ${c} ${c})">${parts.join('')}</g><text x="${c}" y="${c + 3}" text-anchor="middle" font-size="24" class="donut-total">${tot}</text><text x="${c}" y="${c + 19}" text-anchor="middle" font-size="9.5" class="donut-cap">${esc(t('dash.findingsCap'))}</text>`);
+  setHTML(svg, `${track}<g transform="rotate(-90 ${c} ${c})">${parts.join('')}</g><text x="${c}" y="${c + 3}" text-anchor="middle" font-size="24" class="donut-total">${tot}</text><text x="${c}" y="${c + 19}" text-anchor="middle" font-size="9.5" class="donut-cap">${esc(tn('dash.findingsCap', tot))}</text>`);
   svg.setAttribute('aria-label', SEV.map((s) => `${sevName(s)} ${sum[s] || 0}`).join(', '));
   setHTML(legend, SEV.map((s) => `<div class="sev-${s}"><span class="dot"></span>${esc(sevName(s))}<b>${sum[s] || 0}</b><span class="pct">${tot ? Math.round(((sum[s] || 0) / tot) * 100) : 0}%</span></div>`).join(''));
 }
@@ -456,13 +535,13 @@ function sparkHTML(trend) {
   const Y = (v) => H - pad - (v / max) * (H - 2 * pad);
   const pts = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`);
   const line = n > 1 ? `<polygon class="sp-area" points="${pad},${H - pad} ${pts.join(' ')} ${W - pad},${H - pad}"/><polyline class="sp-line" points="${pts.join(' ')}"/>` : '';
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" direction="ltr" aria-label="${esc(t('proj.spark', {n, vals: vals.join(', ')}))}"><line class="sp-base" x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}"/>${line}<circle class="sp-dot" cx="${X(n - 1).toFixed(1)}" cy="${Y(vals[n - 1]).toFixed(1)}" r="3"/></svg>`;
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" direction="ltr" aria-label="${esc(tn('proj.spark', n, {vals: vals.join(', ')}))}"><line class="sp-base" x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}"/>${line}<circle class="sp-dot" cx="${X(n - 1).toFixed(1)}" cy="${Y(vals[n - 1]).toFixed(1)}" r="3"/></svg>`;
 }
 const changeBadges = (p) => {
   if (p.new == null) return `<span class="chg none">${esc(t(p.done_scans ? 'proj.firstScan' : 'proj.neverDone'))}</span>`;
   if (!p.new && !p.fixed) return `<span class="chg none">${ic('check', 'sm')}${esc(t('proj.noChange'))}</span>`;
-  return (p.new ? `<span class="chg new">${ic('warning', 'sm')}${esc(t('proj.newN', {n: p.new}))}</span>` : '')
-    + (p.fixed ? `<span class="chg fixed">${ic('check', 'sm')}${esc(t('proj.fixedN', {n: p.fixed}))}</span>` : '');
+  return (p.new ? `<span class="chg new">${ic('warning', 'sm')}${esc(tn('proj.newN', p.new))}</span>` : '')
+    + (p.fixed ? `<span class="chg fixed">${ic('check', 'sm')}${esc(tn('proj.fixedN', p.fixed))}</span>` : '');
 };
 const riskKey = (p) => SEV.map((s) => String(p.summary[s] || 0).padStart(7, '0')).join('');
 function renderProjects() {
@@ -471,7 +550,7 @@ function renderProjects() {
   if (sort === 'risk') list = list.slice().sort((a, b) => (riskKey(a) < riskKey(b) ? 1 : riskKey(a) > riskKey(b) ? -1 : 0));
   else if (sort === 'name') list = list.slice().sort((a, b) => projName(a).localeCompare(projName(b), locale()));
   $('#proj-toolbar').classList.toggle('hidden', !projCache.length);
-  $('#proj-count').textContent = !projCache.length ? '' : list.length === projCache.length ? t('proj.count', {n: projCache.length}) : t('proj.shown', {n: list.length, total: projCache.length});
+  $('#proj-count').textContent = !projCache.length ? '' : list.length === projCache.length ? tn('proj.count', projCache.length) : tn('proj.shown', projCache.length, {n: list.length, total: projCache.length});
   if (!projCache.length) {
     setHTML($('#proj-grid'), `<div class="empty card wide"><img src="logo.svg" width="56" height="56" alt=""><h2>${esc(t('dash.empty'))}</h2><p class="muted">${esc(t('dash.emptyHint'))}</p><a class="btn primary" href="#scan">${ic('plus')}${esc(t('nav.scan'))}</a></div>`);
     return;
@@ -486,13 +565,13 @@ function renderProjects() {
         ${bad ? `<span class="status ${esc(ls.status)}"><span class="dot"></span>${esc(I18N[lang].status[ls.status] || ls.status)}</span>` : ''}
       </header>
       <div class="pj-stats">
-        <div class="pj-total"><span class="n${p.total ? '' : ' zero'}">${p.done_scans ? p.total : '—'}</span><span class="muted">${esc(t('proj.findings'))}</span></div>
+        <div class="pj-total"><span class="n${p.total ? '' : ' zero'}">${p.done_scans ? p.total : '—'}</span><span class="muted">${esc(tn('proj.findings', p.done_scans ? p.total : 0))}</span></div>
         ${sparkHTML(p.trend)}
       </div>
       <div class="pj-sev">${p.done_scans ? sevCounts(p.summary) : `<span class="sevc none">${esc(t('proj.neverDone'))}</span>`}</div>
       <div class="pj-chg">${changeBadges(p)}</div>
       <footer class="pj-foot">
-        <span class="pj-meta muted">${ic('clock', 'sm')}<span>${esc(t('proj.lastScan'))}: ${esc(fmtDate(p.last_scan_at))}</span><span class="sep" aria-hidden="true">·</span><span>${esc(t('proj.nScans', {n: p.scans}))}</span></span>
+        <span class="pj-meta muted">${ic('clock', 'sm')}<span>${esc(t('proj.lastScan'))}: ${esc(fmtDate(p.last_scan_at))}</span><span class="sep" aria-hidden="true">·</span><span>${esc(tn('proj.nScans', p.scans))}</span></span>
         <span class="pj-actions">${p.latest ? `<a class="btn sm" href="#findings/${esc(p.latest)}">${esc(t('nav.findings'))}</a>` : ''}<a class="btn sm" href="#projects/${esc(p.id)}">${esc(t('proj.history'))}${ic('chevron', 'sm flip')}</a></span>
       </footer>
     </article>`;
@@ -520,13 +599,13 @@ async function loadProjects(arg) {
     if (!url) $('#path-btn').click();          // a web target still needs the authorization box ticked
   };
   setHTML($('#pd-context'), `<span class="ctx">${ic('clock', 'sm')}<span class="muted">${esc(t('proj.lastScan'))}:</span> ${esc(fmtDate(p.last_scan_at))}</span>`
-    + `<span class="ctx">${ic('reports', 'sm')}${esc(t('proj.nScans', {n: p.scans.length}))}</span>`
-    + (p.latest ? `<span class="ctx">${ic('file', 'sm')}${p.files_scanned} ${esc(t(p.kind === 'url' ? 'find.pages' : 'find.files'))}</span><span class="ctx">${ic('findings', 'sm')}${p.total} ${esc(t('dash.findingsCap'))}</span>` : ''));
+    + `<span class="ctx">${ic('reports', 'sm')}${esc(tn('proj.nScans', p.scans.length))}</span>`
+    + (p.latest ? `<span class="ctx">${ic('file', 'sm')}${esc(tn(p.kind === 'url' ? 'find.nPages' : 'find.nFiles', p.files_scanned))}</span><span class="ctx">${ic('findings', 'sm')}${esc(tn('find.nFindings', p.total))}</span>` : ''));
   setHTML($('#pd-tiles'), tilesHTML(p.summary, !!p.latest));
   if (p.latest) $$('#pd-tiles .tile').forEach((el) => { el.onclick = () => { location.hash = `findings/${p.latest}?sev=${el.dataset.sev}`; }; });
   const done = p.scans.filter((s) => s.status === 'done');
   const li = (f) => `<li class="sev-${esc(f.severity)}"><span class="main">${pill(f.severity)}<span class="title" dir="auto" title="${esc(titleOf(f))}">${esc(titleOf(f))}</span></span>${fpath(f.file, f.line)}</li>`;
-  const col = (cls, icon, title, n, items) => `<div class="diff-col ${cls}"><h3>${ic(icon)}<span>${esc(title)}</span> <span class="count">${n}</span></h3><ul class="rank">${items.slice(0, 8).map(li).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`}${n > 8 ? `<li class="empty-li">${esc(t('proj.more', {n: n - 8}))}</li>` : ''}</ul></div>`;
+  const col = (cls, icon, title, n, items) => `<div class="diff-col ${cls}"><h3>${ic(icon)}<span>${esc(title)}</span> <span class="count">${n}</span></h3><ul class="rank">${items.slice(0, 8).map(li).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`}${n > 8 ? `<li class="empty-li">${esc(tn('proj.more', n - 8))}</li>` : ''}</ul></div>`;
   setHTML($('#pd-changes'), p.new == null
     ? `<div class="empty inline"><span class="e-icon">${ic('compare', 'lg')}</span><p><b>${esc(t(p.done_scans ? 'proj.firstScan' : 'proj.neverDone'))}</b></p><p class="muted">${esc(t('proj.firstScanHint'))}</p></div>`
     : `<p class="muted pd-between">${esc(t('proj.between', {a: fmtDate(done[1].finished_at), b: fmtDate(done[0].finished_at)}))}</p><div class="pj-chg">${changeBadges(p)}</div>`
@@ -699,7 +778,7 @@ let pending = [];
 const dz = $('#dropzone');
 const setFiles = (files) => {
   pending = [...files];
-  $('#upload-list').textContent = pending.length ? `${pending.length} ${t('scan.selected')}: ${pending.slice(0, 5).map((f) => f.webkitRelativePath || f.name).join(', ')}${pending.length > 5 ? '…' : ''}` : '';
+  $('#upload-list').textContent = pending.length ? `${tn('scan.nSelected', pending.length)}: ${pending.slice(0, 5).map((f) => f.webkitRelativePath || f.name).join(', ')}${pending.length > 5 ? '…' : ''}` : '';
   $('#upload-btn').classList.toggle('hidden', !pending.length);
 };
 $('#file-input').onchange = (e) => setFiles(e.target.files);
@@ -738,7 +817,7 @@ async function watchScan(id) {
       $('#scan-status-title').textContent = `${t('scan.failed')}: ${errorOf(s)}`; return;
     }
     icon.className = 'status-icon ok'; setHTML(icon, ic('check'));
-    $('#scan-status-title').textContent = `${t('scan.done')} — ${scanName(s)} · ${s.files_scanned} ${t(s.kind === 'url' ? 'find.pages' : 'find.files')}`;
+    $('#scan-status-title').textContent = `${t('scan.done')} — ${scanName(s)} · ${tn(s.kind === 'url' ? 'find.nPages' : 'find.nFiles', s.files_scanned)}`;
     setHTML($('#scan-status-tiles'), tilesHTML(s.summary, false));
     $('#scan-status-open').href = `#findings/${s.id}`;
     $('#scan-status-open').classList.remove('hidden');
@@ -786,9 +865,9 @@ async function loadFindings(arg) {
   setHTML($('#source-filter'), `<option value="">${esc(t('find.allSources'))}</option>` + sources.map((s) => `<option value="${esc(s)}">${esc(srcName(s))}</option>`).join(''));
   ['md', 'json', 'html', 'sarif'].forEach((x) => { $(`#dl-${x}`).href = `/api/scans/${chosen}/report.${x}${x === 'json' ? '' : `?lang=${lang}`}`; });
   setHTML($('#findings-context'), `<span class="ctx" title="${esc(cur.target)}">${ic(cur.kind === 'url' ? 'globe' : 'folder', 'sm')}<b class="ellipsis" dir="auto">${esc(scanName(cur))}</b></span>`
-    + `<span class="ctx">${ic('file', 'sm')}${cur.files_scanned} ${esc(t(cur.kind === 'url' ? 'find.pages' : 'find.files'))}</span>`
+    + `<span class="ctx">${ic('file', 'sm')}${esc(tn(cur.kind === 'url' ? 'find.nPages' : 'find.nFiles', cur.files_scanned))}</span>`
     + `<span class="ctx">${ic('clock', 'sm')}${esc(fmtDate(cur.finished_at))}</span>`
-    + `<span class="ctx">${ic('findings', 'sm')}${total(cur.summary)} ${esc(t('dash.findingsCap'))}</span>`);
+    + `<span class="ctx">${ic('findings', 'sm')}${esc(tn('find.nFindings', total(cur.summary)))}</span>`);
   setHTML($('#findings-notes'), notesOf(cur).map((n) => `<div class="note">${ic('info')}<span>${bidi(n)}</span></div>`).join('')
     + (tri.err ? `<div class="note warn">${ic('warning')}<span>${esc(t('tri.loadFail', {err: tri.err}))}</span></div>` : ''));
   renderFindings();
@@ -809,7 +888,7 @@ function renderFindings() {
     if (st === 'false_positive' && !showFp) { fpHidden++; return false; }
     return true;
   });
-  const head = `<div class="fl-head"><span>${esc(t('find.showing', {n: shown.length, total: cur.findings.length}))}${fpHidden ? ` <span class="fp-hidden">· ${esc(t('tri.hiddenFp', {n: fpHidden}))}</span>` : ''}</span>${shown.length < cur.findings.length ? `<button class="btn sm ghost" type="button" id="clear-filters">${ic('x', 'sm')}${esc(t('find.clear'))}</button>` : ''}</div>`;
+  const head = `<div class="fl-head"><span>${esc(tn('find.showing', cur.findings.length, {n: shown.length, total: cur.findings.length}))}${fpHidden ? ` <span class="fp-hidden">· ${esc(t('tri.hiddenFp', {n: fpHidden}))}</span>` : ''}</span>${shown.length < cur.findings.length ? `<button class="btn sm ghost" type="button" id="clear-filters">${ic('x', 'sm')}${esc(t('find.clear'))}</button>` : ''}</div>`;
   if (!shown.length) {
     setHTML($('#findings-list'), head + `<div class="empty inline"><span class="e-icon">${ic('search', 'lg')}</span><p class="muted">${esc(t('find.none'))}</p></div>`);
   } else {
@@ -928,7 +1007,7 @@ function detailHTML(f, idx) {
     flow ? `<span class="tag flow">${ic('shield')}${esc(t('find.dataflow'))}</span>` : `<span class="tag">${ic('pattern')}${esc(t('find.pattern'))}</span>`,
     `<span class="tag" title="${esc(f.source)}">${ic('code')}${esc(srcName(f.source))}</span>`,
     reachTag(f), x.decompiled ? '<span class="tag">jadx</span>' : '',
-    x.page_count > 1 ? `<span class="tag">${esc(t('find.onPages', {n: x.page_count}))}</span>` : ''].join('');
+    x.page_count > 1 ? `<span class="tag">${esc(tn('find.onPages', x.page_count))}</span>` : ''].join('');
   let body = `<section class="d-sec"><h2>${ic('file')}${esc(t('find.location'))}</h2><div class="locbar">${ic('file')}<span class="p" title="${esc(where)}">${esc(dir)}<b>${esc(base)}</b>${f.line ? ':' + f.line : ''}</span>${copyBtn(where)}</div></section>`;
   if (flow && x.path && x.path.length) {
     body += `<section class="d-sec"><h2>${ic('flow')}${esc(t('find.flow'))}</h2>${trailHTML(f)}</section>`;
@@ -941,7 +1020,7 @@ function detailHTML(f, idx) {
   if (hasFix(f)) body += fixHTML(f, idx);
   body += triageHTML(f, idx);
   if (x.url) body += `<section class="d-sec"><h2>${ic('link')}${esc(t('find.ref'))}</h2><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" dir="ltr">${esc(x.url)} ${ic('external', 'xs')}</a></section>`;
-  if (x.pages && x.pages.length > 1) body += `<section class="d-sec"><details><summary>${esc(t('find.onPages', {n: x.pages.length}))}</summary><ul class="pages-list">${x.pages.slice(0, 50).map((u) => `<li>${esc(u)}</li>`).join('')}</ul></details></section>`;
+  if (x.pages && x.pages.length > 1) body += `<section class="d-sec"><details><summary>${esc(tn('find.onPages', x.pages.length))}</summary><ul class="pages-list">${x.pages.slice(0, 50).map((u) => `<li>${esc(u)}</li>`).join('')}</ul></details></section>`;
   if (f.fingerprint) body += `<div class="fp">${ic('hash')}<span>${esc(t('find.fingerprint'))}</span><code>${esc(f.fingerprint)}</code>${copyBtn(f.fingerprint)}</div>`;
   return `<div class="sev-${f.severity}"><div class="d-tags">${tags}</div><div class="d-grid">${body}</div></div>`;
 }
@@ -956,7 +1035,7 @@ const apiRaw = async (path, opts = {}) => {
   return {ok: r.ok, status: r.status, data: await r.json().catch(() => ({}))};
 };
 const apiErr = (d, fallback = '') => (lang === 'ar' && d && typeof d.error_ar === 'string' && d.error_ar) || (d && d.error ? errText(String(d.error)) : '') || fallback;
-const fmtIso = (s) => { const d = new Date(s); return s && !Number.isNaN(d.getTime()) ? d.toLocaleString(locale(), {dateStyle: 'medium', timeStyle: 'short'}) : String(s || ''); };
+const fmtIso = (s) => { const d = new Date(s); return s && !Number.isNaN(d.getTime()) ? dateIso(d.toLocaleString(locale(), {dateStyle: 'medium', timeStyle: 'short'})) : String(s || ''); };
 const isHttp = (u) => typeof u === 'string' && /^https?:\/\/[^\s"'<>]+$/i.test(u);
 async function loadTriage(scanId) {
   tri.scan = scanId; tri.data = null; tri.ann = new Map(); tri.raw = new Map(); tri.err = null;
@@ -1181,7 +1260,7 @@ function renderCompliance() {
   const sid = encodeURIComponent(s.id);
   setHTML($('#comp-context'), `<span class="ctx" title="${esc(s.target)}">${ic(s.kind === 'url' ? 'globe' : 'folder', 'sm')}<b class="ellipsis" dir="auto">${esc(scanName(s))}</b></span>`
     + `<span class="ctx">${ic('clock', 'sm')}${esc(fmtDate(s.finished_at))}</span>`
-    + `<span class="ctx">${ic('findings', 'sm')}${total(s.summary || {})} ${esc(t('dash.findingsCap'))}</span>`
+    + `<span class="ctx">${ic('findings', 'sm')}${esc(tn('find.nFindings', total(s.summary || {})))}</span>`
     + `<span class="ctx risk r-${rating}">${ic('warning', 'sm')}<span class="muted">${esc(t('comp.risk'))}:</span> <b>${Number(risk.score) || 0}/100</b> <span class="rating">${esc(t('comp.r_' + rating))}</span></span>`
     + `<a class="ctx link" href="#findings/${sid}">${ic('findings', 'sm')}${esc(t('scan.viewResults'))}</a>`);
   $('#comp-disclaimer span').textContent = d.disclaimer || '';
@@ -1190,12 +1269,12 @@ function renderCompliance() {
     const fw = fws[fid]; const on = fid === comp.fw;
     const tot = Number(fw.controls_total) || 0; const w = Number(fw.controls_with_findings) || 0;
     const pct = tot ? Math.round((w / tot) * 100) : 0; const st = ['fail', 'warn', 'pass'].includes(fw.status) ? fw.status : 'warn';
-    return `<button type="button" class="fw-card st-${st}" data-fw="${esc(fid)}" aria-pressed="${on}" aria-label="${esc(t('comp.fwLabel', {name: fw.title, status: t('comp.st_' + st), with: w, total: tot}))}">
+    return `<button type="button" class="fw-card st-${st}" data-fw="${esc(fid)}" aria-pressed="${on}" aria-label="${esc(tn('comp.fwLabel', tot, {name: fw.title, status: t('comp.st_' + st), with: w, total: tot}))}">
       <span class="fw-top"><b>${esc(fw.short || fw.title)}</b>${stBadge(st)}</span>
       <span class="fw-name muted">${esc(fw.title)}</span>
       <span class="fw-bar" aria-hidden="true"><i style="width:${pct}%"></i></span>
-      <span class="fw-nums">${esc(t('comp.controlsWith', {n: w, total: tot}))}</span>
-      <span class="fw-nums muted">${esc(t('comp.mapped', {n: Number(fw.findings_mapped) || 0}))}${fw.findings_unmapped ? ' · ' + esc(t('comp.unmapped', {n: fw.findings_unmapped})) : ''}</span>
+      <span class="fw-nums">${esc(tn('comp.controlsWith', tot, {n: w, total: tot}))}</span>
+      <span class="fw-nums muted">${esc(tn('comp.mapped', Number(fw.findings_mapped) || 0))}${fw.findings_unmapped ? ' · ' + esc(tn('comp.unmapped', Number(fw.findings_unmapped) || 0)) : ''}</span>
     </button>`;
   }).join(''));
   renderFramework();
@@ -1215,7 +1294,7 @@ function renderFramework() {
   $('#fw-audit').href = `/api/scans/${sid}/audit.html?framework=${encodeURIComponent(comp.fw)}&lang=${lang}`;
   const src = fw.source || {};
   setHTML($('#fw-meta'), (fw.note ? `<p><b>${esc(t('comp.note'))}:</b> ${bidi(fw.note)}</p>` : '')
-    + (src.title ? `<p><b>${esc(t('comp.source'))}:</b> ${isHttp(src.url) && /^https:/i.test(src.url) ? `<a href="${esc(src.url)}" target="_blank" rel="noopener noreferrer">${esc(src.title)} ${ic('external', 'xs')}</a>` : esc(src.title)}</p>` : ''));
+    + (src.title ? `<p><b>${esc(t('comp.source'))}:</b> ${isHttp(src.url) && /^https:/i.test(src.url) ? `<a href="${esc(src.url)}" target="_blank" rel="noopener noreferrer"><span>${bidi(src.title)}</span>${ic('external', 'xs')}</a>` : bidi(src.title)}</p>` : ''));
   const rows = Array.isArray(fw.rows) ? fw.rows : [];
   const list = comp.all ? rows : rows.filter((r) => r.status !== 'pass');
   const hidden = rows.length - list.length;
@@ -1228,7 +1307,7 @@ function renderFramework() {
       <td>${stBadge(r.status)}</td></tr>
     <tr class="ctl-findings" id="ctl-${k}" hidden><td colspan="5"></td></tr>`).join('');
   setHTML($('#fw-table'), head + `<tbody>${body || `<tr><td colspan="5" class="muted fw-none">${esc(t('comp.none'))}</td></tr>`}</tbody>`
-    + (hidden ? `<tfoot><tr><td colspan="5" class="muted fw-hidden">${esc(t('comp.hidden', {n: hidden}))}</td></tr></tfoot>` : ''));
+    + (hidden ? `<tfoot><tr><td colspan="5" class="muted fw-hidden">${esc(tn('comp.hidden', hidden))}</td></tr></tfoot>` : ''));
   comp.list = list;
 }
 $('#fw-table').addEventListener('click', (e) => {
@@ -1238,7 +1317,7 @@ $('#fw-table').addEventListener('click', (e) => {
   if (open && !tr.dataset.ready) {
     const fs = (r.findings || []).map((x) => comp.byId.get(x)).filter(Boolean);
     const sid = encodeURIComponent(comp.scan.id);
-    setHTML(tr.firstElementChild, `<ul class="rank ctl-list">${fs.slice(0, 50).map((f) => `<li class="sev-${esc(f.severity)}"><span class="main">${pill(f.severity)}<a class="title" dir="auto" href="#findings/${sid}?fp=${encodeURIComponent(f.fingerprint || '')}">${esc(f.title)}</a></span>${fpath(f.file, f.line)}</li>`).join('')}${fs.length > 50 ? `<li class="empty-li">${esc(t('proj.more', {n: fs.length - 50}))}</li>` : ''}</ul>`);
+    setHTML(tr.firstElementChild, `<ul class="rank ctl-list">${fs.slice(0, 50).map((f) => `<li class="sev-${esc(f.severity)}"><span class="main">${pill(f.severity)}<a class="title" dir="auto" href="#findings/${sid}?fp=${encodeURIComponent(f.fingerprint || '')}">${esc(f.title)}</a></span>${fpath(f.file, f.line)}</li>`).join('')}${fs.length > 50 ? `<li class="empty-li">${esc(tn('proj.more', fs.length - 50))}</li>` : ''}</ul>`);
     tr.dataset.ready = '1';
   }
   b.setAttribute('aria-expanded', String(open)); tr.hidden = !open; b.closest('tr').classList.toggle('open', open);
@@ -1248,7 +1327,7 @@ $('#fw-table').addEventListener('click', (e) => {
 let rulesCache = null;
 async function loadRules() {
   rulesCache = rulesCache || await api('/api/rules');
-  $('#rules-count').textContent = `${rulesCache.length} ${t('rules.count')}`;
+  $('#rules-count').textContent = tn('rules.n', rulesCache.length);
   renderRules();
 }
 $('#rules-search').oninput = renderRules;

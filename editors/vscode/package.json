@@ -2,7 +2,7 @@
   "name": "kashif",
   "displayName": "Kashif (كاشِف) — Security Scanner",
   "description": "Static application security testing in the editor: type-aware, cross-file taint analysis for 12 languages, powered by the open-source Kashif (vulnscan) language server.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "kashif",
   "license": "MIT",
   "icon": "images/icon.png",

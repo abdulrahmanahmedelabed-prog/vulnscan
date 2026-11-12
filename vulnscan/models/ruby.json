@@ -652,7 +652,6 @@
     "content_tag",
     "tag",
     "simple_format",
-    "sanitize",
     "link_to"
    ],
    "title": "Tainted data reaches a template",

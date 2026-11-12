@@ -65,6 +65,7 @@ CATALOG: dict[str, str] = {
     "لغة المخرجات: ar عربية، en إنجليزية، both الاثنتان؛ auto (الافتراضي) يتبع VULNSCAN_LANG ثم لغة النظام":
         "Output language: ar (Arabic), en (English) or both; auto (default) follows VULNSCAN_LANG, then the system locale",
     "اعرض القواعد المدمجة واخرج": "List the built-in rules and exit",
+    "لا تلوّن مخرجات الطرفية": "Do not color the terminal output",
     "لا تفتح المتصفح تلقائيًا": "Do not open the browser automatically",
     # ------------------------------------------------------------------ 1.0: report formats, add-on flags
     "صيغة التقرير: console أو markdown أو json أو html أو sarif (لـ GitHub Code Scanning وVS Code)، "
@@ -144,6 +145,17 @@ CATALOG: dict[str, str] = {
     "ملف السياسة يطلب تقارير (reports) لم تُكتب: حدّد مجلدها بالخيار --policy-reports-dir":
         "The policy file asks for reports (reports:) that were not written: choose their directory with "
         "--policy-reports-dir",
+    "الهدف مطلوب: مسار مجلد أو ملف أو أرشيف، أو عنوان http(s)://":
+        "the following arguments are required: target (a folder, file or archive path, or an http(s):// URL)",
+    "الخياران --diff-base و--diff-staged يحتاجان مسارًا محليًا داخل مستودع git":
+        "--diff-base/--diff-staged need a local path inside a git repository",
+    "تحتاج صيغة asff إلى رقم حساب AWS من 12 رقمًا ومنطقة AWS صالحة: --aws-account ID --aws-region REGION "
+    "(مثل --aws-account 123456789012 --aws-region eu-west-1)":
+        "the asff format needs a 12-digit AWS account ID and a valid AWS region: --aws-account ID --aws-region REGION "
+        "(e.g. --aws-account 123456789012 --aws-region eu-west-1)",
+    "لصيغة asff: رقم حساب AWS (12 رقمًا)، مع --aws-region": "asff: the AWS account ID (12 digits), with --aws-region",
+    "لصيغة asff: منطقة AWS لـ Security Hub، مثل eu-west-1": "asff: the AWS region of Security Hub, e.g. eu-west-1",
+    "منفذ الواجهة المحلية (الافتراضي 8765)": "port of the local web UI (default 8765)",
     # ------------------------------------------------------------------ console messages and scan notes (cli.py)
     "فحص عنوان ويب يتطلب --authorized (تأكيد أنك مخوَّل بفحص هذا الهدف).":
         "Scanning a web URL requires --authorized (confirmation that you are authorized to scan this target).",
@@ -174,7 +186,16 @@ PATTERNS: list[tuple[str, str]] = [
     (r"حزمة القواعد غير مثبّتة: (?P<names>.+)", r"Rule pack not installed: \g<names>"),
     (r"إطار امتثال غير معروف: (?P<name>.+)", r"Unknown compliance framework: \g<name>"),
     (r"مجلد ملف الإخراج غير موجود: (?P<dir>.+)", r"The folder of the output file does not exist: \g<dir>"),
+    (r"تعذّرت قراءة ملف خط الأساس \(ليس JSON صالحًا\): (?P<path>.+)",
+     r"Cannot read the baseline file (not valid JSON): \g<path>"),
+    (r"ملف خط الأساس ليس من إنتاج --write-baseline \(لا قائمة fingerprints فيه\)، فعُدّ فارغًا وكل النتائج تُعرض "
+     r"كجديدة: (?P<path>.+)",
+     r"The baseline file was not written by --write-baseline (it has no fingerprints list); it counts as empty and "
+     r"every finding is shown as new: \g<path>"),
     (r"تجاوز مهلة الإصلاح: (?P<n>\d+) نتيجة مفتوحة", r"Fix deadline (SLA) exceeded: \g<n> open findings"),
+    (r"لم يُحدَّث ملف الفرز: المجلد ‎\.kashif أو ملف triage\.json في المشروع رابط رمزي يشير إلى خارجه",
+     r"The triage file was not updated: .kashif or triage.json in the project is a symbolic link pointing "
+     r"outside it"),
     (r"قبول خطر منتهٍ: أُعيد فتح (?P<n>\d+) نتيجة", r"Risk acceptance expired: \g<n> findings re-opened"),
     (r"ارتداد: عادت (?P<n>\d+) نتيجة بعد إصلاحها", r"Regression: \g<n> findings are back after being fixed"),
     # scan notes (cli.py); a count of exactly 1 gets the English singular

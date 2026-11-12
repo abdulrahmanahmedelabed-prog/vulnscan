@@ -5,7 +5,7 @@ Each test is a small program: the vulnerable case must be reported and its safe 
 
 from __future__ import annotations
 
-from vulnscan.cfamily_frontend import parse_cfamily_ex
+from vulnscan.cfamily_frontend import parse_cfamily_ex, tokenize
 from vulnscan.scanner import scan_path
 
 
@@ -455,3 +455,379 @@ def test_java_http_client_execute_is_not_a_sql_sink():
     found = {(r, ln) for r, _, ln in _js_rules({"Fetch.java": _HTTPCLIENT})}
     assert ("DF004", 17) in found
     assert ("DF004", 11) not in found
+
+
+# ------------------------------------------------------------------ 1.0.1 engine precision / MyBatis recall
+def _write(root, files: dict) -> None:
+    for rel, text in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+
+
+def _scan_full(root):
+    findings, _ = scan_path(root, jadx=False, notes=[])
+    return findings
+
+
+_MB_CONTROLLER = '''package demo.web;
+
+import demo.mapper.UserMapper;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class Users {
+    private UserMapper userMapper;
+
+    @GetMapping("/a")
+    public Object a(@RequestParam("name") String name) {
+        return userMapper.byNameDollar(name);
+    }
+
+    @GetMapping("/b")
+    public Object b(@RequestParam("name") String name) {
+        return userMapper.byNameHash(name);
+    }
+
+    @GetMapping("/c")
+    public Object c(@RequestParam("sort") String sort) {
+        return userMapper.ordered(sort);
+    }
+
+    @GetMapping("/d")
+    public Object d(@RequestParam("name") String name) {
+        return userMapper.likeXml(name);
+    }
+
+    @GetMapping("/e")
+    public Object e(@RequestParam("name") String name) {
+        return userMapper.byIdXml(name);
+    }
+
+    @GetMapping("/f")
+    public Object f(@RequestParam("sort") String sort) {
+        return userMapper.orderXml(sort);
+    }
+
+    @GetMapping("/g")
+    public Object g(@RequestParam("sort") String sort) {
+        return userMapper.orderXml(Filter.clean(sort));
+    }
+}
+'''
+
+_MB_FILTER = '''package demo.web;
+
+import java.util.regex.Pattern;
+
+public class Filter {
+    private static final Pattern SAFE = Pattern.compile("^[a-zA-Z0-9_]+$");
+
+    public static String clean(String s) {
+        if (!SAFE.matcher(s).matches()) {
+            return null;
+        }
+        return s;
+    }
+}
+'''
+
+_MB_MAPPER = '''package demo.mapper;
+
+import org.apache.ibatis.annotations.*;
+import java.util.List;
+
+@Mapper
+public interface UserMapper {
+    @Select("select * from users where name = '${name}'")
+    List<Object> byNameDollar(@Param("name") String name);
+
+    @Select("select * from users where name = #{name}")
+    List<Object> byNameHash(@Param("name") String name);
+
+    @Select({"select * from users", "order by ${order}"})
+    List<Object> ordered(@Param("order") String sort);
+
+    List<Object> likeXml(String name);
+    List<Object> byIdXml(String name);
+    List<Object> orderXml(@Param("order") String sort);
+}
+'''
+
+_MB_XML = '''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="demo.mapper.UserMapper">
+    <!-- <select id="byIdXml">select * from users where id = ${id}</select> -->
+    <sql id="orderBy">order by ${order}</sql>
+    <select id="likeXml" resultType="map">
+        select * from users where name like '%${_parameter}%'
+    </select>
+    <select id="byIdXml" resultType="map">
+        select * from users where id = #{id}
+    </select>
+    <select id="orderXml" resultType="map">
+        select * from users
+        <if test="order != null"><include refid="orderBy"/></if>
+    </select>
+</mapper>
+'''
+
+
+def test_mybatis_dollar_substitution_is_sql_injection(tmp_path):
+    _write(tmp_path, {"src/main/java/demo/web/Users.java": _MB_CONTROLLER,
+                      "src/main/java/demo/web/Filter.java": _MB_FILTER,
+                      "src/main/java/demo/mapper/UserMapper.java": _MB_MAPPER,
+                      "src/main/resources/mapper/UserMapper.xml": _MB_XML})
+    findings = _scan_full(tmp_path)
+    ctl = "src/main/java/demo/web/Users.java"
+    sqli = {f.line: f for f in findings if f.rule_id == "DF004" and f.file == ctl}
+    assert {12, 22, 27, 37} <= set(sqli), sorted(sqli)   # ${} in @Select, @Select({..}) with @Param, mapper XML
+    assert 17 not in sqli                                # #{name} is a bound parameter
+    assert 32 not in sqli                                # #{id} in XML (the ${id} is inside an XML comment)
+    assert 42 not in sqli                                # the value was validated by an anchored allow-list regexp
+    # the data-flow path ends at the SQL text: the annotation line, or the mapper XML line
+    assert sqli[27].extra["path"][-1]["file"] == "src/main/resources/mapper/UserMapper.xml"
+    assert sqli[27].extra["path"][-1]["line"] == 7
+    assert sqli[37].extra["path"][-1]["line"] == 5        # through <include refid="orderBy"/>
+    assert sqli[12].extra["path"][-1]["file"] == "src/main/java/demo/mapper/UserMapper.java"
+    assert sqli[12].extra["path"][-1]["line"] == 8
+
+
+_RB_BASE = '''module Rack
+  module Protection
+    class Base
+      DEFAULT_OPTIONS = {
+        reaction: :default_reaction, logging: true,
+        html_types: %w[text/html application/xhtml text/xml application/xml]
+      }
+
+      def warn(env, message)
+        l = env['rack.logger']
+        l.warn(message)
+      end
+
+      def deny(env)
+        warn env, "attack prevented by #{self.class}"
+        [403, {}, []]
+      end
+    end
+  end
+end
+'''
+
+_RB_MIXIN = '''module Logging
+  def warn(env, message)
+    env['rack.logger'].warn(message)
+  end
+end
+
+class Parent
+  def warn(env, message)
+    env['rack.logger'].warn(message)
+  end
+end
+
+class Mixed
+  include Logging
+
+  def call(env)
+    warn env, "denied #{self.class}"
+    [403, {}, []]
+  end
+end
+
+class Child < Parent
+  def call(env)
+    warn env, "denied"
+    [403, {}, []]
+  end
+end
+
+class Plain
+  def call(env)
+    warn env, "denied"
+    [403, {}, []]
+  end
+end
+'''
+
+_RB_TOPLEVEL = '''def warn(env, message)
+  puts message.length
+end
+
+def call(env)
+  warn env, "top"
+end
+'''
+
+
+def test_ruby_percent_literals_keep_the_class():
+    mod, diag = parse_cfamily_ex(_RB_BASE, "base.rb", "ruby")
+    assert diag["skipped"] == 0, diag
+    assert [n.name for n in mod.body if n.__class__.__name__ == "ClassDef"] == ["Rack"]
+    toks = [t.val for t in tokenize("a = %w[x y]\nb = n % (2)\nc = %q(it's)\nd = %r{^a/b}i\n", "ruby")]
+    assert toks[:7] == ["a", "=", "[", "'x'", ",", "'y'", "]"]
+    assert toks[7:13] == ["b", "=", "n", "%", "(", "2"]
+    assert "'it\\'s'" in toks and '"^a/b"' in toks and "i" not in toks
+
+
+def test_ruby_own_warn_shadows_kernel_warn(tmp_path):
+    _write(tmp_path, {"base.rb": _RB_BASE, "mixin.rb": _RB_MIXIN, "top.rb": _RB_TOPLEVEL})
+    found = {(r, f, ln) for r, f, ln in _scan(tmp_path) if r == "DF016"}
+    assert ("DF016", "base.rb", 15) not in found          # the class's own warn logs only the message
+    assert ("DF016", "mixin.rb", 17) not in found         # warn from an included module
+    assert ("DF016", "mixin.rb", 24) not in found         # warn from the base class
+    assert ("DF016", "top.rb", 6) not in found            # a top-level def warn replaces Kernel#warn
+    assert ("DF016", "mixin.rb", 31) in found             # no project warn: Kernel#warn writes env to the log
+
+
+_PY_SET_LANGUAGE = '''from django.http import HttpResponse, HttpResponseRedirect
+from django.utils.http import url_has_allowed_host_and_scheme
+
+
+def set_language(request):
+    next_url = request.POST.get("next", request.GET.get("next"))
+    if (
+        next_url or request.accepts("text/html")
+    ) and not url_has_allowed_host_and_scheme(url=next_url, allowed_hosts={request.get_host()}):
+        next_url = request.META.get("HTTP_REFERER")
+        if not url_has_allowed_host_and_scheme(url=next_url, allowed_hosts={request.get_host()}):
+            next_url = "/"
+    return HttpResponseRedirect(next_url) if next_url else HttpResponse(status=204)
+
+
+def referer_unchecked(request):
+    next_url = request.GET.get("next")
+    if (next_url or request.accepts("text/html")) and not url_has_allowed_host_and_scheme(url=next_url, allowed_hosts=None):
+        next_url = request.META.get("HTTP_REFERER")
+    return HttpResponseRedirect(next_url)
+
+
+def logged_only(request):
+    next_url = request.GET.get("next")
+    if next_url and not url_has_allowed_host_and_scheme(url=next_url, allowed_hosts=None):
+        print("unsafe")
+    return HttpResponseRedirect(next_url)
+
+
+def either_part(request):
+    next_url = request.GET.get("next")
+    if next_url or not url_has_allowed_host_and_scheme(url=next_url, allowed_hosts=None):
+        return HttpResponse(status=400)
+    return HttpResponseRedirect(next_url)
+'''
+
+
+def test_python_compound_condition_validation_guard():
+    found = {(r, ln) for r, _, ln in _js_rules({"views.py": _PY_SET_LANGUAGE}) if r == "DF008"}
+    assert ("DF008", 13) not in found     # empty, or it passed the check; else replaced by a checked referer / "/"
+    assert ("DF008", 20) in found         # the referer that replaces it is never checked
+    assert ("DF008", 27) in found         # the failed check only logs
+    assert ("DF008", 34) not in found     # past `if url or not ok(url): return`, url is empty
+
+
+_DJ_SHORTCUTS = '''from django.http import HttpResponse
+
+
+def render(request, template_name, context=None):
+    return HttpResponse(context)
+
+
+def show(request, slug):
+    return HttpResponse(slug)
+
+
+def legacy(request, slug):
+    return HttpResponse(slug)
+'''
+
+_DJ_URLS = '''from django.urls import path, re_path
+from . import shortcuts
+
+urlpatterns = [
+    path("show/<slug>/", shortcuts.show),
+    re_path(r"^legacy/(?P<slug>\\\\w+)/$", "app.shortcuts.legacy"),
+]
+'''
+
+
+def test_django_function_view_needs_routing_evidence(tmp_path):
+    _write(tmp_path, {"app/__init__.py": "", "app/shortcuts.py": _DJ_SHORTCUTS, "app/urls.py": _DJ_URLS})
+    found = {(r, f, ln) for r, f, ln in _scan(tmp_path) if r == "DF013"}
+    assert ("DF013", "app/shortcuts.py", 5) not in found   # a helper taking a request, routed nowhere
+    assert ("DF013", "app/shortcuts.py", 9) in found       # routed by path()
+    assert ("DF013", "app/shortcuts.py", 13) in found      # routed by a dotted string in re_path()
+    # without any URL configuration in the scan (one app's views alone) the signature still decides
+    (tmp_path / "app" / "urls.py").unlink()
+    found = {(r, f, ln) for r, f, ln in _scan(tmp_path) if r == "DF013"}
+    assert ("DF013", "app/shortcuts.py", 5) in found and ("DF013", "app/shortcuts.py", 9) in found
+
+
+_SEC_CREDENTIALS_JSON = '''{
+\t"UserName" : "Dummy",
+\t"Password" : "password",
+\t"Description" : "a lab file"
+}
+'''
+
+_SEC_LABELS_PY = '''LABELS = {
+    "elapsed": "time",
+    "file": "file",
+    "secret": "secret",
+    "chars": "chars",
+    "status": "status",
+}
+TITLES = {
+    "password": "Password",
+}
+'''
+
+
+def test_sec004_weak_credential_object_vs_label_table(tmp_path):
+    _write(tmp_path, {"secret.json": _SEC_CREDENTIALS_JSON, "labels.py": _SEC_LABELS_PY})
+    found = {(r, f, ln) for r, f, ln in _scan(tmp_path) if r == "SEC004"}
+    assert ("SEC004", "secret.json", 3) in found       # a credentials object whose password is the word "password"
+    assert ("SEC004", "labels.py", 4) not in found     # an entry of a table of entries that repeat their key
+    assert ("SEC004", "labels.py", 9) not in found     # the key's display label
+
+
+_JAVA_VALIDATED_RETURN = '''package x;
+
+import java.sql.Statement;
+import java.util.regex.Pattern;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class E {
+    private static final Pattern P = Pattern.compile("^[a-zA-Z0-9_]+$");
+    private Statement stmt = null;
+
+    public static String filt(String s) {
+        if (!P.matcher(s).matches()) {
+            return null;
+        }
+        return s;
+    }
+
+    public static String trimmed(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.trim();
+    }
+
+    @GetMapping("/c")
+    public String c(@RequestParam("u") String u) {
+        stmt.executeQuery("select * from u order by " + filt(u));
+        stmt.executeQuery("select * from u order by " + trimmed(u));
+        return "";
+    }
+}
+'''
+
+
+def test_java_helper_returning_a_validated_parameter():
+    found = {(r, ln) for r, _, ln in _js_rules({"E.java": _JAVA_VALIDATED_RETURN}) if r == "DF004"}
+    assert ("DF004", 28) not in found     # filt() gives back the value only when it matched the allow-list
+    assert ("DF004", 29) in found         # a null check validates nothing

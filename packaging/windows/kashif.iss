@@ -87,9 +87,13 @@ Name: "{autodesktop}\{cm:UIShortcut}"; Filename: "{app}\kashif.exe"; Parameters:
 Filename: "{app}\kashif.exe"; Parameters: "ui"; Description: "{cm:OpenUI}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; files the in-app updater may leave next to the binary
+; files the in-app updater may leave next to the binary: the backup of the previous version, and the temporary
+; download of an update that was interrupted (tempfile.mkstemp(prefix=".vulnscan-update-", suffix=".exe") in
+; vulnscan/updater.py; .kashif-update-* is listed too so a later rename of that prefix is still cleaned up)
 Type: files; Name: "{app}\kashif.exe.old"
 Type: files; Name: "{app}\kashif.exe.new"
+Type: files; Name: "{app}\.vulnscan-update-*"
+Type: files; Name: "{app}\.kashif-update-*"
 
 [Code]
 function EnvKey: string;

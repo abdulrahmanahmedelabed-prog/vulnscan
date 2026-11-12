@@ -123,3 +123,80 @@ def test_formula_falls_back_to_legacy_assets_of_an_older_release(formula):
         ["vulnscan-macos-arm64", "vulnscan-macos-x86_64", "vulnscan-linux"]
     with pytest.raises(SystemExit):
         formula.render("v1.0.0", _sums(["kashif-linux-x86_64"]))
+
+
+def test_formula_for_a_release_with_only_kashif_assets(formula):
+    # the default branch's update_formula.py renders the next release (1.0.1+): kashif-* even with no legacy copy
+    out = formula.render("v1.0.1", _sums(["kashif-setup.exe", *sorted(updater.LEGACY_ASSETS)]))
+    assert [u.rsplit("/", 1)[1] for u in re.findall(r'url "(\S+)"', out)] == \
+        ["kashif-macos-arm64", "kashif-macos-x86_64", "kashif-linux-x86_64"]
+    assert 'version "1.0.1"' in out and "/releases/download/v1.0.1/" in out
+
+
+def test_committed_formula_is_what_the_script_renders(formula):
+    """Formula/kashif.rb is generated: re-rendering it from its own version and hashes must give the same file."""
+    committed = (ROOT / "Formula" / "kashif.rb").read_text(encoding="utf-8")
+    version = re.search(r'^  version "(\d+\.\d+\.\d+)"$', committed, re.M).group(1)
+    pairs = re.findall(r'url "\S+/(\S+)"\n\s+sha256 "([0-9a-f]{64})"', committed)
+    assert len(pairs) == 3 and all(name.startswith("kashif-") for name, _ in pairs)
+    sums = "".join(f"{sha}  {name}\n" for name, sha in pairs)
+    assert formula.render(f"v{version}", sums) == committed
+
+
+def _iss_section(name: str) -> list[str]:
+    iss = (ROOT / "packaging" / "windows" / "kashif.iss").read_text(encoding="utf-8")
+    body = re.search(rf"^\[{re.escape(name)}\]\n(.*?)(?=^\[)", iss, re.M | re.S).group(1)
+    return [line for line in body.splitlines() if line and not line.startswith(";")]
+
+
+def test_uninstaller_removes_what_the_updater_leaves_next_to_the_binary():
+    src = (ROOT / "vulnscan" / "updater.py").read_text(encoding="utf-8")
+    prefixes = set(re.findall(r'mkstemp\(prefix="([^"]+)"', src))
+    assert prefixes, "updater.py no longer creates its temp download with mkstemp(prefix=...)"
+    assert set(re.findall(r'\.glob\("([^"*]+)\*"\)', src)) == prefixes      # cleanup_stale globs the same prefix
+    names = set(re.findall(r'^Type: files; Name: "\{app\}\\([^"]+)"$', "\n".join(_iss_section("UninstallDelete")), re.M))
+    assert updater.backup_path(pathlib.Path("kashif.exe")).name in names           # kashif.exe.old
+    for prefix in prefixes | {".vulnscan-update-", ".kashif-update-"}:
+        assert prefix + "*" in names, prefix
+
+
+def _ps1() -> str:
+    return (ROOT / "site" / "install.ps1").read_text(encoding="utf-8")
+
+
+def test_install_ps1_tolerates_an_unset_user_path():
+    ps1 = _ps1()
+    # GetEnvironmentVariable("Path", "User") is $null when the user PATH is unset: no method may be called on it
+    assert not re.search(r"\$userPath\.\w+\(", ps1)
+    assert '"$userPath" -split' in ps1
+    # case-insensitive, trailing-backslash-insensitive membership test; empty entries dropped on append
+    assert ".TrimEnd('\\').ToLowerInvariant()" in ps1 and "Where-Object { $_.Trim() -ne \"\" }" in ps1
+    assert "((@($entries) + $Dir) -join ';')" in ps1
+
+
+def test_install_ps1_removes_the_stale_pre_rename_binary():
+    ps1 = _ps1()
+    assert re.search(r'foreach \(\$name in @\("vulnscan\.exe", "vulnscan\.exe\.old"\)\)', ps1)
+    assert "Remove-Item -Force -LiteralPath $stale" in ps1 and "Test-Path -LiteralPath $stale" in ps1
+    # the legacy-name fallback stays: a release made before the rename has only vulnscan-windows.exe
+    assert re.search(r"catch \{[^}]*\$Asset = \$LegacyAsset", ps1, re.S)
+
+
+def test_installer_workflow_tests_powershell_like_the_shell_installer():
+    wf = (ROOT / ".github" / "workflows" / "installers.yml").read_text(encoding="utf-8")
+    ps_job = wf[wf.index("\n  install-ps1:"):wf.index("\n  homebrew:")]
+    sh_job = wf[wf.index("\n  install-sh:"):wf.index("\n  install-ps1:")]
+    legacy = re.findall(r"KASHIF_VERSION: (v0\.9\.\d+)", sh_job)
+    assert legacy and set(re.findall(r"KASHIF_VERSION: (v0\.9\.\d+)", ps_job)) == set(legacy)
+    assert '[Environment]::SetEnvironmentVariable("Path", $null, "User")' in ps_job
+    assert "finally {" in ps_job and '[Environment]::SetEnvironmentVariable("Path", $saved, "User")' in ps_job
+    assert "vulnscan.exe was not removed" in ps_job or '"$name was not removed"' in ps_job
+    assert "KASHIF_VERSION: v0.0.1" in ps_job
+    # only actions already pinned elsewhere in the repository, by full commit SHA
+    used = set(re.findall(r"uses: (\S+@[0-9a-f]{40})", wf))
+    pinned = set()
+    for other in (ROOT / ".github" / "workflows").glob("*.yml"):
+        if other.name != "installers.yml":
+            pinned |= set(re.findall(r"uses: (\S+@[0-9a-f]{40})", other.read_text(encoding="utf-8")))
+    assert used and used <= pinned, used - pinned
+    assert not re.search(r"uses: \S+@(?![0-9a-f]{40}\b)", wf)

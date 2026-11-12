@@ -97,6 +97,25 @@ def local_root(scan: dict) -> pathlib.Path | None:
     return root if root.exists() else None
 
 
+def unsafe_triage_target(scan: dict, path: pathlib.Path) -> bool:
+    """True when writing the triage file of a scanned project would go through a symbolic link (or a Windows
+    junction) or land outside the project: a hostile repository can commit ``.kashif`` or ``.kashif/triage.json``
+    as a link to redirect where the UI writes. Uploads and URL scans keep their file under the server's home."""
+    root = local_root(scan)
+    if root is None:
+        return False
+    base = root if root.is_dir() else root.parent
+    if path.is_symlink() or path.parent.is_symlink():
+        return True
+    try:
+        real = path.parent.resolve()
+        expected = base.resolve() / path.parent.name
+    except (OSError, RuntimeError):
+        return True
+    norm = os.path.normcase
+    return path.parent.parent != base or norm(str(real)) != norm(str(expected))
+
+
 def _is_pro_path(path: str) -> bool:
     """The endpoints added for 1.0 (exports, compliance, attack surface, triage)."""
     parts = path.split("/")
@@ -467,8 +486,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._triage_get()
         if len(parts) == 5 and parts[2] == "projects" and parts[4] == "surface":
             proj = self.store.get_project(parts[3])
-            if not proj or not proj.get("latest"):
+            if not proj:
                 return self._json({"error": "not found"}, 404)
+            if not proj.get("latest"):           # no completed scan yet: nothing to map
+                return self._json({"status": "none", "scan": None, "available": False})
             return self._surface_get(proj["latest"])
         if len(parts) >= 4 and parts[2] == "scans":
             scan = self.store.get_scan(parts[3])
@@ -606,7 +627,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"status": "error", "scan": scan_id, "error": error}, 200)
         scan = self.store.get_scan(scan_id)
         available = bool(scan) and local_root(scan) is not None
-        return self._json({"status": "none", "scan": scan_id, "available": available}, 404)
+        # 200, not 404: "no map built yet" is a normal state of every project page, not a missing resource
+        return self._json({"status": "none", "scan": scan_id, "available": available})
 
     def _surface_start(self, scan_id: str, body: dict):
         """POST /api/scans/<id>/surface {"engine": true}: build (or rebuild) the attack-surface map in the background."""
@@ -665,6 +687,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown fingerprint"}, 404)
         author = str(body.get("author") or "").strip() or _default_author()
         path = triage_path(self.store, scan)
+        if unsafe_triage_target(scan, path):
+            return self._json({"error": f"refusing to write the triage file {path}: it is a symbolic link or leads "
+                                        "outside the project. Make .kashif a real folder inside the project and "
+                                        "try again.",
+                               "error_ar": f"رُفضت كتابة ملف الفرز {path}: فهو رابط رمزي أو يقود إلى خارج "
+                                           "المشروع. اجعل ‎.kashif‎ مجلدًا حقيقيًا داخل المشروع ثم أعد المحاولة.",
+                               "code": "unsafe_triage_path"}, 409)
         box: dict = {}
 
         def change(t: dict) -> None:
