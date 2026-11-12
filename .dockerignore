@@ -1,0 +1,9 @@
+# Build context of the Dockerfile: only what the wheel needs is sent to the builder.
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!vulnscan
+**/__pycache__
+**/*.py[cod]
+**/.DS_Store

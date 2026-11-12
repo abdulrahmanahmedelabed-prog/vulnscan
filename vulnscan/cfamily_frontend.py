@@ -43,6 +43,9 @@ TOKEN_RE = re.compile(r"""
     (?P<id>\$?[A-Za-z_][\w]*) |
     (?P<punct>===|!==|<=>|\?\?=|\*\*=|\.=(?!=)|\.\.\.|->|=>|::|\?\.|\?:|!!|\+\+|--|<<=|>>=|<=|>=|==|!=|&&|\|\||\|\|=|&&=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|\?\?|:=|\.\.|&\.|[{}()\[\];,<>+\-*/%&|^!~?:=.@#$\\])
 """, re.S | re.X)
+# PHP string literals may span lines ("…\n<pre>…</pre>\n…")
+PHP_TOKEN_RE = re.compile(TOKEN_RE.pattern.replace(r"""(?P<str>"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|""",
+                                                   r"""(?P<str>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|"""), re.S | re.X)
 # Ruby: `#` comments only, symbols (:name), instance variables (@x / @@x), method names ending in ? or !
 RUBY_TOKEN_RE = re.compile(r"""
     (?P<ws>[ \t\r\f\v]+) | (?P<nl>\n) | (?P<lc>\#[^\n]*) |
@@ -109,6 +112,7 @@ def tokenize(src: str, lang: str) -> list[Tok]:
         src = RUBY_HEREDOC_RE.sub(_heredoc_token, src)
         n = len(src)
     if lang == "php":
+        regex = PHP_TOKEN_RE
         # keep only PHP code regions (<?php ... ?>); HTML outside is ignored
         parts = re.split(r"(<\?(?:php|=)?|\?>)", src)
         out, keep, _lines_so_far = [], False, ""
@@ -150,7 +154,7 @@ def tokenize(src: str, lang: str) -> list[Tok]:
         else:
             if kind == "istr":
                 toks.append(Tok("istr", text, line, nl_before))
-            elif kind == "str" and text.startswith('"') and "\n" in text:
+            elif kind == "str" and "\n" in text:        # multi-line "…" / `raw` strings: keep later lines in place
                 toks.append(Tok(kind, text, line, nl_before))
                 line += text.count("\n")
             else:
@@ -220,6 +224,7 @@ class Parser:
         self.pkg = ""
         self.diagnostics: list = []      # (line, reason) for every statement that was skipped
         self.n_statements = 0
+        self.go_methods: dict = {}       # per file: a class-level dict leaked receiver methods into every later file
         self.ext_methods: dict = {}      # Go receiver methods / Rust impl / Swift extension -> class name -> [FunctionDef]
         self.go_structs: dict = {}
         self.no_brace_call = 0           # >0 while parsing an if/for/while/match head: `x {` is a block, not a closure
@@ -407,6 +412,8 @@ class Parser:
                 out.extend(self.hoisted)
                 self.hoisted = []
                 out.extend(st)
+                if self.i == start:   # a statement that consumed nothing would loop forever: always make progress
+                    self.i += 1
             except ParseError as e:
                 self.hoisted = []
                 if len(self.diagnostics) < 500:
@@ -443,6 +450,9 @@ class Parser:
     def parse_decorators(self) -> list:
         decs = []
         while True:
+            if self.lang == "java" and self.at("@") and self.peek().val == "interface":
+                self.i += 1          # `@interface Name`: an annotation type declaration, not an annotation
+                return decs
             if self.at("@") and self.peek().kind == "id":
                 self.i += 1
                 d = self.parse_postfix(no_call=False)
@@ -505,6 +515,8 @@ class Parser:
                     return self.block()
                 self.end_stmt()
                 return []
+            if v == "using" and self.lang == "csharp" and self.in_function:
+                return self.parse_csharp_using(line)
             if v in ("import", "using") and self.lang != "php" or (v == "use" and self.lang == "php" and not self.cls_stack):
                 return self.parse_import()
             if v == "declare" and self.lang == "php":
@@ -514,6 +526,14 @@ class Parser:
             self._swift_static = "static" in mods or "class" in mods
             if mods and self.t.kind == "eof":
                 return []
+            if self.lang == "php" and mods and not (self.t.kind == "id" and (self.t.val.startswith("$") or self.t.val in ("function", "const", "fn"))):
+                # typed property `private ?PDO $db = null;`: drop the type
+                j = self.i
+                while j < len(self.toks) and self.toks[j].val != ";" and not self.toks[j].val.startswith("$") \
+                        and self.toks[j].val not in ("function", "{", "}"):
+                    j += 1
+                if j < len(self.toks) and self.toks[j].val.startswith("$"):
+                    self.i = j
             v = self.t.val if self.t.kind == "id" else ""
             if v in ("class", "struct", "interface", "trait", "record", "enum", "object", "protocol", "union") and self.peek().kind == "id" \
                     and not (v == "object" and self.lang != "kotlin") and not (v == "record" and self.lang == "csharp"
@@ -532,13 +552,20 @@ class Parser:
                 return [self.make_function("__init__", params, body, line, decs, ann, method=True)]
             if v == "type" and self.lang == "go":
                 return self.parse_go_type(decs)
-            if v in ("func", "fun", "function", "fn") and (self.peek().kind == "id" or self.peek().val in ("(", "<")):
+            if v in ("func", "fun", "function", "fn") and (self.peek().kind == "id" or self.peek().val in ("(", "<")
+                                                           or (self.lang == "php" and self.peek().val == "&")):
                 return [self.parse_function(decs)]
             if v == "return":
                 self.i += 1
                 val = None
                 if not self.at(";") and not self.at("}") and not self.t.nl_before and self.t.kind != "eof":
-                    val = self.untuple(self.parse_expression())
+                    if self.lang == "go":            # return v, err
+                        vals = [self.untuple(self.parse_assignment())]
+                        while self.opt(","):
+                            vals.append(self.untuple(self.parse_assignment()))
+                        val = vals[0] if len(vals) == 1 else _mk(ast.Tuple, line, elts=vals, ctx=ast.Load())
+                    else:
+                        val = self.untuple(self.parse_expression())
                 self.end_stmt()
                 return [_mk(ast.Return, line, value=val)]
             if v in ("throw", "panic"):
@@ -818,9 +845,13 @@ class Parser:
 
     def parse_modifiers(self) -> list:
         mods = []
-        while self.t.kind == "id" and self.t.val in MODIFIERS and self.peek().kind == "id":
+        while self.t.kind == "id" and self.t.val in MODIFIERS and (self.peek().kind == "id" or (
+                self.lang == "php" and self.peek().val in ("?", "\\")) or (     # PHP `protected ?Type $x`
+                self.lang == "java" and self.peek().val == "@" and self.peek(2).val == "interface")):
             # Kotlin/PHP: 'data class', 'enum class', 'final class' ...; C#: 'public static'
             mods.append(self.eat().val)
+        if self.lang == "java" and self.at("@") and self.peek().val == "interface":
+            self.i += 1              # `public @interface Name`
         return mods
 
     def parse_dotted_name(self) -> str:
@@ -1090,6 +1121,12 @@ class Parser:
             pass
 
     def skip_throws(self):
+        if self.lang == "java" and self.at_kw("default"):     # annotation element `String[] x() default {};`
+            while not self.at(";") and not self.at("}") and self.t.kind != "eof":
+                if self.at("{"):
+                    self.skip_balanced("{", "}")
+                else:
+                    self.i += 1
         while self.t.kind == "id" and self.t.val in ("throws", "rethrows", "async", "const", "override", "noexcept", "final", "mutating"):
             if self.t.val == "throws" and self.lang != "swift":
                 self.i += 1
@@ -1134,7 +1171,9 @@ class Parser:
         self.eat("(")
         names, prologue, ann = [], [], {}
         while not self.at(")") and self.t.kind != "eof":
+            dstart = self.i
             self.parse_decorators()
+            pdecs = self.toks[dstart:self.i]
             prop = False
             while self.t.kind == "id" and self.t.val in ("final", "params", "ref", "out", "in", "this", "vararg", "val", "var", "private", "public", "protected", "override",
                                                          "mut", "inout", "const", "unsigned", "signed", "struct", "register", "volatile", "borrowing", "consuming") \
@@ -1179,6 +1218,10 @@ class Parser:
                     self.skip_type()
                     tname = "".join(tk.val for tk in self.toks[start:self.i])
             else:  # kotlin / php / rust / swift
+                if self.lang == "php":
+                    # PHP 7/8 typed parameters: `?string $id`, `int|float $n`, `\App\Models\User $u`, `Request &$r`
+                    while self.t.kind != "eof" and not self.t.val.startswith("$") and not self.at(")") and not self.at(","):
+                        self.i += 1
                 name = self.eat().val.lstrip("$")
                 tname = None
                 if self.at(":"):
@@ -1196,6 +1239,9 @@ class Parser:
                 simple = re.split(r"[.:]", tname.strip("*&"))[-1]
                 if re.match(r"[A-Za-z_]\w*$", simple or ""):
                     ann[name] = _name(simple, self.t.line)
+                    pat = _strict_pattern(pdecs)
+                    if pat:
+                        ann[name].vulnscan_pattern = pat     # Bean Validation @Pattern(regexp = "^[a-z]+$")
             if tname and self.lang == "go" and "http.Request" in tname or (tname and ("gin.Context" in tname or "echo.Context" in tname or "fiber.Ctx" in tname)):
                 self.go_request_param = True
             if prop:
@@ -1218,10 +1264,12 @@ class Parser:
     def parse_function(self, decs):
         line = self.t.line
         kw = self.eat().val   # func / fun / function / fn / init
+        if self.lang == "php" and self.at("&"):   # function &name(): return by reference
+            self.i += 1
         receiver_cls = None
         is_init = kw in ("init", "deinit", "subscript")
         self.go_request_param = False
-        if self.lang == "go" and self.at("("):           # func (r *T) name(...)
+        if self.lang == "go" and self.at("(") and self._go_has_receiver():   # func (r *T) name(...)
             self.eat("(")
             if self.t.kind == "id" and self.peek().kind == "id" or self.peek().val == "*":
                 self.i += 1
@@ -1274,7 +1322,23 @@ class Parser:
             return _mk(ast.Pass, line)
         return fn
 
-    go_methods: dict = {}
+    def _go_has_receiver(self) -> bool:
+        """At `(` after `func`: a method receiver when the matching `)` is followed by a name and `(` or `[`;
+        otherwise it is the parameter list of a function literal (`func(b *testing.B) {...}`)."""
+        depth, j = 0, self.i
+        while j < len(self.toks):
+            v = self.toks[j].val if self.toks[j].kind == "punct" else None
+            if v == "(":
+                depth += 1
+            elif v == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        if j + 2 >= len(self.toks):
+            return False
+        return self.toks[j + 1].kind == "id" and self.toks[j + 2].val in ("(", "[")
+
     field_names_stack: list = []
 
     def parse_go_type(self, decs) -> list:
@@ -1466,7 +1530,11 @@ class Parser:
                     break
                 if names and self.toks[j].val in (":=", "=") and self.toks[j + 1].val == "range":
                     self.i = j + 2
-                    it = self.untuple(self.parse_expression())
+                    self.no_brace_call += 1          # `range r.File {`: the brace opens the loop body
+                    try:
+                        it = self.untuple(self.parse_expression())
+                    finally:
+                        self.no_brace_call -= 1
                     body = self.block()
                     tgt = _name(names[-1] if names[-1] != "_" else names[0], line, store=True)
                     return _mk(ast.For, line, target=tgt, iter=it, body=body, orelse=[], type_comment=None)
@@ -1585,6 +1653,9 @@ class Parser:
                     elif tk.val.startswith("$"):
                         nm = tk.val.lstrip("$")
                 self.eat(")")
+            if self.at_kw("when") and self.peek().val == "(":     # C# exception filter: catch (E ex) when (cond)
+                self.i += 1
+                self.skip_balanced("(", ")")
             hb = self.block()
             handlers.append(_mk(ast.ExceptHandler, line, type=None, name=nm, body=hb))
         if self.at_kw("finally"):
@@ -1818,7 +1889,7 @@ class Parser:
         if self.lang == "php" and self.at_kw("fn") and self.peek().val == "(":
             self.i += 1
             return self.parse_lambda_params_body(self.t.line, arrow="=>")
-        if self.lang == "php" and self.at_kw("function") and self.peek().val == "(":
+        if self.lang == "php" and self.at_kw("function") and self.peek().val in ("(", "&"):
             fn = self.parse_function([])
             self.hoisted.append(fn)
             return _name(fn.name, fn.lineno)
@@ -2072,6 +2143,11 @@ class Parser:
                 elts.append(self.parse_array_literal())
             else:
                 elts.append(self.untuple(self.parse_assignment()))
+            if self.lang == "go" and self.opt(":"):     # keyed element `key: value`: the value is the data
+                key = elts.pop()
+                if not isinstance(key, ast.Name):
+                    elts.append(key)
+                elts.append(self.parse_array_literal() if self.at("{") else self.untuple(self.parse_assignment()))
             if not self.opt(","):
                 break
         self.eat("}")
@@ -2136,6 +2212,11 @@ class Parser:
                 e = _mk(ast.Call, t.line, func=self.untuple(e), args=args, keywords=kws)
             elif self.lang == "rust" and t.kind == "punct" and t.val == "?":
                 self.i += 1
+            elif self.lang == "go" and t.kind == "punct" and t.val == "{" and isinstance(e, (ast.Name, ast.Attribute)) \
+                    and self.no_brace_call == 0 and not no_call and not t.nl_before:
+                # composite literal Row{Name: x} / http.Cookie{Value: v} -> Row(Name=x) (fields as keywords)
+                lit = self.parse_array_literal()
+                e = _mk(ast.Call, t.line, func=e, args=list(lit.elts), keywords=[])
             elif self.lang == "rust" and t.kind == "punct" and t.val == "{" and isinstance(e, ast.Name) and e.id[:1].isupper() and self.no_brace_call == 0 and not no_call:
                 # struct literal Point { x: 1, y: f() } -> Point(x=1, y=f())
                 self.i += 1
@@ -2375,6 +2456,8 @@ class Parser:
                         self.i += 1
                 self.opt("...")
                 a = self.untuple(self.parse_assignment())
+                if self.lang == "go":
+                    self.opt("...")                     # variadic spread: f(args...)
                 args.append(a)
             if not self.opt(","):
                 break
@@ -2887,6 +2970,7 @@ class Parser:
             if v == "__END__":
                 self.i = len(self.toks) - 1
                 return []
+            self.i += 1   # the keyword itself starts a new line, so step over it before skipping the rest
             while not self.t.nl_before and self.t.kind != "eof":
                 self.i += 1
             return []
@@ -2894,9 +2978,80 @@ class Parser:
             raise ParseError(f"stray '{v}' at line {line}")
         return None
 
+    def parse_csharp_using(self, line) -> list:
+        """C# `using (var c = new X(...)) { … }` and `using var c = new X(...);`: the declaration, then the body."""
+        self.i += 1                                    # using
+        if self.at("("):
+            depth, j = 0, self.i
+            while j < len(self.toks):
+                tv = self.toks[j].val if self.toks[j].kind == "punct" else None
+                if tv == "(":
+                    depth += 1
+                elif tv == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j += 1
+            if j >= len(self.toks):
+                raise ParseError(f"unbalanced using at line {line}")
+            self.toks[j] = Tok("punct", ";", self.toks[j].line, self.toks[j].nl_before)   # `(decl)` -> `decl;`
+            self.i += 1                                # (
+            decl = self.parse_statement()
+            pre, self.hoisted = self.hoisted, []
+            return pre + decl + self.body_or_stmt()
+        return self.parse_statement()                  # using var x = …;
+
+    def _go_type_expr(self, line):
+        """Go type-led expressions: `[]string{"a", x}`, `map[string]int{...}`, `[]byte(s)` (a conversion keeps the
+        value), `make(map[string]any)` arguments, `[]struct{ name string }{ {...} }` test tables."""
+        while self.at("[") or self.at("*"):
+            if self.at("["):
+                self.skip_balanced("[", "]")
+            else:
+                self.i += 1
+        if self.t.kind == "id" and self.t.val in ("struct", "interface") and self.peek().val == "{":
+            self.i += 1
+            self.skip_balanced("{", "}")
+        else:
+            self.skip_type()
+        if self.at("{"):
+            return self.parse_array_literal()
+        if self.at("("):
+            call = self.parse_call(_name("_conv", line), line)
+            return call.args[0] if len(call.args) == 1 else call
+        return _name("_type", line)
+
+    def _kotlin_branch_value(self):
+        """One arm of a Kotlin `if` expression: `{ stmts; value }` (the last expression is the value) or an expression."""
+        if self.at("{"):
+            body = self.block()
+            pre = [st for st in body[:-1]]
+            last = body[-1] if body else None
+            self.hoisted.extend(pre)
+            if isinstance(last, ast.Expr):
+                return last.value
+            return _const(None, self.t.line)
+        return self.untuple(self.parse_assignment())
+
     def parse_primary(self):
         t = self.t
         line = t.line
+        if self.lang == "go" and ((t.kind == "punct" and t.val == "[" and (self.peek().val == "]" or self.peek(2).val == "]"))
+                                  or (t.kind == "id" and t.val in ("map", "chan") and self.peek().val in ("[", "<-")
+                                      or t.kind == "id" and t.val == "struct" and self.peek().val == "{")):
+            return self._go_type_expr(line)
+        if t.kind == "id" and t.val == "if" and self.lang == "kotlin" and self.peek().val == "(":
+            # Kotlin `if (c) a else b` used as a value: an IfExp, not a call of `if`
+            self.i += 1
+            self.eat("(")
+            cond = self.untuple(self.parse_expression())
+            self.eat(")")
+            a = self._kotlin_branch_value()
+            b = _const(None, line)
+            if self.at_kw("else"):
+                self.i += 1
+                b = self._kotlin_branch_value()
+            return _mk(ast.IfExp, line, test=cond, body=a, orelse=b)
         if t.kind == "num":
             self.i += 1
             return _const(_num_value(t.val), line)
@@ -3039,6 +3194,8 @@ class Parser:
                 self.hoisted.append(fn)
                 return _name(fn.name, line)
             if v in ("function", "fn") and self.lang == "php":
+                if self.peek().val not in ("(", "&"):   # not a closure: parse_assignment would recurse back here forever
+                    raise ParseError(f"unexpected '{v}' at line {line}")
                 return self.parse_assignment()
             if v == "object" and self.lang == "kotlin" and self.peek().val in (":", "{"):
                 self.i += 1
@@ -3099,6 +3256,23 @@ def module_name(rel: str) -> str:
     rel = rel.replace("\\", "/")
     rel = re.sub(r"\.(java|kt|kts|cs|go|php|phtml|c|h|cc|cpp|cxx|hpp|hh|hxx|rs|swift|rb|rake)$", "", rel)
     return rel.replace("/", ".")
+
+
+def _strict_pattern(decs) -> str | None:
+    """The regexp of a Bean Validation / ASP.NET `@Pattern(regexp = "...")` / `[RegularExpression("...")]` parameter
+    constraint, when it is anchored and has no catch-all part."""
+    toks = list(decs or ())
+    for i, t in enumerate(toks):
+        if t.kind == "id" and t.val in ("Pattern", "RegularExpression") and i + 1 < len(toks) and toks[i + 1].val == "(":
+            for u in toks[i + 2:]:
+                if u.kind == "punct" and u.val == ")":
+                    break
+                if u.kind == "str":
+                    v = u.val
+                    if v[:1] == "@":
+                        v = v[1:]
+                    return v[1:-1].replace("\\\\", "\\") if len(v) >= 2 else None
+    return None
 
 
 def parse_cfamily_ex(text: str, rel: str, lang: str):

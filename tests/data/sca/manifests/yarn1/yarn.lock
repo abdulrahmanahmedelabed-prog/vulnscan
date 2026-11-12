@@ -1,0 +1,11 @@
+# yarn lockfile v1
+
+
+"@babel/code-frame@^7.0.0", "@babel/code-frame@^7.8.3":
+  version "7.8.3"
+  resolved "https://registry.yarnpkg.com/@babel/code-frame/-/code-frame-7.8.3.tgz"
+
+lodash@^4.17.0, lodash@^4.17.15:
+  version "4.17.15"
+  dependencies:
+    foo "^1.0.0"

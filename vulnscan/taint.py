@@ -36,6 +36,7 @@ import ast
 import json
 import pathlib
 import re
+import time
 
 from . import flow as _flow
 from .model import Finding
@@ -59,6 +60,10 @@ ARG_INJECTION = ("DF009", "medium", "Tainted data reaches a subprocess argument"
                  "بيانات غير موثوقة تصل إلى وسيط لأمر خارجي",
                  "تحقّق من الوسيط بقائمة بيضاء، وارفض القيم التي تبدأ بـ -، ولا تمرّر مسارات غير مُطبَّعة.",
                  "CWE-88", "subprocess argument", [0], False)
+DYNAMIC_DISPATCH = ("DF026", "high", "Tainted data selects the class or function that is invoked (unsafe reflection)",
+                    "بيانات غير موثوقة تختار الصنف أو الدالة المستدعاة (انعكاس غير آمن)",
+                    "لا تختر صنفًا أو دالة أو وحدة باسم من المدخلات؛ اربط القيم المسموحة بقاموس ثابت (allow-list) من الأسماء إلى الدوال.",
+                    "CWE-470", "dynamic method call", ["slice"], False)
 REFLECTED_RETURN = ("DF013", "medium", "Tainted data returned in an HTTP response (reflected XSS)",
                     "بيانات غير موثوقة تُعاد في استجابة HTTP (XSS انعكاسي)",
                     "هرّب المخرجات (html.escape / markupsafe) أو استخدم قوالب تُهرِّب تلقائيًا.",
@@ -110,7 +115,9 @@ def load_models(extra_dirs=(), base=None, language="python") -> dict:
                                k.get("advice", ""), k.get("cwe", ""), k.get("label", k["rule"]), list(k.get("args", [0])),
                                bool(k.get("shell", False)), list(k.get("names", [])),
                                frozenset(x.lower() for x in k.get("kwargs", [])),
-                               re.compile(k["receiver"]) if k.get("receiver") else None))
+                               re.compile(k["receiver"]) if k.get("receiver") else None,
+                               {kw: frozenset(v) for kw, v in (k.get("safe_kwargs") or {}).items()} or None,
+                               re.compile(k["receiver_not"]) if k.get("receiver_not") else None))
         for st in data.get("store_sinks", []):
             # `session[key] = value`: writing untrusted data into a trusted store (trust boundary violation)
             m["store_sinks"].append(((st["rule"], st.get("severity", "medium"), st.get("title", st["rule"]),
@@ -198,6 +205,13 @@ def _dotted(node: ast.AST) -> str:
 _SCOPE_CACHE: dict = {}
 
 
+def release_caches() -> None:
+    """Drop module-level caches that point into a finished project's syntax trees (long-running hosts such as the
+    UI and the language server would otherwise keep every scanned tree alive)."""
+    _SCOPE_CACHE.clear()
+    _TEMPLATES.clear()
+
+
 def _scope_nodes(fn: ast.AST):
     """Nodes of a scope's body, without descending into nested functions, classes or lambdas (cached per node)."""
     key = id(fn)
@@ -242,10 +256,170 @@ def _exits(stmts: list) -> bool:
     return bool(stmts) and isinstance(stmts[-1], (ast.Return, ast.Raise, ast.Continue, ast.Break))
 
 
+_TEST_DECORATOR_ROOTS = frozenset({"unittest", "mock", "pytest", "_pytest", "responses", "respx", "freezegun",
+                                   "hypothesis", "pytest_mock", "asynctest", "aioresponses", "httpretty", "vcr"})
+
+
+_SAFE_SCALARS = frozenset({"int", "float", "bool", "complex", "UUID", "UUID1", "UUID3", "UUID4", "UUID5", "Decimal", "date",
+                           "datetime", "time", "timedelta", "PositiveInt", "NegativeInt", "NonNegativeInt",
+                           "NonPositiveInt", "PositiveFloat", "NegativeFloat", "StrictInt", "StrictFloat", "StrictBool",
+                           "PastDate", "FutureDate", "AwareDatetime", "NaiveDatetime", "IPv4Address", "IPv6Address"})
+_SCHEMA_BASES = frozenset({"BaseModel", "SQLModel", "Schema", "ModelSchema", "BaseSettings", "RootModel"})
+_WTFORMS_BASES = frozenset({"Form", "FlaskForm", "BaseForm", "SecureForm"})
+_SAFE_FIELD_TYPES = frozenset({
+    # Django forms / DRF serializers
+    "IntegerField", "FloatField", "DecimalField", "BooleanField", "NullBooleanField", "DateField", "DateTimeField",
+    "TimeField", "DurationField", "UUIDField", "ChoiceField", "TypedChoiceField", "MultipleChoiceField",
+    "TypedMultipleChoiceField", "SlugField", "GenericIPAddressField", "IPAddressField", "ModelChoiceField",
+    "PrimaryKeyRelatedField", "SmallIntegerField", "BigIntegerField", "PositiveIntegerField",
+    # WTForms
+    "IntegerRangeField", "DecimalRangeField", "SelectField", "RadioField", "SelectMultipleField", "DateTimeLocalField",
+    "MonthField", "WeekField",
+    # marshmallow
+    "Int", "Integer", "Float", "Bool", "Boolean", "Date", "DateTime", "Time", "UUID", "Decimal", "Number",
+    "TimeDelta", "AwareDateTime", "NaiveDateTime", "IP", "IPv4", "IPv6", "Enum"})
+_EMAIL_FIELD_TYPES = frozenset({"EmailField", "Email"})
+_FORM_BASES = frozenset({"Form", "ModelForm", "BaseForm", "FlaskForm", "SecureForm", "Serializer", "ModelSerializer",
+                         "HyperlinkedModelSerializer"})
+
+
+_NUMERIC_STATIC_TYPES = frozenset({"int", "long", "short", "byte", "double", "float", "boolean", "bool", "char", "Integer",
+                                   "Long", "Short", "Byte", "Double", "Float", "Boolean", "BigDecimal", "BigInteger", "UUID",
+                                   "Guid", "LocalDate", "LocalDateTime", "LocalTime", "OffsetDateTime", "ZonedDateTime",
+                                   "Instant", "Date", "DateTime", "DateTimeOffset", "TimeSpan", "decimal", "uint", "ulong",
+                                   "ushort", "sbyte", "Int", "Int32", "Int64", "Int16", "UInt", "Double", "Decimal"})
+
+
+_JS_TYPED_SCHEMA = re.compile(r"(^|\.)(z|zod|Joi|joi|yup|v|t)\.(coerce\.)?(number|boolean|bigint|date|enum|nativeEnum|literal|"
+                              r"uuid|int|integer|bool|isodate)\b|\.(int|integer|uuid|positive|negative|port)$")
+_EXPRESS_STRICT = frozenset({"isInt", "isNumeric", "isFloat", "isDecimal", "isBoolean", "isUUID", "isMongoId", "isIn",
+                             "isISO8601", "isDate", "toInt", "toFloat", "toBoolean", "toDate", "isAlphanumeric", "isAlpha",
+                             "isHexadecimal", "isPort", "isIP", "isEmail"})
+
+
+def _express_validated(fn) -> set:
+    """Request fields a route's express-validator middleware (`query('id').isInt()`, `param('x').isUUID()`,
+    `check('n').isIn([...])`) constrains to a shape that carries no payload."""
+    out = set()
+    for d in getattr(fn, "decorator_list", []):
+        call, chain = d, []
+        while isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute):
+            chain.append(call.func.attr)
+            call = call.func.value
+        if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id in ("query", "param", "body", "check", "cookie", "header") \
+                and call.args and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, str) \
+                and set(chain) & _EXPRESS_STRICT:
+            out.add(call.args[0].value)
+    return out
+
+
+_OUTPUT_TYPES = frozenset({"ResponseWriter", "HttpServletResponse", "ServletResponse", "HttpResponse", "Writer",
+                           "PrintWriter", "OutputStream", "ServerResponse", "Reply", "FastifyReply", "Response",
+                           "NextResponse", "NextApiResponse", "HttpResponseMessage", "Model", "ModelMap",
+                           "RedirectAttributes", "BindingResult", "Errors", "ILogger", "Logger"})
+_LIBRARY_METHOD_NAMES = frozenset({
+    "toString", "getValue", "getKey", "get", "set", "put", "add", "append", "insert", "remove", "equals", "hashCode",
+    "length", "size", "close", "read", "write", "run", "call", "apply", "accept", "test", "iterator", "next",
+    "hasNext", "valueOf", "substring", "trim", "split", "replace", "replaceAll", "getBytes", "getName", "getId",
+    "toLowerCase", "toUpperCase", "format", "join", "keys", "values", "items", "update", "copy", "clone", "compareTo",
+    "contains", "containsKey", "isEmpty", "clear", "getAttribute", "setAttribute", "getParameter", "toArray", "stream",
+    "map", "filter", "collect", "forEach", "then", "catch", "push", "pop", "shift", "slice", "concat", "parse",
+    "decode", "encode", "execute", "invoke", "send", "open", "flush", "print", "println", "getOrDefault", "first",
+    "last", "count", "sort", "reverse", "lower", "upper", "strip", "startswith", "endswith", "find", "index", "load",
+    "loads", "dump", "dumps", "getText", "Text", "ToString", "Get", "Add", "Remove", "Contains"})
+_CRLF_CWES = frozenset({"CWE-117", "CWE-93", "CWE-113"})
+
+
+def _const_text(e) -> str:
+    """The pattern text of a literal or a lowered regex literal (`re.compile("/[\\r\\n]/g")`)."""
+    if isinstance(e, ast.Call) and e.args and _dotted(e.func) in ("re.compile", "RegExp", "Regexp.new", "Regex"):
+        e = e.args[0]
+    return e.value if isinstance(e, ast.Constant) and isinstance(e.value, str) else ""
+_SCALAR_CASTS = frozenset({"String", "Number", "parseInt", "parseFloat", "Boolean", "BigInt", "toString", "escape",
+                           "sanitize", "mongoSanitize", "ObjectId", "toInt", "toNumber", "trim", "toLowerCase", "toUpperCase"})
+
+
+def _has_raw_leaf(d, scalar_names=frozenset(), tainted_names=None) -> bool:
+    """Does an object literal hold a value that may be an attacker-shaped object (not a constant, a scalar cast,
+    a template string or an Express route parameter, which is always a string)? `scalar_names` are variables
+    known to hold such a scalar (`const id = req.params.id`)."""
+    stack = [d]
+    while stack:
+        e = stack.pop()
+        if isinstance(e, ast.Dict):
+            for k, v in zip(e.keys, e.values):
+                if isinstance(k, ast.Constant) and k.value in ("$where", "$function", "$accumulator") and v is not None \
+                        and not isinstance(v, ast.Constant):
+                    return True          # server-side JavaScript: any user text in it is code injection
+                if v is not None:
+                    stack.append(v)
+            continue
+        if isinstance(e, (ast.List, ast.Tuple)):
+            stack.extend(e.elts)
+            continue
+        if isinstance(e, (ast.Constant, ast.JoinedStr)):
+            continue
+        if isinstance(e, ast.Call):
+            n = e.func.attr if isinstance(e.func, ast.Attribute) else getattr(e.func, "id", "")
+            if n in _SCALAR_CASTS:
+                continue
+        if isinstance(e, ast.Attribute) and re.match(r"^\w+\.params\.\w+$", _chain(e) or ""):
+            continue
+        if isinstance(e, ast.BinOp):
+            continue                     # string concatenation / arithmetic: a scalar
+        if isinstance(e, ast.Name) and (e.id in scalar_names or (tainted_names is not None and e.id not in tainted_names)):
+            continue                     # a route-parameter alias, or a value no request data reaches (`model: Product`)
+        return True
+    return False
+
+
+def _abstract(fn) -> bool:
+    """An interface / abstract method: no body to summarize."""
+    body = [st for st in getattr(fn, "body", []) if not (isinstance(st, ast.Expr) and isinstance(st.value, ast.Constant))]
+    return not body or all(isinstance(st, ast.Pass) for st in body)
+
+
+def _safe_static_param(ann) -> bool:
+    """A statically typed handler parameter the framework converts to a number / date / UUID (binding fails
+    otherwise), or a String constrained by an anchored @Pattern with no catch-all part."""
+    if ann is None:
+        return False
+    name = (_annotation_name(ann) or "").split(".")[-1]
+    if name in _NUMERIC_STATIC_TYPES:
+        return True
+    pat = getattr(ann, "vulnscan_pattern", None)
+    return bool(pat) and pat.startswith("^") and pat.endswith("$") and not _PERMISSIVE_RE.search(pat)
+
+
+class _TrackDict(dict):
+    """A dict that records which keys are read while `holder[0]` is a set: the dependencies of the function being
+    summarized, so the fixpoint re-analyzes only functions whose inputs changed (a worklist, not 16 full passes)."""
+    __slots__ = ("holder", "kind")
+
+    def __init__(self, data, holder, kind):
+        super().__init__(data)
+        self.holder, self.kind = holder, kind
+
+    def get(self, k, d=None):
+        deps = self.holder[0]
+        if deps is not None:
+            deps.add((self.kind, k))
+        return dict.get(self, k, d)
+
+    def __getitem__(self, k):
+        deps = self.holder[0]
+        if deps is not None:
+            deps.add((self.kind, k))
+        return dict.__getitem__(self, k)
+
+
 class _Env:
-    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk")
+    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk", "webreq", "params", "vfields")
 
     def __init__(self):
+        self.vfields: set = set()  # request fields an express-validator route middleware checked strictly
+        self.webreq: set = set()  # parameters that are inbound web request objects (request.args … are sources)
+        self.params: set = set()  # every parameter name of the function
         self.tainted: dict = {}   # var -> origin  (kind, label, trail)
         self.types: dict = {}     # var -> class qual
         self.inst: dict = {}      # var -> {field: origin}
@@ -265,6 +439,90 @@ _NOT_VALIDATION = {"startswith", "endswith", "starts_with", "ends_with", "str_st
 _MEMBERSHIP = {"contains", "includes", "containskey", "containsvalue", "has", "haskey", "in_array", "array_key_exists",
                "array_search", "key?", "include?", "member?", "issubset"}
 _SHAPE_CHECKS = {"isalnum", "isalpha", "isdigit", "isdecimal", "isnumeric", "isidentifier", "fullmatch", "matches"}
+
+
+def _chain(e) -> str:
+    """`a.b.c` for a pure attribute chain rooted at a name, else ""."""
+    parts = []
+    while isinstance(e, ast.Attribute):
+        parts.append(e.attr)
+        e = e.value
+    if isinstance(e, ast.Name):
+        return ".".join([e.id] + parts[::-1])
+    return ""
+
+
+# Attributes of a Python web request object that the SERVER fills in: the session store (server-side, or a signed
+# cookie the client cannot change), the authenticated user, the matched route, the application object. Reading them
+# is not reading client input (request.GET / .POST / .META / .body / .headers stay sources).
+_SERVER_STATE_ATTRS = frozenset({"session", "user", "auser", "resolver_match", "urlconf", "app", "config_dict",
+                                 "current_app", "state", "_messages", "csrf_processing_done"})
+
+_TEST_MODULE = re.compile(r"(^|/)(tests?|testing)(/|$)|(^|/)test_[^/]*$|_tests?\.py$|(^|/)testcases\.py$|(^|/)conftest\.py$")
+
+_MEMBERSHIP_CALLS = {"hasOwnProperty", "hasOwn", "has", "includes", "contains", "containsKey", "has_key",
+                     "key?", "include?", "array_key_exists", "in_array"}
+
+def _key_guard(test, value):
+    """A ternary `test ? value : other` that lets `value` through only when it is a member of a fixed table:
+    `k in table ? k : d`, `table.hasOwnProperty(k) ? k : d`, `allowed.includes(k) ? k : d` (an allow-list
+    check, as `if k in ALLOWED` is) -> "all"; `table[k] ? k : d` (the key names an entry of `table`, so a
+    later `table[k](…)` can only call what the table holds, or a built-in Object.prototype method, never a
+    function the caller names) -> safe for dynamic dispatch only. None when the test checks something else.
+    The second value is the table / allow-list expression: a guard against a table the CLIENT fills
+    (`k in req.query ? k : ''`) proves nothing, so the caller drops the guard when that expression is tainted."""
+    k = _chain(value)
+    if not k:
+        return None, None
+    if isinstance(test, ast.Subscript) and _chain(test.slice) == k and _chain(test.value):
+        return frozenset({"DF026@" + _chain(test.value)}), test.value   # safe only for a dispatch on that same table
+    if isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.In) and _chain(test.left) == k:
+        return "all", test.comparators[0]
+    if isinstance(test, ast.Call):
+        name = test.func.attr if isinstance(test.func, ast.Attribute) else test.func.id if isinstance(test.func, ast.Name) else ""
+        args = test.args
+        table = test.func.value if isinstance(test.func, ast.Attribute) else None
+        if name == "call" and isinstance(test.func, ast.Attribute) and isinstance(test.func.value, ast.Attribute):
+            name, table, args = test.func.value.attr, (args[0] if args else None), args[1:]  # Object.prototype.hasOwnProperty.call(t, k)
+        if name in _MEMBERSHIP_CALLS and any(_chain(a) == k for a in (args[-1:] if name == "hasOwn" else args[:1])):
+            if name == "hasOwn" or (isinstance(test.func, ast.Name) and len(args) > 1):
+                table = test.args[0] if name == "hasOwn" else args[1]   # Object.hasOwn(t, k) / in_array($k, $allowed)
+            return "all", table              # Object.hasOwn(t, k) / PHP in_array($k, $allowed) / array_key_exists($k, $t)
+    return None, None
+
+
+def _paths(expr) -> set:
+    """Access paths read by an expression: names, and whole attribute chains (`file.filename`), so validating
+    one field of an object does not validate its other fields. A subscript stands for its container's path."""
+    out: set = set()
+    if expr is None:
+        return out
+    stack = [expr]
+    while stack:
+        e = stack.pop()
+        c = _chain(e) if isinstance(e, (ast.Name, ast.Attribute)) else ""
+        if c:
+            out.add(c)
+            continue
+        if isinstance(e, ast.Subscript):
+            stack.append(e.value)
+            stack.append(e.slice)
+            continue
+        if isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr in _STR_TRANSFORMS:
+            stack.append(e.func.value)          # x.strip().lower(): still the value of x
+            stack.extend(e.args)
+            continue
+        stack.extend(ast.iter_child_nodes(e))
+    return out
+
+
+_STR_TRANSFORMS = frozenset({"strip", "lstrip", "rstrip", "lower", "upper", "casefold", "title", "trim", "trimStart",
+                             "trimEnd", "toLowerCase", "toUpperCase", "toLower", "toUpper", "ToLower", "ToUpper", "Trim",
+                             "decode", "encode", "toString", "ToString", "intern"})
+
+
+def _path_covered(p: str, validated: set) -> bool:
+    return any(p == v or p.startswith(v + ".") for v in validated)
 
 
 def _names(expr) -> set:
@@ -317,13 +575,16 @@ def _unsafe_for(o, si) -> bool:
     fetch is the program's function, not an attack (CodeQL's default threat model likewise leaves local sources out)."""
     if not o:
         return False
-    return not si or si[5] not in _safe_for(o)
+    sf = _safe_for(o)
+    return not si or (si[5] not in sf and si[0] not in sf and (len(si) <= 10 or si[10] not in sf))
 
 
 _PATH_CWES = frozenset({"CWE-22", "CWE-23", "CWE-36", "CWE-73"})
 # What the operator's own input (command line, environment, console) may legitimately choose: which file to open
 # and which URL to fetch are the program's function, not an attack on it.
-_LOCAL_SAFE_CWES = _PATH_CWES | {"CWE-918"}
+_LOCAL_SAFE_CWES = _PATH_CWES | {"CWE-918", "CWE-79", "CWE-80", "CWE-601", "CWE-117", "CWE-93", "CWE-113", "CWE-470"}
+# (the operator cannot attack their own terminal, log or browser redirect: remote-only classes, as CodeQL's
+# default threat model; injection into a shell, SQL or code from local input stays reported)
 # Local sources (the operator's own command line, environment, console): naming a file is the program's
 # function, so they are "safe for" path sinks. Matched on canonical source names, never on labels or helpers.
 _LOCAL_SOURCE_NAMES = frozenset({
@@ -394,6 +655,12 @@ def sanitizer_context(name: str):
     return None
 
 
+def _class_facts(c: dict) -> tuple:
+    """Snapshot of the class facts a method analysis may update (compared to detect a real change)."""
+    return (dict(c["tainted_fields"]), dict(c["ctor_param_fields"]), dict(c["field_types"]),
+            {m: {p: set(f) for p, f in slot.items()} for m, slot in c["method_param_fields"].items()})
+
+
 class Project:
     def __init__(self, models: dict | None = None):
         self.m = models or load_models()
@@ -425,14 +692,22 @@ class Project:
                 tree = ast.parse(text)
             except (SyntaxError, ValueError, MemoryError, RecursionError):   # generated/hostile code: skip the file
                 return False
-        if too_deep(tree):
+        facts = self.__dict__.get("_shared_file_facts")
+        hit = facts.get(id(tree)) if facts is not None else None
+        if hit is not None and hit[0] is not tree:
+            hit = None
+        if hit is None and too_deep(tree):
             # generated / hostile nesting would overflow the recursive analyses: leave out only the functions or
             # top-level statements that are too deep, keep analysing the rest of the file
             pruned = _prune_too_deep(tree)
             self.too_deep.append(path + (f" ({', '.join(pruned[:3])}{' …' if len(pruned) > 3 else ''})" if pruned else ""))
             if too_deep(tree):
                 return False
-        file = {"path": path, "tree": tree, "aliases": self._aliases(tree, mod, is_pkg), "funcs": {},
+        if hit is None or hit[1] != (mod, is_pkg):
+            hit = (tree, (mod, is_pkg), self._aliases(tree, mod, is_pkg))
+            if facts is not None:
+                facts[id(tree)] = hit          # a tree that passed the depth check, and its import aliases
+        file = {"path": path, "tree": tree, "aliases": dict(hit[2]), "funcs": {},
                 "classes": {}, "lines": lines if lines is not None else text.splitlines(), "assign_aliases": []}
         self.files[mod] = file
         self.lines_by_path[path] = file["lines"]
@@ -500,6 +775,7 @@ class Project:
         return al
 
     def link(self):
+        self._hier_cache = {}
         for cq, c in self.classes.items():
             for bname in c["base_names"]:
                 bq = self._resolve_class(c["mod"], bname)
@@ -525,7 +801,7 @@ class Project:
             return f"{base}.{rest}" if rest else base
         return name
 
-    def _match(self, index: dict, name: str, modhint: str) -> str | None:
+    def _match(self, index: dict, name: str, modhint: str, caller: str | None = None) -> str | None:
         cands = index.get(name)
         if not cands:
             return None
@@ -539,6 +815,21 @@ class Project:
                 tail = hint.split(".")[-1]
                 pool = [q for q in cands if q.split("::")[0].split(".")[-1] == tail or hint.endswith(q.split("::")[0])]
             best = [q for q in pool if q.split("::")[0].endswith(hint) or hint.endswith(q.split("::")[0])]
+            if len(best) > 1 and caller is not None:
+                # `import libuser` resolves like Python's sys.path: the importing module's own package first, then
+                # the module sharing the longest package prefix; production code never to a tests/ module
+                cpkg = caller.split(".")[:-1]
+
+                def rank(q):
+                    qp = q.split("::")[0].split(".")
+                    common = 0
+                    for a, b in zip(cpkg, qp[:-1]):
+                        if a != b:
+                            break
+                        common += 1
+                    testy = any(x in ("tests", "test", "testing") for x in qp[:-1]) and not any(x in ("tests", "test", "testing") for x in cpkg)
+                    return (testy, -common)
+                best = sorted(best, key=rank)
             if best:
                 return best[0]
         return cands[0] if len(cands) == 1 else None
@@ -585,6 +876,26 @@ class Project:
         self._resolve_cache[key] = res
         return res
 
+    def _external_module(self, modname: str) -> bool:
+        """Python only: is `modname` (an imported module) outside the scanned project (`json`, `os.path`,
+        `requests`)? Its functions are library code, never a project function that happens to share the name
+        (`json.load(resp)` is not the project's own `triage.load`)."""
+        if self.m.get("language") != "python" or not modname or modname.startswith("."):
+            return False
+        known = self.__dict__.get("_project_mod_parts")
+        if known is None or known[0] != len(self.files):
+            parts: set = set()
+            for m in self.files:
+                segs = m.split(".")
+                # every run of segments: suffixes (`import b` inside package `pkg` finds pkg.b), prefixes (`import pkg`
+                # then `pkg.b.load()`) and middle runs (src layout without __init__.py: `src.pkg.sub.helpers` is
+                # imported as `pkg.sub.helpers` and called through `import pkg` as `pkg.sub.helpers.run()`)
+                for i in range(len(segs)):
+                    for j in range(i + 1, len(segs) + 1):
+                        parts.add(".".join(segs[i:j]))
+            known = self.__dict__["_project_mod_parts"] = (len(self.files), parts)
+        return modname not in known[1]
+
     def _resolve_function_uncached(self, mod: str, name: str) -> str | None:
         file = self.files.get(mod, {})
         short = name.split(".")[-1]
@@ -592,12 +903,20 @@ class Project:
             return file["funcs"][short]
         tgt = file.get("aliases", {}).get(name) or file.get("aliases", {}).get(short)
         if tgt and tgt[0] == "from":
-            q = self._match(self.simple_funcs, tgt[2], tgt[1])
+            if self._external_module(tgt[1]) and (name == short or file.get("aliases", {}).get(name) is tgt):
+                return None                     # `from json import load`: the library function
+            q = self._match(self.simple_funcs, tgt[2], tgt[1], mod)
             if q:
                 return q
         if "." in name:
             parts = name.split(".")
-            q = self._match(self.simple_funcs, parts[-1], ".".join(parts[:-1]))
+            if parts[0] in ("self", "cls", "this") and len(parts) == 2:
+                return None                     # `self._json(...)`: a method (or field) of the object, never a module
+                                                # function that happens to share the name (`sca._json`)
+            head = file.get("aliases", {}).get(parts[0])
+            if head and head[0] == "mod" and self._external_module(head[1]):
+                return None                     # `json.load(...)` after `import json`: the library function
+            q = self._match(self.simple_funcs, parts[-1], ".".join(parts[:-1]), mod)
             if q:
                 return q
         cands = self.simple_funcs.get(short)
@@ -610,6 +929,14 @@ class Project:
         return None
 
     def _mro(self, cq: str) -> list[str]:
+        cache = self.__dict__.setdefault("_hier_cache", {})
+        key = ("mro", cq)
+        hit = cache.get(key)
+        if hit is None:
+            hit = cache[key] = self._mro_uncached(cq)
+        return hit
+
+    def _mro_uncached(self, cq: str) -> list[str]:
         out, stack = [], [cq]
         while stack:
             c = stack.pop(0)
@@ -620,6 +947,14 @@ class Project:
         return out
 
     def _all_subclasses(self, cq: str) -> set[str]:
+        cache = self.__dict__.setdefault("_hier_cache", {})
+        key = ("sub", cq)
+        hit = cache.get(key)
+        if hit is None:
+            hit = cache[key] = self._all_subclasses_uncached(cq)
+        return hit
+
+    def _all_subclasses_uncached(self, cq: str) -> set[str]:
         out, stack = set(), [cq]
         while stack:
             c = stack.pop()
@@ -636,13 +971,25 @@ class Project:
         return merged
 
     def _lookup_method(self, cq: str, name: str) -> list[str]:
+        cache = self.__dict__.setdefault("_hier_cache", {})
+        key = ("m", cq, name)
+        hit = cache.get(key)
+        if hit is None:
+            hit = cache[key] = self._lookup_method_uncached(cq, name)
+        return list(hit)
+
+    def _lookup_method_uncached(self, cq: str, name: str) -> list[str]:
         found = []
         for c in self._mro(cq):
             q = self.classes[c]["methods"].get(name)
             if q:
                 found.append(q)
                 break
+        prod = not _TEST_MODULE.search(self.classes[cq]["path"]) if cq in self.classes else True
         for s in self._all_subclasses(cq):
+            if prod and _TEST_MODULE.search(self.classes[s]["path"]):
+                continue            # an override in a test module never runs in production: `self.form_valid()`
+                                    # in Django's ProcessFormView is not the test suite's subclass
             q = self.classes[s]["methods"].get(name)
             if q and q not in found:
                 found.append(q)
@@ -670,19 +1017,42 @@ class Project:
             if cq:
                 return self._lookup_method(cq, "__init__"), cq
             q = self._resolve_function(mod, f.id)
+            if q is None and cls and cls in self.classes and self.m.get("language") not in ("python", "javascript", "plsql"):
+                # Java / C# / Kotlin / Ruby / Swift / C++: a bare `find(id)` inside a class is `this.find(id)`
+                found = self._lookup_method(cls, f.id)
+                if found:
+                    return found, None
             return ([q] if q else []), None
         if isinstance(f, ast.Attribute):
             recv = f.value
+            is_super = (isinstance(recv, ast.Name) and recv.id == "super") or \
+                (isinstance(recv, ast.Call) and isinstance(recv.func, ast.Name) and recv.func.id == "super")
+            if is_super and cls and cls in self.classes:
+                # Java / C# / PHP `super.execute(...)`: the implementation inherited from a base class
+                for c in self._mro(cls)[1:]:
+                    q = self.classes[c]["methods"].get(f.attr)
+                    if q:
+                        return [q], None
             rtype = cls if (isinstance(recv, ast.Name) and recv.id in {"self", "cls"} and cls) else self._type_of(mod, cls, recv, env)
             if rtype:
                 return self._lookup_method(rtype, f.attr), None
+            if isinstance(recv, (ast.Name, ast.Attribute)) and not (isinstance(recv, ast.Name) and recv.id in env.tainted):
+                # Student.create(...) / models.Student.create(...): a static or class method called on the class
+                rd = _dotted(recv)
+                cq = self._resolve_class(mod, rd) if rd and rd.split(".")[-1][:1].isupper() else None
+                if cq:
+                    found = self._lookup_method(cq, f.attr)
+                    if found:
+                        return found, None
             if isinstance(recv, ast.Name):
                 tgt = self.files.get(mod, {}).get("aliases", {}).get(recv.id)
                 if tgt and tgt[0] == "mod":
-                    q = self._match(self.simple_funcs, f.attr, tgt[1])
+                    if self._external_module(tgt[1]):
+                        return [], None         # `json.load(resp)`: a library function, not a project function `load`
+                    q = self._match(self.simple_funcs, f.attr, tgt[1], mod)
                     if q:
                         return [q], None
-                    cq = self._match(self.simple_classes, f.attr, tgt[1])
+                    cq = self._match(self.simple_classes, f.attr, tgt[1], mod)
                     if cq:
                         return self._lookup_method(cq, "__init__"), cq
             name = _dotted(f)
@@ -693,10 +1063,15 @@ class Project:
             if self._container_field(cls, recv):
                 return [], None                 # self.parts.add(x) on a list field is a list write, not Cmd.add
             cands = self.simple_methods.get(f.attr, [])
-            if len(cands) == 1:
+            if len(cands) == 1 and not isinstance(recv, ast.Call) and f.attr not in _LIBRARY_METHOD_NAMES:
+                # the only project method with that name; never for a call on a library value
+                # (`new StringBuilder(x).toString()`, `entry.getValue()`): that resolves to an unrelated class
                 return cands, None
             same = [q for q in cands if q.split("::")[0] == mod]
             if len(same) == 1:
+                if isinstance(recv, ast.Call) and not is_super and not any(self._callees(mod, cls, recv, env)):
+                    # a call on a library value (`Base64.getDecoder().decode(s)`) is not this file's own `decode`
+                    return [], None
                 return same, None
         return [], None
 
@@ -759,14 +1134,115 @@ class Project:
         return None
 
     # -------------------------------------------------------------- sources
-    def _is_source(self, mod: str, node: ast.AST) -> str | None:
+    def _is_source(self, mod: str, node: ast.AST, cls=None, env=None) -> str | None:
         key = (mod, id(node))
         hit = self._source_cache.get(key)
         if hit is not None and hit[0] is node:
-            return hit[1]
-        res = self._is_source_uncached(mod, node)
-        self._source_cache[key] = (node, res)
+            res = hit[1]
+        else:
+            self._cur_cls = cls
+            res = self._is_source_uncached(mod, node)
+            self._source_cache[key] = (node, res)
+        if res is None and env is not None and env.webreq and self.m.get("language") == "javascript":
+            res = self._webreq_attr(node, env)
+        if isinstance(res, tuple):          # ("?req", root, label): a bare `request.x`, decided per function
+            _, root, label = res
+            if env is not None and (root in env.webreq or (root not in env.params and self._web_module(mod))):
+                return label
+            if env is None and self._web_module(mod):
+                return label
+            return None
         return res
+
+    def _webreq_attr(self, node, env):
+        """`r.query` / `_p0.body` / `r.get('h')` where r is the request parameter of a route callback (any name)."""
+        cur = node
+        if isinstance(cur, ast.Call) and isinstance(cur.func, ast.Attribute):
+            if cur.func.attr in ("get", "header", "param", "cookie", "accepts") and isinstance(cur.func.value, ast.Name) \
+                    and cur.func.value.id in env.webreq:
+                return f"req.{cur.func.attr}()"
+            cur = cur.func.value if cur.func.attr in ("get", "getAll", "has") else cur.func
+        if isinstance(cur, ast.Subscript):
+            cur = cur.value
+        if isinstance(cur, ast.Attribute) and isinstance(cur.value, ast.Name) and cur.value.id in env.webreq:
+            koa = cur.value.id == "ctx"          # Koa's context: ctx.body is the response, not the request
+            for roots, attrs, label in self.m["attr_sources"]:
+                if cur.attr in attrs and (("ctx" in roots) if koa else ("req" in roots or "request" in roots)):
+                    return label.replace("{attr}", cur.attr)
+        return None
+
+    # --------------------------------------------- which names are inbound web requests (Python / JavaScript)
+    _PY_WEB = ("django", "flask", "quart", "starlette", "fastapi", "aiohttp", "tornado", "pyramid", "falcon", "bottle",
+               "sanic", "rest_framework", "werkzeug", "cherrypy", "litestar", "hug", "ninja", "channels", "connexion",
+               "flask_restful", "flask_restx", "responder", "webob", "web", "masonite", "molten", "emmett", "blacksheep")
+    _JS_WEB = ("express", "koa", "fastify", "@hapi/hapi", "hapi", "restify", "next", "next/server", "http", "https",
+               "node:http", "node:https", "connect", "polka", "@nestjs/common", "micro", "h3", "hono", "@koa/router",
+               "koa-router", "express-serve-static-core", "@remix-run/node", "@sveltejs/kit", "aws-lambda", "@vercel/node",
+               "@netlify/functions", "@azure/functions", "body-parser", "multer", "router")
+    _WEB_REQUEST_TYPES = frozenset({
+        "Request", "HttpRequest", "WSGIRequest", "ASGIRequest", "HTTPServerRequest", "BaseRequest", "WebSocket",
+        "HTTPConnection", "NextRequest", "NextApiRequest", "IncomingMessage", "FastifyRequest", "Context",
+        "ParameterizedContext", "RouterContext", "APIGatewayProxyEvent", "APIGatewayProxyEventV2", "HttpRequestMessage",
+        "RequestEvent", "LoaderFunctionArgs", "ActionFunctionArgs", "Req", "HandlerEvent", "ALBEvent"})
+    _NOT_WEB_REQUEST_MODULES = ("requests", "httpx", "urllib", "pytest", "_pytest", "unittest", "aiohttp.client",
+                                "botocore", "google.auth", "grpc", "http.client", "node-fetch", "undici", "got", "axios",
+                                "superagent", "supertest")
+
+    def _web_module(self, mod) -> bool:
+        """Does the module import a web framework (so a bare `request` / `req` is an inbound request)?"""
+        cache = self.__dict__.setdefault("_web_mods", {})
+        hit = cache.get(mod)
+        if hit is None:
+            al = (self.files.get(mod) or {}).get("aliases", {})
+            web = self._JS_WEB if self.m.get("language") == "javascript" else self._PY_WEB
+            hit = False
+            for v in al.values():
+                for x in (v[1:] if isinstance(v, tuple) else (v,)):
+                    if isinstance(x, str) and x and (x in web or x.split(".")[0] in web or x.split("/")[0] in web):
+                        hit = True
+            cache[mod] = hit
+        return hit
+
+    def _gated_language(self) -> bool:
+        return self.m.get("language") in ("python", "javascript")
+
+    def _webreq_param(self, mod, cls, fn, p) -> bool:
+        """Is parameter `p` (named like a request) an inbound web request? By its annotation when there is one
+        (a web Request type yes; PreparedRequest, pytest.FixtureRequest, a local dataclass no), else by the module
+        importing a web framework. Test fixtures never are."""
+        for d in getattr(fn, "decorator_list", []):
+            if _dotted(d.func if isinstance(d, ast.Call) else d).split(".")[-1] in ("fixture", "yield_fixture"):
+                return False
+        ann = getattr(p, "annotation", None)
+        if ann is not None:
+            name = _annotation_name(ann) or ""
+            parts = [n for n in ast.walk(ann) if isinstance(n, (ast.Name, ast.Attribute))] or [ann]
+            for part in parts:                      # `Request | PreparedRequest`: every alternative counts
+                canon = self._canon(mod, part) if isinstance(part, (ast.Name, ast.Attribute)) else name
+                if any(canon == m or canon.startswith(m + ".") for m in self._NOT_WEB_REQUEST_MODULES):
+                    return False
+            if name.split(".")[-1] in self._WEB_REQUEST_TYPES:
+                return True
+            return False
+        if self.m.get("language") == "python" and p.arg != "request":
+            # `req` is a view's request in a module that imports a web framework, or in a handler shape (falcon
+            # `on_get(self, req, resp)`); in setup.py `def _pip_requirement(req)` it is a requirement line
+            names = {x.arg for x in fn.args.posonlyargs + fn.args.args}
+            return self._web_module(mod) or bool(names & {"resp", "res", "response"}) \
+                or getattr(fn, "name", "").startswith("on_")
+        if self.m.get("language") != "javascript" or self._web_module(mod):
+            return True        # Python: an unannotated `request` parameter is a view's request by convention
+        # JavaScript without a framework import: a handler shape `(req, res)`, `(ctx, next)`, `(event, context)`
+        # or a conventional handler name; `flushSegment(request, d)` in a renderer is not an HTTP request
+        names = [x.arg for x in fn.args.args]
+        if set(names) & {"res", "response", "reply", "next", "h", "context", "callback", "cb", "resp", "done"}:
+            return True
+        if p.arg == "ctx" and len(names) == 1:
+            return True
+        if p.arg == "event" and getattr(fn, "name", "") not in ("handler", "default", "main", "lambdaHandler"):
+            return False
+        return getattr(fn, "name", "") in ("handler", "default", "main", "GET", "POST", "PUT", "PATCH", "DELETE",
+                                            "HEAD", "OPTIONS", "middleware", "loader", "action")
 
     def _is_source_uncached(self, mod: str, node: ast.AST) -> str | None:
         cur = node
@@ -782,6 +1258,19 @@ class Project:
             for roots, attrs, label in self.m["attr_sources"]:
                 if cur.attr in attrs and (root in roots or root in self.m["request_params"]
                                           or any(root.endswith("." + r) for r in roots)):
+                    if root == "ctx" and self.m.get("language") == "javascript" and "ctx" not in roots:
+                        continue                    # Koa: ctx.body is the response body (request: ctx.request.body)
+                    if roots == {"ctx"} and root != "ctx":
+                        continue                    # the Koa-only group: not for req / request
+                    if self._gated_language() and root == "self":
+                        # `self.path` / `self.headers` are request data only in a request-handler class
+                        if not self._handler_class(getattr(self, "_cur_cls", None)):
+                            continue
+                    elif self._gated_language() and (root in self.m["request_params"] or root == "context"):
+                        tgt = (self.files.get(mod) or {}).get("aliases", {}).get(root)
+                        if tgt and tgt[0] == "from" and (tgt[1] or "").split(".")[0] in self._PY_WEB + self._JS_WEB:
+                            return label.replace("{attr}", cur.attr)     # from flask import request
+                        return ("?req", root, label.replace("{attr}", cur.attr))
                     return label.replace("{attr}", cur.attr)
         canon = self._canon(mod, node) if isinstance(node, (ast.Name, ast.Attribute, ast.Call)) else ""
         if isinstance(node, ast.Subscript):
@@ -799,6 +1288,17 @@ class Project:
                     if any(_name_matches(canon, n) for n in names):
                         return label.replace("{name}", canon)
         return None
+
+    _HANDLER_BASES = frozenset({"BaseHTTPRequestHandler", "SimpleHTTPRequestHandler", "CGIHTTPRequestHandler",
+                                "StreamRequestHandler", "BaseRequestHandler", "DatagramRequestHandler", "WSGIRequestHandler"})
+
+    def _handler_class(self, cls) -> bool:
+        if not cls or cls not in self.classes:
+            return False
+        for c in self._mro(cls):
+            if {b.split(".")[-1] for b in self.classes[c]["base_names"]} & self._HANDLER_BASES:
+                return True
+        return False
 
     def _is_local_source(self, mod, node) -> bool:
         cur = node.value if isinstance(node, ast.Subscript) else node
@@ -846,7 +1346,8 @@ class Project:
         hit = self._sink_cache.get(key)
         if hit is not None and hit[0] is call:
             return hit[1]
-        canon = self._canon(mod, call.func)
+        # `getattr(logger, level)(msg, *args)` calls what getattr RETURNED: the outer call is not getattr itself
+        canon = "" if isinstance(call.func, ast.Call) else self._canon(mod, call.func)
         res = None
         if canon:
             # sinks constrained by a receiver pattern are more specific than bare method names: try them first
@@ -855,11 +1356,36 @@ class Project:
                 ordered = (self.m["sinks"], len(self.m["sinks"]),
                            sorted(self.m["sinks"], key=lambda e: 0 if len(e) > 11 and e[11] is not None else 1))
                 self.__dict__["_sinks_ordered"] = ordered
-            for entry in ordered[2]:
-                if any(_name_matches(canon, n) for n in entry[9]):
+            by_canon = self.__dict__.setdefault("_sinks_by_canon", {})
+            cands = by_canon.get((id(ordered[2]), canon))
+            if cands is None:
+                # every way a model name can match (bare, dotted suffix, builtins.) needs the same last segment:
+                # only those entries are tested, in the same order
+                by_last = self.__dict__.get("_sinks_by_last")
+                if by_last is None or by_last[0] is not ordered[2]:
+                    idx: dict = {}
+                    for i, e in enumerate(ordered[2]):
+                        for n in e[9]:
+                            lst = idx.setdefault(n.split(".")[-1], [])
+                            if not lst or lst[-1] != i:
+                                lst.append(i)
+                    by_last = self.__dict__["_sinks_by_last"] = (ordered[2], idx)
+                entries = ordered[2]
+                cands = by_canon[(id(ordered[2]), canon)] = [
+                    entries[i] for i in by_last[1].get(canon.split(".")[-1], ())
+                    if any(_name_matches(canon, n) for n in entries[i][9])]
+            for entry in cands:
+                if True:
                     rx = entry[11] if len(entry) > 11 else None
                     if rx is not None and not (isinstance(call.func, ast.Attribute) and rx.search(_receiver_text(call.func.value))):
                         continue                        # e.g. `search` is LDAP only on a connection-like receiver
+                    rxn = entry[13] if len(entry) > 13 else None
+                    if rxn is not None and isinstance(call.func, ast.Attribute) and rxn.search(_receiver_text(call.func.value)):
+                        continue                        # e.g. QuerySet.exists() is not pathlib's Path.exists()
+                    safe_kw = entry[12] if len(entry) > 12 else None
+                    if safe_kw and any(k.arg in safe_kw and (_dotted(k.value) or str(getattr(k.value, "value", ""))).split(".")[-1]
+                                       in safe_kw[k.arg] for k in call.keywords):
+                        continue                        # yaml.load(x, Loader=SafeLoader): the safe variant of the API
                     res = entry[:9] + entry[10:11]      # drop the name list, keep the named-argument set at index 9
                     break
         self._sink_cache[key] = (call, res)
@@ -900,6 +1426,8 @@ class Project:
     def _sink_args(si, call) -> list:
         """Argument expressions a sink inspects: positional indices plus named arguments (PL/SQL `p_sql => x`, Python kw)."""
         out = [call.args[i] for i in si[7] if isinstance(i, int) and i < len(call.args)]
+        if "slice" in si[7] and isinstance(call.func, ast.Subscript):
+            out.append(call.func.slice)
         if "self" in si[7] and isinstance(call.func, ast.Attribute):
             out.append(call.func.value)         # the receiver itself is the dangerous value (pathlib: p.read_text())
         kws = si[9] if len(si) > 9 else ()
@@ -922,6 +1450,35 @@ class Project:
 
     def _sink(self, mod, cls, call, env):
         si = self._sink_info(mod, call)
+        if si and isinstance(call.func, ast.Attribute) and si[0] != "DFSTORE" and not si[0].startswith("stored"):
+            # `super.execute(...)` / `service.search(q)` on a project class that defines the method: its own summary
+            # decides where the data goes, a library sink with the same bare name does not apply
+            recv = call.func.value
+            if isinstance(recv, ast.Name) and recv.id in ("super", "this", "self") and cls:
+                rtype = cls
+            else:
+                rtype = self._type_of(mod, cls, recv, env) if isinstance(recv, (ast.Name, ast.Attribute)) else None
+            if rtype and rtype in self.classes:
+                owners = [q for q in self._lookup_method(rtype, call.func.attr)
+                          if not isinstance(recv, ast.Name) or recv.id != "super" or not q.startswith(rtype + ".")]
+                if any(not _abstract(self.gfuncs[q]["node"]) for q in owners if q in self.gfuncs):
+                    return None
+        if si and isinstance(call.func, ast.Name) and si[0] != "DFSTORE" and not si[0].startswith("stored") \
+                and cls and cls in self.classes and self.m.get("language") not in ("python", "javascript", "plsql") \
+                and call.func.id not in env.funcs and not self._resolve_function(mod, call.func.id):
+            # Ruby / Java / C#: a bare `warn(env, msg)` inside a class that defines `warn` is `self.warn(...)`; its own
+            # summary decides where the data goes (rack-protection logs only `msg`), not Kernel#warn's model
+            if any(q in self.gfuncs and not _abstract(self.gfuncs[q]["node"]) for q in self._lookup_method(cls, call.func.id)):
+                return None
+        if si is None and isinstance(call.func, ast.Attribute) and call.func.attr in ("write", "write_text") \
+                and call.args and self.m.get("language") == "python" and self._template_source(mod, call.args[0]):
+            return TEMPLATE_SOURCE_WRITE     # f.write(f"{{% extends 'base.html' %}}…{content}…"): a template built from data
+        if si is None and isinstance(call.func, ast.Subscript) and self.m.get("language") in ("javascript", "php") \
+                and not isinstance(call.func.slice, (ast.Constant, ast.Slice)):
+            table = _chain(call.func.value)
+            # obj[name](...): the caller picks which method runs. The extra field names the table, so a key checked
+            # against that same table (`t[k] ? k : 'home'`, see _key_guard) is safe here and only here.
+            return DYNAMIC_DISPATCH + ((), "DF026@" + table) if table else DYNAMIC_DISPATCH
         if si and si[0] == "DF003" and not si[8] and self._subprocess_elem_only(mod, cls, call, env):
             return ARG_INJECTION
         return si
@@ -1027,9 +1584,11 @@ class Project:
             fields.update(self._class_fields(rtype, "tainted_fields"))
         pt = getattr(self, "pt", None)
         if pt is not None:
+            self._note_dep(("o", 0))
+            by_oid = self.__dict__.get("obj_taint_by_oid") or {}
             for o in pt.objs(recv):
-                for (oid, attr), origin in self.obj_taint.items():
-                    if oid == id(o) and attr not in fields:
+                for attr, origin in (by_oid.get(id(o)) or {}).items():
+                    if attr not in fields:
                         fields[attr] = origin
         return fields, False
 
@@ -1123,13 +1682,26 @@ class Project:
                 t = _flow.fold(node.test, env.consts)
                 if t is not _flow._MISSING:
                     return self._taints(mod, cls, node.body if t else node.orelse, env)
-            return self._taints(mod, cls, node.body, env) + self._taints(mod, cls, node.orelse, env)
+            test, body, orelse = node.test, node.body, node.orelse
+            if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+                test, body, orelse = test.operand, orelse, body          # `!pages[k] ? 'home' : k`
+            out = self._taints(mod, cls, body, env)
+            guard, table = _key_guard(test, body) if out else (None, None)
+            if guard and table is not None and self._taints(mod, cls, table, env):
+                guard = None                 # `k in req.query ? k : ''`: membership in client data validates nothing
+            if guard == "all":
+                out = []
+            elif guard:
+                out = [(o[0], o[1], _trail(o), _safe_for(o) | guard) + tuple(o[4:]) for o in out]
+            return out + self._taints(mod, cls, orelse, env)
         if isinstance(node, ast.JoinedStr):
             out = []
             for v in node.values:
                 if isinstance(v, ast.FormattedValue):
                     out.extend(self._taints(mod, cls, v.value, env))
             return out
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+            return self._comprehension_taints(mod, cls, node, env)
         if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
             out = []
             for e in node.elts:
@@ -1144,8 +1716,61 @@ class Project:
         o = self._taint_one(mod, cls, node, env)
         return [o] if o else []
 
+    def _comprehension_taints(self, mod, cls, node, env) -> list:
+        """`[dict(r) for r in rows]` / `{k: v for k, v in pairs}`: the element expression, with each loop variable
+        carrying the taint of what it iterates (and an outer name it shadows hidden). The `if` filters are not
+        validation. The loop variables are bound only while the element is evaluated."""
+        saved: dict = {}
+        try:
+            for g in node.generators:
+                oi = self._taint(mod, cls, g.iter, env)
+                for t in ast.walk(g.target):
+                    if isinstance(t, ast.Name):
+                        if t.id not in saved:
+                            saved[t.id] = env.tainted.get(t.id)
+                        if oi:
+                            env.tainted[t.id] = oi
+                        else:
+                            env.tainted.pop(t.id, None)
+            out = []
+            for e in ((node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,)):
+                out.extend(self._taints(mod, cls, e, env))
+            return out
+        finally:
+            for name, o in saved.items():
+                if o is None:
+                    env.tainted.pop(name, None)
+                else:
+                    env.tainted[name] = o
+
     def _taint_one(self, mod, cls, node, env):
-        src = self._is_source(mod, node)
+        if self.m.get("language") == "javascript":
+            if env.vfields and isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) \
+                    and isinstance(node.value.value, ast.Name) and node.value.value.id in env.webreq \
+                    and node.attr in env.vfields:
+                return None          # req.query.id after query('id').isInt() in the route's middleware
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                    and node.func.attr in ("parse", "parseAsync", "validate", "validateAsync", "attempt", "cast") \
+                    and _JS_TYPED_SCHEMA.search(_receiver_text(node.func.value)):
+                return None          # z.number().parse(x) / Joi.number().validate(x): a number, boolean, date, enum value
+        if self.m.get("language") == "python" and isinstance(node, (ast.Subscript, ast.Attribute, ast.Call)):
+            v = self._schema_validated(mod, cls, node, env)
+            if v is not None:
+                if v == "all":
+                    return None
+                inner = node.value if isinstance(node, (ast.Subscript, ast.Attribute)) else node.func
+                o = self._taint(mod, cls, inner, env)
+                return (o[0], o[1], _trail(o), _safe_for(o) | v) + tuple(o[4:]) if o else None
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr in ("replace", "replaceAll", "gsub", "sub", "Replace") and node.args \
+                and any(x in _const_text(node.args[0]) for x in ("\r", "\n", "\\r", "\\n", "\\s")):
+            o = self._taint(mod, cls, node.func.value, env)    # CR/LF stripped: no forged log lines / headers
+            return (o[0], o[1], _trail(o), _safe_for(o) | _CRLF_CWES) + tuple(o[4:]) if o else None
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get" \
+                and any(k.arg == "type" and isinstance(k.value, ast.Name) and k.value.id in ("int", "float", "bool")
+                        for k in node.keywords):
+            return None              # werkzeug MultiDict.get(k, type=int): converted to a number (or the default)
+        src = self._is_source(mod, node, cls, env)
         if src:
             if self._is_local_source(mod, node):
                 return ("source", src, (), _LOCAL_SAFE_CWES)
@@ -1159,9 +1784,16 @@ class Project:
                 return m.get(key, other)
             return next((v for v in list(m.values()) + [other] if v), None)
         if isinstance(node, (ast.Subscript, ast.Starred, ast.Await)):
-            return self._taint(mod, cls, node.value, env)
+            o = self._taint(mod, cls, node.value, env)
+            if o and isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) \
+                    and isinstance(node.slice.value, str) and not self._stored_column_written(o, node.slice.value):
+                return None          # row["id"] of a row read with SELECT *: a column no user wrote
+            return o
         if isinstance(node, ast.Attribute):
             recv = node.value
+            if isinstance(recv, ast.Name) and recv.id in env.webreq and node.attr in _SERVER_STATE_ATTRS \
+                    and self.m.get("language") == "python":
+                return None          # request.session / request.user: server-side state, not what the client sent
             if isinstance(recv, ast.Name) and recv.id in {"self", "cls"} and cls:
                 tf = self._class_fields(cls, "tainted_fields")
                 if node.attr in tf:
@@ -1175,6 +1807,7 @@ class Project:
                     return tmp[node.attr]
             pt = getattr(self, "pt", None)
             if pt is not None:
+                self._note_dep(("o", 0))
                 for o in pt.objs(recv):
                     hit = self.obj_taint.get((id(o), node.attr))
                     if hit:
@@ -1221,6 +1854,14 @@ class Project:
                     return ("param", o[1] + ".keys", _trail(o)) + tuple(o[3:])
             callees, ctor = self._callees(mod, cls, node, env)
             if ctor:
+                if ctor in self.classes and self._class_has_base(ctor, _FORM_BASES):
+                    # a form / serializer bound to request data carries it (cleaned_data / validated_data / .data)
+                    for a in list(node.args) + [k.value for k in node.keywords if k.arg in ("data", "formdata", None)]:
+                        o = self._taint(mod, cls, a, env)
+                        if o:
+                            return o
+                    if not node.args and self._class_has_base(ctor, {"FlaskForm"}):
+                        return ("source", "request.form", ())     # Flask-WTF binds request.form implicitly
                 return None
             if callees:
                 fields, is_self = self._receiver_fields(mod, cls, node, env)
@@ -1235,6 +1876,8 @@ class Project:
                     mapping = self._map_args(node, q)
                     for pname in summ["ret_params"]:
                         arg = mapping.get(pname)
+                        if arg is None and pname in self._captured_names(q):
+                            arg = ast.Name(id=pname, ctx=ast.Load())    # captured by the closure: the caller's variable
                         if arg is not None:
                             o = self._taint(mod, cls, arg, env)
                             if o:
@@ -1257,7 +1900,131 @@ class Project:
             return None
         return None
 
+    # ------------------------------------------------- form / schema validation (Django, DRF, WTForms, pydantic)
+    def _class_field_value(self, cq, field):
+        """The expression a form/schema class assigns to `field` (`age = forms.IntegerField()`) or its annotation
+        (`age: int`), searched through the class hierarchy: ("assign", expr) / ("ann", annotation) / None."""
+        for c in self._mro(cq):
+            node = self.classes[c]["node"]
+            for st in node.body:
+                if isinstance(st, ast.Assign) and any(isinstance(t, ast.Name) and t.id == field for t in st.targets):
+                    return ("assign", st.value)
+                if isinstance(st, ast.AnnAssign) and isinstance(st.target, ast.Name) and st.target.id == field:
+                    return ("ann", st.annotation) if st.value is None or not isinstance(st.value, ast.Call) \
+                        else ("annassign", st)
+        return None
+
+    def _class_has_base(self, cq, names) -> bool:
+        return any({b.split(".")[-1] for b in self.classes[c]["base_names"]} & names for c in self._mro(cq))
+
+    def _field_safety(self, mod, cq, field):
+        """What a validated field of form/schema class `cq` cannot carry: "all" (numbers, dates, UUIDs, booleans, choices
+        from a fixed list, slugs), a frozenset of CWEs (an e-mail address cannot hold markup), or None (free text)."""
+        hit = self._class_field_value(cq, field)
+        if hit is None:
+            return None
+        kind, val = hit
+        if kind in ("ann", "annassign"):
+            ann = val if kind == "ann" else val.annotation
+            if self._class_has_base(cq, _SCHEMA_BASES) and self._safe_annotation(mod, ann):
+                return "all"
+            return None
+        if not isinstance(val, ast.Call):
+            return None
+        ftype = _dotted(val.func).split(".")[-1]
+        if ftype in _SAFE_FIELD_TYPES:
+            return "all"
+        if ftype in _EMAIL_FIELD_TYPES:
+            return frozenset(_XSS)
+        if ftype in ("StringField", "TextField", "CharField", "String", "Str", "TextAreaField", "SearchField"):
+            for k in val.keywords:
+                if k.arg in ("validators", "validate", "choices"):
+                    if k.arg == "choices":
+                        return "all"
+                    for v in (k.value.elts if isinstance(k.value, (ast.List, ast.Tuple)) else [k.value]):
+                        vn = _dotted(v.func if isinstance(v, ast.Call) else v).split(".")[-1]
+                        if vn in ("AnyOf", "OneOf", "ContainsOnly"):
+                            return "all"
+                        if vn in ("Regexp", "Regex", "RegexValidator") and isinstance(v, ast.Call) and v.args \
+                                and isinstance(v.args[0], ast.Constant) and isinstance(v.args[0].value, str):
+                            pat = v.args[0].value
+                            if pat.startswith("^") and pat.endswith(("$", "\\Z", "\\z")) and not _PERMISSIVE_RE.search(pat):
+                                return "all"
+        return None
+
+    def _safe_annotation(self, mod, ann) -> bool:
+        """int / float / bool / UUID / date / Decimal / an Enum / Literal[...] / conint …, optionally Optional[...]:
+        a parsed value of that type cannot carry an injection payload."""
+        if ann is None:
+            return False
+        if isinstance(ann, ast.Subscript):
+            head = _dotted(ann.value).split(".")[-1]
+            if head == "Literal":
+                return True
+            if head in ("Optional", "Annotated"):
+                inner = ann.slice.elts[0] if isinstance(ann.slice, ast.Tuple) else ann.slice
+                return self._safe_annotation(mod, inner)
+            if head == "Union":
+                elts = ann.slice.elts if isinstance(ann.slice, ast.Tuple) else [ann.slice]
+                return all(self._safe_annotation(mod, e) or (isinstance(e, ast.Constant) and e.value is None) for e in elts)
+            return False
+        if isinstance(ann, ast.BinOp) and isinstance(ann.op, ast.BitOr):
+            return all(self._safe_annotation(mod, e) or (isinstance(e, ast.Constant) and e.value is None)
+                       for e in (ann.left, ann.right))
+        if isinstance(ann, ast.Call):
+            return _dotted(ann.func).split(".")[-1] in ("conint", "confloat", "condecimal", "condate")
+        name = _annotation_name(ann) or ""
+        if name.split(".")[-1] in _SAFE_SCALARS:
+            return True
+        cq = self._resolve_class(mod, name)
+        return bool(cq) and self._class_has_base(cq, {"Enum", "IntEnum", "StrEnum", "Flag", "IntFlag"})
+
+    def _schema_validated(self, mod, cls, node, env):
+        """`form.cleaned_data["age"]`, `serializer.validated_data["age"]`, `form.age.data`, `item.age` (pydantic):
+        the field's validated type decides what the value can still carry. None = no opinion."""
+        key, holder = None, None
+        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str) \
+                and isinstance(node.value, ast.Attribute) and node.value.attr in ("cleaned_data", "validated_data"):
+            key, holder = node.slice.value, node.value.value
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get" and node.args \
+                and isinstance(node.args[0], ast.Constant) and isinstance(node.func.value, ast.Attribute) \
+                and node.func.value.attr in ("cleaned_data", "validated_data"):
+            key, holder = node.args[0].value, node.func.value.value
+        elif isinstance(node, ast.Attribute) and node.attr == "data" and isinstance(node.value, ast.Attribute):
+            key, holder = node.value.attr, node.value.value          # WTForms form.field.data
+        elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            key, holder = node.attr, node.value                      # pydantic model.field
+        if key is None or not isinstance(key, str):
+            return None
+        cq = self._type_of(mod, cls, holder, env)
+        if not cq or cq not in self.classes:
+            return None
+        if isinstance(node, ast.Attribute) and node.attr != "data" and not self._class_has_base(cq, _SCHEMA_BASES):
+            return None
+        if isinstance(node, ast.Attribute) and node.attr == "data":
+            if not self._class_has_base(cq, _WTFORMS_BASES):
+                return None
+            # WTForms enforces validators and choices only in validate(): require the form to be validated
+            hname = _chain(holder)
+            lines = (self.files.get(mod) or {}).get("lines") or []
+            if not hname or not any(f"{hname}.validate" in ln for ln in lines):
+                return None
+        return self._field_safety(mod, cq, key)
+
     # ---------------------------------------------------------- entry points
+    def _meta_entry_annotation(self, mod, name: str, depth: int = 0) -> bool:
+        """Java composed annotation: `@interface MyMapping` declared in the project and itself annotated with
+        `@RequestMapping` / `@GetMapping` … (Spring meta-annotations) routes the methods it marks."""
+        cq = self._resolve_class(mod, name)
+        c = self.classes.get(cq) if cq else None
+        if c is None or depth > 2:
+            return False
+        for d in getattr(c["node"], "decorator_list", ()):
+            dn = _dotted(d.func if isinstance(d, ast.Call) else d).split(".")[-1]
+            if dn in self.m["entry_decorators"] or (dn != name and self._meta_entry_annotation(c["mod"], dn, depth + 1)):
+                return True
+        return False
+
     def _is_entry(self, mod, cls, fn) -> bool:
         """A routed handler / CLI command / framework view method, with or without parameters."""
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1265,6 +2032,12 @@ class Project:
         for d in fn.decorator_list:
             dn = _dotted(d.func if isinstance(d, ast.Call) else d).split(".")[-1]
             if dn in self.m["entry_decorators"]:
+                # unittest.mock.patch / pytest marks are test machinery, not an HTTP PATCH route
+                canon = self._canon(mod, d.func if isinstance(d, ast.Call) else d)
+                if canon.split(".")[0] in _TEST_DECORATOR_ROOTS:
+                    continue
+                return True
+            if self.m.get("language") == "java" and self._meta_entry_annotation(mod, dn):
                 return True
         if cls and fn.name in self.m["view_methods"]:
             bases = set()
@@ -1276,9 +2049,195 @@ class Project:
             return True
         return False
 
+    _RENDER_FUNCS = frozenset({"render_template", "render", "TemplateResponse", "render_to_response", "render_to_string",
+                               "render_template_async", "stream_template", "template"})
+
+    def _template_context(self, mod, call):
+        """(variable, value) pairs a render call passes to a template that prints that variable unescaped."""
+        fname = _dotted(call.func).split(".")[-1]
+        if fname not in self._RENDER_FUNCS:
+            return []
+        tname, ctx = None, []
+        for i, a in enumerate(call.args[:3]):
+            if isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.lower().endswith(TEMPLATE_EXTS):
+                tname = a.value
+                rest = call.args[i + 1:]
+                for d in rest:
+                    if isinstance(d, ast.Dict):
+                        ctx += [(k.value, v) for k, v in zip(d.keys, d.values) if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+                break
+        if tname is None:
+            for k in call.keywords:
+                if k.arg in ("template_name", "name", "template") and isinstance(k.value, ast.Constant) and isinstance(k.value.value, str):
+                    tname = k.value.value
+        if tname is None:
+            return []
+        for k in call.keywords:
+            if k.arg in ("context", "ctx") and isinstance(k.value, ast.Dict):
+                ctx += [(kk.value, v) for kk, v in zip(k.value.keys, k.value.values) if isinstance(kk, ast.Constant)]
+            elif k.arg and k.arg not in ("template_name", "name", "template", "request", "status", "status_code"):
+                ctx.append((k.arg, k.value))
+        unsafe = _template_unsafe_vars(tname)
+        return [(n, v) for n, v in ctx if n in unsafe]
+
+    def _template_source(self, mod, node) -> bool:
+        """Is `node` template SOURCE text built with data: an f-string / concatenation / .format() whose literal parts
+        hold Jinja / Django tags (`{% … %}`, `{{ … }}`), or a name the module binds to one?"""
+        if isinstance(node, ast.Name):
+            cache = self.__dict__.setdefault("_tpl_src_names", {})
+            names = cache.get(mod)
+            if names is None:
+                names = cache[mod] = set()
+                tree = (self.files.get(mod) or {}).get("tree")
+                for n in ast.walk(tree) if tree is not None else ():
+                    if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) \
+                            and not isinstance(n.value, ast.Name) and self._template_source(mod, n.value):
+                        names.add(n.targets[0].id)
+                cache[mod] = names
+            return node.id in names
+        parts = []
+        if isinstance(node, ast.JoinedStr) and any(isinstance(v, ast.FormattedValue) for v in node.values):
+            parts = [v.value for v in node.values if isinstance(v, ast.Constant) and isinstance(v.value, str)]
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mod)):
+            parts = [n.value for n in ast.walk(node) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format" \
+                and isinstance(node.func.value, ast.Constant) and isinstance(node.func.value.value, str):
+            parts = [node.func.value.value.replace("{{", "{").replace("}}", "}")]
+        text = "".join(parts)
+        return bool(_JINJA_TAG.search(text))
+
+    def _aiohttp_template(self, mod, fn) -> str | None:
+        """The template of an aiohttp_jinja2 `@template("name")` handler."""
+        for d in getattr(fn, "decorator_list", ()):
+            if isinstance(d, ast.Call) and d.args and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str) \
+                    and self._canon(mod, d.func) in ("aiohttp_jinja2.template", "aiohttp_jinja2.template.template"):
+                return d.args[0].value
+        return None
+
+    def _aiohttp_unescaped(self) -> bool:
+        """Does the project set up aiohttp_jinja2 with autoescape=False (`aiohttp_jinja2.setup(app, autoescape=False)`)?
+        Then every variable its templates print is written to the page raw."""
+        hit = self.__dict__.get("_aiohttp_noescape")
+        if hit is None:
+            hit = False
+            for mod, f in self.files.items():
+                if not any("aiohttp_jinja2" in ln for ln in f.get("lines") or ()):
+                    continue
+                for n in ast.walk(f["tree"]):
+                    if isinstance(n, ast.Call) and self._canon(mod, n.func) == "aiohttp_jinja2.setup" and any(
+                            k.arg == "autoescape" and isinstance(k.value, ast.Constant) and k.value.value is False
+                            for k in n.keywords):
+                        hit = True
+                        break
+                if hit:
+                    break
+            self.__dict__["_aiohttp_noescape"] = hit
+        return hit
+
+    _JSON_SHAPES = (ast.Dict, ast.List, ast.ListComp, ast.DictComp, ast.Set, ast.SetComp)
+    _NON_HTML_TYPE = re.compile(r"(?i)json|event-stream|text/plain|octet-stream|text/csv|image/|application/(?!xhtml)")
+
+    _XML_HARDENING = re.compile(r"disallow-doctype-decl['\"]?\s*,\s*true|external-(general|parameter)-entities['\"]?\s*,\s*false|"
+                                r"setExpandEntityReferences\s*\(\s*false|ACCESS_EXTERNAL_(DTD|SCHEMA|STYLESHEET)|"
+                                r"SUPPORT_DTD['\"]?\s*,\s*(false|Boolean\.FALSE)|IS_SUPPORTING_EXTERNAL_ENTITIES['\"]?\s*,\s*(false|Boolean\.FALSE)|"
+                                r"setEntityResolver\s*\(|load-external-dtd['\"]?\s*,\s*false|DtdProcessing\.Prohibit|XmlResolver\s*=\s*null")
+
+    def _xml_hardened(self, fn) -> bool:
+        """Does the function configure its XML parser against XXE (a hardening call anywhere in its body)?"""
+        cache = self.__dict__.setdefault("_xml_hard", {})
+        hit = cache.get(id(fn))
+        if hit is None or hit[0] is not fn:
+            found = False
+            for n in ast.walk(fn) if hasattr(fn, "body") else ():
+                if isinstance(n, ast.Call):
+                    try:
+                        text = ast.unparse(n)
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if self._XML_HARDENING.search(text.replace("True", "true").replace("False", "false")):
+                        found = True
+                        break
+            hit = cache[id(fn)] = (fn, found)
+        return hit[1]
+
+    def _sink_arg_ok(self, fn, si, arg, env=None) -> bool:
+        """JavaScript XSS sinks (res.send / res.write / reply.send): an object or array argument is serialised as
+        JSON, and a handler that set a non-HTML Content-Type (JSON, event stream, plain text) writes no HTML."""
+        if si[5] == "CWE-611" and self._xml_hardened(fn):
+            return False                     # the parser was configured without DTDs / external entities
+        if self.m.get("language") != "javascript":
+            return True
+        if si[0] == "DF016" and isinstance(arg, (ast.Dict, ast.List)):
+            return False                     # structured logging (pino / bunyan objects) is serialised as JSON
+        if si[0] == "DF004" and isinstance(arg, ast.Dict):
+            # findOne({ where: { login: String(x) } }) / updateOne({ _id: String(id) }): every value is a scalar the
+            # driver binds as a parameter; only a raw (possibly object-valued) request value can inject operators
+            scalars = frozenset(n for n, o in env.tainted.items() if o and o[0] == "source"
+                                and re.search(r"(^|\.)params$", str(o[1]))) if env is not None else frozenset()
+            return _has_raw_leaf(arg, scalars, frozenset(env.tainted) if env is not None else None)
+        if si[0] != "DF013":
+            return True
+        if isinstance(arg, self._JSON_SHAPES):
+            return False
+        if isinstance(arg, ast.Call) and _dotted(arg.func) in ("JSON.stringify", "json.dumps"):
+            return False
+        cache = self.__dict__.setdefault("_non_html_fns", {})
+        hit = cache.get(id(fn))
+        if hit is None or hit[0] is not fn:
+            found = False
+            for n in _scope_nodes(fn):
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and \
+                        n.func.attr in ("setHeader", "set", "type", "header", "writeHead", "contentType", "json"):
+                    if n.func.attr == "json":
+                        continue
+                    for a in n.args:
+                        for c in ast.walk(a):
+                            if isinstance(c, ast.Constant) and isinstance(c.value, str) and self._NON_HTML_TYPE.search(c.value):
+                                found = True
+            hit = cache[id(fn)] = (fn, found)
+        return not hit[1]
+
+    def _html_return(self, mod, fn, v) -> bool:
+        """Can `return v` from this entry point be an HTML response body? Not for a task / CLI / message handler
+        (the value goes to a result backend or the terminal), not for a dict or list (Flask >= 1.1, FastAPI and DRF
+        serialise it as JSON), not for FastAPI/Starlette unless the route declares an HTML response, and not for
+        JavaScript handlers unless the value is an HTML string (Express ignores the return value)."""
+        lang = self.m.get("language")
+        if lang == "go":
+            return False         # Go handlers write the response (w.Write / c.String); their return value is an error
+        if lang == "javascript":
+            return any(isinstance(n, ast.Constant) and isinstance(n.value, str) and "<" in n.value for n in ast.walk(v))
+        if lang != "python":
+            return True
+        names = {_dotted(d.func if isinstance(d, ast.Call) else d).split(".")[-1] for d in getattr(fn, "decorator_list", [])}
+        if names & {"task", "shared_task", "command", "subcommand", "on_message", "callback", "group", "periodic_task",
+                    "actor", "job"} and not names & {"route", "get", "post", "put", "patch", "delete", "api_route", "view"}:
+            return False
+        if isinstance(v, self._JSON_SHAPES) or (isinstance(v, ast.Tuple) and v.elts and isinstance(v.elts[0], self._JSON_SHAPES)):
+            return False
+        al = (self.files.get(mod) or {}).get("aliases", {})
+        if any(isinstance(t, tuple) and any(isinstance(x, str) and x.split(".")[0] in ("fastapi", "starlette", "litestar",
+                                                                                    "ninja") for x in t[1:]) for t in al.values()):
+            for d in getattr(fn, "decorator_list", []):
+                if isinstance(d, ast.Call):
+                    for k in d.keywords:
+                        if k.arg in ("response_class", "media_type") and re.search(r"(?i)html|plain|text",
+                                                                                 _dotted(k.value) or str(getattr(k.value, "value", ""))):
+                            return True
+            return isinstance(v, ast.Call) and re.search(r"(?i)HTMLResponse|PlainTextResponse|Response$", _dotted(v.func) or "") is not None
+        return True
+
+    @staticmethod
+    def _cli_entry(fn) -> bool:
+        """An entry point that is only a command-line command (click / typer / argparse sub-command), not a route."""
+        names = [_dotted(d.func if isinstance(d, ast.Call) else d).split(".")[-1] for d in getattr(fn, "decorator_list", [])]
+        return bool(set(names) & {"command", "subcommand", "group", "callback"}) and \
+            not set(names) & {"route", "get", "post", "put", "patch", "delete", "api_route", "websocket", "middleware"}
+
     def _is_django_function_view(self, mod, fn) -> bool:
         """`def view(request, slug)` in a module that imports Django: the parameters after `request` are captured
-        from the URL by the URL configuration (path("<str:slug>/", view))."""
+        from the URL by the URL configuration (path("<str:slug>/", view)). A function the project itself calls
+        (`get_exception_response(request, resolver, 404, exc)`) is a helper: its arguments come from its callers."""
         params = fn.args.posonlyargs + fn.args.args
         if len(params) < 2 or params[0].arg != "request":
             return False
@@ -1288,31 +2247,107 @@ class Project:
             al = (self.files.get(mod) or {}).get("aliases", {})
             cache[key] = any(isinstance(x, str) and (x == "django" or x.startswith("django."))
                              for v in al.values() for x in (v if isinstance(v, tuple) else (v,)))
-        return cache[key]
+        return cache[key] and not self._called_by_name(mod, fn.name)
+
+    def _name_calls(self, mod) -> set:
+        """Names called as a bare `name(...)` in a module (cached)."""
+        cache = self.__dict__.setdefault("_name_calls_cache", {})
+        hit = cache.get(mod)
+        if hit is None:
+            tree = (self.files.get(mod) or {}).get("tree")
+            hit = cache[mod] = {n.func.id for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)} \
+                if tree is not None else set()
+        return hit
+
+    def _called_by_name(self, mod, name) -> bool:
+        """Is module-level function `name` of `mod` called directly: in its own module, or as an imported name
+        (`from .exception import name`) in a module that calls it?"""
+        if name in self._name_calls(mod):
+            return True
+        importers = self.__dict__.get("_from_importers")
+        if importers is None:
+            importers = self.__dict__["_from_importers"] = {}
+            for m, f in self.files.items():
+                for local, tgt in f.get("aliases", {}).items():
+                    if tgt and tgt[0] == "from":
+                        importers.setdefault(tgt[2], []).append((m, local, tgt[1]))
+        # the scan root may cut the package prefix off module names: `django.core.x` imported, `core.x` scanned
+        return any(local in self._name_calls(m) for m, local, tm in importers.get(name, ())
+                   if (tm == mod or tm.endswith("." + mod) or mod.endswith("." + tm))
+                   and not _TEST_MODULE.search(self.files[m]["path"]))    # a test calling the view is not a caller
+
 
     def _entry_params(self, mod, cls, fn) -> list[str]:
         if not self._is_entry(mod, cls, fn):
             return []
-        return [p for p in _param_names(fn) if p not in {"self", "cls"}]
+        params = [p for p in _param_names(fn) if p not in {"self", "cls"}]
+        if self._js_route_callback(fn):
+            return []          # the request object is a web request (_js_request_param), the others are not input
+        return params
+
+    def _js_route_callback(self, fn) -> bool:
+        if self.m.get("language") != "javascript":
+            return False
+        return any(isinstance(d, ast.Name) and d.id in ("route", "middleware") for d in getattr(fn, "decorator_list", []))
+
+    @staticmethod
+    def _js_request_param(fn) -> str | None:
+        """The request parameter of an Express/Koa/Fastify/hapi callback: the first one, or the second in an
+        error handler `(err, req, res, next)`."""
+        names = [p.arg for p in fn.args.args if p.arg not in ("self", "cls")]
+        if not names:
+            return None
+        if len(names) == 4 or (len(names) >= 2 and names[0] in ("err", "error", "e")):
+            return names[1]
+        return names[0]
 
     # --------------------------------------------------------- environment
     def _env(self, mod, cls, fn, path, seed_params: bool, entry: bool = False) -> _Env:
         env = _Env()
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             entry_params = set(self._entry_params(mod, cls, fn)) if entry else set()
+            gated = self._gated_language()
+            js_req = self._js_request_param(fn) if self._js_route_callback(fn) else None
+            if js_req:
+                env.webreq.add(js_req)
+                env.vfields = _express_validated(fn)
             for p in fn.args.posonlyargs + fn.args.args + fn.args.kwonlyargs:
                 if p.arg in {"self", "cls"}:
                     continue
+                env.params.add(p.arg)
+                if (_annotation_name(p.annotation) or "").split(".")[-1] in _OUTPUT_TYPES:
+                    continue             # the response writer of a handler is output, not input
+                if gated and p.annotation is not None and \
+                        (_annotation_name(p.annotation) or "").split(".")[-1] in self._WEB_REQUEST_TYPES - {"Context", "WebSocket"} \
+                        and self._webreq_param(mod, cls, fn, p):
+                    env.webreq.add(p.arg)        # `({ query }: Request, res)`: whatever the parameter is called
+                is_req = p.arg in self.m["request_params"] - {"self"}
+                if is_req and gated:
+                    is_req = p.arg in entry_params or self._webreq_param(mod, cls, fn, p)
+                if is_req:
+                    env.webreq.add(p.arg)
+                if is_req and self.m.get("language") == "javascript":
+                    is_req = False     # JS: request DATA (req.query, req.body …) is the source, not req.session / req.user
                 t = self._resolve_class(mod, _annotation_name(p.annotation) or "")
                 if t:
                     env.types[p.arg] = t
                 if seed_params:
                     env.tainted[p.arg] = ("param", p.arg, ())
-                elif p.arg in entry_params or p.arg in self.m["request_params"] - {"self"}:
+                elif p.arg in entry_params and self.m.get("language") == "python" and self._safe_annotation(mod, p.annotation):
+                    pass             # FastAPI / typed handler parameter `age: int`: parsed and validated by the framework
+                elif p.arg in entry_params and self.m.get("language") in ("java", "kotlin", "csharp") \
+                        and _safe_static_param(p.annotation):
+                    pass             # Spring `@RequestParam int id` / `@Pattern(regexp="^[a-z]+$") String code`: bound and checked
+                elif p.arg in entry_params or is_req:
                     env.tainted[p.arg] = ("source", f"معامل نقطة الدخول {p.arg}", (_step(path, fn.lineno, f"def {fn.name}({p.arg})"),))
+                    if p.arg in entry_params and self._cli_entry(fn):
+                        # a command-line argument: a local source (see _LOCAL_SAFE_CWES)
+                        env.tainted[p.arg] = env.tainted[p.arg] + (_LOCAL_SAFE_CWES,)
             for extra in (fn.args.vararg, fn.args.kwarg):
                 if extra is not None and seed_params:
                     env.tainted[extra.arg] = ("param", extra.arg, ())
+            if not seed_params:
+                self._seed_captured(mod, fn, env)
         changed, passes = True, 0
         while changed and passes < MAX_PASSES:
             changed, passes = False, passes + 1
@@ -1424,6 +2459,76 @@ class Project:
                             changed = True
         return env
 
+    def _captured_names(self, q) -> frozenset:
+        """Free variables of nested function q that a function around it binds (its parameters or assignments)."""
+        cache = self.__dict__.setdefault("_captured_cache", {})
+        hit = cache.get(q)
+        if hit is not None:
+            return hit
+        info = self.gfuncs.get(q)
+        out: set = set()
+        if info and info["enclosing"]:
+            fn = info["node"]
+
+            def bound(f) -> set:
+                a = f.args
+                names = {p.arg for p in a.posonlyargs + a.args + a.kwonlyargs}
+                names.update(x.arg for x in (a.vararg, a.kwarg) if x is not None)
+                for n in _scope_nodes(f):
+                    tgts = n.targets if isinstance(n, ast.Assign) else [getattr(n, "target", None)] \
+                        if isinstance(n, (ast.AnnAssign, ast.AugAssign, ast.For, ast.AsyncFor)) else \
+                        [n.optional_vars] if isinstance(n, ast.withitem) else []
+                    for t in tgts:
+                        for x in ast.walk(t) if t is not None else ():
+                            if isinstance(x, ast.Name):
+                                names.add(x.id)
+                return names
+
+            local = bound(fn)
+            outer: set = set()
+            for oq in info["enclosing"]:
+                oi = self.gfuncs.get(oq)
+                if oi is not None and isinstance(oi["node"], (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    outer |= bound(oi["node"])
+            out = {n.id for n in _scope_nodes(fn) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+                   and n.id not in local and n.id in outer}
+        cache[q] = frozenset(out)
+        return cache[q]
+
+    def _seed_captured(self, mod, fn, env) -> None:
+        """A nested function / callback reads variables of the function around it (closures: `const name =
+        req.query.name; fs.stat(p, () => exec('ls ' + name))`): seed those free variables from the outer function."""
+        idx = self.__dict__.get("_fn_qual")
+        if idx is None:
+            idx = self.__dict__["_fn_qual"] = {id(i["node"]): q for q, i in self.gfuncs.items()}
+        q = idx.get(id(fn))
+        if q is None or not self.gfuncs[q]["enclosing"]:
+            return
+        outer_q = self.gfuncs[q]["enclosing"][0]
+        if outer_q not in self.gfuncs:
+            return
+        cache = self.__dict__.setdefault("_outer_envs", {})
+        oinfo = self.gfuncs[outer_q]
+        oenv = cache.get(outer_q)
+        if oenv is None:
+            cache[outer_q] = _Env()           # guard against cycles while it is computed
+            oenv = cache[outer_q] = self._env(oinfo["mod"], oinfo["cls"], oinfo["node"], oinfo["path"], seed_params=False, entry=True)
+        if not oenv.tainted:
+            return
+        local = set(env.params)
+        for n in _scope_nodes(fn):
+            for t in (n.targets if isinstance(n, ast.Assign) else [getattr(n, "target", None)]
+                      if isinstance(n, (ast.AnnAssign, ast.AugAssign, ast.For)) else []):
+                for x in ast.walk(t) if t is not None else ():
+                    if isinstance(x, ast.Name):
+                        local.add(x.id)
+        for n in _scope_nodes(fn):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id not in local and n.id in oenv.tainted \
+                    and n.id not in env.tainted:
+                env.tainted[n.id] = oenv.tainted[n.id]
+                if n.id in oenv.elem:
+                    env.elem.add(n.id)
+
     def _flow_at(self, mod, cls, fn, env, node):
         """The environment that holds at `node` according to the flow-sensitive refinement (see flow.py), or
         None when `node` is in code proven unreachable. Falls back to `env` wherever the refinement has no
@@ -1504,9 +2609,9 @@ class Project:
                         and path_sink and ".." in test.left.value:
                     return _names(test.comparators[0])          # `if '..' in p: reject` guards a path
                 if isinstance(op, ast.NotIn):
-                    return _names(test.left) if isinstance(test.left, ast.Name) else set()   # x not in ALLOWED -> exit
-                if isinstance(op, ast.NotEq) and isinstance(test.left, ast.Name) and isinstance(test.comparators[0], ast.Constant):
-                    return {test.left.id}
+                    return {_chain(test.left)} if _chain(test.left) else set()   # x not in ALLOWED -> exit
+                if isinstance(op, ast.NotEq) and _chain(test.left) and isinstance(test.comparators[0], ast.Constant):
+                    return {_chain(test.left)}
                 if path_sink and isinstance(op, (ast.Gt, ast.GtE, ast.NotEq)) and isinstance(test.left, ast.Call) \
                         and isinstance(test.left.func, ast.Attribute) and test.left.func.attr in ("find", "index", "count", "indexOf") \
                         and test.left.args and isinstance(test.left.args[0], ast.Constant) and ".." in str(test.left.args[0].value):
@@ -1524,8 +2629,8 @@ class Project:
             return set.intersection(*parts) if parts else set()
         if isinstance(test, ast.Compare):
             out = set()
-            if isinstance(test.left, ast.Name) and any(isinstance(op, (ast.In, ast.Eq)) for op in test.ops):
-                out.add(test.left.id)
+            if _chain(test.left) and any(isinstance(op, (ast.In, ast.Eq)) for op in test.ops):
+                out.add(_chain(test.left))
             return out
         if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and test.func.attr in _CONFINEMENT \
                 and cwe in _PATH_CWES:
@@ -1545,23 +2650,28 @@ class Project:
                 if isinstance(pat, ast.Constant) and isinstance(pat.value, str) and _PERMISSIVE_RE.search(pat.value):
                     return set()             # `.+@.+` / `.*` accept almost anything: not validation
                 vals = test.args[1:] if module_call else ([test.func.value] if test.func.attr == "matches" else test.args[:1])
-                return set().union(*[_names(a) for a in vals]) if vals else set()
-            return _names(test.func.value)                      # x.isalnum() / x.isdigit() …
+                return set().union(*[_paths(a) for a in vals]) if vals else set()
+            return _paths(test.func.value)                      # x.isalnum() / x.isdigit() …
         if isinstance(test, ast.Call):
             fname = self._canon(mod, test.func).split(".")[-1]
             if fname.lower().rstrip("?") in _NOT_VALIDATION:
                 return set()                 # prefix / suffix / existence / emptiness checks confine nothing
-            arg_names = {n.id for a in list(test.args) + [k.value for k in test.keywords] for n in ast.walk(a) if isinstance(n, ast.Name)}
+            if not test.args and isinstance(test.func, ast.Attribute) and (fname in ("is_valid", "validate_on_submit") or (
+                    fname in ("validate", "full_clean") and re.search(r"(?i)form|serializer|schema", _chain(test.func.value) or ""))):
+                return set()                 # a whole form: each field is as safe as its type (_schema_validated)
+            # access paths, not base names: allowed_file(file.filename) validates the name, not file.stream
+            arg_names = set().union(*[_paths(a) for a in list(test.args) + [k.value for k in test.keywords]]) \
+                if (test.args or test.keywords) else set()
             if fname.lower() in _MEMBERSHIP:
                 return arg_names             # ALLOWED.contains(x) / in_array(x, $allowed): the looked-up value
             names = set(arg_names)
-            if isinstance(test.func, ast.Attribute) and isinstance(test.func.value, ast.Name):
-                names.add(test.func.value.id)
+            if isinstance(test.func, ast.Attribute) and _chain(test.func.value):
+                names.add(_chain(test.func.value))
             if fname in self.m["validators"] or any(v in fname for v in ("valid", "safe", "allowed", "check", "verify")):
                 return names
         return set()
 
-    def _guarded(self, mod, fn, call, names: set, si=None) -> bool:
+    def _guarded(self, mod, fn, call, names: set, si=None, depth: int = 0) -> bool:
         """True when every tainted name feeding the sink was validated on the path to it."""
         if not names:
             return False
@@ -1580,11 +2690,87 @@ class Project:
                     for prev in block[:idx]:
                         if isinstance(prev, ast.If) and _exits(prev.body) and not prev.orelse:
                             validated |= self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
+                        elif isinstance(prev, ast.If) and not prev.orelse:
+                            # `if not is_safe(url): url = "/"`: past it the value was either validated or replaced
+                            neg = self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
+                            validated |= {n for n in neg if self._rebinds_safely(mod, prev.body, n, si)}
             node = parent
-        return names <= validated
+        return all(_path_covered(p, validated) or self._derived_from_guarded(mod, fn, call, p, si, depth)
+                   for p in names)
+
+    def _derived_from_guarded(self, mod, fn, call, name: str, si, depth: int) -> bool:
+        """`nt = translate(next_url, code)` assigned once, before the sink, from values that were all validated at
+        that assignment: `nt` is derived from validated data, as `next_url + "?x"` written at the sink would be."""
+        if depth >= 3 or "." in name or not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return False
+        line = getattr(call, "lineno", 0)
+        stores = [x for x in ast.walk(fn) if isinstance(x, ast.Name) and x.id == name and not isinstance(x.ctx, ast.Load)]
+        assigns = [st for st in ast.walk(fn) if isinstance(st, ast.Assign) and len(st.targets) == 1
+                   and isinstance(st.targets[0], ast.Name) and st.targets[0].id == name]
+        if len(stores) != 1 or len(assigns) != 1 or name in {a.arg for a in fn.args.args + fn.args.kwonlyargs}:
+            return False                          # rebound elsewhere (loop target, augmented, a parameter): unknown
+        st = assigns[0]
+        if not (0 < st.lineno < line):
+            return False
+        funcs = {id(c.func) for c in ast.walk(st.value) if isinstance(c, ast.Call)}
+        used = {x.id for x in ast.walk(st.value) if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Load)
+                and id(x) not in funcs}
+        return bool(used) and self._guarded(mod, fn, st, used, si, depth + 1)
+
+    def _rebinds_safely(self, mod, body, name, si) -> bool:
+        """Does `body` end by giving `name` a constant (or by validating it again the same way)?"""
+        for st in reversed(body):
+            if isinstance(st, (ast.Assign, ast.AnnAssign)):
+                tgts = st.targets if isinstance(st, ast.Assign) else [st.target]
+                if any(isinstance(t, ast.Name) and t.id == name for t in tgts):
+                    return isinstance(st.value, ast.Constant)
+            elif isinstance(st, ast.If) and not st.orelse and any(
+                    isinstance(x, ast.Name) and x.id == name and isinstance(x.ctx, ast.Store)
+                    for b in st.body for x in ast.walk(b)):
+                return name in self._validated(mod, st.test, positive=False, cwe=si[5] if si else None) \
+                    and self._rebinds_safely(mod, st.body, name, si)
+            elif any(isinstance(x, ast.Name) and x.id == name and isinstance(x.ctx, ast.Store) for x in ast.walk(st)):
+                return False
+        return False
+
+    _DB_GENERATED = frozenset({"ID", "PK", "UUID", "CREATEDAT", "UPDATEDAT", "MODIFIEDAT", "ROWID", "OID", "VERSION"})
+
+    def _stored_column_written(self, o, key: str) -> bool:
+        """For taint from a stored row (second-order source): was column `key` of that table written by a user?
+        Table and columns come from the stored-source models (stored_db.T.C); DB-generated keys never were."""
+        if not (o and o[0] == "source" and isinstance(o[1], str) and STORED_SOURCE_MARK in o[1]):
+            return True
+        m = re.search(r"([A-Z0-9_$#]+)\.([A-Z0-9_$#*]+)", o[1])
+        if not m:
+            return True
+        table, col = m.group(1), re.sub(r"[^0-9A-Za-z]", "", key).upper()
+        if table == "ANY_TABLE":
+            return col not in self._DB_GENERATED
+        written = set()
+        for names, _label in self.m.get("prefix_sources", []):
+            for n in names:
+                parts = n.split(".")
+                if len(parts) == 3 and parts[0] == "stored_db" and parts[1] == table and parts[2]:
+                    written.add(parts[2])
+        if not written or "*" in written:
+            return col not in self._DB_GENERATED
+        return col in written
+
+    def _note_dep(self, tok) -> None:
+        deps = self._dep_holder[0] if hasattr(self, "_dep_holder") else None
+        if deps is not None:
+            deps.add(tok)
+
+    def over_budget(self) -> bool:
+        """Past the project-wide analysis deadline (see analyze_project_full): degrade instead of running on."""
+        dl = getattr(self, "deadline", None)
+        if dl is not None and time.monotonic() > dl:
+            self.budget_hit = True
+            return True
+        return False
 
     def _tainted_names_in(self, expr, env) -> set:
-        return {n.id for n in ast.walk(expr) if isinstance(n, ast.Name) and n.id in env.tainted}
+        return {p for p in _paths(expr) if p.split(".")[0] in env.tainted or p.split(".")[0] in env.webreq}
 
     # ------------------------------------------------------------ summaries
     def build(self):
@@ -1592,104 +2778,189 @@ class Project:
         self.link()
         self._resolve_cache.clear()
         self.obj_taint: dict = {}
-        try:
-            from .pointsto import PointsTo
-            self.pt = PointsTo(self)
-        except Exception:  # noqa: BLE001 - points-to is an enhancement; never block the scan
-            self.pt = None
+        self.obj_taint_by_oid: dict = {}
+        self._dep_holder = holder = [None]
+        self.classes = _TrackDict(self.classes, holder, "c")
+        self._hier_cache = {}
+        shared = getattr(self, "shared_pointsto", None)
+        reuse = shared.get("pt") if shared is not None else None
+        if reuse is not None:
+            # stored-data passes rebuild the project over the same trees with more sources / sinks: points-to does
+            # not read the models (only the code and its name resolution), so the first pass's solution holds
+            reuse.p = self
+            self.pt = reuse
+        else:
+            try:
+                from .pointsto import PointsTo
+                self.pt = PointsTo(self)
+            except Exception:  # noqa: BLE001 - points-to is an enhancement; never block the scan
+                self.pt = None
+            if shared is not None and self.pt is not None and not self.pt.timed_out:
+                shared["pt"] = self.pt
+        self.summaries = _TrackDict({}, holder, "s")
         for q in self.gfuncs:
             self.summaries[q] = {"source_return": None, "ret_params": set(), "sink_params": {},
                                  "sink_fields": {}, "ret_fields": set(), "ret_type": None, "ret_line": 0, "cb_calls": []}
+        # Worklist fixpoint: a function is analyzed again only when something it read (a callee summary, a class's
+        # fields, points-to object fields) changed after its last analysis.
+        epoch = 0
+        changed_at: dict = {}            # dependency token -> epoch of its last change
+        analyzed_at: dict = {}           # function -> (epoch of its last analysis, its dependency tokens)
         changed, passes = True, 0
+        self.build_passes = 0
+        # Some facts are "last writer wins" across methods (two methods assign different types to one field), so a
+        # pass can end in exactly the state the previous pass ended in while still reporting changes. A pass that
+        # repeats the previous one (same analyses, same outcomes, nothing new in the object facts) leaves every later
+        # pass identical too: stop there instead of repeating it until MAX_PASSES.
+        prev_transcript = None
         while changed and passes < MAX_PASSES:
             changed, passes = False, passes + 1
+            self.build_passes = passes
             self.__dict__["_flow_cache"] = {}
+            if self.over_budget():
+                break                    # degrade: keep the summaries computed so far
+            transcript: list | None = []
             for q, info in self.gfuncs.items():
-                mod, fn, cls, path = info["mod"], info["node"], info["cls"], info["path"]
-                summ = self.summaries[q]
-                env = self._env(mod, cls, fn, path, seed_params=True)
-                new = {"source_return": summ["source_return"], "ret_params": set(summ["ret_params"]),
-                       "sink_params": {k: list(v) for k, v in summ["sink_params"].items()},
-                       "sink_fields": {k: list(v) for k, v in summ["sink_fields"].items()},
-                       "ret_fields": set(summ["ret_fields"]), "ret_type": summ["ret_type"], "ret_line": summ["ret_line"],
-                       "cb_calls": list(summ["cb_calls"])}
-                rt = self._resolve_class(mod, _annotation_name(getattr(fn, "returns", None)) or "")
-                if rt:
-                    new["ret_type"] = rt
-                for node in _scope_nodes(fn):
-                    if isinstance(node, ast.Return) and node.value is not None:
-                        renv = self._flow_at(mod, cls, fn, env, node)
-                        o = self._taint(mod, cls, node.value, renv) if renv is not None else None
-                        if o and o[0] in {"source", "retsource"} and not new["source_return"]:
-                            new["source_return"] = o
-                            new["ret_line"] = node.lineno
-                        elif o and o[0] == "param":
-                            new["ret_params"].update(_origin_params(o))
-                            new["ret_line"] = new["ret_line"] or node.lineno
-                        elif o and o[0] == "field":
-                            new["ret_fields"].add(o[1])
-                        if new["ret_type"] is None:
-                            t = self._type_of(mod, cls, node.value, env)
-                            if t:
-                                new["ret_type"] = t
-                    if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None and self.pt is not None:
-                        for tgt in (node.targets if isinstance(node, ast.Assign) else [node.target]):
-                            if isinstance(tgt, ast.Attribute):
-                                o = self._taint(mod, cls, node.value, env)
-                                if o and o[0] in {"source", "retsource"}:
-                                    for obj in self.pt.objs(tgt.value):
-                                        key = (id(obj), tgt.attr)
-                                        if key not in self.obj_taint:
-                                            self.obj_taint[key] = _with_step(o, _step(path, node.lineno, f"{_dotted(tgt.value)}.{tgt.attr} = …"))
-                                            changed = True
-                    if cls and isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
-                        tgts = node.targets if isinstance(node, ast.Assign) else [node.target]
-                        for tgt in tgts:
-                            if isinstance(tgt, ast.Attribute) and isinstance(tgt.value, ast.Name) and tgt.value.id == "self":
-                                c = self.classes[cls]
-                                o = self._taint(mod, cls, node.value, env)
-                                if o and o[0] in {"source", "retsource"} and tgt.attr not in c["tainted_fields"]:
-                                    c["tainted_fields"][tgt.attr] = _with_step(o, _step(path, node.lineno, f"self.{tgt.attr} = …"))
-                                    changed = True
-                                if o and o[0] == "param" and info["name"] == "__init__" and c["ctor_param_fields"].get(o[1]) != tgt.attr:
-                                    c["ctor_param_fields"][o[1]] = tgt.attr
-                                    changed = True
-                                if o and o[0] == "param" and info["name"] != "__init__":
-                                    changed |= self._note_param_field(c, info["name"], o, tgt.attr)
-                                t = self._type_of(mod, cls, node.value, env)
-                                if t and c["field_types"].get(tgt.attr) != t:
-                                    c["field_types"][tgt.attr] = t
-                                    changed = True
-                    if cls and isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) \
-                            and isinstance(node.value.func, ast.Attribute) and node.value.func.attr in CONTAINER_WRITES:
-                        # self.parts.append(p) / parts.add(p): the parameter lands in the field
-                        holder = node.value.func.value
-                        if isinstance(holder, ast.Attribute) and isinstance(holder.value, ast.Name) and holder.value.id == "self":
-                            c = self.classes[cls]
-                            for a in list(node.value.args) + [k.value for k in node.value.keywords]:
-                                o = self._taint(mod, cls, a, env)
-                                if o and o[0] == "param":
-                                    changed |= self._note_param_field(c, info["name"], o, holder.attr)
-                                    if info["name"] == "__init__" and o[1] not in c["ctor_param_fields"]:
-                                        c["ctor_param_fields"][o[1]] = holder.attr
-                                        changed = True
-                for call in self._calls(fn):
-                    self._absorb_sinks(mod, cls, fn, path, call, env, new)
-                for node in _scope_nodes(fn):
-                    hit = self._attr_sink(node)
-                    if hit:
-                        si, value = hit
-                        aenv = self._flow_at(mod, cls, fn, env, node)
-                        for o in (self._taints(mod, cls, value, aenv) if aenv is not None else []):
-                            if not _unsafe_for(o, si):
-                                continue
-                            if o[0] in {"param", "field"} and not self._suppressed(path, node.lineno):
-                                lst = (new["sink_params"] if o[0] == "param" else new["sink_fields"]).setdefault(o[1], [])
-                                if (si, path, node.lineno) not in lst:
-                                    lst.append((si, path, node.lineno))
-                if new != summ:
-                    summ.update(new)
+                if self.over_budget():
+                    break
+                prev = analyzed_at.get(q)
+                if prev is not None and not any(changed_at.get(t, -1) > prev[0] for t in prev[1]):
+                    continue
+                deps = set()
+                holder[0] = deps
+                epoch += 1
+                start_epoch = epoch
+                obj_chg = cls_chg = False
+                try:
+                    summ_changed = self._summarize(q, info, deps)
+                finally:
+                    holder[0] = None
+                    # flow states are cached per environment object, and each analysis builds its own: once it
+                    # is done they can never be hit again (keeping them held every function's states in memory)
+                    self.__dict__["_flow_cache"] = {}
+                obj_chg, cls_chg = self._last_obj_chg, self._last_cls_chg
+                analyzed_at[q] = (start_epoch, deps)
+                if transcript is not None:
+                    if obj_chg:
+                        transcript = None
+                    else:
+                        cq = info["cls"]
+                        transcript.append((q, summ_changed, cls_chg, dict(dict.__getitem__(self.summaries, q)),
+                                           _class_facts(dict.__getitem__(self.classes, cq)) if cq in self.classes else None))
+                if summ_changed or obj_chg or cls_chg:
                     changed = True
+                    epoch += 1
+                    if summ_changed:
+                        changed_at[("s", q)] = epoch
+                    if obj_chg:
+                        changed_at[("o", 0)] = epoch
+                    if cls_chg and info["cls"]:
+                        changed_at[("c", info["cls"])] = epoch
+            if changed and transcript is not None and transcript == prev_transcript:
+                break
+            prev_transcript = transcript
+
+    def _summarize(self, q, info, deps) -> bool:
+        """One analysis of function q: updates its summary (and class / object field facts); True if the summary changed."""
+        changed = obj_chg = cls_chg = False
+        mod, fn, cls, path = info["mod"], info["node"], info["cls"], info["path"]
+        summ = dict.__getitem__(self.summaries, q)   # its own summary: not a dependency
+        cls_before = _class_facts(dict.__getitem__(self.classes, cls)) if cls in self.classes else None
+        env = self._env(mod, cls, fn, path, seed_params=True)
+        for nm in self._captured_names(q):
+            # a closure's free variable is a hidden parameter: `crit = () => ({$where: "…" + t})` returns what the
+            # caller's `t` holds, mapped back at the call site (see the `ret_params` use in _taint)
+            env.tainted.setdefault(nm, ("param", nm, ()))
+        new = {"source_return": summ["source_return"], "ret_params": set(summ["ret_params"]),
+               "sink_params": {k: list(v) for k, v in summ["sink_params"].items()},
+               "sink_fields": {k: list(v) for k, v in summ["sink_fields"].items()},
+               "ret_fields": set(summ["ret_fields"]), "ret_type": summ["ret_type"], "ret_line": summ["ret_line"],
+               "cb_calls": list(summ["cb_calls"])}
+        rt = self._resolve_class(mod, _annotation_name(getattr(fn, "returns", None)) or "")
+        if rt:
+            new["ret_type"] = rt
+        for node in _scope_nodes(fn):
+            if isinstance(node, ast.Return) and node.value is not None:
+                renv = self._flow_at(mod, cls, fn, env, node)
+                o = self._taint(mod, cls, node.value, renv) if renv is not None else None
+                if o and o[0] in {"source", "retsource"} and not new["source_return"]:
+                    new["source_return"] = o
+                    new["ret_line"] = node.lineno
+                elif o and o[0] == "param":
+                    new["ret_params"].update(_origin_params(o))
+                    new["ret_line"] = new["ret_line"] or node.lineno
+                elif o and o[0] == "field":
+                    new["ret_fields"].add(o[1])
+                if new["ret_type"] is None:
+                    t = self._type_of(mod, cls, node.value, env)
+                    if t:
+                        new["ret_type"] = t
+            if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None and self.pt is not None:
+                for tgt in (node.targets if isinstance(node, ast.Assign) else [node.target]):
+                    if isinstance(tgt, ast.Attribute):
+                        o = self._taint(mod, cls, node.value, env)
+                        if o and o[0] in {"source", "retsource"}:
+                            for obj in self.pt.objs(tgt.value):
+                                key = (id(obj), tgt.attr)
+                                if key not in self.obj_taint:
+                                    self.obj_taint[key] = _with_step(o, _step(path, node.lineno, f"{_dotted(tgt.value)}.{tgt.attr} = …"))
+                                    self.obj_taint_by_oid.setdefault(id(obj), {})[tgt.attr] = self.obj_taint[key]
+                                    obj_chg = True
+            if cls and isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+                tgts = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for tgt in tgts:
+                    if isinstance(tgt, ast.Attribute) and isinstance(tgt.value, ast.Name) and tgt.value.id == "self":
+                        c = self.classes[cls]
+                        o = self._taint(mod, cls, node.value, env)
+                        if o and o[0] in {"source", "retsource"} and tgt.attr not in c["tainted_fields"]:
+                            c["tainted_fields"][tgt.attr] = _with_step(o, _step(path, node.lineno, f"self.{tgt.attr} = …"))
+                            cls_chg = True
+                        if o and o[0] == "param" and info["name"] == "__init__" and c["ctor_param_fields"].get(o[1]) != tgt.attr:
+                            c["ctor_param_fields"][o[1]] = tgt.attr
+                            cls_chg = True
+                        if o and o[0] == "param" and info["name"] != "__init__":
+                            cls_chg |= self._note_param_field(c, info["name"], o, tgt.attr)
+                        t = self._type_of(mod, cls, node.value, env)
+                        if t and c["field_types"].get(tgt.attr) != t:
+                            c["field_types"][tgt.attr] = t
+                            cls_chg = True
+            if cls and isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) \
+                    and isinstance(node.value.func, ast.Attribute) and node.value.func.attr in CONTAINER_WRITES:
+                # self.parts.append(p) / parts.add(p): the parameter lands in the field
+                holder = node.value.func.value
+                if isinstance(holder, ast.Attribute) and isinstance(holder.value, ast.Name) and holder.value.id == "self":
+                    c = self.classes[cls]
+                    for a in list(node.value.args) + [k.value for k in node.value.keywords]:
+                        o = self._taint(mod, cls, a, env)
+                        if o and o[0] == "param":
+                            cls_chg |= self._note_param_field(c, info["name"], o, holder.attr)
+                            if info["name"] == "__init__" and o[1] not in c["ctor_param_fields"]:
+                                c["ctor_param_fields"][o[1]] = holder.attr
+                                cls_chg = True
+        for call in self._calls(fn):
+            self._absorb_sinks(mod, cls, fn, path, call, env, new)
+        for node in _scope_nodes(fn):
+            hit = self._attr_sink(node)
+            if hit:
+                si, value = hit
+                aenv = self._flow_at(mod, cls, fn, env, node)
+                for o in (self._taints(mod, cls, value, aenv) if aenv is not None else []):
+                    if not _unsafe_for(o, si):
+                        continue
+                    if o[0] in {"param", "field"} and not self._suppressed(path, node.lineno):
+                        lst = (new["sink_params"] if o[0] == "param" else new["sink_fields"]).setdefault(o[1], [])
+                        if (si, path, node.lineno) not in lst:
+                            lst.append((si, path, node.lineno))
+        if new != summ:
+            summ.update(new)
+            changed = True
+        if cls_chg and cls_before is not None:
+            # facts overwritten and then restored within one analysis (`self.a = p; self.b = p` maps p to a, then b;
+            # two types assigned to one field) are not a change: reporting them kept the fixpoint re-analysing the
+            # class's dependents until MAX_PASSES with identical results
+            cls_chg = _class_facts(dict.__getitem__(self.classes, cls)) != cls_before
+        self._last_obj_chg, self._last_cls_chg = obj_chg, cls_chg
+        return changed
 
     def _absorb_sinks(self, mod, cls, fn, path, call, env, new):
         def record(origin, entry):
@@ -1708,6 +2979,8 @@ class Project:
         si = self._sink(mod, cls, call, env)
         if si and not self._suppressed(path, call.lineno):
             for arg in self._sink_args(si, call):
+                if not self._sink_arg_ok(fn, si, arg, env):
+                    continue
                 origins = [o for o in self._taints(mod, cls, arg, env) if _unsafe_for(o, si)]
                 if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
                     for o in origins:
@@ -1816,7 +3089,13 @@ class Project:
         for mod, file in self.files.items():
             scopes.append((mod, None, file["tree"], file["path"]))
         self.__dict__["_flow_cache"] = {}
+        self.__dict__["_outer_envs"] = {}
+        hard = getattr(self, "hard_deadline", None)
         for mod, cls, fn, path in scopes:
+            if hard is not None and time.monotonic() > hard:
+                self.budget_hit = self.report_cut = True
+                break                        # keep what was found so far; the scan notes say it was cut short
+            self.__dict__["_flow_cache"] = {}  # (per environment: the previous scope's states are never hit again)
             fenv = self._env(mod, cls, fn, path, seed_params=False, entry=True)
             is_entry = self._is_entry(mod, cls, fn)
             for call in self._calls(fn):
@@ -1826,6 +3105,8 @@ class Project:
                 si = self._sink(mod, cls, call, env)
                 if si:
                     for arg in self._sink_args(si, call):
+                        if not self._sink_arg_ok(fn, si, arg, env):
+                            continue
                         o = self._sink_taint(mod, cls, arg, env, si)
                         if o and o[0] in {"source", "retsource"} \
                                 and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
@@ -1850,11 +3131,20 @@ class Project:
                             continue
                         entries = self._at_call_site(mod, cls, arg, env, entries)
                         live = [e for e in entries if any(_unsafe_for(x, e[0]) for x in self._taints(mod, cls, arg, env))]
-                        o = self._sink_taint(mod, cls, arg, env, live[0][0]) if live else None
-                        if o and o[0] in {"source", "retsource"} \
-                                and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), live[0][0]):
-                            self._emit(live[0][0], path, call.lineno, o, name, live[0])
-                            done = True
+                        # one finding per kind of sink the callee reaches: a helper that logs the path and then
+                        # reads the file is both log injection and path traversal (java-sec-code PathTraversal)
+                        kinds: dict = {}
+                        for e in live:
+                            kinds.setdefault(e[0][0], e)
+                        if len(callees) > 1:
+                            kinds = dict(list(kinds.items())[:1])   # an ambiguous call: only its first sink kind
+                        for e in kinds.values():
+                            o = self._sink_taint(mod, cls, arg, env, e[0])
+                            if o and o[0] in {"source", "retsource"} \
+                                    and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), e[0]):
+                                self._emit(e[0], path, call.lineno, o, name, e)
+                                done = True
+                        if done:
                             break
                     if done:
                         continue
@@ -1872,12 +3162,38 @@ class Project:
                     o = self._sink_taint(mod, cls, value, env, si) if env is not None else None
                     if o and o[0] in {"source", "retsource"} and not self._guarded(mod, fn, node, self._tainted_names_in(value, env), si):
                         self._emit(si, path, node.lineno, o, None, None)
+            # server-side templates: render_template("t.html", var=tainted) where t.html prints {{ var|safe }}
+            if self.m.get("language") == "python" and _TEMPLATES:
+                for call in self._calls(fn):
+                    for kw_name, value in self._template_context(mod, call):
+                        env = self._flow_at(mod, cls, fn, fenv, call)
+                        o = self._sink_taint(mod, cls, value, env, TEMPLATE_UNESCAPED) if env is not None else None
+                        if o and o[0] in {"source", "retsource"}:
+                            self._emit(TEMPLATE_UNESCAPED, path, call.lineno, o, None, None)
+                            break
+                # aiohttp_jinja2: `@template("t.jinja2")` handlers return the template context as a dict
+                tname = self._aiohttp_template(mod, fn)
+                if tname:
+                    unsafe = _template_unsafe_vars(tname, all_vars=self._aiohttp_unescaped())
+                    for node in _scope_nodes(fn):
+                        if unsafe and isinstance(node, ast.Return) and isinstance(node.value, ast.Dict):
+                            env = None
+                            for k, v in zip(node.value.keys, node.value.values):
+                                if isinstance(k, ast.Constant) and k.value in unsafe:
+                                    env = env or self._flow_at(mod, cls, fn, fenv, node)
+                                    o = self._sink_taint(mod, cls, v, env, TEMPLATE_UNESCAPED) if env is not None else None
+                                    if o and o[0] in {"source", "retsource"}:
+                                        self._emit(TEMPLATE_UNESCAPED, path, node.lineno, o, None, None)
+                                        break
             # reflected output from an entry point: `return tainted`
             if is_entry:
                 for node in _scope_nodes(fn):
                     if isinstance(node, ast.Return) and node.value is not None:
                         v = node.value
-                        if isinstance(v, ast.Call) and any(_name_matches(self._canon(mod, v.func), s) for s in self.m["safe_return_calls"]):
+                        body = v.elts[0] if isinstance(v, ast.Tuple) and v.elts else v   # Flask `return jsonify(x), 200`
+                        if isinstance(body, ast.Call) and any(_name_matches(self._canon(mod, body.func), s) for s in self.m["safe_return_calls"]):
+                            continue
+                        if not self._html_return(mod, fn, v):
                             continue
                         env = self._flow_at(mod, cls, fn, fenv, node)
                         o = self._sink_taint(mod, cls, v, env, REFLECTED_RETURN) if env is not None else None
@@ -1965,17 +3281,56 @@ def analyze_project(files: dict[str, str], models_dirs=None, config: dict | None
     return analyze_project_full(files, models_dirs, config)[1]
 
 
-def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict | None = None):
+# Wall-clock budget for the whole data-flow step. Past it the engine degrades instead of running on: no further
+# summary passes or stored-data passes, then (past 1.5x) no further reporting scopes. Rule, secret and finished
+# taint findings are always kept, with a note.
+DATAFLOW_BUDGET_SECONDS = 900.0
+
+
+def preparse(rel: str, text: str):
+    """The tree _analyze_groups would build for this file, when building it is worth doing ahead of time in a worker
+    process (the JavaScript and C-family frontends are written in Python; Python itself parses faster than its tree
+    can be shipped between processes). None: the analysis parses (or skips) the file itself."""
+    lang = _language(rel)
+    if lang == "javascript":
+        if len(text) > 600_000 or any(len(ln) > 5000 for ln in text.splitlines()[:50]):
+            return None
+        from . import js_frontend
+        return js_frontend.parse_js(text, rel)
+    if lang in CFAMILY_LANGS:
+        if len(text) > 600_000:
+            return None
+        from . import cfamily_frontend
+        return cfamily_frontend.parse_cfamily(text, rel, lang)
+    return None
+
+
+def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict | None = None, budget: float | None = None,
+                         trees: dict | None = None):
     """Like analyze_project but also returns the built Project models (for VQL queries).
 
     `config` holds key/values from the project's configuration files (.env, YAML, properties …), used to resolve
-    table names and SQL that code reads from configuration."""
+    table names and SQL that code reads from configuration. `trees` maps a file to the tree already built for its
+    current text (by the scanner's per-file stage, see preparse); the analysis takes ownership of them."""
     if config is None:
         from . import stored as _st
         config = {}
         for rel, text in files.items():
             if _st.is_config_file(rel):
                 config.update(_st.parse_config(rel, text))
+    _TEMPLATES.clear()
+    _TEMPLATES.update({rel: text for rel, text in files.items() if rel.lower().endswith(TEMPLATE_EXTS)})
+    budget = DATAFLOW_BUDGET_SECONDS if budget is None else budget
+    t0 = time.monotonic()
+    _BUDGET["deadline"], _BUDGET["hard"] = t0 + budget, t0 + budget * 1.5
+    try:
+        return _analyze_groups(files, models_dirs, config, trees or {})
+    finally:
+        _BUDGET["deadline"] = _BUDGET["hard"] = None
+
+
+def _analyze_groups(files, models_dirs, config, trees=None):
+    trees = trees if trees is not None else {}
     projects: list = []
     groups: dict[str, dict[str, str]] = {}
     for rel, text in files.items():
@@ -1986,10 +3341,12 @@ def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict |
     if "python" in groups:
         entries = []
         for rel, text in groups["python"].items():
-            try:
-                tree = ast.parse(text)
-            except (SyntaxError, ValueError, MemoryError, RecursionError):   # generated/hostile code: skip the file
-                continue
+            tree = trees.pop(rel, None)
+            if tree is None:
+                try:
+                    tree = ast.parse(text)
+                except (SyntaxError, ValueError, MemoryError, RecursionError):   # generated/hostile code: skip the file
+                    continue
             entries.append(_Entry(_module_name(rel), rel, text, tree, is_pkg=rel.replace("\\", "/").endswith("__init__.py")))
         proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_MODELS, "python"), entries, config=config)
         if proj.files:
@@ -2001,7 +3358,8 @@ def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict |
         for rel, text in groups["javascript"].items():
             if len(text) > 600_000 or any(len(l) > 5000 for l in text.splitlines()[:50]):
                 continue  # bundles / minified
-            entries.append(_Entry(js_frontend.module_name(rel), rel, text, js_frontend.parse_js(text, rel)))
+            tree = trees.pop(rel, None)
+            entries.append(_Entry(js_frontend.module_name(rel), rel, text, tree if tree is not None else js_frontend.parse_js(text, rel)))
         proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_JS_MODELS, "javascript"), entries, config=config)
         if proj.files:
             findings.extend(flows)
@@ -2014,7 +3372,9 @@ def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict |
         for rel, text in groups[lang].items():
             if len(text) > 600_000:
                 continue
-            tree = cfamily_frontend.parse_cfamily(text, rel, lang)
+            tree = trees.pop(rel, None)
+            if tree is None:
+                tree = cfamily_frontend.parse_cfamily(text, rel, lang)
             entries.append(_Entry(cfamily_frontend.module_name(rel), rel, text, tree))
             diag = getattr(tree, "vulnscan_diagnostics", None)
             if diag:
@@ -2028,6 +3388,93 @@ def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict |
         projects.extend(p_projects)
         findings.extend(p_findings)
     return projects, findings
+
+
+_BUDGET: dict = {"deadline": None, "hard": None}
+TEMPLATE_EXTS = (".html", ".htm", ".jinja", ".jinja2", ".j2", ".tmpl", ".djhtml", ".txt.jinja")
+_TEMPLATES: dict = {}       # rel path -> text of the project's server-side templates (template-aware XSS sinks)
+_TPL_UNSAFE = re.compile(r"\{\{-?\s*([A-Za-z_][\w.]*)(?:\[[^\]]*\])?\s*(?:\|[^}]*?)?\|\s*safe\b[^}]*\}\}")
+_TPL_ANY = re.compile(r"\{\{-?\s*([A-Za-z_][\w.]*)")
+_TPL_FOR = re.compile(r"\{%-?\s*for\s+([A-Za-z_]\w*)(?:\s*,\s*([A-Za-z_]\w*))?\s+in\s+([A-Za-z_][\w.]*)")
+_TPL_AE_OFF = re.compile(r"\{%-?\s*autoescape\s+(?:false|off)\s*-?%\}(.*?)\{%-?\s*endautoescape\s*-?%\}", re.S)
+_JINJA_TAG = re.compile(r"\{%-?\s*(extends|block|include|import|macro|for|if|set)\b|\{\{-?\s*[A-Za-z_]")
+TEMPLATE_SOURCE_WRITE = ("DF007", "high", "Tainted data written into a template's source (stored SSTI)",
+                         "بيانات غير موثوقة تُكتب في نص قالب يُعرض لاحقًا (حقن قوالب مخزّن SSTI)",
+                         "لا تبنِ نص القالب من مدخلات المستخدم؛ خزّن المحتوى بيانات ومرّره متغيرًا إلى قالب ثابت.",
+                         "CWE-1336", "template source written to a file", [0], False)
+TEMPLATE_UNESCAPED = ("DF013", "medium", "Tainted data rendered unescaped by a template (|safe / autoescape off)",
+                      "بيانات غير موثوقة تُعرض في قالب دون تهريب (|safe أو autoescape off)",
+                      "لا تستخدم |safe أو autoescape off مع بيانات المستخدم؛ دع القالب يهرّب القيمة أو عقّمها (bleach) أولًا.",
+                      "CWE-79", "template |safe", [0], False)
+
+
+_TPL_EXPR = re.compile(r"\{\{-?\s*([A-Za-z_][\w.]*)([^}]*)\}\}")
+_TPL_ESCAPING = re.compile(r"\|\s*(e|escape|forceescape|int|float|length|count|urlencode|tojson|striptags|wordcount|"
+                           r"filesizeformat|round|abs|date|time)\b")
+
+
+def _template_unsafe_vars(name: str, all_vars: bool = False) -> set:
+    """Context variables a template prints without escaping: `{{ x|safe }}`, `{{ post.text|safe }}` inside
+    `{% for post in posts %}` (-> posts), anything printed inside `{% autoescape false %}`. With `all_vars` (the
+    template environment was created with autoescape off) every printed variable except escaped ones (`|e`)."""
+    cache = _TEMPLATES.setdefault("\0cache", {})
+    if all_vars:
+        key = "\0all\0" + name
+        if key not in cache:
+            cache[key] = _template_unsafe_vars(name) | _template_printed_vars(name)
+        return cache[key]
+    if name in cache:
+        return cache[name]
+    norm = name.replace("\\", "/").lstrip("./")
+    cands = [r for r in _TEMPLATES if isinstance(_TEMPLATES[r], str) and (r == norm or r.endswith("/" + norm))]
+    cands.sort(key=lambda r: (0 if "/templates/" in "/" + r else 1, len(r)))
+    out: set = set()
+    if cands:
+        text = _TEMPLATES[cands[0]]
+        loops = {}
+        for m in _TPL_FOR.finditer(text):
+            for v in (m.group(1), m.group(2)):
+                if v:
+                    loops[v] = m.group(3).split(".")[0]
+        raw = [m.group(1) for m in _TPL_UNSAFE.finditer(text)]
+        for m in _TPL_AE_OFF.finditer(text):
+            raw += [x.group(1) for x in _TPL_ANY.finditer(m.group(1))]
+        for v in raw:
+            root = v.split(".")[0]
+            seen = set()
+            while root in loops and root not in seen:
+                seen.add(root)
+                root = loops[root]
+            if root not in ("request", "csrf_token", "url_for", "config", "loop", "super", "self", "g", "static"):
+                out.add(root)
+    cache[name] = out
+    return out
+
+
+def _template_printed_vars(name: str) -> set:
+    """Root variables of every `{{ expr }}` a template prints without an escaping / numeric filter."""
+    norm = name.replace("\\", "/").lstrip("./")
+    cands = [r for r in _TEMPLATES if isinstance(_TEMPLATES[r], str) and (r == norm or r.endswith("/" + norm))]
+    cands.sort(key=lambda r: (0 if "/templates/" in "/" + r else 1, len(r)))
+    if not cands:
+        return set()
+    text = _TEMPLATES[cands[0]]
+    loops = {}
+    for m in _TPL_FOR.finditer(text):
+        for v in (m.group(1), m.group(2)):
+            if v:
+                loops[v] = m.group(3).split(".")[0]
+    out = set()
+    for m in _TPL_EXPR.finditer(text):
+        if _TPL_ESCAPING.search(m.group(2)):
+            continue
+        root, seen = m.group(1).split(".")[0], set()
+        while root in loops and root not in seen:
+            seen.add(root)
+            root = loops[root]
+        if root not in ("request", "csrf_token", "url_for", "config", "loop", "super", "self", "g", "static"):
+            out.add(root)
+    return out
 
 
 class _Entry:
@@ -2063,13 +3510,22 @@ def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, 
     store_sinks = [("DFSTORE", "info", "store:" + store_col(nm), "", "", "", "store:" + store_col(nm),
                     [0], False, [nm], frozenset()) for nm in store_names]
 
+    shared_pt: dict = {}
+
     def run_pass(prefix_sources):
         m = dict(models)
         m["sanitizers"] = models["sanitizers"] | {"stored_db_read", "stored_db_config"}
         m["sinks"] = models["sinks"] + store_sinks
         m["prefix_sources"] = models["prefix_sources"] + prefix_sources
         pr = Project(m)
+        pr.deadline, pr.hard_deadline = _BUDGET["deadline"], _BUDGET["hard"]
         pr.field_precise_locals = field_precise
+        # every pass analyses the same (already instrumented) trees: facts that depend only on the code are shared
+        pr.shared_pointsto = shared_pt
+        pr._parents_cache = shared_pt.setdefault("parents", {})
+        pr._calls_cache = shared_pt.setdefault("calls", {})
+        pr.__dict__["_flow_struct"] = shared_pt.setdefault("flow_struct", {})
+        pr.__dict__["_shared_file_facts"] = shared_pt.setdefault("file_facts", {})
         for e in entries:
             pr.add_file(e.mod, e.rel, e.text, is_pkg=e.is_pkg, tree=e.tree, lines=e.lines)
         pr.diagnostics.update(diagnostics or {})
@@ -2079,8 +3535,11 @@ def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, 
         return pr, []
 
     stored: dict = {}
+    prev_prefixes = 0
     proj, flows = run_pass([])
     for _ in range(4 if store_sinks else 0):
+        if getattr(proj, "budget_hit", False) or proj.over_budget():
+            break                    # out of time: report the first-order flows found so far
         new = {}
         for f in flows:
             if f.rule_id == "DFSTORE":
@@ -2108,10 +3567,52 @@ def _stored_build(models: dict, entries: list, diagnostics: dict | None = None, 
             if column != "*":                                     # read back through a run-time-chosen table
                 prefix.append(((f"stored_db.ANY_TABLE.{column}",),
                                f"{STORED_SOURCE_MARK} في {col} وقُرئت من جدول {RUNTIME_TABLE_MARK} {where}"))
+        if not _prefixes_read(proj, entries, prefix[prev_prefixes:]):
+            # no code reads any of the newly written columns: the next pass would only add sources that match
+            # nothing, i.e. repeat this one exactly. Record the sources (as that pass would) and stop.
+            proj.m["prefix_sources"] = models["prefix_sources"] + prefix
+            break
+        prev_prefixes = len(prefix)
+        proj = None                  # the previous pass's project is not needed: free it before building the next
         proj, flows = run_pass(prefix)
     flows = [f for f in flows if f.rule_id != "DFSTORE"]
     _retag_stored(flows)
     return proj, flows
+
+
+def _prefixes_read(proj, entries, new_prefixes) -> bool:
+    """Could any of `new_prefixes` (stored-column sources) match a name the code reads? Prefix sources match the
+    canonical dotted name of a Name / Attribute (see _is_source_uncached); instrumented reads are spelled
+    `stored_db.TABLE.COLUMN`, and a canonical name only differs from the dotted one through an import alias."""
+    if not new_prefixes:
+        return False
+    names = proj.__dict__.get("_stored_read_names")
+    if names is None:
+        names = set()
+        for f in proj.files.values():
+            for tgt in f.get("aliases", {}).values():
+                if any("stored_db" in str(x) for x in tgt):
+                    names = None            # an import named like the instrumentation: be conservative
+                    break
+            if names is None:
+                break
+        if names is not None:
+            for e in entries:
+                for n in ast.walk(e.tree):
+                    if isinstance(n, ast.Attribute):
+                        d = _dotted(n)
+                        if d.startswith("stored_db"):
+                            names.add(d)
+                    elif isinstance(n, ast.Name) and n.id.startswith("stored_db"):
+                        names.add(n.id)
+        proj.__dict__["_stored_read_names"] = names
+    if names is None:
+        return True
+    for prefixes, _label in new_prefixes:
+        for p in prefixes:
+            if any(d == p or (p.endswith(".") and d.startswith(p)) for d in names):
+                return True
+    return False
 
 
 AI_SOURCE_MARK = "الذكاء الاصطناعي"
@@ -2158,6 +3659,9 @@ def _retag_stored(findings: list) -> None:
     When the table is only known at run time the link is by column name: one severity level lower, and said so."""
     for f in findings:
         src = str(f.extra.get("taint_source", ""))
+        trail = f.extra.get("path") or []
+        if STORED_SOURCE_MARK not in src and trail and STORED_SOURCE_MARK in str(trail[0].get("text", "")):
+            src = str(trail[0].get("text", ""))      # `rows` read from the table in a helper, returned to the view
         if STORED_SOURCE_MARK in src and f.rule_id in STORED_RULES:
             f.rule_id, f.severity, f.cwe, f.title, f.title_ar, f.advice = STORED_RULES[f.rule_id]
             if RUNTIME_TABLE_MARK in src:
@@ -2316,7 +3820,8 @@ def _catalogue() -> list[dict]:
         if path.stem not in ("python", "javascript"):
             entries += load_models((), path, path.stem)["sinks"]
     stores = [si for si, _ in load_models()["store_sinks"]]
-    for e in entries + stores + [ARG_INJECTION + (None,), REFLECTED_RETURN + (None,)]:
+    for e in entries + stores + [ARG_INJECTION + (None,), REFLECTED_RETURN + (None,), DYNAMIC_DISPATCH + (None,),
+                                 TEMPLATE_UNESCAPED + (None,), TEMPLATE_SOURCE_WRITE + (None,)]:
         if e[0] in seen:
             continue
         seen.add(e[0])

@@ -1,0 +1,6 @@
+{
+  "name": "demo",
+  "homepage": "http://demo-project.io",
+  "author": {"name": "A", "url": "http://author-site.io"},
+  "config": {"api": "http://api.acme.io/v1"}
+}

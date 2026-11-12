@@ -1,0 +1,25 @@
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.0
+        version: 4.17.15
+
+packages:
+
+  lodash@4.17.15:
+    resolution: {integrity: sha512-x}
+
+  '@babel/core@7.0.0':
+    resolution: {integrity: sha512-x}
+
+snapshots:
+
+  lodash@4.17.15: {}
+
+  '@babel/core@7.0.0(supports-color@8.1.1)':
+    dependencies:
+      debug: 4.3.4

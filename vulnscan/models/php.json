@@ -295,8 +295,7 @@
         "call_user_func_array",
         "array_map",
         "usort",
-        "$func",
-        "unserialize"
+        "$func"
       ],
       "title": "Tainted data reaches eval or a callable",
       "title_ar": "بيانات غير موثوقة تصل إلى eval أو استدعاء ديناميكي",

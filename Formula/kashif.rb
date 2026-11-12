@@ -26,13 +26,15 @@ class Kashif < Formula
   end
 
   def install
-    binary = Dir["vulnscan-*"].first
+    binary = Dir["kashif-*", "vulnscan-*"].first
     odie "release binary not found" if binary.nil?
-    bin.install binary => "vulnscan"
-    bin.install_symlink "vulnscan" => "kashif"
+    bin.install binary => "kashif"
+    # the pre-rename command name, kept as an alias
+    bin.install_symlink "kashif" => "vulnscan"
   end
 
   test do
+    assert_match version.to_s, shell_output("#{bin}/kashif --version")
     assert_match version.to_s, shell_output("#{bin}/vulnscan --version")
   end
 end

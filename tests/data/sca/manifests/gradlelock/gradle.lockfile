@@ -1,0 +1,5 @@
+# This is a Gradle generated file for dependency locking.
+org.yaml:snakeyaml:1.26=compileClasspath,runtimeClasspath
+org.slf4j:slf4j-api:1.7.30=runtimeClasspath
+junit:junit:4.12=testCompileClasspath,testRuntimeClasspath
+empty=annotationProcessor

@@ -2,7 +2,7 @@
   "name": "kashif",
   "displayName": "Kashif (كاشِف) — Security Scanner",
   "description": "Static application security testing in the editor: type-aware, cross-file taint analysis for 12 languages, powered by the open-source Kashif (vulnscan) language server.",
-  "version": "0.9.1",
+  "version": "1.0.0",
   "publisher": "kashif",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -99,9 +99,9 @@
       "properties": {
         "kashif.serverPath": {
           "type": "string",
-          "default": "vulnscan",
+          "default": "kashif",
           "scope": "machine-overridable",
-          "markdownDescription": "Command that runs Kashif (the `vulnscan` executable on `PATH`, an absolute path to it, or a Python interpreter together with `#kashif.serverArgs#` = `[\"-m\", \"vulnscan\"]`). The extension starts `<serverPath> <serverArgs> lsp --stdio`."
+          "markdownDescription": "Command that runs Kashif (the `kashif` executable on `PATH`, or `vulnscan` when only that older name is installed; an absolute path to it; or a Python interpreter together with `#kashif.serverArgs#` = `[\"-m\", \"vulnscan\"]`). The extension starts `<serverPath> <serverArgs> lsp --stdio`."
         },
         "kashif.serverArgs": {
           "type": "array",

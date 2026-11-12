@@ -1,0 +1,38 @@
+{
+ "id": "GHSA-mh33-7rrq-662w",
+ "aliases": [
+  "CVE-2019-11324"
+ ],
+ "summary": "Improper Certificate Validation in urllib3",
+ "modified": "2024-01-01T00:00:00Z",
+ "affected": [
+  {
+   "package": {
+    "ecosystem": "PyPI",
+    "name": "urllib3"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "1.24.2"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "severity": [
+  {
+   "type": "CVSS_V3",
+   "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N"
+  }
+ ],
+ "database_specific": {
+  "severity": "HIGH"
+ }
+}

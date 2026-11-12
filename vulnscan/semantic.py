@@ -39,10 +39,54 @@ def check_python(rel: str, tree: ast.AST, ignore: set) -> list[Finding]:
         out.extend(_cookies(rel, tree, ignore))
     if "RND001" not in ignore:
         out.extend(_weak_random(rel, tree))
+    if "INJ010" not in ignore:
+        out.extend(_jinja_autoescape(rel, tree))
+    return out
+
+
+def _jinja_autoescape(rel, tree):
+    """jinja2.Environment(...) without autoescape (Jinja's default is OFF), or aiohttp_jinja2.setup / Environment
+    with autoescape=False (Bandit B701, CodeQL py/jinja2/autoescape-false)."""
+    from .rules import RULES
+    rule = next((r for r in RULES if r.id == "INJ010"), None)
+    if rule is None:
+        return []
+    jinja_names = {"jinja2"}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) and n.module and n.module.split(".")[0] == "jinja2":
+            jinja_names.update(a.asname or a.name for a in n.names if a.name == "Environment")
+    out = []
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Call):
+            continue
+        name = _dotted_name(n.func)
+        is_env = name in ("jinja2.Environment", "jinja2.sandbox.SandboxedEnvironment") or (
+            name in jinja_names and name != "jinja2")
+        is_setup = name.endswith("aiohttp_jinja2.setup") or name == "setup_jinja"
+        if not (is_env or is_setup):
+            continue
+        kw = {k.arg: k.value for k in n.keywords if k.arg}
+        if any(k.arg is None for k in n.keywords):
+            continue
+        ae = kw.get("autoescape")
+        off = isinstance(ae, ast.Constant) and ae.value in (False, None, 0)
+        if off or (is_env and ae is None):
+            out.append(Finding("INJ010", rule.severity, rule.title, rule.title_ar, rel, n.lineno, _src(n), rule.advice, rule.cwe))
     return out
 
 
 # ------------------------------------------------------------------ cookies
+def _dotted_name(node) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _dotted_name(node.value)
+        return f"{base}.{node.attr}" if base else node.attr
+    if isinstance(node, ast.Call):
+        return _dotted_name(node.func)
+    return ""
+
+
 def _cookies(rel, tree, ignore):
     out = []
     for node in ast.walk(tree):
@@ -52,6 +96,9 @@ def _cookies(rel, tree, ignore):
         kw = {k.arg: k.value for k in node.keywords if k.arg}
         if any(k.arg is None for k in node.keywords):
             continue                                   # **options: cannot tell
+        recv = _dotted_name(node.func.value).lower()
+        if (len(node.args) == 1 and not node.keywords) or "jar" in recv or recv.endswith("cookies"):
+            continue                                   # http.cookiejar CookieJar.set_cookie(Cookie): a client jar
         secure = kw.get("secure")
         if "COOK001" not in ignore and (secure is None or (isinstance(secure, ast.Constant) and not secure.value)):
             why = "secure=False" if secure is not None else "no secure flag"

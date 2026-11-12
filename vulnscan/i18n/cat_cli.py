@@ -57,10 +57,93 @@ CATALOG: dict[str, str] = {
     "لا تفكّ تجميع APK/JAR/AAR/DEX حتى لو كان jadx مثبّتًا": "Do not decompile APK/JAR/AAR/DEX even if jadx is installed",
     "مهلة jadx بالثواني (الافتراضي 600)": "jadx timeout in seconds (default 600)",
     "افحص أيضًا مكتبات الطرف الثالث داخل الكود المفكوك": "Also scan third-party libraries inside the decompiled code",
+    "عدد العمليات المتوازية لفحص الملفات (الافتراضي: عدد المعالجات؛ 1 يعطّل التوازي)":
+        "Worker processes for the per-file scan (default: one per CPU; 1 disables parallelism)",
+    "مجلد ذاكرة مؤقتة تزايدية: إعادة فحص مشروع لم يتغير أسرع بكثير وبالنتائج نفسها":
+        "Incremental cache directory: re-scanning an unchanged project is much faster, with identical results",
+    "لا تستخدم الذاكرة المؤقتة للفحص": "Do not use the scan cache",
     "لغة المخرجات: ar عربية، en إنجليزية، both الاثنتان؛ auto (الافتراضي) يتبع VULNSCAN_LANG ثم لغة النظام":
         "Output language: ar (Arabic), en (English) or both; auto (default) follows VULNSCAN_LANG, then the system locale",
     "اعرض القواعد المدمجة واخرج": "List the built-in rules and exit",
     "لا تفتح المتصفح تلقائيًا": "Do not open the browser automatically",
+    # ------------------------------------------------------------------ 1.0: report formats, add-on flags
+    "صيغة التقرير: console أو markdown أو json أو html أو sarif (لـ GitHub Code Scanning وVS Code)، "
+    "أو صيغة تصدير: gitlab-sast وcodeclimate (GitLab) وdefectdojo وsonarqube وjunit وcsv "
+    "وjira-csv وgithub-issues وasff وocsf وrisk (القائمة: kashif export --list-formats)":
+        "Report format: console, markdown, json, html or sarif (GitHub Code Scanning, VS Code), or an export "
+        "format: gitlab-sast and codeclimate (GitLab), defectdojo, sonarqube, junit, csv, jira-csv, github-issues, "
+        "asff, ocsf, risk (list: kashif export --list-formats)",
+    "اكتب أيضًا الفحص بصيغة تصدير إلى ملف، مثل gitlab-sast=gl-sast-report.json (يمكن تكراره)":
+        "Also write the scan in an export format to a file, e.g. gitlab-sast=gl-sast-report.json (repeatable)",
+    "اطبع درجة خطر كاشِف للمشروع (من 0 إلى 10؛ وسيلة لترتيب الأولويات وليست درجة CVSS)":
+        "Print the project's Kashif risk score (0 to 10; a triage aid, not a CVSS score)",
+    "اطبع بعد التقرير ملخص الامتثال لهذه الأطر (مفصولة بفواصل، أو all؛ القائمة: kashif compliance --list-frameworks)":
+        "After the report, print a compliance summary for these frameworks (comma-separated, or all; list: "
+        "kashif compliance --list-frameworks)",
+    "اكتب تقرير المدقق (HTML قابل للطباعة) يربط كل نتيجة بضوابط أطر الامتثال":
+        "Write the auditor report (printable HTML) that maps every finding to compliance framework controls",
+    "طبّق قرارات الفرز (الافتراضي ‎.kashif/triage.json في المشروع): تُخفى الإنذارات الكاذبة والمخاطر المقبولة "
+    "من التقرير ومن --fail-on، ويُنبَّه على القبول المنتهي والارتداد":
+        "Apply triage decisions (default: .kashif/triage.json in the project): false positives and accepted risks "
+        "are left out of the report and of --fail-on; expired acceptances and regressions are flagged",
+    "احفظ في ملف الفرز ما تغيّر: أول ظهور والإصلاح التلقائي والارتداد وانتهاء القبول "
+    "(لـ CI على الفرع الرئيسي فقط، لا لطلبات الدمج)":
+        "Save what changed to the triage file: first seen, fixed automatically, regressions, expired acceptances "
+        "(for CI on the main branch only, never on pull requests)",
+    "حالات الفرز التي تبقى في التقرير (الافتراضي open,confirmed؛ all للجميع)":
+        "Triage statuses kept in the report (default open,confirmed; all keeps everything)",
+    "مهلة الإصلاح بالأيام لكل خطورة، مثل critical=7,high=30,medium=90 (مع --triage)":
+        "Days allowed to fix each severity, e.g. critical=7,high=30,medium=90 (with --triage)",
+    "أعد رمز خروج 1 إذا تجاوزت نتيجة مفتوحة مهلة إصلاحها (مع --triage)":
+        "Exit with code 1 when an open finding is past its fix deadline (with --triage)",
+    "بوابة الأمان من ملف سياسة (kashif.yml) أو قالب مدمج مثل strict؛ يُطبَّق kashif.yml الموجود في المجلد المفحوص "
+    "تلقائيًا":
+        "Security gate from a policy file (kashif.yml) or a builtin preset such as strict; a kashif.yml in the "
+        "scanned directory is applied automatically",
+    "لا تطبّق ملف السياسة الموجود في المجلد المفحوص": "Do not apply the policy file found in the scanned directory",
+    "مجلد التقارير التي يطلبها ملف السياسة (reports)؛ دونه لا تُكتب":
+        "Directory for the reports the policy file asks for (reports:); without it they are not written",
+    "استخدم حزمة قواعد مثبّتة بهذا الاسم (يمكن تكراره؛ انظر kashif rules list)":
+        "Use the installed rule pack of this name (repeatable; see kashif rules list)",
+    "استخدم كل حزم القواعد المثبّتة": "Use every installed rule pack",
+    # ------------------------------------------------------------------ 1.0: sub-commands (kashif --help)
+    "الأوامر الفرعية:": "Sub-commands:",
+    "شغّل kashif <أمر فرعي> --help لعرض خياراته.": "Run kashif <sub-command> --help for its options.",
+    "خادم لغة (LSP) للمحررات: الثغرات تحت الكود أثناء الكتابة مع إصلاحات سريعة":
+        "Language server (LSP) for editors: vulnerabilities underlined as you type, with quick fixes",
+    "خادم MCP لمساعدات البرمجة بالذكاء الاصطناعي (Claude Code وCursor وVS Code وWindsurf وZed)":
+        "MCP server for AI coding assistants (Claude Code, Cursor, VS Code, Windsurf, Zed)",
+    "تحديث كاشِف إلى أحدث إصدار رسمي بعد التحقق منه (--check للتحقق فقط)":
+        "Update Kashif to the latest official release, verified (--check only checks)",
+    "تحويل تقرير JSON إلى صيغة أداة أخرى (DefectDojo وSonarQube وJUnit وCSV وJira وGitLab وASFF وOCSF)":
+        "Convert a JSON report to another tool's format (DefectDojo, SonarQube, JUnit, CSV, Jira, GitLab, ASFF, OCSF)",
+    "ربط النتائج بأطر الامتثال (OWASP وASVS وCWE Top 25 وPCI DSS وNIST وISO 27001) وتقرير للمدقق":
+        "Map findings to compliance frameworks (OWASP, ASVS, CWE Top 25, PCI DSS, NIST, ISO 27001) and write an "
+        "auditor report",
+    "الأسرار في تاريخ git: كل سرّ أُودِع يومًا ولو حُذف لاحقًا (الاسم البديل secrets-history)":
+        "Secrets in git history: every secret ever committed, even if deleted later (alias secrets-history)",
+    "فرز النتائج داخل المستودع: إنذار كاذب أو قبول خطر أو لن يُصلَح، مع سجل تدقيق ومهلة إصلاح":
+        "Triage stored in the repository: false positive, accepted risk, won't fix, with an audit log and fix SLAs",
+    "السياسة ككود: بوابة أمان من kashif.yml (check وinit وvalidate وpresets)":
+        "Policy as code: a security gate from kashif.yml (check, init, validate, presets)",
+    "خريطة سطح الهجوم: نقاط الدخول ومدخلاتها والمصادقة الظاهرة والمصارف التي تصل إليها":
+        "Attack-surface map: entry points, their inputs, the visible authentication and the sinks they reach",
+    "اكتب قواعدك واختبرها: حزم القواعد (new وtest وlint وpack وverify وinstall وlist وdocs)":
+        "Write and test your own rules: rule packs (new, test, lint, pack, verify, install, list, docs)",
+    # ------------------------------------------------------------------ 1.0: console messages
+    "--triage مع عنوان ويب يحتاج مسار ملف الفرز: --triage=FILE":
+        "--triage with a web URL needs the path of the triage file: --triage=FILE",
+    "الخيارات --sla و--fail-on-sla و--triage-update تعمل مع --triage":
+        "--sla, --fail-on-sla and --triage-update work together with --triage",
+    "حالة فرز غير معروفة": "Unknown triage status",
+    "لا يوجد ملف سياسة في المجلد المفحوص": "No policy file in the scanned folder",
+    "قيمة --sla غير صالحة (مثال: critical=7,high=30,medium=90)": "Invalid --sla value (example: critical=7,high=30,medium=90)",
+    "صيغة --export هي FORMAT=FILE بصيغة تصدير معروفة": "--export takes FORMAT=FILE with a known export format",
+    "لصيغة asff استخدم: kashif export REPORT.json -f asff --aws-account ID --aws-region REGION":
+        "for asff use: kashif export REPORT.json -f asff --aws-account ID --aws-region REGION",
+    "ملف السياسة يطلب تقارير (reports) لم تُكتب: حدّد مجلدها بالخيار --policy-reports-dir":
+        "The policy file asks for reports (reports:) that were not written: choose their directory with "
+        "--policy-reports-dir",
     # ------------------------------------------------------------------ console messages and scan notes (cli.py)
     "فحص عنوان ويب يتطلب --authorized (تأكيد أنك مخوَّل بفحص هذا الهدف).":
         "Scanning a web URL requires --authorized (confirmation that you are authorized to scan this target).",
@@ -88,6 +171,12 @@ PATTERNS: list[tuple[str, str]] = [
      r"\g<n> built-in VQL queries (over the program database):"),
     # errors
     (r"الهدف غير موجود: (?P<target>.+)", r"Target not found: \g<target>"),
+    (r"حزمة القواعد غير مثبّتة: (?P<names>.+)", r"Rule pack not installed: \g<names>"),
+    (r"إطار امتثال غير معروف: (?P<name>.+)", r"Unknown compliance framework: \g<name>"),
+    (r"مجلد ملف الإخراج غير موجود: (?P<dir>.+)", r"The folder of the output file does not exist: \g<dir>"),
+    (r"تجاوز مهلة الإصلاح: (?P<n>\d+) نتيجة مفتوحة", r"Fix deadline (SLA) exceeded: \g<n> open findings"),
+    (r"قبول خطر منتهٍ: أُعيد فتح (?P<n>\d+) نتيجة", r"Risk acceptance expired: \g<n> findings re-opened"),
+    (r"ارتداد: عادت (?P<n>\d+) نتيجة بعد إصلاحها", r"Regression: \g<n> findings are back after being fixed"),
     # scan notes (cli.py); a count of exactly 1 gets the English singular
     (r"استعلام OSV\.dev عن الاعتماديات: 1 ثغرة معروفة\.", r"OSV.dev dependency check: 1 known vulnerability."),
     (r"خط الأساس: كُتمت 1 نتيجة معروفة من أصل (?P<size>\d+)؛ تُعرض النتائج الجديدة فقط\.",

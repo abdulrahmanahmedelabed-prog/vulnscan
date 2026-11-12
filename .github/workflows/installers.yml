@@ -28,12 +28,23 @@ jobs:
           KASHIF_INSTALL_DIR: ${{ runner.temp }}/kashif-bin
         run: |
           sh site/install.sh
-          "$KASHIF_INSTALL_DIR/vulnscan" --version
           "$KASHIF_INSTALL_DIR/kashif" --version
+          "$KASHIF_INSTALL_DIR/vulnscan" --version          # the pre-rename name stays as an alias
+          test -f "$KASHIF_INSTALL_DIR/kashif" && test ! -L "$KASHIF_INSTALL_DIR/kashif"
+          test -L "$KASHIF_INSTALL_DIR/vulnscan"
           if [ "$(uname -s)" = Darwin ]; then
             # curl sets no quarantine attribute, so Gatekeeper will not block the binary
-            ! xattr -p com.apple.quarantine "$KASHIF_INSTALL_DIR/vulnscan" 2>/dev/null
+            ! xattr -p com.apple.quarantine "$KASHIF_INSTALL_DIR/kashif" 2>/dev/null
           fi
+      - name: install.sh falls back to the legacy asset name for a release made before the rename
+        shell: bash
+        env:
+          KASHIF_INSTALL_DIR: ${{ runner.temp }}/kashif-old
+          KASHIF_VERSION: v0.9.0
+        run: |
+          sh site/install.sh
+          "$KASHIF_INSTALL_DIR/kashif" --version
+          "$KASHIF_INSTALL_DIR/vulnscan" --version
       - name: install.sh refuses a version that does not exist
         shell: bash
         env:
@@ -41,7 +52,7 @@ jobs:
           KASHIF_VERSION: v0.0.1
         run: |
           if sh site/install.sh; then echo "expected a failure"; exit 1; fi
-          test ! -e "$KASHIF_INSTALL_DIR/vulnscan"
+          test ! -e "$KASHIF_INSTALL_DIR/kashif" && test ! -e "$KASHIF_INSTALL_DIR/vulnscan"
 
   install-ps1:
     runs-on: windows-latest
@@ -55,7 +66,10 @@ jobs:
           KASHIF_INSTALL_DIR: ${{ runner.temp }}\kashif-bin
         run: |
           ./site/install.ps1
-          & "$env:KASHIF_INSTALL_DIR\vulnscan.exe" --version
+          & "$env:KASHIF_INSTALL_DIR\kashif.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # the pre-rename name stays as an alias (a .cmd shim, like the setup wizard's)
+          cmd /c "`"$env:KASHIF_INSTALL_DIR\vulnscan.cmd`" --version"
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
   homebrew:
@@ -70,7 +84,7 @@ jobs:
           brew tap-new --no-git kashif/local
           cp Formula/kashif.rb "$(brew --repository)/Library/Taps/kashif/homebrew-local/Formula/kashif.rb"
           brew install kashif/local/kashif
-          vulnscan --version
           kashif --version
+          vulnscan --version          # the pre-rename name stays as an alias
           brew test kashif/local/kashif
-          ! xattr -p com.apple.quarantine "$(brew --prefix)/bin/vulnscan" 2>/dev/null
+          ! xattr -p com.apple.quarantine "$(brew --prefix)/bin/kashif" 2>/dev/null

@@ -28,14 +28,14 @@ pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan
 vulnscan --version
 ```
 
-If `vulnscan` is not on `PATH`, set `kashif.serverPath` to its absolute path, or to a Python interpreter together with
+If neither `kashif` nor `vulnscan` is on `PATH`, set `kashif.serverPath` to its absolute path, or to a Python interpreter together with
 `"kashif.serverArgs": ["-m", "vulnscan"]`.
 
 ## Settings
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `kashif.serverPath` | `vulnscan` | Command that runs Kashif |
+| `kashif.serverPath` | `kashif` | Command that runs Kashif (`vulnscan` is used when only that older name is installed) |
 | `kashif.serverArgs` | `[]` | Arguments placed before `lsp --stdio` |
 | `kashif.minSeverity` | `info` | Show this severity and above |
 | `kashif.audit` | `false` | Also list dangerous calls not proven reachable by input |

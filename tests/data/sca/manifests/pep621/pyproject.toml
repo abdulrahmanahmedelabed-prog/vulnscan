@@ -1,0 +1,10 @@
+[project]
+name = "demo"
+version = "1.0.0"
+dependencies = [
+  "requests==2.19.0",
+  "click>=8",
+]
+
+[project.optional-dependencies]
+yaml = ["PyYAML==5.3"]

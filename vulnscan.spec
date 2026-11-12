@@ -3,24 +3,41 @@
 import glob
 import sys
 
-# Bundle the web UI assets (robust whether or not the package is installed).
-datas = [(f, "vulnscan/ui") for f in glob.glob("vulnscan/ui/*")]
-datas += [(f, "vulnscan/models") for f in glob.glob("vulnscan/models/*.json")]
-datas += [(f, "vulnscan/queries") for f in glob.glob("vulnscan/queries/*.vql")]
-assert datas, "vulnscan/ui assets not found — run from the repo root"
+# Data files, at the same relative paths as in the package (robust whether or not the package is installed).
+datas = [(f, "vulnscan/ui") for f in glob.glob("vulnscan/ui/*")]                    # web UI
+datas += [(f, "vulnscan/models") for f in glob.glob("vulnscan/models/*.json")]      # data-flow library models
+datas += [(f, "vulnscan/queries") for f in glob.glob("vulnscan/queries/*.vql")]     # built-in VQL queries
+datas += [(f, "vulnscan/data") for f in glob.glob("vulnscan/data/*")]               # compliance.json (package-data)
+for _required in ("vulnscan/ui/index.html", "vulnscan/ui/app.js", "vulnscan/data/compliance.json"):
+    assert any(src.replace("\\", "/") == _required for src, _ in datas), f"{_required} not found: run from the repo root"
+assert any(d == "vulnscan/models" for _, d in datas) and any(d == "vulnscan/queries" for _, d in datas), \
+    "vulnscan/models or vulnscan/queries not found: run from the repo root"
+
+# Modules reached only lazily (sub-commands, `importlib` in cli.run_subcommand, the MCP scan worker) are listed by
+# name so a missing one fails the build loudly ...
+EXPLICIT = [
+    "vulnscan", "vulnscan.cli", "vulnscan.i18n", "vulnscan.server", "vulnscan.scanner", "vulnscan.web",
+    "vulnscan.deps", "vulnscan.sca", "vulnscan.external", "vulnscan.report", "vulnscan.store", "vulnscan.rules",
+    "vulnscan.updater", "vulnscan.lsp", "vulnscan.diffscope", "vulnscan.baseline", "vulnscan.integrations",
+    "vulnscan.integrations.github_pr",
+    # 1.0 sub-commands and features
+    "vulnscan.mcp", "vulnscan.compliance", "vulnscan.history", "vulnscan.triage", "vulnscan.policy",
+    "vulnscan.surface", "vulnscan.exporters", "vulnscan.ruletest", "vulnscan.autofix",
+    # i18n catalogs (imported by vulnscan.i18n; listed so a frozen build never lacks English text)
+    "vulnscan.i18n.cat_cli", "vulnscan.i18n.cat_autofix", "vulnscan.i18n.cat_sca", "vulnscan.i18n.cat_integrations",
+    "vulnscan.i18n.cat_updater", "vulnscan.i18n.cat_projects",
+]
+# ... and every module of the package is added as well, so new ones (and the i18n catalogs) are frozen too.
+ALL_MODULES = sorted({f[:-3].replace("\\", "/").replace("/", ".").removesuffix(".__init__")
+                      for f in glob.glob("vulnscan/**/*.py", recursive=True) if not f.endswith("__main__.py")})
+_missing = [m for m in EXPLICIT if m not in ALL_MODULES]
+assert not _missing, f"vulnscan.spec lists modules that do not exist: {_missing}"
 
 a = Analysis(
     ["exe_entry.py"],
     pathex=["."],
     datas=datas,
-    hiddenimports=["vulnscan", "vulnscan.i18n", "vulnscan.server", "vulnscan.scanner", "vulnscan.web",
-                   "vulnscan.deps", "vulnscan.external", "vulnscan.report", "vulnscan.store", "vulnscan.rules",
-                   "vulnscan.updater", "vulnscan.lsp", "vulnscan.diffscope", "vulnscan.integrations",
-                   "vulnscan.integrations.github_pr"]
-                  # every module of the package, so ones reached only lazily or via ``python -m`` (the i18n catalogs,
-                  # vulnscan.integrations.*) are frozen too
-                  + sorted({f[:-3].replace("\\", "/").replace("/", ".").removesuffix(".__init__")
-                            for f in glob.glob("vulnscan/**/*.py", recursive=True) if not f.endswith("__main__.py")}),
+    hiddenimports=sorted(set(EXPLICIT) | set(ALL_MODULES)),
     hookspath=[],
     runtime_hooks=[],
     excludes=["tkinter", "test", "unittest", "pydoc", "PyInstaller"],
@@ -30,7 +47,8 @@ pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name="vulnscan",
+    # dist/kashif (dist/kashif.exe on Windows). The release also publishes it under the legacy vulnscan-* names.
+    name="kashif",
     debug=False,
     strip=False,
     upx=True,

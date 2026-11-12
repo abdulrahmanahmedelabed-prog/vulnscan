@@ -1,23 +1,39 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]   # SPDX `license` expression (PEP 639)
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "vulnscan"
-version = "0.9.1"
+version = "1.0.0"
 description = "Standalone source-code vulnerability scanner that reports findings from highest to lowest severity."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
-keywords = ["security", "sast", "static-analysis", "vulnerability-scanner", "sarif", "taint-analysis", "oracle-apex"]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = [
+    "security", "sast", "static-analysis", "vulnerability-scanner", "sarif", "taint-analysis", "data-flow-analysis",
+    "code-scanning", "secure-code-review", "devsecops", "appsec", "owasp", "cwe", "secrets-detection", "lsp",
+    "oracle-apex",
+]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Environment :: Web Environment",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Natural Language :: Arabic",
+    "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Security",
     "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
 ]
 dependencies = []
 
@@ -25,14 +41,16 @@ dependencies = []
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6"]
 
 [project.scripts]
-vulnscan = "vulnscan.cli:main"
+kashif = "vulnscan.cli:main"
+vulnscan = "vulnscan.cli:main"   # the pre-rename command name, kept as an alias
 
 [project.urls]
 Homepage = "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/"
-Source = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan"
+Documentation = "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html"
+Changelog = "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/changelog.html"
+Security = "https://abdulrahmanahmedelabed-prog.github.io/vulnscan/security.html"
+Repository = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan"
 Issues = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/issues"
-Changelog = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/blob/main/CHANGELOG.md"
-Security = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan/security/policy"
 
 [tool.ruff]
 line-length = 130
@@ -50,4 +68,4 @@ omit = ["vulnscan/__main__.py"]
 include = ["vulnscan*"]
 
 [tool.setuptools.package-data]
-vulnscan = ["ui/*", "models/*", "queries/*"]
+vulnscan = ["ui/*", "models/*", "queries/*", "data/*"]

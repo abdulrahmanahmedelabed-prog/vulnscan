@@ -1,8 +1,10 @@
-// Kashif for VS Code: a thin client of the Kashif language server (`vulnscan lsp`).
+// Kashif for VS Code: a thin client of the Kashif language server (`kashif lsp`).
 // All analysis happens in the server, so every editor that speaks LSP gets the same results.
 
 import * as cp from "child_process";
+import * as fs from "fs";
 import * as http from "http";
+import * as path from "path";
 import * as vscode from "vscode";
 import {
   CloseAction,
@@ -32,8 +34,37 @@ function config(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration(SECTION);
 }
 
+/** True when `name` is an executable on PATH that can be spawned without a shell (on Windows: a .exe or .com file;
+ *  a .cmd shim such as the installers' vulnscan.cmd cannot be). */
+function onPath(name: string): boolean {
+  const exts = process.platform === "win32" ? [".exe", ".com"] : [""];
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) {
+      continue;
+    }
+    for (const ext of exts) {
+      try {
+        const p = path.join(dir, name + ext);
+        if (fs.statSync(p).isFile()) {
+          if (process.platform !== "win32") {
+            fs.accessSync(p, fs.constants.X_OK);
+          }
+          return true;
+        }
+      } catch {
+        // not here
+      }
+    }
+  }
+  return false;
+}
+
 function serverCommand(): { command: string; args: string[] } {
-  const command = config().get<string>("serverPath", "vulnscan").trim() || "vulnscan";
+  let command = config().get<string>("serverPath", "kashif").trim() || "kashif";
+  // The default is the `kashif` command; an install made before the rename (pip install of 0.9.x) has only `vulnscan`.
+  if (command === "kashif" && !onPath("kashif") && onPath("vulnscan")) {
+    command = "vulnscan";
+  }
   const args = config().get<string[]>("serverArgs", []).filter((a) => typeof a === "string");
   return { command, args };
 }

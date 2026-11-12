@@ -50,6 +50,7 @@ _LABELS = {
     "col_rule": ("القاعدة", "Rule"),
     "col_vuln": ("الثغرة", "Vulnerability"),
     "no_results": ("✔ لا نتائج", "✔ No findings"),
+    "autofix": ("إصلاح مقترح", "Suggested fix"),
 }
 
 
@@ -83,6 +84,20 @@ class _Lang:
         return to_en(t) if self.en else t
 
 
+def _fix_html(f: Finding, L: "_Lang") -> str:
+    fix = _fix(f)
+    if not fix:
+        return ""
+    e = html.escape
+    rows = []
+    for ln in str(fix.get("diff") or "").splitlines():
+        cls = "add" if ln.startswith("+") and not ln.startswith("+++") else \
+            "del" if ln.startswith("-") and not ln.startswith("---") else "ctx"
+        rows.append(f"<span class='{cls}'>{e(ln)}</span>")
+    diff = f"<pre class='diff'>{chr(10).join(rows)}</pre>" if rows else ""
+    return (f"<details class='fix'><summary>{e(L('autofix'))}</summary><div>{e(_fix_text(fix, L))}</div>{diff}</details>")
+
+
 def summary_counts(findings: list[Finding]) -> dict[str, int]:
     counts = {s: 0 for s in SEVERITIES}
     for f in findings:
@@ -99,13 +114,24 @@ def _steps(f: Finding) -> list[dict]:
     return [st for st in (f.extra.get("path") or []) if isinstance(st, dict)]
 
 
+def _fix(f: Finding) -> dict | None:
+    """The automatic fix attached by vulnscan.autofix, if any ({description, description_ar, diff, edits})."""
+    fix = f.extra.get("fix")
+    return fix if isinstance(fix, dict) and (fix.get("description") or fix.get("description_ar")) else None
+
+
+def _fix_text(fix: dict, L: "_Lang") -> str:
+    return str((fix.get("description") or fix.get("description_ar")) if L.en else
+               (fix.get("description_ar") or fix.get("description")))
+
+
 def render_console(findings: list[Finding], target: str, files: int, notes: list[str], color: bool = True,
                    lang: str = "both") -> str:
     L = _Lang(lang)
     findings = sort_findings(findings)
     counts = summary_counts(findings)
     c = (lambda s, t: f"{COLORS[s]}{t}{RESET}") if color else (lambda s, t: t)
-    lines = [f"vulnscan — {target}  ({L('scanned', files=files, n=len(findings))})", ""]
+    lines = [f"Kashif — {target}  ({L('scanned', files=files, n=len(findings))})", ""]
     lines.append(L("summary"))
     for s in SEVERITIES:
         if L.en:
@@ -130,6 +156,8 @@ def render_console(findings: list[Finding], target: str, files: int, notes: list
         if f.snippet:
             lines.append(f"     ▸ {L.text(f.snippet)[:140]}")
         lines.append(f"     💡 {L.text(f.advice)}")
+        if _fix(f):
+            lines.append(f"     🔧 {L('autofix')}: {_fix_text(_fix(f), L)}")
         for i, st in enumerate(_steps(f), 1):
             lines.append(f"       {i}. {st.get('file', '')}:{st.get('line', '')}  {L.text(st.get('text', ''))}")
     return "\n".join(lines)
@@ -178,6 +206,12 @@ def render_markdown(findings: list[Finding], target: str, files: int, notes: lis
         if f.snippet:
             md.append(f"- {L('snippet')}: `{L.text(f.snippet).replace('`', 'ˋ')[:160]}`")
         md.append(f"- {L('fix')}: {L.text(f.advice)}")
+        fix = _fix(f)
+        if fix:
+            md.append(f"- {L('autofix')}: {_fix_text(fix, L)}")
+            if fix.get("diff"):
+                fence = "````" if "```" in fix["diff"] else "```"
+                md += ["", f"  {fence}diff"] + [f"  {ln}" for ln in str(fix["diff"]).splitlines()] + [f"  {fence}", ""]
         if _steps(f):
             md.append(f"- {L('flow')}:")
             for i, st in enumerate(_steps(f), 1):
@@ -188,11 +222,16 @@ def render_markdown(findings: list[Finding], target: str, files: int, notes: lis
     return "\n".join(md) + "\n"
 
 
-def render_json(findings: list[Finding], target: str, files: int, notes: list[str]) -> str:
+def render_json(findings: list[Finding], target: str, files: int, notes: list[str],
+                scanners: list[str] | None = None) -> str:
+    """The JSON report. ``scanners`` (optional) names the analyses that ran (sast, secrets, deps, external); the
+    policy gate (``kashif policy check``) reads it to verify ``required_scanners``."""
     findings = sort_findings(findings)
     ensure_fingerprints(findings)
-    return json.dumps({**_meta(target, files, notes), "notes_en": [to_en(n) for n in notes],
-                       "summary": summary_counts(findings),
+    meta = {**_meta(target, files, notes), "notes_en": [to_en(n) for n in notes]}
+    if scanners is not None:
+        meta["scanners"] = sorted(set(scanners))
+    return json.dumps({**meta, "summary": summary_counts(findings),
                        "findings": [f.to_dict() for f in findings]}, ensure_ascii=False, indent=2)
 
 
@@ -218,7 +257,7 @@ def render_html(findings: list[Finding], target: str, files: int, notes: list[st
                     + ("<ol class='flow'>" + "".join(f"<li><code>{e(str(st.get('file', '')))}:{st.get('line', '')}</code> "
                                                      f"{e(L.text(st.get('text', '')))}</li>" for st in steps) + "</ol>"
                        if steps else "")
-                    + f"</td><td>{e(L.text(f.advice))}</td></tr>")
+                    + f"</td><td>{e(L.text(f.advice))}{_fix_html(f, L)}</td></tr>")
     summary = "".join(f"<div class='tile {s}'><div class='n'>{counts[s]}</div><div>{e(L.sev(s))}"
                       + ("" if L.en else f"<br><small>{s}</small>") + "</div></div>"
                       for s in SEVERITIES)
@@ -226,7 +265,7 @@ def render_html(findings: list[Finding], target: str, files: int, notes: list[st
     empty = f"<tr><td colspan=5>{e(L('no_results'))}</td></tr>"
     html_lang, html_dir, align = ("en", "ltr", "left") if L.en else ("ar", "rtl", "right")
     return f"""<!doctype html><html lang="{html_lang}" dir="{html_dir}"><head><meta charset="utf-8">
-<title>vulnscan — {e(target)}</title>
+<title>Kashif — {e(target)}</title>
 <style>
 body{{font-family:system-ui,Segoe UI,Tahoma,sans-serif;margin:2rem;background:#fafafa;color:#222}}
 .tiles{{display:flex;gap:.75rem;flex-wrap:wrap;margin:1rem 0}}
@@ -237,7 +276,10 @@ table{{border-collapse:collapse;width:100%;background:#fff}}
 th,td{{border:1px solid #ddd;padding:.5rem;vertical-align:top;text-align:{align}}}
 tr.critical td:first-child,tr.high td:first-child{{font-weight:700}}
 .b{{padding:.15rem .5rem;border-radius:.25rem;color:#fff;white-space:nowrap}}
-code{{direction:ltr;unicode-bidi:embed;font-size:.85em}}\n.flow{{margin:.4rem 0 0;padding-inline-start:1.2rem;font-size:.8em;color:#555}}
+code{{direction:ltr;unicode-bidi:embed;font-size:.85em}}
+.fix{{margin-top:.5rem}}.fix summary{{cursor:pointer;font-weight:600;color:#166534}}
+.diff{{direction:ltr;text-align:left;background:#f6f8fa;padding:.5rem;overflow:auto;font-size:.8em;margin:.3rem 0 0}}
+.diff span{{display:block}}.diff .add{{background:#dcfce7}}.diff .del{{background:#fee2e2}}\n.flow{{margin:.4rem 0 0;padding-inline-start:1.2rem;font-size:.8em;color:#555}}
 </style></head><body>
 <h1>{e(L('md_title'))} — <code>{e(target)}</code></h1>
 <p>{e(L('files'))}: {files} · {e(L('findings'))}: {len(findings)} · {e(_meta(target, files, notes)['generated_at'])}</p>
@@ -304,15 +346,47 @@ def _help_markdown(title: str, advice_en: str, cwe: str) -> str:
     return "\n".join(md).strip() + "\n"
 
 
-def render_sarif(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both") -> str:
+def _sarif_fixes(f: Finding, base_id: str, en_only: bool) -> list | None:
+    """SARIF 2.1.0 §3.55 fix objects from an automatic fix: one artifactChange per file, one replacement per edit.
+    An edit rewrites whole lines, so its deletedRegion runs from column 1 of the first line to the end of the last
+    one (endColumn omitted = end of line, newline excluded) and insertedContent is the new text without its
+    final line terminator."""
+    fix = _fix(f)
+    if not fix or not fix.get("edits"):
+        return None
+    by_file: dict[str, list] = {}
+    try:
+        for ed in fix["edits"]:
+            text = str(ed["replacement"])
+            text = text[:-2] if text.endswith("\r\n") else text[:-1] if text.endswith(("\n", "\r")) else text
+            by_file.setdefault(str(ed["file"]), []).append({
+                "deletedRegion": {"startLine": int(ed["start_line"]), "startColumn": 1, "endLine": int(ed["end_line"])},
+                "insertedContent": {"text": text}})
+    except (KeyError, TypeError, ValueError):
+        return None
+    out = {"description": {"text": str(fix.get("description") or to_en(fix.get("description_ar", "")))},
+           "artifactChanges": [{"artifactLocation": {"uri": _uri(path), "uriBaseId": base_id}, "replacements": reps}
+                               for path, reps in by_file.items()]}
+    if not en_only and fix.get("description_ar"):
+        out["properties"] = {"description_ar": fix["description_ar"]}
+    return [out]
+
+
+def render_sarif(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both",
+                 suppressed: list[Finding] | None = None) -> str:
     """SARIF 2.1.0 — the OASIS standard consumed by GitHub Code Scanning, VS Code's SARIF viewer,
     Azure DevOps and others. Rules carry CWE tags and a GitHub security-severity; each result carries
     a stable partialFingerprint so the platform can track an issue across commits.
 
     Every message is English (what code-scanning platforms display). The Arabic title and advice are kept in
-    the rule and result properties (title_ar, advice_ar) unless lang is "en", which emits English only."""
+    the rule and result properties (title_ar, advice_ar) unless lang is "en", which emits English only.
+
+    ``suppressed``: findings hidden by a triage decision (false positive, accepted risk, won't fix ...). They are
+    written as results carrying a SARIF ``suppressions`` entry (kind "external", status "accepted", with the
+    justification), so code-scanning platforms close the alert instead of losing track of it."""
     en_only = lang == "en"
-    findings = sort_findings(findings)
+    hidden = {id(f) for f in suppressed or []}
+    findings = sort_findings(list(findings) + [f for f in suppressed or [] if f is not None])
     ensure_fingerprints(findings)
     web_base = urllib.parse.urlsplit(target) if target.startswith(("http://", "https://")) else None
     rules: dict[str, dict] = {}
@@ -365,6 +439,16 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
                 str(st.get("file") or member or f.file), int(st.get("line", 1) or 1), base_id, target),
                 "message": {"text": to_en(str(st.get("text", "")))}}} for st in path if isinstance(st, dict)]
             result["codeFlows"] = [{"threadFlows": [{"locations": locs}]}]
+        fixes = _sarif_fixes(f, base_id, en_only) if not member and f.source != "web" else None
+        if fixes:
+            result["fixes"] = fixes
+        if id(f) in hidden:
+            tri = f.extra.get("triage") if isinstance(f.extra.get("triage"), dict) else {}
+            sup = {"kind": "external", "status": "accepted"}
+            reason = " ".join(str(x) for x in (tri.get("status", ""), tri.get("justification", "")) if x).strip()
+            if reason:
+                sup["justification"] = reason[:1000]
+            result["suppressions"] = [sup]
         results.append(result)
     sarif = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/sarif-2.1.0.json",

@@ -64,7 +64,13 @@ RULES: list[Rule] = [
     Rule("SEC004", "high", "Hard-coded password / secret / API key", "كلمة مرور أو مفتاح API مكتوب في الكود",
          _r(r"""(?i)\b(password|passwd|pwd|secret|api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret)\b['"]?\s*[:=]\s*['"][^'"\s]{6,}['"]"""),
          "انقل القيمة إلى متغير بيئة أو مدير أسرار، وأصدر قيمة جديدة إذا كانت حقيقية.", "CWE-798",
-         skip=_r(r"""(?i)(example|sample|placeholder|changeme|your[_-]|xxx+|\$\{|\{\{|<[a-z_]+>|os\.environ|getenv|process\.env|dummy|test|fake|mock|redacted|\*{3,})""")),
+         skip=_r(r"""(?i)(example|sample|placeholder|changeme|your[_-]|xxx+|\$\{|\{\{|<[a-z_]+>|os\.environ|getenv|process\.env|dummy|test|fake|mock|redacted|\*{3,}|"""
+                 r"""[:=]\s*['"]\$[A-Za-z_]\w*['"]|"""      # PHP / shell interpolation: password = '$pass_new'
+                 # a label table (i18n, column names): "secret": "secret" / 'password' => 'Password'. The key must be
+                 # quoted: an XML attribute or an assignment `password="password"` is a real (weak) credential. An enum
+                 # member named after a key kind (OpenAPI `apiKey = "apiKey"`) is a label whatever the quoting
+                 r"""['"](?P<k>password|passwd|pwd|secret|api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret)\b['"]?\s*[:=]>?\s*['"](?P=k)['"]|"""
+                 r"""\b(?P<k2>api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret)\s*[:=]\s*['"](?P=k2)['"])""")),
     Rule("SEC005", "high", "JWT token literal", "رمز JWT مكتوب حرفيًا",
          _r(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
          "لا تضع رموز JWT في المصدر؛ أبطل الرمز إذا كان صالحًا.", "CWE-798"),
@@ -102,7 +108,7 @@ RULES: list[Rule] = [
          _r(r"(?<![\w.])(eval|exec)\s*\(\s*[^)'\"\s]"), "لا تنفّذ نصوصًا ديناميكية؛ استخدم ast.literal_eval أو منطقًا صريحًا.",
          "CWE-95", PY),
     Rule("EXE002", "high", "eval() / new Function()", "استخدام eval أو new Function",
-         _r(r"(?<![\w.])(eval\s*\(|new\s+Function\s*\()"), "تجنّب eval؛ استخدم JSON.parse أو منطقًا صريحًا.",
+         _r(r"(?<![\w.])(eval\s*\((?!\s*\))|new\s+Function\s*\()"), "تجنّب eval؛ استخدم JSON.parse أو منطقًا صريحًا.",
          "CWE-95", WEB),
     Rule("EXE003", "critical", "eval()/system()/shell_exec()", "تنفيذ أوامر أو كود من PHP",
          _r(r"(?<![\w$])(eval|system|shell_exec|passthru|popen|proc_open)\s*\("),
@@ -131,16 +137,20 @@ RULES: list[Rule] = [
          _r(r"""(?i)(execute|executemany|raw|cursor\.\w+)\s*\(\s*(f['"]|['"].*(\+|%)|.*\.format\()[^)]*\b(select|insert|update|delete|where)\b"""),
          "استخدم الاستعلامات المُعَلَّمة (parameterized queries) بدل تركيب النص.", "CWE-89", PY),
     Rule("INJ002", "high", "SQL string concatenated with variables", "SQL مُركّب بمتغيرات",
-         _r(r"""(?i)['"`]\s*(select|insert|update|delete)\s[^'"`]*['"`]\s*\+\s*[a-zA-Z_$]"""),
+         # an ALL_CAPS constant (`"SELECT * FROM " + USER_TB_NAME + " WHERE id = $id"`) is not a variable
+         _r(r"""['"`]\s*(?i:select|insert|update|delete)\s[^'"`]*['"`](\s*\+\s*(?:[A-Z][A-Z0-9_]+\b(?!\s*[.(\[])|['"`][^'"`]*['"`]))*"""
+            r"""\s*\+\s*(?![A-Z][A-Z0-9_]+\b(?!\s*[.(\[]))[a-zA-Z_$]"""),
          "استخدم استعلامات مُعَلَّمة أو ORM.", "CWE-89", JS | JVM | PHP | CS | GO | RUBY),
     Rule("INJ003", "high", "Raw request data inside SQL", "بيانات الطلب داخل SQL مباشرة",
          _r(r"""(?i)(select|insert|update|delete)\b[^;]*\$_(GET|POST|REQUEST|COOKIE)\["""),
          "استخدم PDO مع استعلامات مُعَلَّمة.", "CWE-89", PHP),
     Rule("INJ004", "high", "innerHTML / document.write with dynamic content", "حقن HTML (XSS) عبر innerHTML/document.write",
          _r(r"(\.innerHTML\s*=\s*[^'\"\s;][^;]*|document\.write(ln)?\s*\(\s*[^'\")])"),
-         "استخدم textContent أو مكتبة تعقيم مثل DOMPurify.", "CWE-79", WEB),
+         "استخدم textContent أو مكتبة تعقيم مثل DOMPurify.", "CWE-79", WEB,
+         # `el.innerHTML = dark ? '☀️' : '🌙'`: a choice between two literals is static markup
+         skip=_r(r"""\.innerHTML\s*=\s*[^;?]*\?\s*(['"`])[^'"`$]*\1\s*:\s*(['"`])[^'"`$]*\2\s*;?\s*$""")),
     Rule("INJ005", "medium", "dangerouslySetInnerHTML", "dangerouslySetInnerHTML",
-         _r(r"dangerouslySetInnerHTML"), "تأكد من تعقيم المحتوى (DOMPurify) قبل عرضه.", "CWE-79", JS),
+         _r(r"dangerouslySetInnerHTML\s*[=:]\s*\{?\s*\{\s*__html\s*:\s*(?![\s'\"`]|\})"), "تأكد من تعقيم المحتوى (DOMPurify) قبل عرضه.", "CWE-79", JS),
     Rule("INJ006", "high", "Unescaped output of request data", "طباعة بيانات الطلب دون تعقيم (XSS)",
          _r(r"(echo|print)\s+[^;]*\$_(GET|POST|REQUEST|COOKIE)\["),
          "مرّر المخرجات عبر htmlspecialchars.", "CWE-79", PHP),
@@ -150,20 +160,26 @@ RULES: list[Rule] = [
     Rule("INJ008", "high", "Path built from user input without normalization", "مسار ملف من مدخلات المستخدم (Path Traversal)",
          _r(r"(open|os\.path\.join|Path)\s*\([^)]*\b(request\.(args|form|json|values|GET|POST)|params\[|req\.(query|body|params))"),
          "طبّع المسار وتحقق أنه داخل المجلد المسموح (resolve + is_relative_to).", "CWE-22", PY | JS),
+    Rule("INJ010", "medium", "Template auto-escaping disabled", "تعطيل التهريب التلقائي في محرك القوالب (XSS)",
+         _r(r"""(?i)(\bautoescape\s*[:=]\s*(false|False|0|None)\b|\bnoEscape\s*:\s*true\b|\bescape\s*:\s*false\b.*\b(ejs|swig|nunjucks|handlebars|mustache|pug|dust)|"""
+            r"""\b(swig|nunjucks)\.(setDefaults|configure)\s*\([^)]*autoescape\s*:\s*false|\{%\s*autoescape\s+(false|off)\s*%\})"""),
+         "فعّل التهريب التلقائي (autoescape=True / select_autoescape) ولا تعطّله إلا لقوالب نصية غير HTML.", "CWE-79",
+         (CODE - PY) | frozenset({".html", ".htm", ".jinja", ".jinja2", ".j2", ".njk", ".twig"})),   # Python: semantic.py
     Rule("INJ009", "medium", "Template rendered from string", "قالب يُبنى من نص ديناميكي (SSTI)",
-         _r(r"(render_template_string|Template\s*\(\s*(f['\"]|[a-zA-Z_]+\s*\+|request\.))"),
+         _r(r"((?<!def )\brender_template_string\s*\(\s*(?![\s'\")]|[rbu]?['\"])|\bTemplate\s*\(\s*(f['\"]|[a-zA-Z_]+\s*\+|request\.))"),
          "استخدم قوالب ثابتة ومرّر البيانات كمتغيرات.", "CWE-1336", PY),
 
     # ---------------------------------------------------- deserialization
     Rule("DES001", "critical", "pickle / marshal / shelve load", "فك تسلسل غير آمن (pickle)",
-         _r(r"\b(pickle|cPickle|marshal|shelve|dill)\.(load|loads|open)\s*\("),
+         _r(r"\b(pickle|cPickle|marshal|shelve|dill)\.(load|loads|open)\s*\((?!\s*(pickle|cPickle|marshal|dill|cloudpickle)\.dumps\s*\()"),
          "لا تفك تسلسل بيانات غير موثوقة؛ استخدم JSON.", "CWE-502", PY),
     Rule("DES002", "high", "yaml.load without SafeLoader", "yaml.load بدون SafeLoader",
          _r(r"yaml\.load\s*\((?![^)]*(SafeLoader|safe_load|Loader\s*=\s*yaml\.(Safe|Base)Loader))"),
          "استخدم yaml.safe_load.", "CWE-502", PY),
     Rule("DES003", "high", "Java ObjectInputStream.readObject", "ObjectInputStream.readObject",
-         _r(r"ObjectInputStream|\.readObject\s*\("), "تجنب تسلسل Java للبيانات غير الموثوقة أو استخدم ObjectInputFilter.",
-         "CWE-502", JVM),
+         _r(r"\bnew\s+ObjectInputStream\s*\(|\.readObject\s*\(\s*\)"), "تجنب تسلسل Java للبيانات غير الموثوقة أو استخدم ObjectInputFilter.",
+         "CWE-502", JVM, skip=_r(r"^\s*import\s|ValidatingObjectInputStream|ObjectInputFilter|setObjectInputFilter|"
+                                  r"\bvoid\s+readObject\s*\(|^\s*(\*|//|/\*)")),
     Rule("DES004", "high", "unserialize() on input", "unserialize على مدخلات",
          _r(r"\bunserialize\s*\("), "استخدم json_decode بدلًا من unserialize.", "CWE-502", PHP),
     Rule("DES005", "high", "Marshal.load / YAML.load", "Marshal.load أو YAML.load",
@@ -175,8 +191,10 @@ RULES: list[Rule] = [
          "استخدم SHA-256 أو أقوى، ولكلمات المرور bcrypt/argon2.", "CWE-328", CODE,
          skip=_r(r"(?i)(checksum|etag|cache|fingerprint|integrity|usedforsecurity\s*=\s*False)")),
     Rule("CRY002", "high", "TLS certificate verification disabled", "تعطيل التحقق من شهادة TLS",
-         _r(r"(verify\s*=\s*False|InsecureSkipVerify\s*:\s*true|rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['\"]?0|CURLOPT_SSL_VERIFYPEER\s*,\s*(false|0)|badCertificateCallback\s*=.*=>\s*true|ALLOW_ALL_HOSTNAME_VERIFIER|TrustAllCerts|checkServerTrusted\s*\([^)]*\)\s*\{\s*\}|ssl\._create_unverified_context|CERT_NONE|--insecure\b|-k\s+https?://)"),
-         "فعّل التحقق من الشهادة؛ وثبّت شهادة خاصة (pinning) إذا كانت ذاتية التوقيع.", "CWE-295", CODE | CONFIG),
+         _r(r"(verify\s*=\s*False|InsecureSkipVerify\s*:\s*true|rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['\"]?0|CURLOPT_SSL_VERIFYPEER\s*,\s*(false|0)|badCertificateCallback\s*=.*=>\s*true|ALLOW_ALL_HOSTNAME_VERIFIER|TrustAllCerts|checkServerTrusted\s*\([^)]*\)\s*\{\s*\}|ssl\._create_unverified_context|(?<![\w\"'])(ssl\.)?CERT_NONE\b(?![\w\"'])|['\"]CERT_NONE['\"]|--insecure\b|-k\s+https?://)"),
+         "فعّل التحقق من الشهادة؛ وثبّت شهادة خاصة (pinning) إذا كانت ذاتية التوقيع.", "CWE-295", CODE | CONFIG,
+         skip=_r(r"^(?!.*(verify\s*=\s*False|_create_unverified|InsecureSkipVerify|rejectUnauthorized|VERIFYPEER))"
+                 r".*['\"][^'\"]*\s[^'\"]*CERT_NONE[^'\"]*\s[^'\"]*['\"]")),
     Rule("CRY003", "high", "Obsolete TLS/SSL protocol", "بروتوكول TLS/SSL قديم",
          _r(r"(PROTOCOL_(SSLv2|SSLv3|TLSv1|TLSv1_1)\b|SSLv3|TLSv1\.0|TLSv1\.1|ssl_version\s*=\s*['\"]?TLSv1['\"]?\b|\"TLSv1\"|'TLSv1')"),
          "استخدم TLS 1.2 أو أحدث.", "CWE-326", CODE | CONFIG),
@@ -192,9 +210,21 @@ RULES: list[Rule] = [
          "CWE-338", CODE),
     Rule("CRY006", "medium", "Hard-coded IV/salt", "متجه تهيئة أو ملح ثابت",
          _r(r"(?i)\b(iv|salt|nonce)\s*=\s*(b?['\"][^'\"]{8,}['\"]|bytes?\s*\(\s*\[)"),
-         "ولّد IV/salt عشوائيًا لكل عملية وخزّنه مع النص المشفر.", "CWE-329", CODE),
+         "ولّد IV/salt عشوائيًا لكل عملية وخزّنه مع النص المشفر.", "CWE-329", CODE,
+         skip=_r(r"(?i)<[a-z][^>]*\bnonce\s*=|[a-z]\s+(iv|salt|nonce)=\"|\bnonce\s*=\s*['\"][^'\"]*['\"]\s*/?>|\bnonce=\{|(iv|salt|nonce)\s*=\s*['\"][^'\"]*\s[^'\"]*['\"]")),
 
     # --------------------------------------------------------- network/cfg
+    Rule("XXE002", "high", "libxmljs parses with entity substitution (noent: true)", "libxmljs يحلّل مع استبدال الكيانات (XXE)",
+         _r(r"\b(parseXml|parseXmlString|parseXmlAsync|parseHtml)\s*\(.*\bnoent\s*:\s*true"),
+         "أزل noent: true (الافتراضي آمن) أو استخدم محللًا لا يحلّ الكيانات الخارجية.", "CWE-611", JS),
+    Rule("EXE010", "high", "Expression evaluator on dynamic input (mathjs / expr-eval / safe-eval)", "مقيّم تعابير على مدخلات ديناميكية (حقن كود)",
+         _r(r"\b(math|mathjs|parser|Parser|safeEval|safe_eval|staticEval|notevil)\.(eval|evaluate|compile)\s*\(\s*(?!['\"`][^'\"`]*['\"`]\s*[,)])"),
+         "لا تقيّم تعابير من المستخدم؛ إن لزم فاستخدم محللًا مقيّدًا بقائمة دوال مسموحة وبدون وصول للكائنات.", "CWE-94", JS),
+    Rule("CFG008", "high", "Hard-coded session / cookie signing secret", "سرّ توقيع الجلسة أو الكوكيز مكتوب في الكود",
+         _r(r"""(?i)\b(session|cookieSession|cookieParser|expressSession|cookie_secret|cookieSecret|secret_key_base)\b.{0,80}?\b(secret|secrets|keys|cookieSecret)\s*[:=]\s*\[?\s*['"][^'"]{3,}['"]|"""
+            r"""(?<!['"\w])cookieParser\s*\(\s*['"][^'"]{3,}['"]|\bcookieSecret\s*[:=]\s*['"][^'"]{3,}['"]"""),
+         "انقل سرّ الجلسة إلى متغير بيئة أو مدير أسرار، وولّده عشوائيًا (32 بايت على الأقل)، وأبطل القيمة المنشورة.", "CWE-798", JS,
+         skip=_r(r"(?i)process\.env|\$\{|config\.|getenv")),
     Rule("XXE001", "high", "XML parser with external entities enabled (XXE)", "محلل XML مع تفعيل الكيانات الخارجية (XXE)",
          _r(r"(?i)(feature_external_[gp]es\s*,\s*(True|1)\b|resolve_entities\s*=\s*True|load_dtd\s*=\s*True|"
             r"no_network\s*=\s*False|external-(general|parameter)-entities[\"']\s*,\s*true|"
@@ -207,7 +237,15 @@ RULES: list[Rule] = [
     Rule("NET001", "low", "Cleartext HTTP URL", "رابط HTTP غير مشفّر",
          _r(r"['\"`]http://[^'\"`\s]+"),
          "استخدم https://.", "CWE-319", CODE | CONFIG | frozenset({".html", ".plist"}),
-         skip=_r(r"(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|\[::1\]|192\.168\.|10\.\d+\.|w3\.org|schemas\.|xmlns|apache\.org/licenses|purl\.org|example\.(com|org)|json-schema|openxmlformats|microsoft\.com/office|ns\.adobe|//\s*license)")),
+         skip=_r(r"(localhost|127\.0\.0\.1|0\.0\.0\.0|10\.0\.2\.2|\[::1\]|192\.168\.|10\.\d+\.|w3\.org|schemas\.|xmlns|apache\.org/licenses|purl\.org|example\.(com|org)|json-schema|openxmlformats|microsoft\.com/office|ns\.adobe|//\s*license|"
+                 r"xml\.org/sax/|apache\.org/xml/(features|properties)/|javax\.xml\.|"   # parser feature / property names
+                 r"['\"`]http://[\w-]+(:\d+)?(/[^'\"`\s]*)?['\"`]|"   # dotless placeholder: new URL(p, 'http://n')
+                 # identifiers, not connections: DTD / XSD system ids, a reserved test domain (RFC 2606 / 6761 / 6762)
+                 r"<!DOCTYPE|schemaLocation|http://[^'\"`\s]*\.(dtd|xsd)['\"`]|http://[\w.-]+\.(local|test|invalid|example|localhost)(:\d+)?[/'\"`]|"
+                 # a URL built only to be parsed: `const { pathname } = new URL(`http://n${req.url}`)`, `new URL(`http://${h}`).host`
+                 r"\{\s*(pathname|searchParams|hostname|host)\b[^}]*\}\s*=\s*new URL\(|new URL\([^;]*\)\.(hostname|host|pathname|search|searchParams)\b|"
+                 r"<a\s[^>]*href=\\?[\"']http://|"         # a hyperlink for a person to follow, not the program's own traffic
+                 r"\"(homepage|author|bugs|funding|repository)\"\s*:\s*[{\"])")),   # package.json / composer.json metadata
     Rule("NET002", "medium", "Service bound to all interfaces", "خدمة تستمع على كل الواجهات 0.0.0.0",
          _r(r"(host\s*=\s*['\"]0\.0\.0\.0['\"]|--host[ =]0\.0\.0\.0|listen\s*\(?\s*['\"]?0\.0\.0\.0|bind\s*=\s*['\"]?0\.0\.0\.0)"),
          "اقصر الاستماع على 127.0.0.1 أو ضع الخدمة خلف جدار حماية/عكسي وكيل مع مصادقة.", "CWE-1327", CODE | CONFIG),
@@ -224,15 +262,16 @@ RULES: list[Rule] = [
          "استخدم tempfile.NamedTemporaryFile/mkstemp.", "CWE-377", PY),
     Rule("CFG004", "medium", "World-writable permissions", "صلاحيات 777 أو كتابة للجميع",
          _r(r"(chmod\s+(-R\s+)?(777|666|o\+w)|os\.chmod\s*\([^)]*0o?777|0o777|0777\b)"),
-         "استخدم أقل الصلاحيات الممكنة (مثل 750/640).", "CWE-732", CODE | DOCKER),
+         "استخدم أقل الصلاحيات الممكنة (مثل 750/640).", "CWE-732", CODE | DOCKER,
+         skip=_r(r"^(?!.*chmod).*&\s*0o?777\b")),      # `st.st_mode & 0o777` reads the permission bits
     Rule("CFG005", "low", "assert used for validation", "assert للتحقق من الأمان",
-         _r(r"^\s*assert\s+.*\b(auth|admin|permission|role|user|token|password)\b"),
+         _r(r"^\s*assert\s+(?!.*\bis\s+(not\s+)?None\b)(?!\s*isinstance\()(?!.*==\s*None\b).*\b(auth|admin|permission|role|user|token|password)\b"),
          "assert يُحذف عند التحسين؛ استخدم شرطًا صريحًا يرفع استثناءً.", "CWE-617", PY),
     Rule("CFG006", "medium", "Wildcard/empty API key check", "مفتاح وصول اختياري أو فارغ",
          _r(r"(?i)(api[_-]?key|secret|token)\s*(==|!=|===)\s*['\"]{2}"),
          "ارفض المفاتيح الفارغة وافرض المصادقة افتراضيًا.", "CWE-287", CODE),
     Rule("CFG007", "medium", "JWT accepts 'none' algorithm / no verification", "JWT بدون تحقق من التوقيع",
-         _r(r"(algorithms?\s*[:=]\s*\[?\s*['\"]none['\"]|verify\s*[:=]\s*False|jwt\.decode\([^)]*verify_signature['\"]?\s*:\s*False|ignoreExpiration\s*:\s*true)"),
+         _r(r"(algorithms?\s*[:=]\s*\[?\s*['\"]none['\"]|jwt\.decode\([^)]*\bverify\s*=\s*False|jwt\.decode\([^)]*verify_signature['\"]?\s*:\s*False|['\"]verify_signature['\"]\s*:\s*False|ignoreExpiration\s*:\s*true)"),
          "تحقق دائمًا من التوقيع وحدّد الخوارزميات المسموحة.", "CWE-347", CODE),
 
     # ---------------------------------------------------------- Android/iOS
@@ -251,7 +290,8 @@ RULES: list[Rule] = [
          _r(r"NSAllowsArbitraryLoads"), "أزل NSAllowsArbitraryLoads أو قصره على نطاقات محددة.", "CWE-319", PLIST),
     Rule("MOB006", "medium", "Sensitive data in SharedPreferences/NSUserDefaults", "بيانات حساسة في تخزين غير مشفّر",
          _r(r"(?i)(SharedPreferences|UserDefaults|localStorage|sessionStorage)\b.*\b(token|password|secret|pin|card)\b"),
-         "استخدم Keychain/EncryptedSharedPreferences/flutter_secure_storage.", "CWE-922", JVM | DART | JS | frozenset({".swift", ".m"})),
+         "استخدم Keychain/EncryptedSharedPreferences/flutter_secure_storage.", "CWE-922", JVM | DART | JS | frozenset({".swift", ".m"}),
+         skip=_r(r"(?i)\.(getItem|removeItem|getString|getBoolean|getInt|getLong|remove|contains|clear|stringForKey|objectForKey|removeObject)\s*\((?!.*\b(setItem|putString|setValue|set)\s*\()")),
 
     # ------------------------------------------------------------ Docker/CI
     Rule("DKR001", "medium", "Container runs as root (no USER)", "الحاوية تعمل بصلاحيات root",
@@ -284,7 +324,7 @@ RULES: list[Rule] = [
          _r(r"(echo|print|console\.log|printf)\b[^\n]*\$\{\{\s*secrets\."), "لا تطبع الأسرار؛ استخدمها عبر env فقط.",
          "CWE-532", WORKFLOW),
     Rule("CI006", "medium", "Password/secret passed on command line", "سر يُمرّر كوسيط أمر",
-         _r(r"(?i)(--password[= ]|-p\s*['\"]?\S{4,}|--token[= ]|PASSWORD=)\S*['\"]?[A-Za-z0-9!@#$%^&*]{6,}"),
+         _r(r"(?i)(--password[= ]|(?<![\w-])-p\s*['\"]?\S{4,}|--token[= ]|PASSWORD=)\S*['\"]?[A-Za-z0-9!@#$%^&*]{6,}"),
          "مرّر الأسرار عبر متغير بيئة أو ملف بصلاحيات مقيدة.", "CWE-214", SHELL | DOCKER,
          skip=_r(r"\$\{?\w+|\$\(")),
 
@@ -629,7 +669,7 @@ RULES += [
 # The line rules above that match code or Dockerfile/workflow commands must not fire on a comment that names the API
 # ("# never pass check_hostname=False", "# don't use --no-check-certificate").
 _COMMENT_LINE = r"^\s*(#|//|/\*|\*\s)"
-_SKIP_COMMENTS = re.compile(r"^(JWT|CORS|TLS)\d+$|^CRY0(0[7-9]|1\d)$|^(GHA002|GHA003|DKR007|DKR009|DKR010)$")
+_SKIP_COMMENTS = re.compile(r"^(JWT|CORS|TLS|EXE|INJ|DES|CRY|CFG|NET|MOB|XXE|LOG)\d+$|^(GHA002|GHA003|DKR007|DKR009|DKR010)$")
 RULES[:] = [replace(r, skip=_r(r.skip.pattern + "|" + _COMMENT_LINE if r.skip else _COMMENT_LINE))
             if _SKIP_COMMENTS.match(r.id) else r for r in RULES]
 

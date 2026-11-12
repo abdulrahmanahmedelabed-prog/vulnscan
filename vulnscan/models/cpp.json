@@ -1,5 +1,5 @@
 {
- "_comment": "C / C++: libc, POSIX, std::, common DB clients and web frameworks.",
+ "_comment": "C / C++: libc, POSIX, Win32, std::, Qt, Boost (Process, Asio, Filesystem), POCO, glib, libcurl, DB clients (SQLite, MySQL, libpq/pqxx, ODBC, Qt SQL, Connector/C++), web frameworks (cpp-httplib, Crow, Drogon, Pistache, Beast, mongoose/civetweb, libevent, libmicrohttpd, FastCGI, cgicc, onion).",
  "sources": [
   {
    "kind": "name",
@@ -35,7 +35,56 @@
     "req.url_params.get",
     "FCGX_GetParam",
     "evhttp_request_get_uri",
-    "MHD_lookup_connection_value"
+    "MHD_lookup_connection_value",
+    "getQueryString",
+    "getPostData",
+    "getPathInfo",
+    "getElement",
+    "FCGX_GetLine",
+    "getParameter",
+    "getParameters",
+    "getOptionalParameter",
+    "getHeader",
+    "getCookie",
+    "getJsonObject",
+    "getParameterValues",
+    "getQuery",
+    "getUrl",
+    "get_query_parameter",
+    "get_query_parameters",
+    "get_path_parameter",
+    "request.get",
+    "request.post",
+    "request.param",
+    "query.get",
+    "params.get",
+    "getURI",
+    "form.get",
+    "get_file_value",
+    "req.get_param_values",
+    "url_params.get_list",
+    "evhttp_find_header",
+    "evhttp_uri_get_query",
+    "evhttp_uri_get_path",
+    "evhttp_request_get_host",
+    "mg_get_request_info",
+    "mg_get_header",
+    "mg_http_get_header",
+    "onion_request_get_query",
+    "onion_request_get_post",
+    "onion_request_get_header",
+    "onion_request_get_path",
+    "onion_request_get_cookie",
+    "onion_request_get_fullpath",
+    "queryItemValue",
+    "allQueryItemValues",
+    "socket.readAll",
+    "socket.readLine",
+    "reply.readAll",
+    "readDatagram",
+    "receiveDatagram",
+    "archive_entry_pathname",
+    "zip_get_name"
    ],
    "label": "{name}()"
   },
@@ -44,7 +93,11 @@
    "roots": [
     "req",
     "request",
-    "ctx"
+    "ctx",
+    "hm",
+    "http_msg",
+    "request_info",
+    "ri"
    ],
    "attrs": [
     "body",
@@ -55,9 +108,29 @@
     "headers",
     "target",
     "url_params",
-    "matches"
+    "matches",
+    "uri",
+    "query_string",
+    "request_uri",
+    "raw_url",
+    "path_params",
+    "local_uri"
    ],
    "label": "req.{attr}"
+  },
+  {
+   "kind": "attr",
+   "roots": [
+    "file",
+    "upload",
+    "part",
+    "formfile"
+   ],
+   "attrs": [
+    "filename"
+   ],
+   "label": "{attr} (uploaded file name)",
+   "_comment": "cpp-httplib MultipartFormData::filename"
   }
  ],
  "entry_points": [
@@ -69,9 +142,17 @@
    "label": "معامل نقطة الدخول"
   },
   {
-   "view_bases": [],
+   "view_bases": [
+    "HTTPRequestHandler",
+    "HttpSimpleController",
+    "HttpController",
+    "WResource"
+   ],
    "methods": [
-    "main"
+    "main",
+    "handleRequest",
+    "asyncHandleHttpRequest",
+    "onRequest"
    ]
   },
   {
@@ -80,7 +161,10 @@
     "req",
     "request",
     "res",
-    "conn"
+    "conn",
+    "hm",
+    "request_info",
+    "query_string"
    ]
   }
  ],
@@ -98,24 +182,58 @@
     "std.system",
     "popen",
     "_popen",
-    "ShellExecuteA",
-    "ShellExecuteW",
     "WinExec",
+    "QProcess.start",
+    "QProcess.execute",
+    "QProcess.startCommand",
+    "_wsystem",
+    "_wpopen",
+    "wordexp",
+    "g_spawn_command_line_sync",
+    "g_spawn_command_line_async",
+    "startDetached",
+    "startCommand",
+    "setProgram",
+    "setNativeArguments",
+    "builtins.child",
+    "bp.child",
+    "process.child",
+    "bp.spawn",
+    "process.spawn",
+    "Process.launch"
+   ],
+   "title": "Tainted data reaches a shell command",
+   "title_ar": "بيانات غير موثوقة تصل إلى أمر نظام",
+   "advice": "لا تمرّر مدخلات إلى الصدفة؛ استخدم وسائط منفصلة وقائمة بيضاء."
+  },
+  {
+   "rule": "DF002",
+   "severity": "high",
+   "cwe": "CWE-78",
+   "label": "shell command",
+   "title": "Tainted data reaches a shell command",
+   "title_ar": "بيانات غير موثوقة تصل إلى أمر نظام",
+   "advice": "لا تمرّر مدخلات إلى الصدفة؛ استخدم وسائط منفصلة وقائمة بيضاء.",
+   "args": [
+    0,
+    1,
+    2,
+    3,
+    4
+   ],
+   "names": [
     "execvp",
     "execv",
     "execve",
     "execl",
     "execlp",
     "posix_spawn",
-    "CreateProcessA",
-    "CreateProcessW",
-    "QProcess.start",
-    "QProcess.execute",
-    "QProcess.startCommand"
+    "execvpe",
+    "execle",
+    "posix_spawnp",
+    "fexecve"
    ],
-   "title": "Tainted data reaches a shell command",
-   "title_ar": "بيانات غير موثوقة تصل إلى أمر نظام",
-   "advice": "لا تمرّر مدخلات إلى الصدفة؛ استخدم وسائط منفصلة وقائمة بيضاء."
+   "_comment": "execl(\"/bin/sh\", \"sh\", \"-c\", line): the program and every argument"
   },
   {
    "rule": "DF003",
@@ -166,7 +284,25 @@
     "work.exec",
     "conn.exec",
     "executeQuery",
-    "executeUpdate"
+    "executeUpdate",
+    "mysql_send_query",
+    "mysql_stmt_prepare",
+    "sqlite3_prepare_v3",
+    "sqlite3_prepare16",
+    "sqlite3_prepare16_v2",
+    "sqlite3_get_table",
+    "PQexecParams",
+    "PQsendQueryParams",
+    "SQLExecDirectA",
+    "SQLExecDirectW",
+    "SQLPrepareA",
+    "SQLPrepareW",
+    "dbcmd",
+    "dbfcmd",
+    "nanodbc.execute",
+    "nanodbc.just_execute",
+    "nanodbc.prepare",
+    "mysql_real_query_nonblocking"
    ],
    "title": "Tainted data reaches a database query",
    "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
@@ -182,10 +318,8 @@
    ],
    "names": [
     "fopen",
-    "fopen_s",
     "freopen",
     "open",
-    "openat",
     "creat",
     "std.ifstream",
     "std.ofstream",
@@ -205,7 +339,61 @@
     "fs.path",
     "CreateFileA",
     "CreateFileW",
-    "chdir"
+    "chdir",
+    "_wfopen",
+    "open64",
+    "fopen64",
+    "creat64",
+    "_open",
+    "_wopen",
+    "_sopen",
+    "CreateFile",
+    "lstat",
+    "stat64",
+    "readlink",
+    "scandir",
+    "nftw",
+    "ftw",
+    "directory_iterator",
+    "recursive_directory_iterator",
+    "QDir",
+    "QFileInfo",
+    "QSaveFile",
+    "QImageReader",
+    "setFileName",
+    "FileInputStream",
+    "FileOutputStream",
+    "FileStream",
+    "Poco.File",
+    "mapped_file_source",
+    "mapped_file",
+    "file_mapping",
+    "boost.filesystem.path",
+    "set_base_dir",
+    "set_file_content",
+    "set_static_file_info",
+    "set_static_file_info_unsafe",
+    "newFileResponse",
+    "zip_open",
+    "unzOpen",
+    "unzOpen64",
+    "LoadImageA",
+    "PathFileExistsA",
+    "GetFileAttributesA",
+    "GetFileAttributesW",
+    "FindFirstFileA",
+    "FindFirstFileW",
+    "g_file_get_contents",
+    "g_file_set_contents",
+    "g_fopen",
+    "g_open",
+    "g_file_new_for_path",
+    "gzopen",
+    "XMLDocument.LoadFile",
+    "TiXmlDocument.LoadFile",
+    "xmlReadFile",
+    "xmlParseFile",
+    "imread"
    ],
    "title": "Tainted data reaches a file path",
    "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
@@ -246,7 +434,50 @@
     "QFile.remove",
     "QFile.rename",
     "DeleteFileA",
-    "MoveFileA"
+    "MoveFileA",
+    "remove_all",
+    "copy_file",
+    "create_directories",
+    "create_directory",
+    "create_symlink",
+    "create_hard_link",
+    "resize_file",
+    "fs.permissions",
+    "std.filesystem.permissions",
+    "DeleteFileW",
+    "DeleteFile",
+    "MoveFileW",
+    "MoveFileExA",
+    "MoveFileExW",
+    "CopyFileA",
+    "CopyFileW",
+    "CreateDirectoryA",
+    "CreateDirectoryW",
+    "RemoveDirectoryA",
+    "RemoveDirectoryW",
+    "SetFileAttributesA",
+    "SetFileAttributesW",
+    "_unlink",
+    "_rmdir",
+    "_mkdir",
+    "_wremove",
+    "_wrename",
+    "lchown",
+    "mkfifo",
+    "mknod",
+    "utime",
+    "utimes",
+    "QFile.copy",
+    "mkpath",
+    "rmpath",
+    "removeRecursively",
+    "setPermissions",
+    "g_remove",
+    "g_rename",
+    "g_unlink",
+    "g_mkdir_with_parents",
+    "g_rmdir",
+    "chroot"
    ],
    "title": "Tainted path reaches a filesystem operation",
    "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
@@ -273,7 +504,16 @@
     "YAML.Load",
     "YAML.LoadFile",
     "flatbuffers.GetRoot",
-    "GetRoot"
+    "GetRoot",
+    "portable_binary_iarchive",
+    "polymorphic_binary_iarchive",
+    "polymorphic_text_iarchive",
+    "polymorphic_xml_iarchive",
+    "PortableBinaryInputArchive",
+    "XMLInputArchive",
+    "QDataStream",
+    "YAML.LoadAll",
+    "YAML.LoadAllFromFile"
    ],
    "title": "Tainted data reaches deserialization",
    "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل",
@@ -293,7 +533,14 @@
     "env.parse",
     "ctemplate.StringToTemplate",
     "mustache.compile",
-    "crow.mustache.compile"
+    "crow.mustache.compile",
+    "mstch.render",
+    "bustache.format",
+    "tpl.Load",
+    "Template.Load",
+    "inja.render_to",
+    "kainjow.mustache.mustache",
+    "Mustache.render"
    ],
    "title": "Tainted data reaches a template",
    "title_ar": "بيانات غير موثوقة تصل إلى قالب",
@@ -315,7 +562,11 @@
     "redirect",
     "set_header",
     "add_header",
-    "evhttp_add_header"
+    "newRedirectionResponse",
+    "redirect_perm",
+    "set_redirect_header",
+    "setLocation",
+    "sendRedirect"
    ],
    "title": "Tainted data reaches a redirect",
    "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
@@ -330,7 +581,6 @@
     0
    ],
    "names": [
-    "curl_easy_setopt",
     "cpr.Get",
     "cpr.Post",
     "cpr.Url",
@@ -347,8 +597,39 @@
     "connect",
     "Poco.URI",
     "HTTPClientSession",
-    "InternetOpenUrlA",
-    "URLDownloadToFile"
+    "URLDownloadToFile",
+    "cpr.Put",
+    "cpr.Delete",
+    "cpr.Patch",
+    "cpr.Head",
+    "cpr.Download",
+    "cpr.GetAsync",
+    "cpr.PostAsync",
+    "SetUrl",
+    "SSLClient",
+    "cli.Put",
+    "cli.Delete",
+    "cli.Patch",
+    "cli.Head",
+    "client.Get",
+    "client.Post",
+    "connectToHost",
+    "connectToHostEncrypted",
+    "QHostInfo.fromName",
+    "lookupHost",
+    "async_resolve",
+    "make_address",
+    "address.from_string",
+    "HTTPSClientSession",
+    "SocketAddress",
+    "http_client",
+    "evhttp_uri_parse",
+    "inet_addr",
+    "gethostbyname2",
+    "gethostbyname_r",
+    "CreateChannel",
+    "CreateCustomChannel",
+    "soup_uri_new"
    ],
    "title": "Tainted URL reaches an outbound request",
    "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
@@ -367,16 +648,39 @@
     "LoadLibraryA",
     "LoadLibraryW",
     "LoadLibrary",
-    "luaL_dostring",
-    "luaL_loadstring",
     "PyRun_SimpleString",
     "PyRun_String",
-    "JS_EvaluateScript",
-    "duk_eval_string",
     "QJSEngine.evaluate",
     "QScriptEngine.evaluate",
     "QLibrary.load",
-    "QPluginLoader.load"
+    "QPluginLoader.load",
+    "LoadLibraryExA",
+    "LoadLibraryExW",
+    "LoadLibraryEx",
+    "rb_eval_string",
+    "scm_c_eval_string",
+    "PyImport_ImportModule",
+    "Py_CompileString",
+    "PyRun_SimpleStringFlags",
+    "PyRun_StringFlags",
+    "chai.eval",
+    "chai.eval_file",
+    "lua.script",
+    "lua.safe_script",
+    "lua.script_file",
+    "lua.do_string",
+    "lua.do_file",
+    "py.exec",
+    "py.eval",
+    "py.eval_file",
+    "pybind11.exec",
+    "pybind11.eval",
+    "QLibrary",
+    "QPluginLoader",
+    "shared_library",
+    "dll.import_symbol",
+    "runJavaScript",
+    "g_module_open"
    ],
    "title": "Tainted data reaches code evaluation",
    "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
@@ -404,7 +708,17 @@
     "MHD_create_response_from_buffer",
     "crow.response",
     "FCGX_FPrintF",
-    "FCGX_PutS"
+    "FCGX_PutS",
+    "res.end",
+    "setBody",
+    "response.send",
+    "QHttpServerResponse",
+    "setHtml",
+    "FCGX_PutStr",
+    "khttp_puts",
+    "MHD_create_response_from_buffer_copy",
+    "MHD_create_response_from_buffer_static",
+    "res.send"
    ],
    "title": "Tainted data reflected into the response",
    "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
@@ -457,13 +771,22 @@
     "lstrcpyA",
     "lstrcatA",
     "stpcpy",
-    "memcpy",
-    "memmove",
-    "sprintf",
-    "vsprintf",
     "gets",
     "scanf",
-    "sscanf"
+    "sscanf",
+    "lstrcpyW",
+    "lstrcatW",
+    "lstrcpy",
+    "lstrcat",
+    "_tcscpy",
+    "_tcscat",
+    "_mbscpy",
+    "_mbscat",
+    "StrCpyA",
+    "StrCatA",
+    "wcpcpy",
+    "StrCpyW",
+    "StrCatW"
    ],
    "title": "Tainted data reaches an unbounded buffer copy",
    "title_ar": "بيانات غير موثوقة تصل إلى نسخ غير محدود إلى مخزن",
@@ -483,19 +806,65 @@
     "wprintf",
     "syslog",
     "vsyslog",
-    "err",
-    "errx",
     "warn",
     "warnx",
     "std.format",
     "fmt.format",
     "fmt.print",
     "g_strdup_printf",
-    "g_print"
+    "g_print",
+    "vwprintf",
+    "printf_s",
+    "wprintf_s",
+    "g_printerr",
+    "g_warning",
+    "g_error",
+    "g_printf",
+    "fmt.vformat",
+    "fmt.runtime",
+    "std.vformat",
+    "boost.format",
+    "QString.asprintf",
+    "QString.vasprintf",
+    "wxString.Format",
+    "wxLogMessage",
+    "wxLogError",
+    "wxLogWarning",
+    "setproctitle",
+    "vwarn",
+    "vwarnx",
+    "TRACE",
+    "ATLTRACE"
    ],
    "title": "Tainted data used as a format string",
    "title_ar": "بيانات غير موثوقة تُستخدم كسلسلة تنسيق",
    "advice": "لا تمرّر المدخلات كسلسلة تنسيق."
+  },
+  {
+   "rule": "DF017",
+   "severity": "high",
+   "cwe": "CWE-120",
+   "label": "unbounded buffer copy",
+   "title": "Tainted data reaches an unbounded buffer copy",
+   "title_ar": "بيانات غير موثوقة تصل إلى نسخ غير محدود إلى مخزن",
+   "advice": "استخدم الدوال المحدودة الطول وتحقق من الأطوال.",
+   "args": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   "names": [
+    "sprintf",
+    "vsprintf",
+    "wsprintf",
+    "wsprintfW",
+    "_stprintf",
+    "wvsprintfA"
+   ],
+   "_comment": "sprintf(buffer, format, …values): a tainted %s value overflows the buffer as well as a tainted format"
   },
   {
    "rule": "DF018",
@@ -503,26 +872,630 @@
    "cwe": "CWE-134",
    "label": "format string",
    "args": [
+    0,
     1
    ],
    "names": [
     "fprintf",
     "sprintf",
-    "snprintf",
     "vfprintf",
     "vsprintf",
-    "vsnprintf",
     "dprintf",
-    "swprintf",
     "asprintf",
     "wsprintfA",
-    "StringCchPrintfA",
     "evbuffer_add_printf",
-    "FCGX_FPrintF"
+    "FCGX_FPrintF",
+    "fwprintf",
+    "fprintf_s",
+    "vdprintf",
+    "vasprintf",
+    "obstack_printf",
+    "g_string_printf",
+    "g_string_append_printf",
+    "g_fprintf",
+    "err",
+    "errx",
+    "verr",
+    "verrx",
+    "vfwprintf"
    ],
    "title": "Tainted data used as a format string",
    "title_ar": "بيانات غير موثوقة تُستخدم كسلسلة تنسيق",
    "advice": "لا تمرّر المدخلات كسلسلة تنسيق."
+  },
+  {
+   "rule": "DF002",
+   "severity": "high",
+   "cwe": "CWE-78",
+   "label": "shell command",
+   "title": "Tainted data reaches a shell command",
+   "title_ar": "بيانات غير موثوقة تصل إلى أمر نظام",
+   "advice": "لا تمرّر مدخلات إلى الصدفة؛ استخدم وسائط منفصلة وقائمة بيضاء.",
+   "args": [
+    0,
+    2,
+    3
+   ],
+   "names": [
+    "ShellExecuteA",
+    "ShellExecuteW",
+    "ShellExecute"
+   ],
+   "_comment": "ShellExecute(hwnd, verb, file, parameters, …): the file is argument 2, its parameters argument 3"
+  },
+  {
+   "rule": "DF002",
+   "severity": "high",
+   "cwe": "CWE-78",
+   "label": "shell command",
+   "title": "Tainted data reaches a shell command",
+   "title_ar": "بيانات غير موثوقة تصل إلى أمر نظام",
+   "advice": "لا تمرّر مدخلات إلى الصدفة؛ استخدم وسائط منفصلة وقائمة بيضاء.",
+   "args": [
+    0,
+    1,
+    2
+   ],
+   "names": [
+    "CreateProcessA",
+    "CreateProcessW",
+    "CreateProcess",
+    "CreateProcessAsUserA",
+    "CreateProcessAsUserW",
+    "g_spawn_async",
+    "g_spawn_sync",
+    "g_spawn_async_with_pipes"
+   ],
+   "_comment": "CreateProcess(application, command_line, …) / g_spawn_async(working_dir, argv, …)"
+  },
+  {
+   "rule": "DF002",
+   "severity": "high",
+   "cwe": "CWE-78",
+   "label": "shell command",
+   "title": "Tainted data reaches a shell command",
+   "title_ar": "بيانات غير موثوقة تصل إلى أمر نظام",
+   "advice": "لا تمرّر مدخلات إلى الصدفة؛ استخدم وسائط منفصلة وقائمة بيضاء.",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "start",
+    "execute",
+    "setArguments"
+   ],
+   "receiver": "(?i)(^|\\.)(m_|p_?)?(q?proc(ess)?\\d*|\\w*_proc(ess)?)$",
+   "_comment": "QProcess held in a variable: proc.start(program, arguments)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "استخدم استعلامات مُعدّة بدل تركيب النص.",
+   "args": [
+    0
+   ],
+   "names": [
+    "QSqlQuery",
+    "db.exec",
+    "database.exec",
+    "tx.exec",
+    "setQuery",
+    "setFilter",
+    "exec0",
+    "exec1",
+    "exec_n",
+    "exec_params",
+    "prepareStatement",
+    "session.sql",
+    "db.execAndGet",
+    "db.execute",
+    "database.execute",
+    "execSqlSync",
+    "execSqlAsync",
+    "execSqlAsyncFuture",
+    "execSqlCoro",
+    "ExecuteSQL",
+    "conn.Execute",
+    "connection.Execute"
+   ],
+   "_comment": "C++ client methods: the statement is argument 0, bound values follow"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "استخدم استعلامات مُعدّة بدل تركيب النص.",
+   "args": [
+    0
+   ],
+   "names": [
+    "exec",
+    "prepare",
+    "execBatch",
+    "execute",
+    "executeQuery",
+    "executeUpdate"
+   ],
+   "receiver": "(?i)(^|\\.)\\w*(query|qry|stmt|statement)\\w*$",
+   "_comment": "QSqlQuery::exec(QString) / sql::Statement::execute(sql) on a variable"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "استخدم استعلامات مُعدّة بدل تركيب النص.",
+   "args": [
+    1,
+    2,
+    3
+   ],
+   "names": [
+    "builtins.Statement",
+    "SQLite.Statement",
+    "otl_stream",
+    "direct_exec",
+    "PQprepare",
+    "PQsendPrepare",
+    "OCIStmtPrepare",
+    "OCIStmtPrepare2",
+    "pqxx.connection.prepare"
+   ],
+   "_comment": "(handle / name, sql, …): SQLite::Statement(db, sql), PQprepare(conn, name, sql), OCIStmtPrepare2(svc, &stmt, err, sql)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "استخدم استعلامات مُعدّة بدل تركيب النص.",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "prepare"
+   ],
+   "receiver": "(?i)(^|\\.)(c|conn|connection|db_conn|pg|pg_conn)$",
+   "_comment": "pqxx::connection::prepare(name, definition)"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح.",
+   "args": [
+    0,
+    1,
+    2
+   ],
+   "names": [
+    "fopen_s",
+    "_wfopen_s",
+    "freopen_s",
+    "openat",
+    "fstatat",
+    "serveFile",
+    "mg_send_file",
+    "mg_send_mime_file",
+    "set_mount_point",
+    "archive_read_open_filename",
+    "archive_write_open_filename",
+    "archive_entry_set_pathname",
+    "mg_http_serve_file"
+   ],
+   "_comment": "(handle / fd, path, …): fopen_s(&f, name, mode), openat(dirfd, path, flags), mg_http_serve_file(c, hm, path, opts)"
+  },
+  {
+   "rule": "DF011",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "filesystem operation",
+   "title": "Tainted path reaches a filesystem operation",
+   "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+   "advice": "تحقق من المسار قبل الحذف أو الإنشاء.",
+   "args": [
+    1,
+    2,
+    3
+   ],
+   "names": [
+    "unlinkat",
+    "mkdirat",
+    "renameat",
+    "symlinkat",
+    "linkat",
+    "fchmodat",
+    "fchownat"
+   ],
+   "_comment": "*at(dirfd, path, …)"
+  },
+  {
+   "rule": "DF008",
+   "severity": "medium",
+   "cwe": "CWE-601",
+   "label": "redirect",
+   "title": "Tainted data reaches a redirect",
+   "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
+   "advice": "تحقق من الوجهة بقائمة بيضاء.",
+   "args": [
+    0,
+    1,
+    2
+   ],
+   "names": [
+    "evhttp_add_header",
+    "MHD_add_response_header",
+    "onion_response_set_header",
+    "addHeader"
+   ],
+   "_comment": "(headers / response, name, value)"
+  },
+  {
+   "rule": "DF010",
+   "severity": "medium",
+   "cwe": "CWE-918",
+   "label": "libcurl option (URL / proxy)",
+   "title": "Tainted value reaches a libcurl option (CURLOPT_URL / CURLOPT_PROXY: SSRF)",
+   "title_ar": "قيمة غير موثوقة تصل إلى خيار في libcurl (CURLOPT_URL / CURLOPT_PROXY: طلب صادر SSRF)",
+   "advice": "لا تضع عنوانًا من المدخلات في CURLOPT_URL أو CURLOPT_PROXY؛ قيّد المخطط والمضيف بقائمة بيضاء، وعطّل CURLOPT_FOLLOWLOCATION وقيّد CURLOPT_PROTOCOLS_STR.",
+   "args": [
+    0,
+    2
+   ],
+   "names": [
+    "curl_easy_setopt",
+    "curl_url_set",
+    "curl_multi_setopt"
+   ],
+   "_comment": "curl_easy_setopt(handle, option, value): the option constant is not inspected, so any tainted option value matches"
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound URL (SSRF)",
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات وارفض العناوين الداخلية.",
+   "args": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "names": [
+    "InternetOpenUrlA",
+    "InternetOpenUrlW",
+    "InternetConnectA",
+    "InternetConnectW",
+    "WinHttpConnect",
+    "URLDownloadToFileA",
+    "URLDownloadToFileW",
+    "soup_message_new",
+    "inet_pton",
+    "ne_session_create",
+    "evhttp_connection_base_new",
+    "evhttp_make_request"
+   ],
+   "_comment": "(handle, host / url, …)"
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound URL (SSRF)",
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات وارفض العناوين الداخلية.",
+   "args": [
+    0
+   ],
+   "names": [
+    "get",
+    "post",
+    "put",
+    "deleteResource",
+    "head",
+    "sendCustomRequest"
+   ],
+   "receiver": "(?i)(^|\\.)\\w*(manager|nam|network\\w*)$",
+   "_comment": "QNetworkAccessManager held in a variable: manager->get(request)"
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-94",
+   "label": "code execution",
+   "title": "Tainted data reaches code evaluation",
+   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
+   "advice": "لا تنفّذ شيفرة مبنية من المدخلات.",
+   "args": [
+    0,
+    1,
+    2
+   ],
+   "names": [
+    "luaL_dostring",
+    "luaL_loadstring",
+    "duk_eval_string",
+    "JS_EvaluateScript",
+    "luaL_dofile",
+    "luaL_loadfile",
+    "luaL_loadbuffer",
+    "duk_peval_string",
+    "duk_compile_string",
+    "duk_pcompile_string",
+    "JS_Eval",
+    "mrb_load_string",
+    "Tcl_Eval",
+    "Tcl_EvalEx",
+    "Tcl_GlobalEval",
+    "sqlite3_load_extension",
+    "Script.Compile",
+    "JSEvaluateScript",
+    "dlmopen",
+    "dlsym",
+    "GetProcAddress",
+    "invokeMethod",
+    "PyRun_File"
+   ],
+   "_comment": "(state / context / handle, code or name, …): luaL_dostring(L, code), JS_Eval(ctx, input, …), dlsym(handle, name)"
+  },
+  {
+   "rule": "DF012",
+   "severity": "critical",
+   "cwe": "CWE-94",
+   "label": "code execution",
+   "title": "Tainted data reaches code evaluation",
+   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
+   "advice": "لا تنفّذ شيفرة مبنية من المدخلات.",
+   "args": [
+    0
+   ],
+   "names": [
+    "evaluate"
+   ],
+   "receiver": "(?i)(^|\\.)\\w*(engine|js|script)\\w*$",
+   "_comment": "QJSEngine held in a variable"
+  },
+  {
+   "rule": "DF013",
+   "severity": "medium",
+   "cwe": "CWE-79",
+   "label": "HTTP response (XSS)",
+   "title": "Tainted data reflected into the response",
+   "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+   "advice": "هرّب المخرجات أو استخدم قالبًا يُهرّب تلقائيًا.",
+   "args": [
+    1,
+    2,
+    3,
+    4,
+    5
+   ],
+   "names": [
+    "mg_printf",
+    "mg_http_reply",
+    "mg_write",
+    "onion_response_write0",
+    "onion_response_write",
+    "onion_response_printf",
+    "evhttp_send_error"
+   ],
+   "_comment": "(connection / response, …data): mg_printf(conn, fmt, …), mg_http_reply(c, code, headers, fmt, …)"
+  },
+  {
+   "rule": "DF014",
+   "severity": "high",
+   "cwe": "CWE-90",
+   "label": "LDAP filter",
+   "title": "Tainted data reaches an LDAP search",
+   "title_ar": "بيانات غير موثوقة تصل إلى بحث LDAP",
+   "advice": "هرّب قيم المرشّح.",
+   "args": [
+    1,
+    3
+   ],
+   "names": [
+    "ldap_search_ext_s",
+    "ldap_search_s",
+    "ldap_search_ext",
+    "ldap_search",
+    "ldap_search_st",
+    "ldap_search_sA",
+    "ldap_search_sW",
+    "ldap_search_ext_sA",
+    "ldap_search_ext_sW"
+   ],
+   "_comment": "ldap_search_ext_s(ld, base, scope, filter, …)"
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "لا تركّب تعبير XPath من المدخلات؛ استخدم متغيرات XPath أو قائمة بيضاء من القيم.",
+   "args": [
+    0
+   ],
+   "names": [
+    "xmlXPathEvalExpression",
+    "xmlXPathEval",
+    "xmlXPathCompile",
+    "select_node",
+    "select_nodes",
+    "select_single_node",
+    "xpath_query",
+    "XPathEvaluator.evaluate"
+   ],
+   "_comment": "libxml2 xmlXPathEvalExpression(expr, ctx) / pugixml select_nodes(expr)"
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "لا تركّب تعبير XPath من المدخلات؛ استخدم متغيرات XPath أو قائمة بيضاء من القيم.",
+   "args": [
+    1
+   ],
+   "names": [
+    "xmlXPathCtxtCompile",
+    "xmlXPathNodeEval"
+   ],
+   "_comment": "(context / node, expression, …)"
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "لا تركّب تعبير XPath من المدخلات؛ استخدم متغيرات XPath أو قائمة بيضاء من القيم.",
+   "args": [
+    0
+   ],
+   "names": [
+    "setQuery",
+    "evaluate"
+   ],
+   "receiver": "(?i)(^|\\.)\\w*(xml|xquery|xpath)\\w*$",
+   "_comment": "QXmlQuery::setQuery(xpath)"
+  },
+  {
+   "rule": "DF017",
+   "severity": "high",
+   "cwe": "CWE-120",
+   "label": "unbounded buffer copy",
+   "title": "Tainted data reaches an unbounded buffer copy",
+   "title_ar": "بيانات غير موثوقة تصل إلى نسخ غير محدود إلى مخزن",
+   "advice": "استخدم الدوال المحدودة الطول وتحقق من الأطوال.",
+   "args": [
+    1,
+    2
+   ],
+   "names": [
+    "memcpy",
+    "memmove",
+    "wmemcpy",
+    "wmemmove",
+    "CopyMemory",
+    "RtlCopyMemory",
+    "MoveMemory"
+   ],
+   "_comment": "(dst, src, n): tainted source bytes or a tainted length"
+  },
+  {
+   "rule": "DF017",
+   "severity": "high",
+   "cwe": "CWE-120",
+   "label": "buffer copy length",
+   "title": "Tainted length reaches a bounded buffer copy",
+   "title_ar": "طول غير موثوق يصل إلى نسخ إلى مخزن",
+   "advice": "استخدم الدوال المحدودة الطول وتحقق من الأطوال.",
+   "args": [
+    2
+   ],
+   "names": [
+    "strncpy",
+    "strncat",
+    "wcsncpy",
+    "wcsncat",
+    "memset",
+    "bcopy",
+    "lstrcpynA",
+    "lstrcpynW",
+    "StrCpyNA"
+   ],
+   "_comment": "the copy is only as safe as its length: a tainted n defeats the bound"
+  },
+  {
+   "rule": "DF018",
+   "severity": "high",
+   "cwe": "CWE-134",
+   "label": "format string",
+   "title": "Tainted data used as a format string",
+   "title_ar": "بيانات غير موثوقة تُستخدم كسلسلة تنسيق",
+   "advice": "لا تمرّر المدخلات كسلسلة تنسيق.",
+   "args": [
+    1,
+    2
+   ],
+   "names": [
+    "snprintf",
+    "vsnprintf",
+    "swprintf",
+    "StringCchPrintfA",
+    "StringCchPrintfW",
+    "StringCbPrintfA",
+    "StringCbPrintfW",
+    "_snprintf",
+    "_snwprintf",
+    "vswprintf",
+    "wnsprintfA",
+    "g_snprintf",
+    "sprintf_s",
+    "snprintf_s",
+    "g_vsnprintf"
+   ],
+   "_comment": "(buffer, size, format, …): the format is argument 2"
+  },
+  {
+   "rule": "DF018",
+   "severity": "high",
+   "cwe": "CWE-134",
+   "label": "format string",
+   "title": "Tainted data used as a format string",
+   "title_ar": "بيانات غير موثوقة تُستخدم كسلسلة تنسيق",
+   "advice": "لا تمرّر المدخلات كسلسلة تنسيق.",
+   "args": [
+    3
+   ],
+   "names": [
+    "g_set_error",
+    "error_at_line"
+   ],
+   "_comment": "g_set_error(err, domain, code, format, …)"
+  },
+  {
+   "rule": "DF018",
+   "severity": "high",
+   "cwe": "CWE-134",
+   "label": "format string",
+   "title": "Tainted data used as a format string",
+   "title_ar": "بيانات غير موثوقة تُستخدم كسلسلة تنسيق",
+   "advice": "لا تمرّر المدخلات كسلسلة تنسيق.",
+   "args": [
+    0
+   ],
+   "names": [
+    "Format",
+    "AppendFormat",
+    "FormatV"
+   ],
+   "receiver": "(?i)(^|\\.)\\w*(str|string|msg|text|buf)\\w*$",
+   "_comment": "MFC CString::Format(format, …)"
   }
  ],
  "sanitizers": [
@@ -582,7 +1555,33 @@
   "cleanPath",
   "absl.CEscape",
   "CEscape",
-  "EscapeForHTML"
+  "EscapeForHTML",
+  "mysql_escape_string",
+  "mysql_hex_string",
+  "PQescapeString",
+  "g_markup_escape_text",
+  "g_shell_quote",
+  "g_uri_escape_string",
+  "xmlEncodeEntitiesReentrant",
+  "xmlEncodeSpecialChars",
+  "evhttp_htmlescape",
+  "evhttp_encode_uri",
+  "evhttp_uriencode",
+  "urlEncodeComponent",
+  "encode_query_param",
+  "strtoull",
+  "strtof",
+  "strtold",
+  "strtoimax",
+  "std.stof",
+  "std.stoull",
+  "stof",
+  "stoull",
+  "toUInt",
+  "toLongLong",
+  "toULongLong",
+  "toFloat",
+  "curl_escape"
  ],
  "safe_return_calls": [],
  "validators": [
@@ -625,6 +1624,20 @@
   "QUrl.isValid",
   "isLocalFile",
   "QUrl.host",
-  "QUrl.scheme"
+  "QUrl.scheme",
+  "all_of",
+  "std.all_of",
+  "none_of",
+  "std.none_of",
+  "isxdigit",
+  "std.isdigit",
+  "std.isalnum",
+  "std.isalpha",
+  "isupper",
+  "islower",
+  "boost.regex_match",
+  "boost.algorithm.all",
+  "is_absolute",
+  "is_relative"
  ]
 }

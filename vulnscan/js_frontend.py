@@ -44,6 +44,43 @@ TOKEN_RE = re.compile(r"""
 
 
 
+_ROUTER_NAMES = re.compile(r"(?i)^(app|router|routes?|api|server|srv|fastify|instance|application|web|http|express|koa|"
+                           r"hapi|polka|restify|r|v\d+|admin|public|private|secure|auth|user|users|apiRouter|.*(router|app|api|routes))$")
+_NOT_ROUTER = re.compile(r"(?i)(interceptors?|cache|map|store|storage|session|client|axios|needle|request|superagent|got|"
+                         r"model|collection|db|redis|params|headers|searchParams|formData|cookies|config|settings|env|"
+                         r"localStorage|emitter|events?|queue|pool|registry|container|injector|context|ctx)$")
+
+
+def _route_kind(func, member, args) -> str | None:
+    """Is `recv.member(..., handler)` a route registration? "route" (an HTTP endpoint), "middleware" (app.use(fn):
+    runs on requests but is not an endpoint) or None (cache.get(key, cb), interceptors.request.use(fn), Model.all(cb))."""
+    recv = func.value if isinstance(func, ast.Attribute) else None
+    root = recv
+    while isinstance(root, (ast.Attribute, ast.Call)):
+        if isinstance(root, ast.Call):
+            root = root.func
+            continue
+        if _NOT_ROUTER.search(root.attr):
+            return None                      # interceptors.request.use(fn), this.cache.get(k, cb)
+        root = root.value
+    rname = root.id if isinstance(root, ast.Name) else ""
+    last = recv.attr if isinstance(recv, ast.Attribute) else rname
+    if last and _NOT_ROUTER.search(last):
+        return None
+    first = args[0] if args else None
+    pathy = (isinstance(first, ast.Constant) and isinstance(first.value, str) and first.value[:1] in ("/", "*", ":")) \
+        or isinstance(first, (ast.JoinedStr, ast.List)) \
+        or (isinstance(first, ast.Call) and isinstance(first.func, ast.Name) and first.func.id == "RegExp")
+    routerish = bool(rname and _ROUTER_NAMES.match(last or rname)) or isinstance(recv, ast.Call)
+    if member == "use":
+        return "middleware" if (pathy or routerish) else None
+    if member in ("handle", "ws"):
+        return "route" if (pathy or routerish) else None
+    if pathy or routerish:
+        return "route"
+    return None
+
+
 def _strip_switch_breaks(stmts) -> bool:
     """Replace the switch's own `break`s (not those of nested loops / switches) with pass; True if any was found."""
     found = False
@@ -861,6 +898,8 @@ class Parser:
             else:
                 tmp = f"_p{len(names)}"
                 names.append(tmp)
+                if ann is not None:
+                    annotations[tmp] = ann
                 prologue.extend(self.destructure(tgt, _name(tmp, self.t.line), self.t.line))
             if not self.opt(","):
                 break
@@ -1297,9 +1336,15 @@ class Parser:
         # route registrations: callbacks become entry points
         member = func.attr if isinstance(func, ast.Attribute) else (func.id if isinstance(func, ast.Name) else "")
         if member in ROUTE_METHODS and fn_args:
-            for st in self.hoisted:
-                if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef)) and st.name in fn_args:
-                    st.decorator_list.append(_name("route", line))
+            kind = _route_kind(func, member, args)
+            if kind:
+                # the other arguments before the handler are route middleware (auth guards …): kept as decorators
+                mws = [a for a in args if not (isinstance(a, ast.Name) and a.id in fn_args)
+                       and isinstance(a, (ast.Name, ast.Attribute, ast.Call))]
+                for st in self.hoisted:
+                    if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef)) and st.name in fn_args:
+                        st.decorator_list.append(_name(kind, line))
+                        st.decorator_list.extend(mws)
         return _mk(ast.Call, line, func=func, args=args, keywords=[])
 
     def parse_template(self, tok) -> ast.AST:
@@ -1441,9 +1486,130 @@ class Parser:
         return _mk(ast.Dict, line, keys=keys, values=values)
 
 
+def _bound_names(fn) -> set:
+    """Parameters of `fn` and every name it (or a function nested in it) assigns."""
+    a = fn.args
+    out = {p.arg for p in a.posonlyargs + a.args + a.kwonlyargs}
+    out.update(x.arg for x in (a.vararg, a.kwarg) if x is not None)
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+            out.add(n.id)
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not fn:
+            out.add(n.name)
+            out.update(p.arg for p in n.args.posonlyargs + n.args.args + n.args.kwonlyargs)
+    return out
+
+
+def _self_attr(name, like):
+    return ast.copy_location(ast.Attribute(value=ast.copy_location(ast.Name(id="self", ctx=ast.Load()), like),
+                                           attr=name, ctx=ast.Load()), like)
+
+
+class _ToSelf(ast.NodeTransformer):
+    """Rewrite reads of the constructor's variables (`db`, `col`, a helper `check`) into `self.<name>`."""
+
+    def __init__(self, names: dict):
+        self.names = names                 # variable -> attribute
+
+    def visit_Name(self, node):
+        if isinstance(node.ctx, ast.Load) and node.id in self.names:
+            return _self_attr(self.names[node.id], node)
+        return node
+
+
+def _constructor_to_class(fn):
+    """An ES5 constructor function (`function Dao(db) { const col = db.collection('a'); this.get = (id) => {...} }`)
+    as the class it defines: its body becomes `__init__`, every function declared in it a method (`this.get = …`
+    names it), and the variables those methods read from the constructor become fields (`self.col`). Returns
+    None when `fn` is not one (no `this.x = <function declared in it>`, a decorator, or a returned value)."""
+    if fn.decorator_list or isinstance(fn, ast.AsyncFunctionDef):
+        return None
+    params = [p.arg for p in fn.args.posonlyargs + fn.args.args + fn.args.kwonlyargs]
+    if "self" in params:
+        return None
+    defs = {st.name: st for st in fn.body if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    attr_of: dict = {}
+    for st in fn.body:
+        if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Attribute) \
+                and isinstance(st.targets[0].value, ast.Name) and st.targets[0].value.id == "self" \
+                and isinstance(st.value, ast.Name) and st.value.id in defs and st.value.id not in attr_of:
+            attr_of[st.value.id] = st.targets[0].attr
+    if not attr_of:
+        return None
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Return) and n.value is not None and n in fn.body:
+            return None                          # a factory that returns its own object
+        if isinstance(n, (ast.Yield, ast.YieldFrom)):
+            return None
+    taken = set(attr_of.values())
+    for name in defs:
+        if name not in attr_of:
+            attr_of[name] = name if name not in taken else f"_{name}"
+    local = set(params)
+    for st in fn.body:
+        if not isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            for n in ast.walk(st):
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                    local.add(n.id)
+    methods, used = [], set()
+    for name, d in defs.items():
+        shadow = _bound_names(d)
+        names = {v: v for v in local if v not in shadow}
+        names.update({k: a for k, a in attr_of.items() if k not in shadow})
+        body = [_ToSelf(names).visit(st) for st in d.body]
+        used.update(v for v in local if v not in shadow and any(
+            isinstance(x, ast.Attribute) and x.attr == v and isinstance(x.value, ast.Name) and x.value.id == "self"
+            for st in body for x in ast.walk(st)))
+        args = d.args
+        args.args = [ast.arg(arg="self")] + args.args
+        m = type(d)(name=attr_of[name], args=args, body=body or [ast.Pass()], decorator_list=d.decorator_list,
+                    returns=d.returns, type_comment=None, **({"type_params": []} if hasattr(d, "type_params") else {}))
+        methods.append(ast.copy_location(m, d))
+    init_body = []
+    to_self = _ToSelf({k: a for k, a in attr_of.items()})
+    for st in fn.body:
+        if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Attribute) \
+                and isinstance(st.targets[0].value, ast.Name) and st.targets[0].value.id == "self" \
+                and isinstance(st.value, ast.Name) and st.value.id in defs:
+            continue
+        init_body.append(to_self.visit(st))
+    for v in sorted(used):
+        tgt = ast.copy_location(ast.Attribute(value=ast.copy_location(ast.Name(id="self", ctx=ast.Load()), fn),
+                                              attr=v, ctx=ast.Store()), fn)
+        init_body.append(ast.copy_location(ast.Assign(targets=[tgt], value=ast.copy_location(
+            ast.Name(id=v, ctx=ast.Load()), fn), lineno=fn.lineno), fn))
+    iargs = fn.args
+    iargs.args = [ast.arg(arg="self")] + iargs.args
+    init = ast.copy_location(ast.FunctionDef(name="__init__", args=iargs, body=init_body or [ast.Pass()],
+                                             decorator_list=[], returns=None, type_comment=None,
+                                             **({"type_params": []} if hasattr(fn, "type_params") else {})), fn)
+    cls = ast.ClassDef(name=fn.name, bases=[], keywords=[], body=[init] + methods, decorator_list=[],
+                       **({"type_params": []} if hasattr(fn, "type_params") else {}))
+    return ast.copy_location(cls, fn)
+
+
+def _lift_constructors(stmts: list) -> list:
+    out = []
+    for st in stmts:
+        if isinstance(st, ast.FunctionDef):
+            cls = _constructor_to_class(st)
+            if cls is not None:
+                out.append(cls)
+                continue
+        out.append(st)
+    return out
+
+
 def parse_js(text: str, rel: str = "file.js") -> ast.Module:
     """Parse JavaScript/TypeScript source into a Python-``ast`` Module the taint engine understands."""
     try:
-        return Parser(text, rel).parse_program()
+        tree = Parser(text, rel).parse_program()
     except Exception:  # noqa: BLE001 - never let a frontend bug abort a scan
         return ast.Module(body=[], type_ignores=[])
+    try:
+        tree.body = _lift_constructors(tree.body)
+    except Exception:  # noqa: BLE001 - the lifting is an enhancement; keep the plain lowering
+        pass
+    return ast.fix_missing_locations(tree)

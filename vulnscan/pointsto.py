@@ -109,8 +109,10 @@ class PointsTo:
         self.ver_counter = 0
         self._ver: dict = {}             # current SSA version of each local in the scope being collected
         self._cur_scope = None
+        self._objs_memo: dict = {}       # id(node) -> objs(node), filled after the solve
         self._collect()
         self._solve()
+        self._objs_memo = {}
 
     # ------------------------------------------------------------ helpers
     def _new(self):
@@ -640,6 +642,17 @@ class PointsTo:
             elif kind == "call":
                 self._do_call(cc[1], cc)
         self.steps = steps
+        # The solution is read-only from here on, and most nodes hold a set equal to another node's (copies along
+        # assignment chains): keep one instance per distinct set. Typically 20-40x fewer stored elements.
+        canon: dict = {}
+        for k, v in pts.items():
+            key = frozenset(v)
+            first = canon.get(key)
+            if first is None:
+                canon[key] = v
+            elif first is not v:
+                pts[k] = first
+        canon.clear()
         self._readers = {}
         self._field_watch = {}
         self._fw_seen = set()
@@ -735,15 +748,25 @@ class PointsTo:
 
     # ---------------------------------------------------------------- API
     def objs(self, node) -> set:
-        hit = self.node_key.get(id(node))
+        """Objects `node` may point to (in any context). The solution is final once built: answers are memoized;
+        callers only read the returned set."""
+        nid = id(node)
+        memo = self._objs_memo
+        hit = memo.get(nid)
+        if hit is not None:
+            return hit
+        hit = self.node_key.get(nid)
         if hit is None:
-            return set()
-        scope, key = hit
-        out = set()
-        if key[0] == "g":
-            return set(self.pts.get(key, ()))
-        for ctx in self.instances.get(scope, ()):
-            out |= self.pts.get(self._concrete(key, ctx), set())
+            out = set()
+        else:
+            scope, key = hit
+            if key[0] == "g":
+                out = set(self.pts.get(key, ()))
+            else:
+                out = set()
+                for ctx in self.instances.get(scope, ()):
+                    out |= self.pts.get(self._concrete(key, ctx), set())
+        memo[nid] = out
         return out
 
     def classes_for(self, node) -> set:

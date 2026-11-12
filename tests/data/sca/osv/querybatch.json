@@ -1,0 +1,42 @@
+{
+ "PyPI/requests@2.19.0": [
+  "GHSA-x84v-xcm2-53pg",
+  "GHSA-0000-with-drawn"
+ ],
+ "PyPI/pyyaml@5.3": [
+  "GHSA-8q59-q68h-6hv4"
+ ],
+ "PyPI/urllib3@1.24.1": [
+  "GHSA-mh33-7rrq-662w"
+ ],
+ "PyPI/jinja2@2.10": [
+  "GHSA-462w-v97r-4m45"
+ ],
+ "npm/lodash@4.17.15": [
+  "GHSA-p6mc-m468-83gw"
+ ],
+ "npm/minimist@1.2.0": [
+  "GHSA-xvch-5gv4-984h"
+ ],
+ "Go/golang.org/x/text@0.3.5": [
+  "GO-2021-0113"
+ ],
+ "Go/gopkg.in/yaml.v2@2.2.2": [
+  "GO-2022-0956"
+ ],
+ "Maven/org.apache.logging.log4j:log4j-core@2.14.1": [
+  "GHSA-jfh8-c2jp-5v3q"
+ ],
+ "Maven/commons-collections:commons-collections@3.2.1": [
+  "GHSA-fjq5-5j5f-mvxh"
+ ],
+ "Packagist/guzzlehttp/guzzle@6.5.0": [
+  "GHSA-cwmx-hcrq-mhc3"
+ ],
+ "RubyGems/nokogiri@1.10.4": [
+  "GHSA-2rr5-8q37-2w7h"
+ ],
+ "RubyGems/rack@2.0.6": [
+  "GHSA-hrqr-hxpp-chr3"
+ ]
+}

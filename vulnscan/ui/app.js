@@ -61,6 +61,43 @@ const I18N = {
     'upd.err.bad_binary': 'الملف المنزَّل ليس برنامجًا تنفيذيًا صالحًا لهذا النظام؛ أُلغي التحديث.', 'upd.err.version_mismatch': 'النسخة الجديدة لم تُبلغ عن الإصدار المتوقع؛ أُلغي التحديث.',
     'upd.err.swap_failed': 'تعذّر استبدال البرنامج؛ أُعيدت النسخة السابقة كما كانت.', 'upd.err.download_failed': 'انقطع التنزيل أو فشل؛ لم يتغيّر شيء. أعد المحاولة.',
     'upd.err.busy': 'يوجد تحديث جارٍ بالفعل.', 'upd.err.not_ready': 'لا يوجد تحديث مكتمل لإعادة التشغيل.', 'upd.err.restart_pending': 'اكتمل التحديث بالفعل؛ أعد تشغيل كاشِف لاستخدام الإصدار الجديد.', 'upd.err.restart_failed': 'تعذّر بدء الإصدار الجديد تلقائيًا. أغلق كاشِف وشغّله من جديد.', 'upd.err.forbidden': 'رُفض الطلب: يجب أن يصدر من هذه الواجهة نفسها.',
+    'nav.projects': 'المشاريع', 'proj.title': 'المشاريع', 'proj.sub': 'كل هدف فحصته، مع آخر نتائجه واتجاهه وما تغيّر بين آخر فحصين.',
+    'proj.search': 'ابحث باسم المشروع أو مساره…', 'proj.sort': 'الترتيب', 'proj.sortRecent': 'الأحدث فحصًا', 'proj.sortRisk': 'الأعلى خطورة', 'proj.sortName': 'الاسم',
+    'proj.all': 'كل المشاريع', 'proj.switch': 'المشروع', 'proj.rescan': 'أعد الفحص', 'proj.changes': 'التغيّر منذ الفحص السابق', 'proj.trend': 'اتجاه النتائج عبر فحوصات المشروع',
+    'proj.scans': 'فحوصات المشروع', 'proj.count': 'عدد المشاريع: {n}', 'proj.shown': 'عرض {n} من {total} مشروع', 'proj.none': 'لا مشروع يطابق البحث.', 'proj.lastScan': 'آخر فحص',
+    'proj.nScans': 'عدد الفحوصات: {n}', 'proj.newN': '{n} جديدة', 'proj.fixedN': '{n} أُصلحت', 'proj.noChange': 'لا تغيّر عن الفحص السابق', 'proj.firstScan': 'فحص واحد حتى الآن',
+    'proj.firstScanHint': 'أعد فحص المشروع بعد تعديله لترى هنا ما استجد وما أُصلح.', 'proj.clean': 'لا نتائج', 'proj.history': 'الفحوصات والسجل', 'proj.findings': 'نتيجة',
+    'proj.spark': 'إجمالي النتائج عبر {n} فحص، من الأقدم إلى الأحدث: {vals}', 'proj.neverDone': 'لم يكتمل أي فحص بعد', 'proj.more': 'و{n} أخرى', 'proj.between': 'بين فحص {a} وفحص {b}',
+    'proj.newTitle': 'جديدة (ظهرت)', 'proj.fixedTitle': 'أُصلحت (اختفت)', 'proj.notFound': 'المشروع غير موجود (ربما حُذفت فحوصاته).', 'proj.dupHint': 'مشاريع',
+    'fix.title': 'إصلاح مقترح', 'fix.copy': 'نسخ الرقعة', 'fix.copied': 'نُسخت الرقعة', 'fix.adviceOnly': 'إرشاد فقط: هذا التغيير يحتاج إلى إعادة هيكلة لا يمكن أتمتتها بأمان.',
+    'fix.apply': 'لتطبيق الإصلاحات الآلية على المشروع شغّل:', 'fix.added': 'سطر مضاف:', 'fix.removed': 'سطر محذوف:', 'fix.diffLabel': 'رقعة الإصلاح المقترح للملف {file}', 'fix.badge': 'إصلاح متاح',
+    'fix.stats': 'مضاف {a}، محذوف {d}',
+    'nav.compliance': 'الامتثال', 'find.compliance': 'الامتثال', 'a11y.export': 'تنزيل النتائج بصيغ أخرى',
+    'exp.more': 'صيغ أخرى', 'exp.title': 'صيغ التصدير', 'exp.hint': 'تُطبَّق قرارات الفرز: تُستبعد الإنذارات الكاذبة والنتائج المُصلحة من الصيغ التي تدعم ذلك.',
+    'exp.aws': 'رقم حساب AWS (12 رقمًا)', 'exp.region': 'منطقة AWS', 'exp.download': 'تنزيل', 'exp.needAws': 'أدخل رقم حساب AWS من 12 رقمًا ومنطقة مثل us-east-1.', 'exp.loadFail': 'تعذّر تحميل قائمة الصيغ.',
+    'comp.title': 'الامتثال', 'comp.sub': 'كيف تتوزع نتائج الفحص على ضوابط الأطر الأمنية والتنظيمية. هذا دليل يدعم التقييم، لا شهادة امتثال.',
+    'comp.audit': 'تقرير المدقق', 'comp.auditOne': 'تقرير المدقق لهذا الإطار', 'comp.frameworks': 'الأطر', 'comp.showAll': 'إظهار الضوابط بلا نتائج',
+    'comp.risk': 'درجة الخطر', 'comp.r_none': 'لا خطر', 'comp.r_low': 'منخفض', 'comp.r_moderate': 'متوسط', 'comp.r_high': 'عالٍ', 'comp.r_critical': 'حرج',
+    'comp.st_fail': 'راسب', 'comp.st_warn': 'مراجعة', 'comp.st_pass': 'لا نتائج',
+    'comp.controlsWith': '{n} من {total} ضابطًا عليها نتائج', 'comp.mapped': '{n} نتيجة مربوطة', 'comp.unmapped': '{n} غير مربوطة',
+    'comp.control': 'الضابط', 'comp.ctitle': 'العنوان', 'comp.total': 'النتائج', 'comp.status': 'الحالة',
+    'comp.note': 'ملاحظة', 'comp.source': 'المصدر', 'comp.hidden': '{n} ضابطًا بلا نتائج مخفية.', 'comp.none': 'لا ضوابط عليها نتائج في هذا الإطار.',
+    'comp.showFindings': 'عرض نتائج الضابط {c}', 'comp.empty': 'لا يوجد فحص مكتمل بعد.', 'comp.loading': 'جارٍ التحميل…', 'comp.fwLabel': '{name}: {status}، {with} من {total} ضابطًا عليها نتائج',
+    'tri.title': 'الفرز', 'tri.status': 'الحالة', 'tri.justification': 'المبرّر', 'tri.justReq': '(مطلوب لهذه الحالة)', 'tri.expires': 'ينتهي القبول في', 'tri.ticket': 'رابط التذكرة',
+    'tri.comment': 'تعليق', 'tri.save': 'احفظ القرار', 'tri.addComment': 'أضف التعليق', 'tri.saved': 'حُفظ قرار الفرز', 'tri.commented': 'أُضيف التعليق', 'tri.history': 'السجل ({n})',
+    'tri.by': '{who} · {when}', 'tri.fileProject': 'تُحفظ القرارات مع المشروع في {file}؛ أضفه إلى المستودع ليشاركها الفريق.', 'tri.fileHome': 'تُحفظ القرارات في مجلد بيانات كاشِف: {file}',
+    'tri.filter': 'حالة الفرز', 'tri.all': 'كل الحالات', 'tri.showFp': 'إظهار الإنذارات الكاذبة', 'tri.hiddenFp': 'مخفية لأنها إنذارات كاذبة: {n}',
+    'tri.expired': 'انتهى قبول الخطر', 'tri.regression': 'تراجع: ظهرت من جديد بعد إصلاحها', 'tri.untracked': 'لم يُسجَّل قرار بعد.', 'tri.needJust': 'هذه الحالة تتطلب مبرّرًا.',
+    'tri.loadFail': 'تعذّرت قراءة ملف الفرز: {err}', 'tri.act.status': 'غيّر الحالة', 'tri.act.comment': 'علّق', 'tri.act.severity': 'غيّر الخطورة', 'tri.act.expired': 'انتهى القبول', 'tri.act.regression': 'تراجع', 'tri.act.auto': 'تحديث آلي',
+    'tri.ticketBad': 'رابط التذكرة يجب أن يبدأ بـ http:// أو https://', 'tri.fixOnly': 'النتائج التي لها إصلاح مقترح فقط',
+    'sf.title': 'سطح الهجوم', 'sf.hint': 'نقاط الدخول إلى المشروع كما يجدها التحليل الساكن: المسارات ومعالجاتها وهل تظهر عليها مصادقة. لا يُرسَل أي طلب ولا يُشغَّل أي كود.',
+    'sf.build': 'ابنِ الخريطة', 'sf.rebuild': 'أعد البناء', 'sf.engine': 'تتبّع تدفق البيانات من كل نقطة دخول إلى نقاط الخطر (أبطأ)', 'sf.running': 'جارٍ بناء خريطة سطح الهجوم…',
+    'sf.unavailable': 'تُبنى الخريطة لمجلد محلي فُحص من هذا الجهاز فقط (لا للملفات المرفوعة ولا لعناوين الويب).', 'sf.none': 'لم تُبنَ خريطة لآخر فحص بعد.', 'sf.error': 'تعذّر بناء الخريطة: {err}',
+    'sf.entries': 'نقاط الدخول', 'sf.unauth': 'بلا مصادقة ظاهرة', 'sf.unauthSink': 'بلا مصادقة وتصل إلى نقطة خطر', 'sf.withFindings': 'عليها نتائج',
+    'sf.risk': 'الخطر', 'sf.method': 'الطريقة', 'sf.path': 'المسار', 'sf.handler': 'المعالج', 'sf.auth': 'المصادقة', 'sf.sinks': 'نقاط الخطر', 'sf.findings': 'النتائج',
+    'sf.auth_none': 'غير ظاهرة', 'sf.auth_public': 'عامة صراحةً', 'sf.auth_protected': 'محمية', 'sf.showAll': 'عرض الكل ({n})', 'sf.showLess': 'عرض الأخطر فقط', 'sf.openapi': 'OpenAPI',
+    'sf.builtAt': 'بُنيت {when}', 'sf.unauthOnly': 'بلا مصادقة فقط', 'sf.empty': 'لم يُعثر على نقاط دخول.', 'sf.search': 'ابحث في المسار أو المعالج…', 'sf.shown': 'عرض {n} من {total}', 'sf.noMatch': 'لا نقاط دخول تطابق المرشحات.',
+    'reach.imported': 'مستوردة في كودك', 'reach.not_imported': 'غير مستوردة', 'reach.vulnerable_function_called': 'دالة مصابة مُستدعاة', 'reach.label': 'قابلية الوصول',
   },
   en: {
     brand: 'Kashif',
@@ -121,6 +158,43 @@ const I18N = {
     'upd.err.bad_binary': 'The downloaded file is not a valid executable for this system, so the update was cancelled.', 'upd.err.version_mismatch': 'The new binary did not report the expected version, so the update was cancelled.',
     'upd.err.swap_failed': 'The program could not be replaced; the previous version was restored as it was.', 'upd.err.download_failed': 'The download failed or was interrupted; nothing changed. Try again.',
     'upd.err.busy': 'An update is already in progress.', 'upd.err.not_ready': 'There is no completed update to restart into.', 'upd.err.restart_pending': 'The update is already installed. Restart Kashif to use the new version.', 'upd.err.restart_failed': 'The new version could not be started automatically. Close Kashif and start it again.', 'upd.err.forbidden': 'Request refused: it must come from this UI.',
+    'nav.projects': 'Projects', 'proj.title': 'Projects', 'proj.sub': 'Every target you have scanned, with its latest results, its trend and what changed between the last two scans.',
+    'proj.search': 'Search by project name or path…', 'proj.sort': 'Sort by', 'proj.sortRecent': 'Recently scanned', 'proj.sortRisk': 'Highest risk', 'proj.sortName': 'Name',
+    'proj.all': 'All projects', 'proj.switch': 'Project', 'proj.rescan': 'Scan again', 'proj.changes': 'Changes since the previous scan', 'proj.trend': 'Findings across this project’s scans',
+    'proj.scans': 'Scans of this project', 'proj.count': '{n} projects', 'proj.shown': 'Showing {n} of {total} projects', 'proj.none': 'No project matches the search.', 'proj.lastScan': 'Last scan',
+    'proj.nScans': '{n} scans', 'proj.newN': '{n} new', 'proj.fixedN': '{n} fixed', 'proj.noChange': 'No change since the previous scan', 'proj.firstScan': 'One scan so far',
+    'proj.firstScanHint': 'Scan the project again after changing it to see what is new and what was fixed.', 'proj.clean': 'No findings', 'proj.history': 'Scans and history', 'proj.findings': 'findings',
+    'proj.spark': 'Total findings across {n} scans, oldest to newest: {vals}', 'proj.neverDone': 'No completed scan yet', 'proj.more': 'and {n} more', 'proj.between': 'Between the scans of {a} and {b}',
+    'proj.newTitle': 'New (appeared)', 'proj.fixedTitle': 'Fixed (gone)', 'proj.notFound': 'Project not found (its scans may have been deleted).', 'proj.dupHint': 'projects',
+    'fix.title': 'Suggested fix', 'fix.copy': 'Copy patch', 'fix.copied': 'Patch copied', 'fix.adviceOnly': 'Advice only: this change needs a refactoring that cannot be automated safely.',
+    'fix.apply': 'To apply the automatic fixes to the project, run:', 'fix.added': 'Added line:', 'fix.removed': 'Removed line:', 'fix.diffLabel': 'Suggested patch for {file}', 'fix.badge': 'Fix available',
+    'fix.stats': '{a} added, {d} removed',
+    'nav.compliance': 'Compliance', 'find.compliance': 'Compliance', 'a11y.export': 'Download the findings in other formats',
+    'exp.more': 'More formats', 'exp.title': 'Export formats', 'exp.hint': 'Triage decisions are applied: false positives and fixed findings are left out of the formats that support it.',
+    'exp.aws': 'AWS account ID (12 digits)', 'exp.region': 'AWS region', 'exp.download': 'Download', 'exp.needAws': 'Enter a 12-digit AWS account ID and a region such as us-east-1.', 'exp.loadFail': 'The list of formats could not be loaded.',
+    'comp.title': 'Compliance', 'comp.sub': 'How the findings of a scan map to the controls of security and regulatory frameworks. Evidence for an assessment, not a certification.',
+    'comp.audit': 'Auditor report', 'comp.auditOne': 'Auditor report for this framework', 'comp.frameworks': 'Frameworks', 'comp.showAll': 'Show controls without findings',
+    'comp.risk': 'Risk score', 'comp.r_none': 'None', 'comp.r_low': 'Low', 'comp.r_moderate': 'Moderate', 'comp.r_high': 'High', 'comp.r_critical': 'Critical',
+    'comp.st_fail': 'Fail', 'comp.st_warn': 'Review', 'comp.st_pass': 'No findings',
+    'comp.controlsWith': '{n} of {total} controls with findings', 'comp.mapped': '{n} findings mapped', 'comp.unmapped': '{n} not mapped',
+    'comp.control': 'Control', 'comp.ctitle': 'Title', 'comp.total': 'Findings', 'comp.status': 'Status',
+    'comp.note': 'Note', 'comp.source': 'Source', 'comp.hidden': '{n} controls without findings are hidden.', 'comp.none': 'No control of this framework has findings.',
+    'comp.showFindings': 'Show the findings of {c}', 'comp.empty': 'No completed scan yet.', 'comp.loading': 'Loading…', 'comp.fwLabel': '{name}: {status}, {with} of {total} controls with findings',
+    'tri.title': 'Triage', 'tri.status': 'Status', 'tri.justification': 'Justification', 'tri.justReq': '(required for this status)', 'tri.expires': 'Acceptance expires on', 'tri.ticket': 'Ticket URL',
+    'tri.comment': 'Comment', 'tri.save': 'Save decision', 'tri.addComment': 'Add comment', 'tri.saved': 'Triage decision saved', 'tri.commented': 'Comment added', 'tri.history': 'History ({n})',
+    'tri.by': '{who} · {when}', 'tri.fileProject': 'Decisions are saved with the project in {file}. Commit it so the team shares them.', 'tri.fileHome': 'Decisions are saved in Kashif’s data folder: {file}',
+    'tri.filter': 'Triage status', 'tri.all': 'All statuses', 'tri.showFp': 'Show false positives', 'tri.hiddenFp': 'hidden as false positives: {n}',
+    'tri.expired': 'Risk acceptance expired', 'tri.regression': 'Regression: reappeared after it was fixed', 'tri.untracked': 'No decision recorded yet.', 'tri.needJust': 'This status needs a justification.',
+    'tri.loadFail': 'The triage file could not be read: {err}', 'tri.act.status': 'changed the status', 'tri.act.comment': 'commented', 'tri.act.severity': 'changed the severity', 'tri.act.expired': 'acceptance expired', 'tri.act.regression': 'regression', 'tri.act.auto': 'automatic update',
+    'tri.ticketBad': 'The ticket URL must start with http:// or https://', 'tri.fixOnly': 'Only findings with a suggested fix',
+    'sf.title': 'Attack surface', 'sf.hint': 'The project’s entry points as static analysis finds them: routes, their handlers and whether authentication is visible. No request is sent and no code is run.',
+    'sf.build': 'Build map', 'sf.rebuild': 'Rebuild', 'sf.engine': 'Trace data flow from each entry point to sinks (slower)', 'sf.running': 'Building the attack-surface map…',
+    'sf.unavailable': 'The map can only be built for a local folder scanned from this machine (not for uploads or web URLs).', 'sf.none': 'No map has been built for the latest scan yet.', 'sf.error': 'The map could not be built: {err}',
+    'sf.entries': 'Entry points', 'sf.unauth': 'No visible authentication', 'sf.unauthSink': 'Unauthenticated and reaching a sink', 'sf.withFindings': 'With findings',
+    'sf.risk': 'Risk', 'sf.method': 'Method', 'sf.path': 'Path', 'sf.handler': 'Handler', 'sf.auth': 'Auth', 'sf.sinks': 'Sinks', 'sf.findings': 'Findings',
+    'sf.auth_none': 'None visible', 'sf.auth_public': 'Explicitly public', 'sf.auth_protected': 'Protected', 'sf.showAll': 'Show all ({n})', 'sf.showLess': 'Show the riskiest only', 'sf.openapi': 'OpenAPI',
+    'sf.builtAt': 'Built {when}', 'sf.unauthOnly': 'Unauthenticated only', 'sf.empty': 'No entry points were found.', 'sf.search': 'Search path or handler…', 'sf.shown': 'Showing {n} of {total}', 'sf.noMatch': 'No entry point matches the filters.',
+    'reach.imported': 'Imported by your code', 'reach.not_imported': 'Not imported', 'reach.vulnerable_function_called': 'Vulnerable function called', 'reach.label': 'Reachability',
   },
 };
 
@@ -187,7 +261,7 @@ function scanName(s) {
   if (/^https?:\/\//i.test(tg)) {
     try { const u = new URL(tg); return u.host + (u.pathname !== '/' ? u.pathname : ''); } catch { return tg; }
   }
-  const parts = tg.replace(/[\\/]+$/, '').split(/[\\/]/);
+  const parts = tg.split(/[\\/]/).filter((x) => x && x !== '.');
   return parts[parts.length - 1] || tg;
 }
 /* A path with the directory truncated (start ellipsis) and the file name kept whole. */
@@ -215,10 +289,14 @@ function applyLang() {
   $('#source-filter').options[0].textContent = t('find.allSources');
   $('#source-filter').setAttribute('aria-label', t('find.allSources'));
   $('nav').setAttribute('aria-label', t('a11y.nav'));
+  $$('nav a').forEach((el) => { const name = t('nav.' + el.dataset.nav); el.setAttribute('aria-label', name); el.title = name; });  // the text is hidden in the narrow icon-only sidebar
   $('.brand').setAttribute('aria-label', `${t('brand')} — vulnscan`);
   $('#sev-filter').setAttribute('aria-label', t('a11y.sevFilter'));
   $('.btn-group').setAttribute('aria-label', t('find.export'));
   $$('#f-min option, #f-fail option').forEach((o) => { o.textContent = sevName(o.value); });
+  $('#fix-filter').title = t('tri.fixOnly');
+  $('#export-btn').title = t('a11y.export');
+  $('#fw-grid').setAttribute('aria-label', t('comp.frameworks'));
   applyThemeUI();
 }
 $('#lang-btn').onclick = () => { lang = lang === 'ar' ? 'en' : 'ar'; store.set('vs.lang', lang); applyLang(); jadxHint(); renderPill(); route(); };
@@ -241,7 +319,7 @@ $('#theme-btn').onclick = () => {
 $('.skip').addEventListener('click', (e) => { e.preventDefault(); $('#main').focus(); });
 
 /* ------------------------------------------------------------- routing */
-const pages = {dashboard: loadDashboard, scan: () => {}, findings: loadFindings, reports: loadReports, rules: loadRules, settings: loadSettings};
+const pages = {dashboard: loadDashboard, projects: loadProjects, scan: () => {}, findings: loadFindings, compliance: loadCompliance, reports: loadReports, rules: loadRules, settings: loadSettings};
 let curPage = '';
 function route() {
   const h = location.hash.slice(1);
@@ -250,6 +328,7 @@ function route() {
   const arg = slash < 0 ? (h.includes('?') ? h.slice(h.indexOf('?')) : '') : h.slice(slash + 1);
   const page = pages[name] ? name : 'dashboard';
   curPage = page;
+  setExport(false);
   $$('.page').forEach((p) => p.classList.toggle('active', p.id === 'page-' + page));
   $$('nav a').forEach((a) => { const on = a.dataset.nav === page; a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   Promise.resolve(pages[page](arg)).catch((err) => toast(err.message));
@@ -263,8 +342,24 @@ const tilesHTML = (summary, interactive = true) => SEV.map((s) => {
   const tag = interactive ? 'button' : 'div';
   return `<${tag} class="tile sev-${s}${n ? '' : ' zero'}" data-sev="${s}"${interactive ? ' type="button"' : ''}><span class="l"><span class="dot"></span>${esc(sevName(s))}</span><span class="n">${n}</span></${tag}>`;
 }).join('');
-async function loadDashboard() {
-  const st = await api('/api/stats');
+let projCache = [];
+/* Display name of a project; projects that share a name (two folders called "api") get their parent folder appended. */
+function projName(p) {
+  const base = scanName({label: p.label, target: p.target}) || p.name || '';
+  if (!projCache.some((o) => o.id !== p.id && scanName({label: o.label, target: o.target}) === base)) return base;
+  const parts = String(p.target || '').replace(/[\\/]+$/, '').split(/[\\/]/);
+  return parts.length > 1 && !p.label ? `${base} (${parts[parts.length - 2] || '/'})` : base;
+}
+$('#dash-project').onchange = (e) => { store.set('vs.project', e.target.value); loadDashboard(); };
+async function loadDashboard(arg) {
+  projCache = await api('/api/projects');
+  if (arg && projCache.some((p) => p.id === arg)) store.set('vs.project', arg);
+  let pid = store.get('vs.project') || '';
+  if (!projCache.some((p) => p.id === pid)) pid = '';
+  const sel = $('#dash-project');
+  setHTML(sel, `<option value="">${esc(t('proj.all'))}</option>` + projCache.map((p) => `<option value="${esc(p.id)}" title="${esc(p.target)}">${esc(projName(p))}</option>`).join(''));
+  sel.value = pid; sel.classList.toggle('hidden', projCache.length < 2 && !pid);
+  const st = await api('/api/stats' + (pid ? `?project=${pid}` : ''));
   const empty = !st.latest;
   $('#dash-empty').classList.toggle('hidden', !empty);
   $('#dash-body').classList.toggle('hidden', empty);
@@ -283,7 +378,7 @@ async function loadDashboard() {
   setHTML($('#top-rules'), st.top_rules.map((r) => `<li class="sev-${r.severity}"><span class="main">${pill(r.severity)}<a class="title" href="#findings/${L.id}?q=${encodeURIComponent(r.rule_id)}" title="${esc(titleOf(r))}">${esc(titleOf(r))}</a></span><span class="rid" dir="ltr">${esc(r.rule_id)}</span><span class="bar"><i style="width:${(r.count / maxR) * 100}%"></i></span><span class="cnt">${r.count}</span></li>`).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`);
   const maxF = Math.max(1, ...st.top_files.map(([, n]) => n));
   setHTML($('#top-files'), st.top_files.map(([f, n]) => `<li><span class="ffile">${ic('file', 'sm')}${fpath(f)}</span><span class="bar"><i style="width:${(n / maxF) * 100}%"></i></span><span class="cnt">${n}</span></li>`).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`);
-  const scans = await api('/api/scans');
+  const scans = await api('/api/scans' + (pid ? `?project=${pid}` : ''));
   setHTML($('#recent-table'), scanRows(scans.slice(0, 6)));
 }
 function drawDonut(svg, legend, sum) {
@@ -301,9 +396,8 @@ function drawDonut(svg, legend, sum) {
   setHTML(legend, SEV.map((s) => `<div class="sev-${s}"><span class="dot"></span>${esc(sevName(s))}<b>${sum[s] || 0}</b><span class="pct">${tot ? Math.round(((sum[s] || 0) / tot) * 100) : 0}%</span></div>`).join(''));
 }
 const niceStep = (m) => { const raw = m / 4; if (raw <= 1) return 1; const p = 10 ** Math.floor(Math.log10(raw)); const f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; };
-function drawTrend(svg, trend) {
-  setHTML($('#trend-legend'), SEV.map((s) => `<span class="sev-${s}"><span class="dot"></span>${esc(sevName(s))}</span>`).join(''));
-  const note = $('#trend-note');
+function drawTrend(svg, trend, legend = $('#trend-legend'), note = $('#trend-note'), label = t('dash.trend')) {
+  setHTML(legend, SEV.map((s) => `<span class="sev-${s}"><span class="dot"></span>${esc(sevName(s))}</span>`).join(''));
   if (!trend || !trend.length) { setHTML(svg, ''); note.classList.add('hidden'); return; }
   const W = Math.max(280, Math.round(svg.getBoundingClientRect().width || 600)), H = 200;
   const padL = 34, padR = 8, padT = 16, padB = 26;
@@ -335,12 +429,210 @@ function drawTrend(svg, trend) {
     if (i % every === 0 || i === n - 1) out += `<text x="${cx.toFixed(1)}" y="${H - 8}" text-anchor="middle" class="ch-txt">${esc(fmtShort(s.at))}</text>`;
   });
   setHTML(svg, out);
-  svg.setAttribute('aria-label', t('dash.trend'));
+  svg.setAttribute('aria-label', `${label}: ${trend.map((s) => total(s)).join(', ')}`);
   note.classList.toggle('hidden', n > 1);
   setHTML(note, `${ic('info', 'sm')}<span>${esc(t('dash.oneScan'))}</span>`);
 }
 let rsz;
-window.addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(() => { if (curPage === 'dashboard' && lastTrend) drawTrend($('#trend'), lastTrend); }, 120); });
+window.addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(() => {
+  if (curPage === 'dashboard' && lastTrend) drawTrend($('#trend'), lastTrend);
+  if (curPage === 'projects' && projDetail) drawTrend($('#pd-trend'), projDetail.trend, $('#pd-trend-legend'), $('#pd-trend-note'), t('proj.trend'));
+}, 120); });
+
+/* ------------------------------------------------------------ projects */
+let projDetail = null;
+const sevCounts = (sum) => {
+  const live = SEV.filter((s) => sum[s]);
+  if (!live.length) return `<span class="sevc none">${ic('check', 'sm')}${esc(t('proj.clean'))}</span>`;
+  return live.map((s) => `<span class="sevc sev-${s}"><span class="dot"></span><b>${sum[s]}</b> ${esc(sevName(s))}</span>`).join('');
+};
+/* Total findings per completed scan, oldest to newest (always left to right, like the trend chart). */
+function sparkHTML(trend) {
+  const vals = trend.map((x) => x.total);
+  if (!vals.length) return '';
+  const W = 120, H = 36, pad = 4;
+  const max = Math.max(1, ...vals), n = vals.length;
+  const X = (i) => (n === 1 ? W - pad : pad + (i * (W - 2 * pad)) / (n - 1));
+  const Y = (v) => H - pad - (v / max) * (H - 2 * pad);
+  const pts = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`);
+  const line = n > 1 ? `<polygon class="sp-area" points="${pad},${H - pad} ${pts.join(' ')} ${W - pad},${H - pad}"/><polyline class="sp-line" points="${pts.join(' ')}"/>` : '';
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" direction="ltr" aria-label="${esc(t('proj.spark', {n, vals: vals.join(', ')}))}"><line class="sp-base" x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}"/>${line}<circle class="sp-dot" cx="${X(n - 1).toFixed(1)}" cy="${Y(vals[n - 1]).toFixed(1)}" r="3"/></svg>`;
+}
+const changeBadges = (p) => {
+  if (p.new == null) return `<span class="chg none">${esc(t(p.done_scans ? 'proj.firstScan' : 'proj.neverDone'))}</span>`;
+  if (!p.new && !p.fixed) return `<span class="chg none">${ic('check', 'sm')}${esc(t('proj.noChange'))}</span>`;
+  return (p.new ? `<span class="chg new">${ic('warning', 'sm')}${esc(t('proj.newN', {n: p.new}))}</span>` : '')
+    + (p.fixed ? `<span class="chg fixed">${ic('check', 'sm')}${esc(t('proj.fixedN', {n: p.fixed}))}</span>` : '');
+};
+const riskKey = (p) => SEV.map((s) => String(p.summary[s] || 0).padStart(7, '0')).join('');
+function renderProjects() {
+  const q = $('#proj-search').value.trim().toLowerCase(); const sort = $('#proj-sort').value;
+  let list = projCache.filter((p) => !q || [p.name, p.target, p.label, projName(p)].join(' ').toLowerCase().includes(q));
+  if (sort === 'risk') list = list.slice().sort((a, b) => (riskKey(a) < riskKey(b) ? 1 : riskKey(a) > riskKey(b) ? -1 : 0));
+  else if (sort === 'name') list = list.slice().sort((a, b) => projName(a).localeCompare(projName(b), locale()));
+  $('#proj-toolbar').classList.toggle('hidden', !projCache.length);
+  $('#proj-count').textContent = !projCache.length ? '' : list.length === projCache.length ? t('proj.count', {n: projCache.length}) : t('proj.shown', {n: list.length, total: projCache.length});
+  if (!projCache.length) {
+    setHTML($('#proj-grid'), `<div class="empty card wide"><img src="logo.svg" width="56" height="56" alt=""><h2>${esc(t('dash.empty'))}</h2><p class="muted">${esc(t('dash.emptyHint'))}</p><a class="btn primary" href="#scan">${ic('plus')}${esc(t('nav.scan'))}</a></div>`);
+    return;
+  }
+  if (!list.length) { setHTML($('#proj-grid'), `<div class="empty inline wide"><span class="e-icon">${ic('search', 'lg')}</span><p class="muted">${esc(t('proj.none'))}</p></div>`); return; }
+  setHTML($('#proj-grid'), list.map((p) => {
+    const ls = p.last_scan || {}; const bad = ls.status && ls.status !== 'done';
+    return `<article class="card proj" aria-labelledby="pj-${esc(p.id)}">
+      <header class="pj-head">
+        <span class="pj-icon">${ic(p.kind === 'url' ? 'globe' : p.kind === 'upload' ? 'upload' : 'folder')}</span>
+        <div class="pj-name"><h2 id="pj-${esc(p.id)}"><a href="#projects/${esc(p.id)}" dir="auto">${esc(projName(p))}</a></h2><small class="pj-target" dir="ltr" title="${esc(p.target)}"><bdi>${esc(p.kind === 'upload' ? (p.label || '') : p.target)}</bdi></small></div>
+        ${bad ? `<span class="status ${esc(ls.status)}"><span class="dot"></span>${esc(I18N[lang].status[ls.status] || ls.status)}</span>` : ''}
+      </header>
+      <div class="pj-stats">
+        <div class="pj-total"><span class="n${p.total ? '' : ' zero'}">${p.done_scans ? p.total : '—'}</span><span class="muted">${esc(t('proj.findings'))}</span></div>
+        ${sparkHTML(p.trend)}
+      </div>
+      <div class="pj-sev">${p.done_scans ? sevCounts(p.summary) : `<span class="sevc none">${esc(t('proj.neverDone'))}</span>`}</div>
+      <div class="pj-chg">${changeBadges(p)}</div>
+      <footer class="pj-foot">
+        <span class="pj-meta muted">${ic('clock', 'sm')}<span>${esc(t('proj.lastScan'))}: ${esc(fmtDate(p.last_scan_at))}</span><span class="sep" aria-hidden="true">·</span><span>${esc(t('proj.nScans', {n: p.scans}))}</span></span>
+        <span class="pj-actions">${p.latest ? `<a class="btn sm" href="#findings/${esc(p.latest)}">${esc(t('nav.findings'))}</a>` : ''}<a class="btn sm" href="#projects/${esc(p.id)}">${esc(t('proj.history'))}${ic('chevron', 'sm flip')}</a></span>
+      </footer>
+    </article>`;
+  }).join(''));
+}
+$('#proj-search').oninput = renderProjects; $('#proj-sort').onchange = renderProjects;
+async function loadProjects(arg) {
+  const id = (arg || '').split('?')[0];
+  $('#proj-list-view').classList.toggle('hidden', !!id);
+  $('#proj-detail-view').classList.toggle('hidden', !id);
+  projCache = await api('/api/projects');
+  if (!id) { projDetail = null; renderProjects(); return; }
+  let p;
+  try { p = await api(`/api/projects/${encodeURIComponent(id)}`); } catch { toast(t('proj.notFound')); location.hash = 'projects'; return; }
+  projDetail = p;
+  $('#pd-name').textContent = projName(p);
+  $('#pd-target').textContent = p.kind === 'upload' ? (p.label || '') : p.target; $('#pd-target').title = p.target || '';
+  $('#pd-open').classList.toggle('hidden', !p.latest); if (p.latest) $('#pd-open').href = `#findings/${p.latest}`;
+  $('#pd-rescan').classList.toggle('hidden', p.kind === 'upload');
+  $('#pd-rescan').onclick = () => {
+    const url = p.kind === 'url';
+    $(`#scan-tabs .tab[data-tab="${url ? 'url' : 'path'}"]`).click();
+    $(url ? '#url-input' : '#path-input').value = p.target;
+    location.hash = 'scan';
+    if (!url) $('#path-btn').click();          // a web target still needs the authorization box ticked
+  };
+  setHTML($('#pd-context'), `<span class="ctx">${ic('clock', 'sm')}<span class="muted">${esc(t('proj.lastScan'))}:</span> ${esc(fmtDate(p.last_scan_at))}</span>`
+    + `<span class="ctx">${ic('reports', 'sm')}${esc(t('proj.nScans', {n: p.scans.length}))}</span>`
+    + (p.latest ? `<span class="ctx">${ic('file', 'sm')}${p.files_scanned} ${esc(t(p.kind === 'url' ? 'find.pages' : 'find.files'))}</span><span class="ctx">${ic('findings', 'sm')}${p.total} ${esc(t('dash.findingsCap'))}</span>` : ''));
+  setHTML($('#pd-tiles'), tilesHTML(p.summary, !!p.latest));
+  if (p.latest) $$('#pd-tiles .tile').forEach((el) => { el.onclick = () => { location.hash = `findings/${p.latest}?sev=${el.dataset.sev}`; }; });
+  const done = p.scans.filter((s) => s.status === 'done');
+  const li = (f) => `<li class="sev-${esc(f.severity)}"><span class="main">${pill(f.severity)}<span class="title" dir="auto" title="${esc(titleOf(f))}">${esc(titleOf(f))}</span></span>${fpath(f.file, f.line)}</li>`;
+  const col = (cls, icon, title, n, items) => `<div class="diff-col ${cls}"><h3>${ic(icon)}<span>${esc(title)}</span> <span class="count">${n}</span></h3><ul class="rank">${items.slice(0, 8).map(li).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`}${n > 8 ? `<li class="empty-li">${esc(t('proj.more', {n: n - 8}))}</li>` : ''}</ul></div>`;
+  setHTML($('#pd-changes'), p.new == null
+    ? `<div class="empty inline"><span class="e-icon">${ic('compare', 'lg')}</span><p><b>${esc(t(p.done_scans ? 'proj.firstScan' : 'proj.neverDone'))}</b></p><p class="muted">${esc(t('proj.firstScanHint'))}</p></div>`
+    : `<p class="muted pd-between">${esc(t('proj.between', {a: fmtDate(done[1].finished_at), b: fmtDate(done[0].finished_at)}))}</p><div class="pj-chg">${changeBadges(p)}</div>`
+      + col('added', 'warning', t('proj.newTitle'), p.new, p.new_findings) + col('fixed', 'check', t('proj.fixedTitle'), p.fixed, p.fixed_findings));
+  drawTrend($('#pd-trend'), p.trend, $('#pd-trend-legend'), $('#pd-trend-note'), t('proj.trend'));
+  $('#pd-scans-n').textContent = p.scans.length;
+  setHTML($('#pd-scans'), scanRows(p.scans));
+  loadSurface(p);
+}
+
+/* ------------------------------------------------------ attack surface */
+/* POST /api/scans/<id>/surface builds the map in the background; GET /api/projects/<id>/surface polls it. */
+const sf = {pid: null, scan: null, kind: '', data: null, all: false, unauth: false, q: '', timer: null, blob: null};
+const SF_TOP = 25;
+/* In Arabic text, keep an English list in brackets, "(redirect, file)", in one left-to-right run. */
+const isoParens = (text) => (lang === 'ar' ? esc(text).replace(/\(([^()\u0600-\u06FF]+)\)/g, '(<bdi dir="ltr">$1</bdi>)') : esc(text));
+async function loadSurface(p) {
+  clearTimeout(sf.timer);
+  if (sf.pid !== p.id || sf.scan !== p.latest) { sf.all = false; sf.unauth = false; sf.q = ''; }
+  sf.pid = p.id; sf.scan = p.latest; sf.kind = p.kind; sf.data = null;
+  $('#sf-card').classList.toggle('hidden', !p.latest);
+  if (!p.latest) return;
+  let r;
+  try { r = await apiRaw(`/api/projects/${encodeURIComponent(p.id)}/surface?lang=${lang}`); } catch (e) { r = {ok: false, status: 0, data: {status: 'error', error: e.message}}; }
+  if (sf.pid !== p.id || curPage !== 'projects') return;
+  const d = r.data || {};
+  if (d.status === 'running') { renderSurfaceState('running'); sf.timer = setTimeout(() => { if (curPage === 'projects' && sf.pid === p.id) loadSurface(p); }, 1000); return; }
+  if (d.status === 'done' && d.surface) { sf.data = d; renderSurface(); return; }
+  if (d.status === 'error') { renderSurfaceState('error', d.error); return; }
+  renderSurfaceState(d.available === false || p.kind !== 'path' ? 'unavailable' : 'none');
+}
+const sfEngineBox = (on) => `<label class="check inline" for="sf-engine"><input type="checkbox" id="sf-engine"${on ? ' checked' : ''}><span>${esc(t('sf.engine'))}</span></label>`;
+function renderSurfaceState(state, err) {
+  const acts = $('#sf-actions'); const body = $('#sf-body');
+  if (state === 'running') {
+    setHTML(acts, '');
+    setHTML(body, `<div class="sf-state"><span class="spinner"></span><span>${esc(t('sf.running'))}</span></div><div class="progress indeterminate sf-prog" role="progressbar" aria-label="${esc(t('sf.running'))}"><div></div></div>`);
+    return;
+  }
+  if (state === 'unavailable') { setHTML(acts, ''); setHTML(body, `<div class="sf-state">${ic('info')}<span class="muted">${esc(t('sf.unavailable'))}</span></div>`); return; }
+  setHTML(acts, `${sfEngineBox(true)}<button class="btn primary sm" type="button" id="sf-build">${ic('surface', 'sm')}<span>${esc(t('sf.build'))}</span></button>`);
+  setHTML(body, state === 'error'
+    ? `<div class="sf-state err">${ic('warning')}<span>${esc(t('sf.error', {err: err || ''}))}</span></div>`
+    : `<div class="sf-state">${ic('surface')}<span class="muted">${esc(t('sf.none'))}</span></div>`);
+}
+async function buildSurface() {
+  const box = $('#sf-engine'); const engine = box ? box.checked : true;
+  let r;
+  try { r = await apiRaw(`/api/scans/${encodeURIComponent(sf.scan)}/surface`, {method: 'POST', body: JSON.stringify({engine})}); } catch (e) { r = {ok: false, data: {error: e.message}}; }
+  if (!r.ok) {
+    if (r.data && r.data.error === 'source not available') { renderSurfaceState('unavailable'); return; }
+    toast(apiErr(r.data, String(r.status || ''))); return;
+  }
+  renderSurfaceState('running');
+  sf.timer = setTimeout(() => { if (projDetail && projDetail.id === sf.pid) loadSurface(projDetail); }, 800);
+}
+const authCell = (e) => {
+  const a = e.auth || {}; const st = ['none', 'public', 'protected'].includes(a.status) ? a.status : 'none';
+  if (st === 'none' && e.kind !== 'http') return '<span class="muted">—</span>';
+  const g = (Array.isArray(a.guards) ? a.guards : []).map((x) => x && x.name).filter(Boolean);
+  return `<span class="auth a-${st}">${ic(st === 'protected' ? 'lock' : 'unlock', 'sm')}${esc(t('sf.auth_' + st))}</span>${g.length ? `<small class="guards" dir="ltr" title="${esc(g.join(', '))}">${esc(g.slice(0, 2).join(', '))}${g.length > 2 ? '…' : ''}</small>` : ''}`;
+};
+function renderSurface() {
+  const d = sf.data; const s = d.surface || {}; const sum = s.summary || {}; const all = Array.isArray(s.entries) ? s.entries : [];
+  if (sf.blob) URL.revokeObjectURL(sf.blob);
+  sf.blob = d.openapi ? URL.createObjectURL(new Blob([d.openapi], {type: 'application/json'})) : null;
+  setHTML($('#sf-actions'), `${sfEngineBox(d.engine !== false)}`
+    + (sf.blob ? `<a class="btn sm" href="${sf.blob}" download="kashif-${esc(sf.scan)}-openapi.json">${ic('download', 'sm')}<span>${esc(t('sf.openapi'))}</span></a>` : '')
+    + `<button class="btn sm" type="button" id="sf-build">${ic('update', 'sm')}<span>${esc(t('sf.rebuild'))}</span></button>`);
+  const q = sf.q.trim().toLowerCase();
+  const match = all.filter((e) => (!sf.unauth || e.unauthenticated) && (!q || [e.path, e.handler, e.file, e.method, e.framework].join(' ').toLowerCase().includes(q)));
+  const list = sf.all || q || sf.unauth ? match : match.slice(0, SF_TOP);
+  const stat = (n, label, cls = '') => `<div class="sf-stat ${cls}"><span class="n">${Number(n) || 0}</span><span class="l">${esc(label)}</span></div>`;
+  const sid = encodeURIComponent(sf.scan);
+  const rows = list.map((e) => {
+    const lvl = SEV.includes(e.risk_level) ? e.risk_level : 'info';
+    const fps = (Array.isArray(e.findings) ? e.findings : []).map((x) => (x && typeof x === 'object' ? x.fingerprint : x)).filter((x) => typeof x === 'string' && x);
+    const reasons = (Array.isArray(e.reasons) ? e.reasons : []).slice(0, 2);
+    const method = e.kind === 'http' ? (e.method || (e.methods || []).join(',') || 'ANY') : (e.kind || '');
+    return `<tr class="sev-${lvl}">
+      <td class="sf-risk"><span class="pill sev-${lvl}" title="${esc(sevName(lvl))}"><span class="dot"></span>${Number(e.risk) || 0}<span class="sr-only"> / 100, ${esc(sevName(lvl))}</span></span></td>
+      <td class="sf-path"><span class="ep" dir="ltr"><code class="method">${esc(method)}</code><code class="p">${esc(e.path || '—')}</code></span>${reasons.length ? `<small class="muted" dir="auto">${isoParens(reasons.join(' · '))}</small>` : ''}</td>
+      <td class="sf-handler"><code dir="ltr">${esc(e.handler || '—')}</code>${e.file ? fpath(e.file, e.line) : ''}</td>
+      <td>${authCell(e)}</td>
+      <td><span class="sf-sinks">${(Array.isArray(e.sink_categories) ? e.sink_categories : []).map((c) => `<span class="tag">${esc(c)}</span>`).join('') || '<span class="muted">—</span>'}</span></td>
+      <td class="num">${fps.length ? `<a class="link" href="#findings/${sid}?fp=${encodeURIComponent(fps.join(','))}">${fps.length}</a>` : '<span class="muted">0</span>'}</td></tr>`;
+  }).join('');
+  const head = `<thead><tr><th>${esc(t('sf.risk'))}</th><th>${esc(t('sf.method'))} · ${esc(t('sf.path'))}</th><th>${esc(t('sf.handler'))}</th><th>${esc(t('sf.auth'))}</th><th>${esc(t('sf.sinks'))}</th><th class="num">${esc(t('sf.findings'))}</th></tr></thead>`;
+  const more = !q && !sf.unauth && match.length > SF_TOP
+    ? `<button class="btn sm ghost" type="button" id="sf-more">${esc(sf.all ? t('sf.showLess') : t('sf.showAll', {n: match.length}))}</button>` : '';
+  const notes = (Array.isArray(s.notes) ? s.notes : []).map((n) => `<div class="note">${ic('info')}<span>${bidi(n)}</span></div>`).join('');
+  const focusSearch = document.activeElement && document.activeElement.id === 'sf-search';
+  setHTML($('#sf-body'), `<div class="sf-stats">${stat(sum.entries, t('sf.entries'))}${stat(sum.unauthenticated, t('sf.unauth'), 'warn')}${stat(sum.unauthenticated_reaching_sink, t('sf.unauthSink'), 'bad')}${stat(sum.with_findings, t('sf.withFindings'))}</div>`
+    + (all.length ? `<div class="toolbar sf-tools"><div class="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><input id="sf-search" class="input" type="search" placeholder="${esc(t('sf.search'))}" aria-label="${esc(t('sf.search'))}" value="${esc(sf.q)}"></div>`
+      + `<button class="chip toggle" type="button" id="sf-unauth" aria-pressed="${sf.unauth}">${ic('unlock', 'sm')}${esc(t('sf.unauthOnly'))}</button><span class="muted sf-count" role="status">${esc(t('sf.shown', {n: list.length, total: all.length}))}</span></div>`
+      + (list.length ? `<div class="table-wrap"><table class="table sf-table">${head}<tbody>${rows}</tbody></table></div>` : `<p class="muted sf-empty">${esc(t('sf.noMatch'))}</p>`)
+      : `<p class="muted sf-empty">${esc(t('sf.empty'))}</p>`)
+    + `<div class="sf-foot">${more}<span class="muted">${esc(t('sf.builtAt', {when: d.built_at ? fmtDate(d.built_at) : '—'}))}</span></div>${notes ? `<div class="notes sf-notes">${notes}</div>` : ''}`);
+  if (focusSearch) { const inp = $('#sf-search'); inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+}
+$('#sf-card').addEventListener('click', (e) => {
+  if (e.target.closest('#sf-build')) { buildSurface(); return; }
+  if (e.target.closest('#sf-more')) { sf.all = !sf.all; renderSurface(); return; }
+  const u = e.target.closest('#sf-unauth'); if (u) { sf.unauth = !sf.unauth; renderSurface(); $('#sf-unauth').focus(); }
+});
+$('#sf-card').addEventListener('input', (e) => { if (e.target.id === 'sf-search') { sf.q = e.target.value; renderSurface(); } });
 
 function scanRows(scans) {
   if (!scans.length) return `<tr><td class="muted" style="text-align:center;padding:32px">${esc(t('rep.noScans'))}</td></tr>`;
@@ -354,6 +646,7 @@ function scanRows(scans) {
     ${SEV.map((k) => { const v = (s.summary || {})[k] || 0; return `<td class="num sev-${k}${v ? '' : ' z'}">${v ? `<b>${v}</b>` : '0'}</td>`; }).join('')}<td class="num"><b>${total(s.summary || {})}</b></td>
     <td class="num"><div class="actions">
       <a class="btn sm" href="#findings/${esc(s.id)}">${esc(t('rep.view'))}</a>
+      ${s.status === 'done' ? `<a class="btn sm icon" href="#compliance/${esc(s.id)}" title="${esc(t('nav.compliance'))}" aria-label="${esc(t('nav.compliance'))}">${ic('compliance', 'sm')}</a>` : ''}
       <a class="btn sm icon" href="/api/scans/${esc(s.id)}/report.html?lang=${lang}" download title="${esc(t('rep.download'))}" aria-label="${esc(t('rep.download'))}">${ic('download', 'sm')}</a>
       <button class="btn sm icon danger" type="button" data-del="${esc(s.id)}" title="${esc(t('rep.delete'))}" aria-label="${esc(t('rep.delete'))}">${ic('trash', 'sm')}</button>
     </div></td></tr>`;
@@ -465,6 +758,9 @@ $('#sev-filter').onclick = (e) => {
   b.setAttribute('aria-pressed', String(sevOn.has(s))); renderFindings();
 };
 $('#findings-search').oninput = renderFindings; $('#source-filter').onchange = renderFindings;
+$('#triage-filter').onchange = renderFindings; $('#show-fp').onchange = renderFindings;
+$('#fix-filter').onclick = (e) => { const b = e.currentTarget; b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); renderFindings(); };
+let onlyFp = null;   // ?fp=a,b (from the compliance and attack-surface views): show just these findings
 $('#findings-scan').onchange = (e) => { location.hash = `findings/${e.target.value}`; };
 async function loadFindings(arg) {
   const [id, qs] = (arg || '').split('?'); const q = new URLSearchParams(qs || '');
@@ -474,30 +770,46 @@ async function loadFindings(arg) {
   sel.title = '';
   const chosen = id || (scans[0] && scans[0].id);
   if (!chosen) {
-    cur = null; renderChips(); setHTML($('#findings-notes'), ''); setHTML($('#findings-context'), '');
+    cur = null; onlyFp = null; renderChips(); $('#findings-toolbar2').classList.add('hidden'); $('#findings-comp').classList.add('hidden'); setHTML($('#findings-notes'), ''); setHTML($('#findings-context'), '');
     setHTML($('#findings-list'), `<div class="empty inline"><span class="e-icon">${ic('findings', 'lg')}</span><h2>${esc(t('dash.empty'))}</h2><p class="muted">${esc(t('dash.emptyHint'))}</p><a class="btn primary" href="#scan">${ic('plus')}${esc(t('nav.scan'))}</a></div>`);
     return;
   }
   sel.value = chosen; cur = await api(`/api/scans/${chosen}`); sel.title = cur.target;
+  await loadTriage(chosen);
+  $('#findings-toolbar2').classList.remove('hidden'); $('#findings-comp').classList.remove('hidden');
+  $('#findings-comp').href = `#compliance/${encodeURIComponent(chosen)}`;
   if (q.get('sev')) { sevOn.clear(); sevOn.add(q.get('sev')); } else if (id) { SEV.forEach((s) => sevOn.add(s)); }
   if (q.has('q')) $('#findings-search').value = q.get('q'); else if (id) $('#findings-search').value = '';
-  renderChips();
+  onlyFp = q.get('fp') ? new Set(q.get('fp').split(',').filter(Boolean)) : null;
+  renderChips(); renderTriageFilter();
   const sources = [...new Set(cur.findings.map((f) => f.source))];
   setHTML($('#source-filter'), `<option value="">${esc(t('find.allSources'))}</option>` + sources.map((s) => `<option value="${esc(s)}">${esc(srcName(s))}</option>`).join(''));
-  ['md', 'json', 'html'].forEach((x) => { $(`#dl-${x}`).href = `/api/scans/${chosen}/report.${x}${x === 'json' ? '' : `?lang=${lang}`}`; });
+  ['md', 'json', 'html', 'sarif'].forEach((x) => { $(`#dl-${x}`).href = `/api/scans/${chosen}/report.${x}${x === 'json' ? '' : `?lang=${lang}`}`; });
   setHTML($('#findings-context'), `<span class="ctx" title="${esc(cur.target)}">${ic(cur.kind === 'url' ? 'globe' : 'folder', 'sm')}<b class="ellipsis" dir="auto">${esc(scanName(cur))}</b></span>`
     + `<span class="ctx">${ic('file', 'sm')}${cur.files_scanned} ${esc(t(cur.kind === 'url' ? 'find.pages' : 'find.files'))}</span>`
     + `<span class="ctx">${ic('clock', 'sm')}${esc(fmtDate(cur.finished_at))}</span>`
     + `<span class="ctx">${ic('findings', 'sm')}${total(cur.summary)} ${esc(t('dash.findingsCap'))}</span>`);
-  setHTML($('#findings-notes'), notesOf(cur).map((n) => `<div class="note">${ic('info')}<span>${bidi(n)}</span></div>`).join(''));
+  setHTML($('#findings-notes'), notesOf(cur).map((n) => `<div class="note">${ic('info')}<span>${bidi(n)}</span></div>`).join('')
+    + (tri.err ? `<div class="note warn">${ic('warning')}<span>${esc(t('tri.loadFail', {err: tri.err}))}</span></div>` : ''));
   renderFindings();
+  if (onlyFp && shown.length) {          // open the finding the link pointed at
+    const row = $('#findings-list .f-row'); if (row) { row.click(); row.focus(); row.scrollIntoView({block: 'nearest'}); }
+  }
 }
 function renderFindings() {
   if (!cur) return;
   const q = $('#findings-search').value.trim().toLowerCase(); const src = $('#source-filter').value;
-  shown = cur.findings.filter((f) => sevOn.has(f.severity) && (!src || f.source === src)
-    && (!q || [f.file, f.rule_id, f.title, f.title_ar, f.snippet, f.snippet_en, f.cwe].join(' ').toLowerCase().includes(q)));
-  const head = `<div class="fl-head"><span>${esc(t('find.showing', {n: shown.length, total: cur.findings.length}))}</span>${shown.length < cur.findings.length ? `<button class="btn sm ghost" type="button" id="clear-filters">${ic('x', 'sm')}${esc(t('find.clear'))}</button>` : ''}</div>`;
+  const tf = $('#triage-filter').value; const showFp = $('#show-fp').checked; const fixOnly = $('#fix-filter').getAttribute('aria-pressed') === 'true';
+  let fpHidden = 0;
+  shown = onlyFp ? cur.findings.filter((f) => onlyFp.has(f.fingerprint)) : cur.findings.filter((f) => {
+    if (!(sevOn.has(f.severity) && (!src || f.source === src) && (!fixOnly || hasFix(f))
+      && (!q || [f.file, f.rule_id, f.title, f.title_ar, f.snippet, f.snippet_en, f.cwe].join(' ').toLowerCase().includes(q)))) return false;
+    const st = triStatus(f);
+    if (tf) return st === tf;
+    if (st === 'false_positive' && !showFp) { fpHidden++; return false; }
+    return true;
+  });
+  const head = `<div class="fl-head"><span>${esc(t('find.showing', {n: shown.length, total: cur.findings.length}))}${fpHidden ? ` <span class="fp-hidden">· ${esc(t('tri.hiddenFp', {n: fpHidden}))}</span>` : ''}</span>${shown.length < cur.findings.length ? `<button class="btn sm ghost" type="button" id="clear-filters">${ic('x', 'sm')}${esc(t('find.clear'))}</button>` : ''}</div>`;
   if (!shown.length) {
     setHTML($('#findings-list'), head + `<div class="empty inline"><span class="e-icon">${ic('search', 'lg')}</span><p class="muted">${esc(t('find.none'))}</p></div>`);
   } else {
@@ -514,7 +826,7 @@ function renderFindings() {
           ${pill(f.severity)}
           <span class="f-main"><span class="f-title" dir="auto">${esc(titleOf(f))}</span>
             <span class="f-meta"><code dir="ltr">${esc(f.rule_id)}</code><span class="sep">·</span><span class="loc">${esc(f.file)}${f.line ? ':' + f.line : ''}</span></span></span>
-          <span class="f-side">${flow ? `<span class="tag flow">${ic('flow')}${esc(t('find.dataflow'))}</span>` : ''}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ''}</span>
+          <span class="f-side">${sideHTML(f, flow)}</span>
         </button>
         <div class="f-detail" id="fd-${i}" hidden></div>
       </div>`;
@@ -522,14 +834,69 @@ function renderFindings() {
     setHTML($('#findings-list'), html);
   }
   const clr = $('#clear-filters');
-  if (clr) clr.onclick = () => { SEV.forEach((s) => sevOn.add(s)); $('#findings-search').value = ''; $('#source-filter').value = ''; renderChips(); renderFindings(); };
+  if (clr) {
+    clr.onclick = () => {
+      SEV.forEach((s) => sevOn.add(s)); $('#findings-search').value = ''; $('#source-filter').value = ''; $('#triage-filter').value = '';
+      $('#show-fp').checked = true; $('#fix-filter').setAttribute('aria-pressed', 'false');
+      if (onlyFp) { onlyFp = null; history.replaceState(null, '', `#findings/${cur.id}`); }
+      renderChips(); renderFindings();
+    };
+  }
 }
+const sideHTML = (f, flow = isFlow(f)) => `${triTag(f)}${reachTag(f)}${hasFix(f) ? `<span class="tag fixable" title="${esc(t('fix.badge'))}">${ic('wrench')}<span class="tx">${esc(t('fix.badge'))}</span></span>` : ''}${flow ? `<span class="tag flow">${ic('flow')}${esc(t('find.dataflow'))}</span>` : ''}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ''}`;
 $('#findings-list').addEventListener('click', (e) => {
   const row = e.target.closest('.f-row'); if (!row) return;
   const box = row.parentElement; const det = box.querySelector('.f-detail');
   const open = row.getAttribute('aria-expanded') !== 'true';
-  if (open && !det.dataset.ready) { setHTML(det, detailHTML(shown[+row.dataset.i])); det.dataset.ready = '1'; }
+  if (open && !det.dataset.ready) { setHTML(det, detailHTML(shown[+row.dataset.i], +row.dataset.i)); det.dataset.ready = '1'; }
   row.setAttribute('aria-expanded', String(open)); det.hidden = !open; box.classList.toggle('open', open);
+});
+const REACH = {imported: 'warn', not_imported: 'quiet', vulnerable_function_called: 'danger'};
+const reachTag = (f) => {
+  const x = f.extra || {}; const r = x.reachability;
+  if (!REACH[r]) return '';
+  const note = loc(x, 'reachability_note');
+  return `<span class="tag reach ${REACH[r]}"${note ? ` title="${esc(note)}"` : ''}>${ic(r === 'not_imported' ? 'check' : r === 'imported' ? 'link' : 'warning')}<span class="sr-only">${esc(t('reach.label'))}: </span>${esc(t('reach.' + r))}</span>`;
+};
+const hasFix = (f) => !!(f.fix && typeof f.fix === 'object' && (f.fix.diff || f.fix.description || f.fix.description_ar));
+/* A unified diff as a code block: the +/− sign stays visible in its own column (colour is never the only cue) and
+   screen readers hear "Added line" / "Removed line" before the text. */
+function diffHTML(diff) {
+  let a = 0, d = 0;
+  const rows = String(diff).replace(/\n$/, '').split('\n').map((l) => {
+    if (/^(---|\+\+\+|diff |index )/.test(l)) return `<span class="dl meta"><span class="sg"> </span><span class="tx">${esc(l)}</span></span>`;
+    if (l.startsWith('@@')) return `<span class="dl hunk"><span class="sg"> </span><span class="tx">${esc(l)}</span></span>`;
+    if (l[0] === '+') { a++; return `<span class="dl add"><span class="sg" aria-hidden="true">+</span><span class="sr-only">${esc(t('fix.added'))} </span><span class="tx">${esc(l.slice(1))}</span></span>`; }
+    if (l[0] === '-') { d++; return `<span class="dl del"><span class="sg" aria-hidden="true">−</span><span class="sr-only">${esc(t('fix.removed'))} </span><span class="tx">${esc(l.slice(1))}</span></span>`; }
+    return `<span class="dl"><span class="sg"> </span><span class="tx">${esc(l.replace(/^ /, ''))}</span></span>`;
+  });
+  return {html: rows.join(''), a, d};
+}
+// A path as one shell word for the copy-paste command: plain paths as they are, anything else in single quotes
+// (where nothing expands: `$(...)`, `;`, backquotes and `"` stay literal; a `'` is written '\'').
+const shArg = (p) => /^[\w@%+=:,./\\-]+$/.test(p) ? p : `'${String(p).replace(/'/g, `'\\''`)}'`;
+
+function fixHTML(f, i) {
+  const fx = f.fix; const desc = (lang === 'en' ? (fx.description || fx.description_ar) : (fx.description_ar || fx.description)) || '';
+  const file = (Array.isArray(fx.edits) && fx.edits[0] && fx.edits[0].file) || f.file;
+  let out = `<section class="d-sec fix"><h2>${ic('wrench')}${esc(t('fix.title'))}</h2>`;
+  if (desc) out += `<p class="fix-desc">${bidi(desc)}</p>`;
+  if (fx.diff) {
+    const df = diffHTML(fx.diff);
+    out += `<div class="code diff"><div class="code-head"><span class="p" title="${esc(file)}">${esc(file)}</span><span class="diffstat"><span class="sr-only">${esc(t('fix.stats', {a: df.a, d: df.d}))}</span><span class="plus" aria-hidden="true">+${df.a}</span><span class="minus" aria-hidden="true">−${df.d}</span></span><button class="btn sm" type="button" data-patch="${i}">${ic('copy', 'sm')}<span>${esc(t('fix.copy'))}</span></button></div><pre tabindex="0" role="group" aria-label="${esc(t('fix.diffLabel', {file}))}"><code>${df.html}</code></pre></div>`;
+    if (cur && cur.kind === 'path') out += `<p class="fix-apply muted">${esc(t('fix.apply'))} <code dir="ltr">kashif ${esc(shArg(cur.target))} --fix</code></p>`;
+  } else if (!Array.isArray(fx.edits) || !fx.edits.length) {
+    out += `<p class="fix-apply muted">${ic('info', 'sm')}<span>${esc(t('fix.adviceOnly'))}</span></p>`;
+  }
+  return out + '</section>';
+}
+$('#findings-list').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-patch]'); if (!b) return;
+  const f = shown[+b.dataset.patch]; if (!f || !f.fix) return;
+  if (await copyText(f.fix.diff)) {
+    const lbl = b.querySelector('span'); lbl.textContent = t('fix.copied'); b.classList.add('done'); toast(t('fix.copied'));
+    setTimeout(() => { lbl.textContent = t('fix.copy'); b.classList.remove('done'); }, 1600);
+  }
 });
 const stripKind = (s) => String(s || '').replace(/^(Source|Sink|المصدر|نقطة الخطر)\s*:\s*/, '');
 function trailHTML(f) {
@@ -552,7 +919,7 @@ function trailHTML(f) {
     return `<li class="${kind}"><span class="node" aria-hidden="true">${node}</span><div class="step"><div class="st-head"><span class="st-kind">${esc(label)}</span>${where ? `<span class="st-loc" title="${esc(where)}">${esc(where)}</span>` : ''}</div><div class="st-text${st.code ? ' c' : ''}"${st.code ? ' dir="ltr"' : ''}>${st.code ? esc(st.text) : bidi(st.text)}</div></div></li>`;
   }).join('')}</ol>`;
 }
-function detailHTML(f) {
+function detailHTML(f, idx) {
   const flow = isFlow(f); const x = f.extra || {};
   const where = `${f.file}${f.line ? ':' + f.line : ''}`;
   const i = Math.max(f.file.lastIndexOf('/'), f.file.lastIndexOf('!'));
@@ -560,22 +927,195 @@ function detailHTML(f) {
   const tags = [pill(f.severity), `<span class="tag code" dir="ltr">${esc(f.rule_id)}</span>`, cweTag(f.cwe),
     flow ? `<span class="tag flow">${ic('shield')}${esc(t('find.dataflow'))}</span>` : `<span class="tag">${ic('pattern')}${esc(t('find.pattern'))}</span>`,
     `<span class="tag" title="${esc(f.source)}">${ic('code')}${esc(srcName(f.source))}</span>`,
-    x.decompiled ? '<span class="tag">jadx</span>' : '',
+    reachTag(f), x.decompiled ? '<span class="tag">jadx</span>' : '',
     x.page_count > 1 ? `<span class="tag">${esc(t('find.onPages', {n: x.page_count}))}</span>` : ''].join('');
   let body = `<section class="d-sec"><h2>${ic('file')}${esc(t('find.location'))}</h2><div class="locbar">${ic('file')}<span class="p" title="${esc(where)}">${esc(dir)}<b>${esc(base)}</b>${f.line ? ':' + f.line : ''}</span>${copyBtn(where)}</div></section>`;
   if (flow && x.path && x.path.length) {
     body += `<section class="d-sec"><h2>${ic('flow')}${esc(t('find.flow'))}</h2>${trailHTML(f)}</section>`;
   } else if (f.snippet) {
     const snip = loc(f, 'snippet');
-    body += `<section class="d-sec"><h2>${ic('code')}${esc(t('find.snippet'))}</h2><div class="code"><div class="code-head"><span class="p">${esc(where)}</span>${copyBtn(snip)}</div><pre><span class="ln">${f.line || ''}</span><code>${esc(snip)}</code></pre></div></section>`;
+    body += `<section class="d-sec"><h2>${ic('code')}${esc(t('find.snippet'))}</h2><div class="code"><div class="code-head"><span class="p">${esc(where)}</span>${copyBtn(snip)}</div><pre tabindex="0"><span class="ln">${f.line || ''}</span><code>${esc(snip)}</code></pre></div></section>`;
   }
   const adv = loc(f, 'advice');
   if (adv) body += `<section class="d-sec"><div class="remedy">${ic('bulb')}<div><b>${esc(t('find.advice'))}</b><span>${bidi(adv)}</span></div></div></section>`;
+  if (hasFix(f)) body += fixHTML(f, idx);
+  body += triageHTML(f, idx);
   if (x.url) body += `<section class="d-sec"><h2>${ic('link')}${esc(t('find.ref'))}</h2><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" dir="ltr">${esc(x.url)} ${ic('external', 'xs')}</a></section>`;
   if (x.pages && x.pages.length > 1) body += `<section class="d-sec"><details><summary>${esc(t('find.onPages', {n: x.pages.length}))}</summary><ul class="pages-list">${x.pages.slice(0, 50).map((u) => `<li>${esc(u)}</li>`).join('')}</ul></details></section>`;
   if (f.fingerprint) body += `<div class="fp">${ic('hash')}<span>${esc(t('find.fingerprint'))}</span><code>${esc(f.fingerprint)}</code>${copyBtn(f.fingerprint)}</div>`;
   return `<div class="sev-${f.severity}"><div class="d-tags">${tags}</div><div class="d-grid">${body}</div></div>`;
 }
+
+/* -------------------------------------------------------------- triage */
+/* GET /api/triage?scan= gives the effective decision of every finding; POST /api/triage/set|comment records one.
+   Everything in the triage file comes from the scanned repository: escape it all, look fingerprints up in a Map. */
+const TRI_JUST = new Set(['false_positive', 'accepted_risk', 'wont_fix']);
+const tri = {scan: null, data: null, ann: new Map(), raw: new Map(), err: null};
+const apiRaw = async (path, opts = {}) => {
+  const r = await fetch(path, {headers: {'Content-Type': 'application/json'}, cache: 'no-store', ...opts});
+  return {ok: r.ok, status: r.status, data: await r.json().catch(() => ({}))};
+};
+const apiErr = (d, fallback = '') => (lang === 'ar' && d && typeof d.error_ar === 'string' && d.error_ar) || (d && d.error ? errText(String(d.error)) : '') || fallback;
+const fmtIso = (s) => { const d = new Date(s); return s && !Number.isNaN(d.getTime()) ? d.toLocaleString(locale(), {dateStyle: 'medium', timeStyle: 'short'}) : String(s || ''); };
+const isHttp = (u) => typeof u === 'string' && /^https?:\/\/[^\s"'<>]+$/i.test(u);
+async function loadTriage(scanId) {
+  tri.scan = scanId; tri.data = null; tri.ann = new Map(); tri.raw = new Map(); tri.err = null;
+  try {
+    const r = await apiRaw(`/api/triage?scan=${encodeURIComponent(scanId)}&lang=${lang}`);
+    if (!r.ok) { tri.err = apiErr(r.data, String(r.status)); return; }
+    tri.data = r.data;
+    Object.entries(r.data.annotations || {}).forEach(([k, v]) => { if (v && typeof v === 'object') tri.ann.set(k, v); });
+    Object.entries(r.data.findings || {}).forEach(([k, v]) => { if (v && typeof v === 'object') tri.raw.set(k, v); });
+  } catch (e) { tri.err = e.message; }
+}
+const triStatus = (f) => { const a = tri.ann.get(f.fingerprint); return (a && typeof a.status === 'string' && a.status) || 'open'; };
+const triLabel = (st) => {
+  const o = tri.data && Array.isArray(tri.data.statuses) && tri.data.statuses.find((x) => x.id === st);
+  return o ? ((lang === 'en' ? o.label_en : o.label_ar) || o.label || st) : String(st).replace(/_/g, ' ');
+};
+const triTag = (f) => {
+  const a = tri.ann.get(f.fingerprint); if (!a) return '';
+  const st = triStatus(f); const flag = !!(a.expired || a.regression);
+  if (st === 'open' && !flag) return '';
+  const note = a.expired ? t('tri.expired') : a.regression ? t('tri.regression') : '';
+  return `<span class="tag tri st-${esc(st)}${flag ? ' flagged' : ''}"${note ? ` title="${esc(note)}"` : ''}>${ic(flag ? 'warning' : 'flag')}${esc(triLabel(st))}${note ? `<span class="sr-only"> — ${esc(note)}</span>` : ''}</span>`;
+};
+function renderTriageFilter() {
+  const sel = $('#triage-filter'); const v = sel.value;
+  const counts = new Map(); (cur ? cur.findings : []).forEach((f) => { const s = triStatus(f); counts.set(s, (counts.get(s) || 0) + 1); });
+  const ids = tri.data && Array.isArray(tri.data.statuses) ? tri.data.statuses.map((s) => s.id) : [...counts.keys()];
+  setHTML(sel, `<option value="">${esc(t('tri.all'))}</option>` + ids.map((id) => `<option value="${esc(id)}">${esc(triLabel(id))} (${counts.get(id) || 0})</option>`).join(''));
+  sel.value = ids.includes(v) ? v : '';
+  const fp = counts.get('false_positive') || 0;
+  $('#show-fp-n').textContent = fp ? `(${fp})` : '';
+  $('#fix-filter-n').textContent = cur ? String(cur.findings.filter(hasFix).length) : '';
+}
+const TRI_ACTS = new Set(['status', 'comment', 'severity', 'expired', 'regression', 'auto']);
+function triageHTML(f, i) {
+  if (!f.fingerprint || !tri.data) return '';
+  const a = tri.ann.get(f.fingerprint) || {}; const raw = tri.raw.get(f.fingerprint) || {};
+  const st = triStatus(f);
+  const opts = tri.data.statuses.map((s) => `<option value="${esc(s.id)}"${s.id === st ? ' selected' : ''}>${esc(triLabel(s.id))}</option>`).join('');
+  const flags = (a.expired ? `<span class="tag tri flagged">${ic('warning')}${esc(t('tri.expired'))}</span>` : '')
+    + (a.regression ? `<span class="tag tri flagged">${ic('warning')}${esc(t('tri.regression'))}</span>` : '');
+  const ticket = isHttp(raw.ticket) ? raw.ticket : '';
+  const who = raw.author || a.author; const when = raw.updated || a.updated;
+  const state = `<div class="tri-cur"><span class="tag tri st-${esc(st)}">${ic('flag')}${esc(triLabel(st))}</span>${flags}`
+    + `<span class="muted">${a.tracked || raw.updated ? esc(t('tri.by', {who: who || '—', when: fmtIso(when)})) : esc(t('tri.untracked'))}</span>`
+    + (ticket ? `<a class="link" href="${esc(ticket)}" target="_blank" rel="noopener noreferrer" dir="ltr">${ic('link', 'xs')}${esc(ticket.replace(/^https?:\/\//i, '').slice(0, 60))}</a>` : '') + '</div>'
+    + (raw.justification ? `<p class="tri-just">${bidi(raw.justification)}</p>` : '');
+  const exp = /^\d{4}-\d{2}-\d{2}$/.test(raw.expires || '') ? raw.expires : '';
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const id = `tri-${i}`;
+  const where = tri.data.in_project ? '.kashif/triage.json' : String(tri.data.file || '');
+  const fileNote = esc(t(tri.data.in_project ? 'tri.fileProject' : 'tri.fileHome', {file: '\u0001'})).replace('\u0001', `<bdi dir="ltr">${esc(where)}</bdi>`);
+  const form = `<form class="tri-form" data-tri="${i}" novalidate>
+    <div class="tri-top">
+      <div class="field"><label for="${id}-st">${esc(t('tri.status'))}</label><select class="input" id="${id}-st" name="status">${opts}</select></div>
+      <div class="field tri-exp"${st === 'accepted_risk' ? '' : ' hidden'}><label for="${id}-ex">${esc(t('tri.expires'))}</label><input class="input" type="date" id="${id}-ex" name="expires" min="${tomorrow}" value="${esc(exp)}"></div>
+      <div class="field tri-tk"><label for="${id}-tk">${esc(t('tri.ticket'))}</label><input class="input" type="url" id="${id}-tk" name="ticket" dir="ltr" placeholder="https://" maxlength="2000" value="${esc(ticket)}" aria-describedby="${id}-msg"></div>
+    </div>
+    <div class="tri-texts">
+      <div class="field"><label for="${id}-j">${esc(t('tri.justification'))} <span class="req muted"${TRI_JUST.has(st) ? '' : ' hidden'}>${esc(t('tri.justReq'))}</span></label><textarea class="input" rows="2" id="${id}-j" name="justification" maxlength="2000" dir="auto" aria-describedby="${id}-msg">${esc(raw.justification || '')}</textarea></div>
+      <div class="field"><label for="${id}-c">${esc(t('tri.comment'))}</label><textarea class="input" rows="2" id="${id}-c" name="comment" maxlength="2000" dir="auto"></textarea></div>
+    </div>
+    <div class="tri-actions"><button class="btn primary sm" type="submit">${ic('flag', 'sm')}<span>${esc(t('tri.save'))}</span></button><button class="btn sm" type="button" data-tri-comment>${esc(t('tri.addComment'))}</button><span class="tri-msg" id="${id}-msg" role="status"></span></div>
+    <p class="tri-file muted">${ic('file', 'xs')}<span>${fileNote}</span></p>
+  </form>`;
+  const log = Array.isArray(raw.log) ? raw.log.filter((x) => x && typeof x === 'object').slice(-30).reverse() : [];
+  const arrow = lang === 'ar' ? '←' : '→';
+  const hist = log.length ? `<details class="tri-log"><summary>${esc(t('tri.history', {n: log.length}))}</summary><ol>${log.map((x) => {
+    const act = TRI_ACTS.has(x.action) ? t('tri.act.' + x.action) : String(x.action || '');
+    const what = x.action === 'status' ? ` <span class="tri-move">${esc(triLabel(String(x.from || 'open')))} ${arrow} ${esc(triLabel(String(x.to || '')))}</span>` : '';
+    const text = typeof x.text === 'string' && x.text ? x.text : (typeof x.justification === 'string' ? x.justification : '');
+    return `<li><span class="muted">${esc(fmtIso(x.at))} · <bdi>${esc(x.author || '')}</bdi></span> <b>${esc(act)}</b>${what}${text ? `<q dir="auto">${esc(text)}</q>` : ''}</li>`;
+  }).join('')}</ol></details>` : '';
+  return `<section class="d-sec tri-sec" data-tri-sec="${i}"><h2>${ic('flag')}${esc(t('tri.title'))}</h2>${state}${form}${hist}</section>`;
+}
+const triMsg = (form, text, bad) => { const m = $('.tri-msg', form); m.textContent = text; m.classList.toggle('err', !!bad); };
+async function triSave(form, action) {
+  const i = +form.dataset.tri; const f = shown[i]; if (!f || !cur) return;
+  const el = form.elements; const st = el.status.value; const just = el.justification.value.trim();
+  const ticket = el.ticket.value.trim(); const comment = el.comment.value.trim();
+  [el.justification, el.ticket, el.comment].forEach((x) => x.removeAttribute('aria-invalid'));
+  let body;
+  if (action === 'comment') {
+    if (!comment) { el.comment.setAttribute('aria-invalid', 'true'); el.comment.focus(); return; }
+    body = {scan: cur.id, fingerprint: f.fingerprint, text: comment};
+  } else {
+    if (TRI_JUST.has(st) && !just) { el.justification.setAttribute('aria-invalid', 'true'); triMsg(form, t('tri.needJust'), true); el.justification.focus(); return; }
+    if (ticket && !isHttp(ticket)) { el.ticket.setAttribute('aria-invalid', 'true'); triMsg(form, t('tri.ticketBad'), true); el.ticket.focus(); return; }
+    body = {scan: cur.id, fingerprint: f.fingerprint, status: st, justification: just, ticket, comment};
+    if (st === 'accepted_risk' && el.expires.value) body.expires = el.expires.value;
+  }
+  const btns = $$('button', form); btns.forEach((b) => { b.disabled = true; });
+  let r;
+  try { r = await apiRaw(`/api/triage/${action === 'comment' ? 'comment' : 'set'}`, {method: 'POST', body: JSON.stringify(body)}); } catch (err) { r = {ok: false, data: {error: err.message}}; }
+  btns.forEach((b) => { b.disabled = false; });
+  if (!r.ok) { triMsg(form, apiErr(r.data, String(r.status || '')), true); return; }
+  await loadTriage(cur.id);
+  const box = form.closest('.finding'); const sec = form.closest('.tri-sec');
+  const tmp = document.createElement('div'); setHTML(tmp, triageHTML(f, i));
+  const fresh = tmp.firstElementChild; sec.replaceWith(fresh);
+  const side = $('.f-side', box); if (side) setHTML(side, sideHTML(f));
+  renderTriageFilter();
+  triMsg($('.tri-form', fresh), t(action === 'comment' ? 'tri.commented' : 'tri.saved'));
+  $('select', fresh).focus();
+}
+$('#findings-list').addEventListener('submit', (e) => { const form = e.target.closest('.tri-form'); if (!form) return; e.preventDefault(); triSave(form, 'set'); });
+$('#findings-list').addEventListener('click', (e) => { const b = e.target.closest('[data-tri-comment]'); if (b) triSave(b.closest('.tri-form'), 'comment'); });
+$('#findings-list').addEventListener('change', (e) => {
+  const form = e.target.closest('.tri-form'); if (!form || e.target.name !== 'status') return;
+  const st = e.target.value;
+  $('.tri-exp', form).hidden = st !== 'accepted_risk';
+  $('.req', form).hidden = !TRI_JUST.has(st);
+  triMsg(form, '');
+});
+
+/* -------------------------------------------------------------- export */
+/* Every exporter format downloads from GET /api/scans/<id>/export?format=..; the list comes from the server. */
+let fmtCache = {lang: null, list: null};
+const expBtn = $('#export-btn'); const expMenu = $('#export-menu');
+// A name that starts in Latin script and holds Arabic in parentheses ("SonarQube (Generic Issue Import، الإصدار …)")
+// is mangled by the bidi algorithm in an RTL page: isolate it as one left-to-right run.
+const ltrName = (s) => (lang === 'ar' && /^[A-Za-z]/.test(String(s || '')) ? `<bdi dir="ltr">${esc(s)}</bdi>` : esc(s));
+const itemInner = (f) => `<span class="mi-text"><b>${ltrName(f.name)}</b><small>${esc(f.description)}</small></span><span class="mi-ext" dir="ltr">.${esc(f.ext)}</span>`;
+async function renderExportMenu() {
+  if (!cur) return;
+  try {
+    if (fmtCache.lang !== lang || !fmtCache.list) fmtCache = {lang, list: await api(`/api/export/formats?lang=${lang}`)};
+  } catch { setHTML(expMenu, `<p class="menu-note">${ic('warning', 'sm')}<span>${esc(t('exp.loadFail'))}</span></p>`); return; }
+  const base = `/api/scans/${encodeURIComponent(cur.id)}/export?lang=${lang}&format=`;
+  setHTML(expMenu, `<p class="menu-title">${esc(t('exp.title'))}</p><ul class="menu-list">${fmtCache.list.map((f) => (Array.isArray(f.needs) && f.needs.length
+    ? `<li><details class="menu-aws"><summary class="menu-item">${itemInner(f)}</summary><form class="menu-form" data-fmt="${esc(f.id)}" novalidate>
+        <div class="field"><label for="exp-acct">${esc(t('exp.aws'))}</label><input class="input" id="exp-acct" name="aws_account_id" inputmode="numeric" maxlength="12" dir="ltr" autocomplete="off"></div>
+        <div class="field"><label for="exp-region">${esc(t('exp.region'))}</label><input class="input" id="exp-region" name="aws_region" dir="ltr" placeholder="us-east-1" maxlength="30" autocomplete="off"></div>
+        <button class="btn sm primary" type="submit">${ic('download', 'sm')}<span>${esc(t('exp.download'))}</span></button><p class="menu-err" role="status"></p></form></details></li>`
+    : `<li><a class="menu-item" href="${base}${encodeURIComponent(f.id)}" download>${itemInner(f)}</a></li>`)).join('')}</ul><p class="menu-note">${ic('info', 'sm')}<span>${esc(t('exp.hint'))}</span></p>`);
+}
+function setExport(open) {
+  if (!expBtn) return;
+  const was = expBtn.getAttribute('aria-expanded') === 'true';
+  expBtn.setAttribute('aria-expanded', String(open)); expMenu.classList.toggle('hidden', !open);
+  if (open && !was) renderExportMenu().then(() => { const first = $('.menu-item', expMenu); if (first) first.focus(); });
+}
+expBtn.onclick = () => setExport(expBtn.getAttribute('aria-expanded') !== 'true');
+expMenu.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  const items = $$('.menu-item', expMenu); const k = items.indexOf(document.activeElement); if (k < 0) return;
+  e.preventDefault(); items[(k + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+});
+expMenu.addEventListener('click', (e) => { if (e.target.closest('a.menu-item')) setTimeout(() => setExport(false), 0); });
+expMenu.addEventListener('submit', (e) => {
+  const form = e.target.closest('.menu-form'); if (!form || !cur) return; e.preventDefault();
+  const acct = form.elements.aws_account_id.value.trim(); const region = form.elements.aws_region.value.trim();
+  if (!/^\d{12}$/.test(acct) || !/^[a-z]{2}(-[a-z]+)+-\d{1,2}$/.test(region)) { $('.menu-err', form).textContent = t('exp.needAws'); (/^\d{12}$/.test(acct) ? form.elements.aws_region : form.elements.aws_account_id).focus(); return; }
+  const a = document.createElement('a');
+  a.href = `/api/scans/${encodeURIComponent(cur.id)}/export?lang=${lang}&format=${encodeURIComponent(form.dataset.fmt)}&aws_account_id=${acct}&aws_region=${encodeURIComponent(region)}`;
+  a.download = ''; document.body.appendChild(a); a.click(); a.remove(); setExport(false);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && expBtn.getAttribute('aria-expanded') === 'true') { setExport(false); expBtn.focus(); } });
+document.addEventListener('click', (e) => { if (expBtn.getAttribute('aria-expanded') === 'true' && !e.target.closest('.menu-wrap')) setExport(false); });
 
 /* ------------------------------------------------------------- reports */
 async function loadReports() {
@@ -601,6 +1141,108 @@ $('#cmp-btn').onclick = async () => {
   setHTML($('#cmp-new'), added.map(li).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`);
   $('#cmp-result').classList.remove('hidden');
 };
+
+/* ---------------------------------------------------------- compliance */
+/* GET /api/scans/<id>/compliance?framework=all: per-framework control rows. A control without findings has status
+   "pass" and is labelled "No findings" — never "Pass" or "Compliant". */
+const comp = {key: '', data: null, scan: null, fw: '', all: false, byId: new Map()};
+const stBadge = (st) => { const k = ['fail', 'warn', 'pass'].includes(st) ? st : 'warn'; return `<span class="cst st-${k}">${ic(k === 'fail' ? 'warning' : k === 'warn' ? 'eye' : 'check', 'xs')}${esc(t('comp.st_' + k))}</span>`; };
+$('#comp-scan').onchange = (e) => { location.hash = `compliance/${e.target.value}`; };
+$('#fw-all').onchange = (e) => { comp.all = e.target.checked; renderFramework(); };
+async function loadCompliance(arg) {
+  const id = (arg || '').split('?')[0];
+  const scans = (await api('/api/scans')).filter((s) => s.status === 'done');
+  const sel = $('#comp-scan');
+  setHTML(sel, scans.map((s) => `<option value="${esc(s.id)}" title="${esc(s.target)}">${esc(scanName(s))} — ${esc(fmtDate(s.finished_at))}</option>`).join(''));
+  const has = (x) => x && scans.some((s) => s.id === x);
+  const chosen = has(id) ? id : has(cur && cur.id) ? cur.id : (scans[0] && scans[0].id);
+  ['#comp-body', '#comp-audit', '#comp-scan'].forEach((x) => $(x).classList.toggle('hidden', !chosen));
+  $('#comp-empty').classList.toggle('hidden', !!chosen);
+  if (!chosen) {
+    setHTML($('#comp-context'), '');
+    setHTML($('#comp-empty'), `<div class="empty card"><span class="e-icon">${ic('compliance', 'lg')}</span><h2>${esc(t('comp.empty'))}</h2><p class="muted">${esc(t('dash.emptyHint'))}</p><a class="btn primary" href="#scan">${ic('plus')}${esc(t('nav.scan'))}</a></div>`);
+    return;
+  }
+  sel.value = chosen; sel.title = (scans.find((s) => s.id === chosen) || {}).target || '';
+  comp.scan = scans.find((s) => s.id === chosen);
+  const key = `${chosen}|${lang}`;
+  if (comp.key !== key) {
+    setHTML($('#fw-grid'), `<p class="muted fw-loading"><span class="spinner sm"></span> ${esc(t('comp.loading'))}</p>`);
+    comp.data = await api(`/api/scans/${encodeURIComponent(chosen)}/compliance?framework=all&lang=${lang}`);
+    comp.key = key;
+    comp.byId = new Map((comp.data.findings || []).filter((f) => f && f.id).map((f) => [f.id, f]));
+  }
+  renderCompliance();
+}
+function renderCompliance() {
+  const d = comp.data; const s = comp.scan; const fws = d.frameworks || {}; const ids = Object.keys(fws);
+  if (!ids.includes(comp.fw)) comp.fw = ids[0] || '';
+  const risk = d.risk || {}; const rating = ['none', 'low', 'moderate', 'high', 'critical'].includes(risk.rating) ? risk.rating : 'none';
+  const sid = encodeURIComponent(s.id);
+  setHTML($('#comp-context'), `<span class="ctx" title="${esc(s.target)}">${ic(s.kind === 'url' ? 'globe' : 'folder', 'sm')}<b class="ellipsis" dir="auto">${esc(scanName(s))}</b></span>`
+    + `<span class="ctx">${ic('clock', 'sm')}${esc(fmtDate(s.finished_at))}</span>`
+    + `<span class="ctx">${ic('findings', 'sm')}${total(s.summary || {})} ${esc(t('dash.findingsCap'))}</span>`
+    + `<span class="ctx risk r-${rating}">${ic('warning', 'sm')}<span class="muted">${esc(t('comp.risk'))}:</span> <b>${Number(risk.score) || 0}/100</b> <span class="rating">${esc(t('comp.r_' + rating))}</span></span>`
+    + `<a class="ctx link" href="#findings/${sid}">${ic('findings', 'sm')}${esc(t('scan.viewResults'))}</a>`);
+  $('#comp-disclaimer span').textContent = d.disclaimer || '';
+  $('#comp-audit').href = `/api/scans/${sid}/audit.html?framework=all&lang=${lang}`;
+  setHTML($('#fw-grid'), ids.map((fid) => {
+    const fw = fws[fid]; const on = fid === comp.fw;
+    const tot = Number(fw.controls_total) || 0; const w = Number(fw.controls_with_findings) || 0;
+    const pct = tot ? Math.round((w / tot) * 100) : 0; const st = ['fail', 'warn', 'pass'].includes(fw.status) ? fw.status : 'warn';
+    return `<button type="button" class="fw-card st-${st}" data-fw="${esc(fid)}" aria-pressed="${on}" aria-label="${esc(t('comp.fwLabel', {name: fw.title, status: t('comp.st_' + st), with: w, total: tot}))}">
+      <span class="fw-top"><b>${esc(fw.short || fw.title)}</b>${stBadge(st)}</span>
+      <span class="fw-name muted">${esc(fw.title)}</span>
+      <span class="fw-bar" aria-hidden="true"><i style="width:${pct}%"></i></span>
+      <span class="fw-nums">${esc(t('comp.controlsWith', {n: w, total: tot}))}</span>
+      <span class="fw-nums muted">${esc(t('comp.mapped', {n: Number(fw.findings_mapped) || 0}))}${fw.findings_unmapped ? ' · ' + esc(t('comp.unmapped', {n: fw.findings_unmapped})) : ''}</span>
+    </button>`;
+  }).join(''));
+  renderFramework();
+}
+$('#fw-grid').onclick = (e) => {
+  const b = e.target.closest('[data-fw]'); if (!b) return;
+  comp.fw = b.dataset.fw;
+  $$('#fw-grid [data-fw]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  renderFramework();
+};
+function renderFramework() {
+  const fw = comp.data && (comp.data.frameworks || {})[comp.fw];
+  $('#fw-detail').classList.toggle('hidden', !fw); if (!fw) return;
+  const sid = encodeURIComponent(comp.scan.id);
+  $('#fw-title').textContent = fw.title || comp.fw;
+  $('#fw-all').checked = comp.all;
+  $('#fw-audit').href = `/api/scans/${sid}/audit.html?framework=${encodeURIComponent(comp.fw)}&lang=${lang}`;
+  const src = fw.source || {};
+  setHTML($('#fw-meta'), (fw.note ? `<p><b>${esc(t('comp.note'))}:</b> ${bidi(fw.note)}</p>` : '')
+    + (src.title ? `<p><b>${esc(t('comp.source'))}:</b> ${isHttp(src.url) && /^https:/i.test(src.url) ? `<a href="${esc(src.url)}" target="_blank" rel="noopener noreferrer">${esc(src.title)} ${ic('external', 'xs')}</a>` : esc(src.title)}</p>` : ''));
+  const rows = Array.isArray(fw.rows) ? fw.rows : [];
+  const list = comp.all ? rows : rows.filter((r) => r.status !== 'pass');
+  const hidden = rows.length - list.length;
+  const head = `<thead><tr><th>${esc(t('comp.control'))}</th><th>${esc(t('comp.ctitle'))}</th><th>${esc(t('rules.sev'))}</th><th class="num">${esc(t('comp.total'))}</th><th>${esc(t('comp.status'))}</th></tr></thead>`;
+  const body = list.map((r, k) => `<tr class="ctl-row">
+      <td class="ctl"><button class="ctl-btn" type="button" data-ctl="${k}" aria-expanded="false" aria-controls="ctl-${k}"${r.total ? '' : ' disabled'} aria-label="${esc(t('comp.showFindings', {c: r.control}))}">${ic('chevron', 'sm chev')}<code dir="ltr">${esc(r.control)}</code></button></td>
+      <td class="ctl-title" dir="auto">${esc(r.title)}</td>
+      <td>${r.total ? `<span class="sevcs">${sevCounts(r.counts || {})}</span>` : '<span class="muted">—</span>'}</td>
+      <td class="num"><b>${Number(r.total) || 0}</b></td>
+      <td>${stBadge(r.status)}</td></tr>
+    <tr class="ctl-findings" id="ctl-${k}" hidden><td colspan="5"></td></tr>`).join('');
+  setHTML($('#fw-table'), head + `<tbody>${body || `<tr><td colspan="5" class="muted fw-none">${esc(t('comp.none'))}</td></tr>`}</tbody>`
+    + (hidden ? `<tfoot><tr><td colspan="5" class="muted fw-hidden">${esc(t('comp.hidden', {n: hidden}))}</td></tr></tfoot>` : ''));
+  comp.list = list;
+}
+$('#fw-table').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ctl]'); if (!b) return;
+  const r = comp.list[+b.dataset.ctl]; const tr = document.getElementById(b.getAttribute('aria-controls'));
+  const open = b.getAttribute('aria-expanded') !== 'true';
+  if (open && !tr.dataset.ready) {
+    const fs = (r.findings || []).map((x) => comp.byId.get(x)).filter(Boolean);
+    const sid = encodeURIComponent(comp.scan.id);
+    setHTML(tr.firstElementChild, `<ul class="rank ctl-list">${fs.slice(0, 50).map((f) => `<li class="sev-${esc(f.severity)}"><span class="main">${pill(f.severity)}<a class="title" dir="auto" href="#findings/${sid}?fp=${encodeURIComponent(f.fingerprint || '')}">${esc(f.title)}</a></span>${fpath(f.file, f.line)}</li>`).join('')}${fs.length > 50 ? `<li class="empty-li">${esc(t('proj.more', {n: fs.length - 50}))}</li>` : ''}</ul>`);
+    tr.dataset.ready = '1';
+  }
+  b.setAttribute('aria-expanded', String(open)); tr.hidden = !open; b.closest('tr').classList.toggle('open', open);
+});
 
 /* --------------------------------------------------------------- rules */
 let rulesCache = null;

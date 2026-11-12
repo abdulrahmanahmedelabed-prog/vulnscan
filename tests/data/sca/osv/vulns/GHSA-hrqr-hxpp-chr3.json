@@ -1,0 +1,43 @@
+{
+ "id": "GHSA-hrqr-hxpp-chr3",
+ "aliases": [
+  "CVE-2019-16782"
+ ],
+ "summary": "Possible information leak / session hijack in Rack",
+ "modified": "2024-01-01T00:00:00Z",
+ "affected": [
+  {
+   "package": {
+    "ecosystem": "RubyGems",
+    "name": "rack"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "1.6.12"
+      }
+     ]
+    },
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "2.0.0"
+      },
+      {
+       "fixed": "2.0.8"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "database_specific": {
+  "severity": "MODERATE"
+ }
+}

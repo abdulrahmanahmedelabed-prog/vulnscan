@@ -1,0 +1,25 @@
+{
+ "id": "GHSA-0000-with-drawn",
+ "aliases": [],
+ "summary": "Withdrawn advisory",
+ "modified": "2024-01-01T00:00:00Z",
+ "affected": [
+  {
+   "package": {
+    "ecosystem": "PyPI",
+    "name": "requests"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "withdrawn": "2023-01-01T00:00:00Z"
+}

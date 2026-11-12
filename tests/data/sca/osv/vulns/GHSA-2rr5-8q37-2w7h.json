@@ -1,0 +1,32 @@
+{
+ "id": "GHSA-2rr5-8q37-2w7h",
+ "aliases": [
+  "CVE-2021-41098"
+ ],
+ "summary": "Improper Restriction of XML External Entity Reference in Nokogiri",
+ "modified": "2024-01-01T00:00:00Z",
+ "affected": [
+  {
+   "package": {
+    "ecosystem": "RubyGems",
+    "name": "nokogiri"
+   },
+   "ranges": [
+    {
+     "type": "ECOSYSTEM",
+     "events": [
+      {
+       "introduced": "0"
+      },
+      {
+       "fixed": "1.12.5"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "database_specific": {
+  "severity": "HIGH"
+ }
+}

@@ -15,6 +15,12 @@ CATALOG: dict[str, str] = {
     "لا تُعلِّم مدخلات المستخدم كـ HTML آمن (mark_safe / Markup)؛ هرّبها أولًا أو مرّرها وسيطًا إلى format_html.":
         "Do not mark user input as safe HTML (mark_safe / Markup); escape it first or pass it as an argument to "
         "format_html.",
+    # stored SSTI: template source text built from data and written to a template file
+    "بيانات غير موثوقة تُكتب في نص قالب يُعرض لاحقًا (حقن قوالب مخزّن SSTI)":
+        "Tainted data written into a template's source (stored SSTI)",
+    "لا تبنِ نص القالب من مدخلات المستخدم؛ خزّن المحتوى بيانات ومرّره متغيرًا إلى قالب ثابت.":
+        "Do not build template source from user input; store the content as data and pass it as a variable to a "
+        "fixed template.",
 }
 
 PATTERNS: list[tuple[str, str]] = []

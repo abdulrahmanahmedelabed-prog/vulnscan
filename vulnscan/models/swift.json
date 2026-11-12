@@ -1,12 +1,17 @@
 {
- "_comment": "Swift: Foundation, UIKit/AppKit, WebKit, SQLite/GRDB, Vapor, URLSession.",
+ "_comment": "Swift: Foundation, UIKit/AppKit, WebKit, SQLite.swift/GRDB/FMDB/Realm, Vapor (SQLKit, Fluent), Hummingbird, Kitura, Perfect, URLSession, Alamofire, AsyncHTTPClient. Argument labels are not part of a call name: `FileHandle(forReadingAtPath: p)` is the call `FileHandle(p)`.",
  "sources": [
   {
    "kind": "name",
    "names": [
     "CommandLine.arguments",
     "ProcessInfo.processInfo.arguments",
-    "ProcessInfo.processInfo.environment"
+    "ProcessInfo.processInfo.environment",
+    "UIPasteboard.general.string",
+    "UIPasteboard.general.strings",
+    "UIPasteboard.general.url",
+    "NSPasteboard.general.string",
+    "FileHandle.standardInput.availableData"
    ],
    "label": "{name}"
   },
@@ -37,7 +42,19 @@
     "queryItems",
     "JSONSerialization.jsonObject",
     "jsonObject",
-    "PropertyListSerialization.propertyList"
+    "PropertyListSerialization.propertyList",
+    "request.decode",
+    "request.readString",
+    "request.param",
+    "request.header",
+    "headers.first",
+    "req.cookies.all",
+    "request.body.collect",
+    "request.collectBody",
+    "pasteboard.string",
+    "stringForType",
+    "decodeMultipart",
+    "request.urlVariables.get"
    ],
    "label": "{name}()"
   },
@@ -60,7 +77,10 @@
     "urlContext",
     "CommandLine",
     "ProcessInfo",
-    "processInfo"
+    "processInfo",
+    "metadataObject",
+    "readableObject",
+    "navigationAction"
    ],
    "attrs": [
     "query",
@@ -72,7 +92,6 @@
     "url",
     "text",
     "stringValue",
-    "absoluteString",
     "path",
     "pathComponents",
     "lastPathComponent",
@@ -81,9 +100,36 @@
     "userInfo",
     "webpageURL",
     "arguments",
-    "environment"
+    "environment",
+    "cookies",
+    "uri",
+    "queryParameters",
+    "urlURL",
+    "postBodyString",
+    "postParams",
+    "queryParams",
+    "urlVariables",
+    "postBodyBytes",
+    "params",
+    "originalURL"
    ],
    "label": "{root}.{attr}"
+  },
+  {
+   "kind": "attr",
+   "roots": [
+    "file",
+    "upload",
+    "input",
+    "form",
+    "part",
+    "attachment"
+   ],
+   "attrs": [
+    "filename"
+   ],
+   "label": "{attr} (uploaded file name)",
+   "_comment": "Vapor File.filename is chosen by the client"
   }
  ],
  "entry_points": [
@@ -121,7 +167,16 @@
     "Middleware",
     "AsyncMiddleware",
     "ParsableCommand",
-    "AsyncParsableCommand"
+    "AsyncParsableCommand",
+    "ChannelInboundHandler",
+    "UNUserNotificationCenterDelegate",
+    "WKURLSchemeHandler",
+    "LambdaHandler",
+    "EventLoopLambdaHandler",
+    "SimpleLambdaHandler",
+    "Responder",
+    "AsyncResponder",
+    "AVCaptureMetadataOutputObjectsDelegate"
    ],
    "methods": [
     "application",
@@ -146,7 +201,10 @@
     "open",
     "continueUserActivity",
     "willConnectTo",
-    "openURLContexts"
+    "openURLContexts",
+    "channelRead",
+    "userNotificationCenter",
+    "metadataOutput"
    ]
   },
   {
@@ -164,7 +222,10 @@
     "URLContexts",
     "urlContexts",
     "arguments",
-    "args"
+    "args",
+    "navigationAction",
+    "userInfo",
+    "metadataObjects"
    ]
   }
  ],
@@ -196,7 +257,18 @@
     "NSAppleScript",
     "NSAppleScript.init",
     "NSUserUnixTask",
-    "NSUserAppleScriptTask"
+    "NSUserAppleScriptTask",
+    "Process.run",
+    "launchedProcess",
+    "launchedTask",
+    "shellOut",
+    "posix_spawnp",
+    "execve",
+    "execl",
+    "execlp",
+    "execle",
+    "OSAScript",
+    "NSTask.launchedTaskWithLaunchPath"
    ],
    "title": "Tainted data reaches a shell command",
    "title_ar": "بيانات غير موثوقة تصل إلى أمر نظام",
@@ -234,7 +306,23 @@
     "NSPredicate.init",
     "FMDatabase.executeQuery",
     "FMDatabase.executeUpdate",
-    "sql"
+    "sql",
+    "SQLQueryString",
+    "SQLRaw",
+    "makeStatement",
+    "cachedStatement",
+    "makeSelectStatement",
+    "makeUpdateStatement",
+    "executeStatements",
+    "simpleQuery",
+    "prepareStatement",
+    "predicateWithFormat",
+    "sqlite3_prepare_v3",
+    "sqlite3_prepare16_v2",
+    "sqlite3_get_table",
+    "db.executeMany",
+    "allStatements",
+    "SQL"
    ],
    "title": "Tainted data reaches a database query",
    "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
@@ -289,7 +377,25 @@
     "streamFile",
     "req.fileio.collectFile",
     "collectFile",
-    "FileMiddleware"
+    "FileMiddleware",
+    "FileHandle",
+    "OutputStream",
+    "DatabaseQueue",
+    "DatabasePool",
+    "attributesOfItem",
+    "subpathsOfDirectory",
+    "destinationOfSymbolicLink",
+    "readFile",
+    "asyncStreamFile",
+    "openFile",
+    "loadFile",
+    "NSData.dataWithContentsOfFile",
+    "NSString.stringWithContentsOfFile",
+    "NSDictionary.dictionaryWithContentsOfFile",
+    "NSArray.arrayWithContentsOfFile",
+    "freopen",
+    "realpath",
+    "FileWrapper"
    ],
    "title": "Tainted data reaches a file path",
    "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
@@ -332,7 +438,16 @@
     "chown",
     "symlink",
     "link",
-    "truncate"
+    "truncate",
+    "changeCurrentDirectoryPath",
+    "removeItemAtPath",
+    "removeItemAtURL",
+    "moveItemAtPath",
+    "copyItemAtPath",
+    "createDirectoryAtPath",
+    "evictUbiquitousItem",
+    "lchown",
+    "mkfifo"
    ],
    "title": "Tainted path reaches a filesystem operation",
    "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
@@ -367,7 +482,13 @@
     "withMemoryRebound",
     "assumingMemoryBound",
     "bindMemory",
-    "Unmanaged.fromOpaque"
+    "Unmanaged.fromOpaque",
+    "NSKeyedUnarchiver",
+    "unarchiveObjectWithData",
+    "unarchiveObjectWithFile",
+    "unarchiveTopLevelObject",
+    "decodeObjectOfClass",
+    "NSUnarchiver"
    ],
    "title": "Tainted data reaches deserialization",
    "title_ar": "بيانات غير موثوقة تصل إلى فك تسلسل",
@@ -406,7 +527,12 @@
     "callAsyncJavaScript",
     "WKUserScript",
     "WKUserScript.init",
-    "addUserScript"
+    "addUserScript",
+    "Template",
+    "renderString",
+    "compileTemplate",
+    "MustacheTemplate",
+    "HBMustacheTemplate"
    ],
    "title": "Tainted data reaches a template",
    "title_ar": "بيانات غير موثوقة تصل إلى قالب",
@@ -437,7 +563,11 @@
     "WKWebView.load",
     "webView.load",
     "loadRequest",
-    "openExternalURL"
+    "openExternalURL",
+    "SFSafariViewController",
+    "ASWebAuthenticationSession",
+    "openURL",
+    "extensionContext.open"
    ],
    "title": "Tainted data reaches a redirect",
    "title_ar": "بيانات غير موثوقة تصل إلى تحويل",
@@ -489,7 +619,35 @@
     "WebSocket.connect",
     "URLSessionWebSocketTask",
     "webSocketTask",
-    "NSXPCConnection(machServiceName:)"
+    "NSXPCConnection(machServiceName:)",
+    "URLRequest",
+    "NSURLRequest",
+    "NSMutableURLRequest",
+    "NWConnection",
+    "HTTPClientRequest",
+    "HTTPClient.Request",
+    "dataTaskPublisher",
+    "streamTask",
+    "AF.streamRequest",
+    "client.put",
+    "client.patch",
+    "httpClient.execute",
+    "httpClient.put",
+    "httpClient.delete",
+    "httpClient.patch",
+    "HTTPClient.shared.get",
+    "HTTPClient.shared.post",
+    "HTTPClient.shared.execute",
+    "NSURLConnection.sendSynchronousRequest",
+    "NSURLConnection.sendAsynchronousRequest",
+    "WebSocket",
+    "URLSession.shared.upload",
+    "URLSession.shared.bytes",
+    "SocketManager",
+    "CFURLCreateWithString",
+    "dataTaskWithURL",
+    "dataTaskWithRequest",
+    "downloadTaskWithURL"
    ],
    "title": "Tainted URL reaches an outbound request",
    "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
@@ -533,7 +691,15 @@
     "NSUserAutomatorTask(url:)",
     "NSUserUnixTask(url:)",
     "addUserScript",
-    "unsafeBitCast"
+    "unsafeBitCast",
+    "NSExpression",
+    "Selector",
+    "expressionWithFormat",
+    "class_getInstanceMethod",
+    "objc_getClass",
+    "objc_lookUpClass",
+    "NSProtocolFromString",
+    "sel_registerName"
    ],
    "title": "Tainted data reaches code evaluation",
    "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
@@ -619,11 +785,181 @@
     "captureMessage",
     "addBreadcrumb",
     "syslog",
-    "vsyslog"
+    "vsyslog",
+    "logger.fault",
+    "os_log_error",
+    "os_log_info",
+    "os_log_debug",
+    "os_log_fault"
    ],
    "title": "Tainted data written to a log",
    "title_ar": "بيانات غير موثوقة تُكتب في السجل",
    "advice": "أزل أسطر جديدة وأحرف التحكم قبل التسجيل."
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "SQL",
+   "title": "Tainted data reaches a database query",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام قاعدة بيانات",
+   "advice": "استخدم استعلامات مُعدّة بدل تركيب النص.",
+   "args": [
+    1
+   ],
+   "names": [
+    "fetchAll",
+    "fetchOne",
+    "fetchCursor",
+    "fetchSet"
+   ],
+   "_comment": "GRDB Row.fetchAll(db, sql: …): the statement is argument 1 (request.fetchAll(db) has none)"
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-943",
+   "label": "Realm predicate",
+   "title": "Tainted data reaches a Realm query predicate",
+   "title_ar": "بيانات غير موثوقة تصل إلى شرط استعلام Realm (حقن NSPredicate)",
+   "advice": "لا تركّب صيغة NSPredicate من المدخلات؛ مرّر القيم كوسائط (%@) أو استخدم الاستعلامات المكتوبة بالأنواع.",
+   "args": [
+    0
+   ],
+   "names": [
+    "filter"
+   ],
+   "receiver": "(?i)(^|\\.)realm\\w*(\\.objects)?$",
+   "_comment": "realm.objects(T.self).filter(\"name == '\\(x)'\")"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح.",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "loadFileURL",
+    "unzipItem",
+    "zipItem",
+    "unzipFile"
+   ],
+   "_comment": "(source, destination / read-access root): both are paths"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح.",
+   "args": [
+    0,
+    1
+   ],
+   "names": [
+    "contents",
+    "enumerator",
+    "subpaths",
+    "contentsEqual"
+   ],
+   "receiver": "(?i)(^|\\.)(fm|file_?manager|filemanager\\.default|manager)$",
+   "_comment": "FileManager held in a variable: fm.contents(atPath:)"
+  },
+  {
+   "rule": "DF005",
+   "severity": "high",
+   "cwe": "CWE-22",
+   "label": "file path",
+   "title": "Tainted data reaches a file path",
+   "title_ar": "بيانات غير موثوقة تصل إلى مسار ملف",
+   "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح.",
+   "args": [
+    1
+   ],
+   "names": [
+    "writeFile"
+   ],
+   "_comment": "Vapor req.fileio.writeFile(buffer, at: path)"
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound URL (SSRF)",
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات وارفض العناوين الداخلية.",
+   "args": [
+    0
+   ],
+   "names": [
+    "data",
+    "download",
+    "upload",
+    "bytes"
+   ],
+   "receiver": "(?i)(^|\\.)(\\w*session|urlsession\\.shared)$",
+   "_comment": "URLSession held in a variable: session.data(from: url) / session.upload(for: request, from: body)"
+  },
+  {
+   "rule": "DF013",
+   "severity": "medium",
+   "cwe": "CWE-79",
+   "label": "HTTP response (XSS)",
+   "title": "Tainted data reflected into the response",
+   "title_ar": "بيانات غير موثوقة تُعاد في الاستجابة (XSS)",
+   "advice": "هرّب المخرجات أو استخدم قالبًا يُهرّب تلقائيًا.",
+   "args": [
+    1
+   ],
+   "names": [
+    "loadSimulatedRequest"
+   ],
+   "_comment": "WKWebView.loadSimulatedRequest(request, responseHTML: html)"
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "لا تركّب تعبير XPath من المدخلات؛ استخدم متغيرات XPath أو قائمة بيضاء من القيم.",
+   "args": [
+    0
+   ],
+   "names": [
+    "xpath",
+    "at_xpath",
+    "evaluateXPath"
+   ],
+   "_comment": "Kanna / Fuzi document.xpath(expr)"
+  },
+  {
+   "rule": "DF015",
+   "severity": "high",
+   "cwe": "CWE-643",
+   "label": "XPath",
+   "title": "Tainted data reaches XPath",
+   "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+   "advice": "لا تركّب تعبير XPath من المدخلات؛ استخدم متغيرات XPath أو قائمة بيضاء من القيم.",
+   "args": [
+    0
+   ],
+   "names": [
+    "nodes",
+    "objects"
+   ],
+   "receiver": "(?i)(^|\\.)\\w*(doc|document|xml|node|root|element)$",
+   "_comment": "Foundation XMLNode.nodes(forXPath:) / objects(forXQuery:)"
   }
  ],
  "sanitizers": [
@@ -703,7 +1039,20 @@
   "sanitizeFilename",
   "normalized",
   "normalize",
-  "validated"
+  "validated",
+  "UInt64",
+  "UInt32",
+  "UInt16",
+  "UInt8",
+  "Int16",
+  "Int8",
+  "CGFloat",
+  "TimeInterval",
+  "SwiftSoup.clean",
+  "Entities.escape",
+  "addingPercentEncodingForRFC3986",
+  "NSNumber",
+  "Date"
  ],
  "safe_return_calls": [],
  "validators": [

@@ -268,8 +268,7 @@ class FlowInterpreter:
         key = ("fn", id(fn))
         hit = self.cache.get(key)
         if hit is None or hit[0] is not fn:
-            body = fn.body if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)) else []
-            hit = (fn, _alias_groups(body), _rebound_elsewhere(fn), _assigned(body), _escaping(fn), _containers(body))
+            hit = _fn_struct(fn)
             self.cache[key] = hit
         _, self.alias, self.volatile, self.assigned_in_body, self.escaped, self.containers = hit
 
@@ -841,7 +840,29 @@ def _set(st: State, name, origin, const, keep_taint: bool = False):
     st.lk.pop(name, None)
 
 
-def _alias_groups(stmts) -> dict:
+def _fn_struct(fn) -> tuple:
+    """Per-function facts of FlowInterpreter: (fn, alias groups, names rebound elsewhere, assigned names, escaping
+    names, container names). One walk of the body feeds the helpers that would each walk it again."""
+    if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)):
+        return (fn, _alias_groups([]), _rebound_elsewhere(fn), _assigned([]), _escaping(fn), _containers([]))
+    body = fn.body
+    nodes = [n for s in body for n in ast.walk(s)]
+    assigned = _assigned(body, nodes)
+    # global / nonlocal are statements: inside a def or module they can only appear in its body (walked above)
+    rebound = set()
+    for n in nodes:
+        if isinstance(n, (ast.Nonlocal, ast.Global)):
+            rebound.update(n.names)
+    return (fn, _alias_groups(body, nodes), rebound, assigned, _escaping(fn, assigned=assigned), _containers(body, nodes))
+
+
+def _body_nodes(stmts, nodes):
+    if nodes is not None:
+        return nodes
+    return [n for s in stmts for n in ast.walk(s)]
+
+
+def _alias_groups(stmts, nodes=None) -> dict:
     """Names that may refer to the same object: `b = a`, `a, b = b, a`, `x = y = []` (flow-insensitive union)."""
     parent: dict = {}
 
@@ -854,17 +875,16 @@ def _alias_groups(stmts) -> dict:
         ra, rb = find(a), find(b)
         if ra != rb:
             parent[ra] = rb
-    for s in stmts:
-        for n in ast.walk(s):
-            if isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
-                tgts = n.targets if isinstance(n, ast.Assign) else [n.target]
-                names = [t.id for t in tgts if isinstance(t, ast.Name)]
-                if isinstance(n.value, ast.Name):
-                    names.append(n.value.id)
-                elif len(names) < 2:
-                    continue
-                for a in names[1:]:
-                    union(names[0], a)
+    for n in _body_nodes(stmts, nodes):
+        if isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            tgts = n.targets if isinstance(n, ast.Assign) else [n.target]
+            names = [t.id for t in tgts if isinstance(t, ast.Name)]
+            if isinstance(n.value, ast.Name):
+                names.append(n.value.id)
+            elif len(names) < 2:
+                continue
+            for a in names[1:]:
+                union(names[0], a)
     groups: dict = {}
     for x in list(parent):
         groups.setdefault(find(x), set()).add(x)
@@ -876,19 +896,18 @@ def _alias_groups(stmts) -> dict:
     return out
 
 
-def _containers(stmts) -> set:
+def _containers(stmts, nodes=None) -> set:
     """Names bound to a mutable container literal or constructor somewhere in the function."""
     out = set()
-    for s in stmts:
-        for n in ast.walk(s):
-            if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None:
-                v = n.value
-                if isinstance(v, (ast.List, ast.Dict, ast.Set, ast.ListComp, ast.DictComp, ast.SetComp)) or \
-                        (isinstance(v, ast.Call) and _callee_name(v) in _NEW_LIST | _NEW_MAP | {"set", "bytearray", "StringBuilder",
-                                                                                               "StringBuffer", "HashSet", "TreeSet"}):
-                    for t in (n.targets if isinstance(n, ast.Assign) else [n.target]):
-                        if isinstance(t, ast.Name):
-                            out.add(t.id)
+    for n in _body_nodes(stmts, nodes):
+        if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None:
+            v = n.value
+            if isinstance(v, (ast.List, ast.Dict, ast.Set, ast.ListComp, ast.DictComp, ast.SetComp)) or \
+                    (isinstance(v, ast.Call) and _callee_name(v) in _NEW_LIST | _NEW_MAP | {"set", "bytearray", "StringBuilder",
+                                                                                           "StringBuffer", "HashSet", "TreeSet"}):
+                for t in (n.targets if isinstance(n, ast.Assign) else [n.target]):
+                    if isinstance(t, ast.Name):
+                        out.add(t.id)
     return out
 
 
@@ -901,7 +920,7 @@ _INNER_RETURNING = {"setdefault", "get", "pop", "getOrDefault", "computeIfAbsent
                     "peekFirst", "peekLast", "poll", "popleft", "first", "last", "__getitem__", "at", "find"}
 
 
-def _escaping(fn, include_passed: bool = True) -> set:
+def _escaping(fn, include_passed: bool = True, assigned: set | None = None) -> set:
     """Names whose container may be reached some other way than through the name itself, so their layout must
     not be tracked: passed to functions, stored, returned, put in literals, aliased by any expression, captured by
     nested functions, or whose elements are taken out (`opts = conf["opts"]`, `d.setdefault(k, []).append(x)`)."""
@@ -994,8 +1013,10 @@ def _escaping(fn, include_passed: bool = True) -> set:
             stored.append((x, [_root_name(t) for t in p.targets]))
             continue
         out.add(x)
-    local = _assigned(body) | {a.arg for a in ast.walk(fn.args) if isinstance(a, ast.arg)} \
-        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) else _assigned(body)
+    if assigned is None:
+        assigned = _assigned(body)
+    local = assigned | {a.arg for a in ast.walk(fn.args) if isinstance(a, ast.arg)} \
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) else assigned
     changed = True
     while changed:                                    # an element bound to a name that is mutated or stored elsewhere
         changed = False
@@ -1052,16 +1073,15 @@ def _is_param(fn, name) -> bool:
         any(p is not None and p.arg == name for p in (a.vararg, a.kwarg))
 
 
-def _assigned(stmts) -> set:
+def _assigned(stmts, nodes=None) -> set:
+    """Names bound (or deleted) anywhere under `stmts`, nested functions included (ast.walk descends into them)."""
     out = set()
-    for s in stmts:
-        for n in ast.walk(s):
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)) and n not in stmts:
-                continue
-            if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+    for n in _body_nodes(stmts, nodes):
+        if isinstance(n, ast.Name):
+            if isinstance(n.ctx, (ast.Store, ast.Del)):
                 out.add(n.id)
-            elif isinstance(n, ast.ExceptHandler) and n.name:
-                out.add(n.name)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            out.add(n.name)
     return out
 
 

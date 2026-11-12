@@ -70,13 +70,20 @@ def _git_binary() -> str:
 
 
 def _git(git: str, cwd: pathlib.Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
-    for k in ("GIT_EXTERNAL_DIFF", "GIT_DIFF_OPTS"):
+    # The scanned tree may carry a hostile .git/config (an unpacked archive can ship one): switch off everything
+    # in it that would make git run a command and that a switch can turn off (fsmonitor, hooks, pager, external
+    # diff, transports). Content filters cannot be switched off; scope() refuses a repository that defines one.
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0",
+           "GIT_NO_LAZY_FETCH": "1", "GIT_ALLOW_PROTOCOL": "none"}
+    for k in ("GIT_EXTERNAL_DIFF", "GIT_DIFF_OPTS", "GIT_PAGER", "PAGER"):
         env.pop(k, None)
     try:
-        proc = subprocess.run([git, "-c", "core.quotepath=false", "-c", "diff.noprefix=false",  # nosec B603
+        proc = subprocess.run([git, "--no-pager", "-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}",  # nosec B603
+                               "-c", "core.pager=cat", "-c", "diff.external=",
+                               "-c", "core.quotepath=false", "-c", "diff.noprefix=false",
                                "-c", "diff.mnemonicPrefix=false", "-c", "diff.relative=false", *args],
-                              cwd=str(cwd), capture_output=True, env=env, timeout=300, check=False)
+                              cwd=str(cwd), capture_output=True, env=env, timeout=300, check=False,
+                              stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         raise DiffScopeError(f"فشل أمر git: {args[0]}") from None
     # Decoded without universal-newline translation: a lone "\r" inside changed code must not split a diff line.
@@ -169,6 +176,14 @@ def compute(target: str | os.PathLike, base: str | None = None, staged: bool = F
     if top.returncode != 0 or not top.stdout.strip():
         raise DiffScopeError("الهدف ليس داخل مستودع git؛ لا يمكن تقييد النتائج بالتغييرات.")
     repo = pathlib.Path(top.stdout.strip()).resolve()
+    from .mcp import _repo_git_commands              # the same check guards the MCP server's diff_base and --fix
+    try:
+        risky = _repo_git_commands(str(repo))
+    except Exception:  # noqa: BLE001 - cannot tell: fail closed rather than run git diff on a hostile tree
+        risky = ["filter.?"]
+    if risky:
+        raise DiffScopeError("إعدادات git في هذا المستودع تعرّف مرشّح محتوى يشغّل أمرًا (" + ", ".join(risky[:3])
+                             + ")؛ لم يُشغَّل git diff. راجع ‎.git/config أو افحص دون تقييد بالتغييرات.")
     notes: list[str] = []
     if staged:
         head = _git(git, repo, "rev-parse", "--verify", "--quiet", "HEAD^{commit}", check=False)
