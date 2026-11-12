@@ -5,56 +5,73 @@
  "sources": {
   "owasp-top10-2021": {
    "title": "OWASP Top 10:2021, 'List of Mapped CWEs' of each category. MITRE publishes the same membership as CWE view 1344, except CWE-259 under A02 and the deprecated CWE-100 under A03, which only OWASP lists.",
+   "title_ar": "OWASP Top 10:2021، قائمة «List of Mapped CWEs» لكل فئة. تنشر MITRE العضوية نفسها في عرض CWE رقم 1344، باستثناء CWE-259 تحت A02 وCWE-100 المُلغى تحت A03، فلا تذكرهما إلا OWASP.",
    "url": "https://owasp.org/Top10/",
    "also": "https://cwe.mitre.org/data/definitions/1344.html",
-   "retrieved": "2026-11-11 from github.com/OWASP/Top10 (2021/docs/en); compared with view 1344 of CWE List v4.14"
+   "retrieved": "2026-11-11 from github.com/OWASP/Top10 (2021/docs/en); compared with view 1344 of CWE List v4.14",
+   "retrieved_ar": "2026-11-11 من github.com/OWASP/Top10 (2021/docs/en)، وقورن بالعرض 1344 في CWE List v4.14"
   },
   "owasp-api-2023": {
    "title": "OWASP API Security Top 10 2023, 'References - External' CWE list of each risk",
+   "title_ar": "OWASP API Security Top 10 2023، قائمة CWE في قسم «References - External» لكل خطر",
    "url": "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
-   "retrieved": "2026-11-11 from github.com/OWASP/API-Security (editions/2023/en)"
+   "retrieved": "2026-11-11 from github.com/OWASP/API-Security (editions/2023/en)",
+   "retrieved_ar": "2026-11-11 من github.com/OWASP/API-Security (editions/2023/en)"
   },
   "owasp-asvs-4.0.3": {
    "title": "OWASP Application Security Verification Standard 4.0.3, CWE column of the official CSV",
+   "title_ar": "OWASP Application Security Verification Standard 4.0.3، عمود CWE في ملف CSV الرسمي",
    "url": "https://github.com/OWASP/ASVS/tree/v4.0.3/4.0",
-   "retrieved": "2026-11-11 from github.com/OWASP/ASVS tag v4.0.3"
+   "retrieved": "2026-11-11 from github.com/OWASP/ASVS tag v4.0.3",
+   "retrieved_ar": "2026-11-11 من github.com/OWASP/ASVS، الوسم v4.0.3"
   },
   "cwe-top25-2024": {
    "title": "2024 CWE Top 25 Most Dangerous Software Weaknesses (MITRE / CISA, CWE view 1430)",
+   "title_ar": "قائمة CWE Top 25 لعام 2024 لأخطر نقاط الضعف البرمجية (MITRE / CISA، عرض CWE رقم 1430)",
    "url": "https://cwe.mitre.org/top25/archive/2024/2024_cwe_top25.html",
-   "retrieved": "transcribed 2026-11-11; cwe.mitre.org was not reachable from the build environment, so the ranks were not compared with the official page. Check them there before relying on them."
+   "retrieved": "transcribed 2026-11-11; cwe.mitre.org was not reachable from the build environment, so the ranks were not compared with the official page. Check them there before relying on them.",
+   "retrieved_ar": "نُقلت يدويًا في 2026-11-11؛ تعذّر الوصول إلى cwe.mitre.org من بيئة البناء، فلم تُقارن الرتب بالصفحة الرسمية. تحقّق منها هناك قبل الاعتماد عليها."
   },
   "cwe-hierarchy": {
    "title": "CWE List v4.14 (MITRE, 2024-02-29): ChildOf relations of the Research Concepts view (CWE-1000) and entry names. CWE-1426 and CWE-1427 were added to CWE after that release and are entered by hand.",
+   "title_ar": "CWE List v4.14 (MITRE، 2024-02-29): علاقات ChildOf في عرض Research Concepts (CWE-1000) وأسماء البنود. أُضيف CWE-1426 وCWE-1427 إلى CWE بعد ذلك الإصدار، فأُدخلا يدويًا.",
    "url": "https://cwe.mitre.org/data/definitions/1000.html",
-   "retrieved": "2026-11-11 from cwec_v4.14.xml"
+   "retrieved": "2026-11-11 from cwec_v4.14.xml",
+   "retrieved_ar": "2026-11-11 من cwec_v4.14.xml"
   },
   "pci-dss-4.0": {
    "title": "PCI DSS v4.0 (March 2022) Requirements and Testing Procedures. Requirement numbers are unchanged in v4.0.1 (June 2024), which replaced v4.0. Requirement texts are paraphrased.",
+   "title_ar": "PCI DSS v4.0 (مارس 2022)، وثيقة Requirements and Testing Procedures. لم تتغير أرقام المتطلبات في v4.0.1 (يونيو 2024) الذي حلّ محل v4.0. نصوص المتطلبات مُعادة الصياغة.",
    "url": "https://www.pcisecuritystandards.org/document_library/"
   },
   "nist-ssdf-1.1": {
    "title": "NIST SP 800-218, Secure Software Development Framework (SSDF) v1.1",
+   "title_ar": "NIST SP 800-218، إطار تطوير البرمجيات الآمن (SSDF) v1.1",
    "url": "https://doi.org/10.6028/NIST.SP.800-218"
   },
   "nist-800-53r5": {
    "title": "NIST SP 800-53 Rev. 5, Security and Privacy Controls",
+   "title_ar": "NIST SP 800-53 Rev. 5، ضوابط الأمن والخصوصية",
    "url": "https://doi.org/10.6028/NIST.SP.800-53r5"
   },
   "iso-27001-2022": {
    "title": "ISO/IEC 27001:2022 Annex A (controls of ISO/IEC 27002:2022)",
+   "title_ar": "ISO/IEC 27001:2022 الملحق أ (ضوابط ISO/IEC 27002:2022)",
    "url": "https://www.iso.org/standard/27001"
   },
   "hipaa-164.312": {
    "title": "45 CFR 164.312, HIPAA Security Rule - Technical safeguards",
+   "title_ar": "45 CFR 164.312، قاعدة أمن HIPAA - الضمانات التقنية",
    "url": "https://www.ecfr.gov/current/title-45/section-164.312"
   },
   "gdpr-art32": {
    "title": "Regulation (EU) 2016/679 (GDPR), Article 32 - Security of processing",
+   "title_ar": "اللائحة (EU) 2016/679 (GDPR)، المادة 32 - أمن المعالجة",
    "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
   },
   "kashif-analyst": {
    "title": "Kashif analyst mapping: assigned by the Kashif maintainers from the wording of the control and the CWE definition; not published by the framework owner. Review before relying on it.",
+   "title_ar": "ربط محلل كاشِف: يحدده مشرفو كاشِف من نص الضابط وتعريف CWE، ولا ينشره مالك الإطار. راجعه قبل الاعتماد عليه.",
    "url": ""
   }
  },
@@ -1180,7 +1197,8 @@
     "824": "Memory-safety weaknesses have no category in OWASP Top 10:2021."
    },
    "category": {},
-   "note": "Controls with basis \"official\" are the CWE lists OWASP publishes for each category."
+   "note": "Controls with basis \"official\" are the CWE lists OWASP publishes for each category.",
+   "note_ar": "الضوابط ذات الأساس «رسمي» هي قوائم CWE التي تنشرها OWASP لكل فئة."
   },
   "owasp-api-2023": {
    "title": "OWASP API Security Top 10 2023",
@@ -1343,6 +1361,7 @@
     ]
    },
    "note": "Only meaningful when the code under assessment exposes or consumes an API. OWASP publishes few CWE references per risk, so most rows rest on analyst mappings. A CWE that OWASP does not cite is mapped by weakness category, not by its CWE parents, because the cited CWEs are references, not a complete mapping.",
+   "note_ar": "لا معنى لهذا الإطار إلا إذا كانت الشيفرة المُقيَّمة تعرض واجهة API أو تستهلكها. تنشر OWASP مراجع CWE قليلة لكل خطر، لذا تستند معظم الصفوف إلى ربط المحلل. أما معرّف CWE الذي لا تذكره OWASP فيُربط حسب فئة نقطة الضعف لا حسب آبائه في CWE، لأن معرّفات CWE المذكورة مراجع وليست ربطًا كاملًا.",
    "inherit": false
   },
   "owasp-asvs-4.0.3": {
@@ -3801,7 +3820,8 @@
      "V4.2"
     ]
    },
-   "note": "Requirement-level rows come from the CWE column of the official ASVS CSV; section-level rows (e.g. V5.3) are analyst fallbacks. Only requirements with findings are listed; an ASVS verification needs manual testing of every requirement of the chosen level."
+   "note": "Requirement-level rows come from the CWE column of the official ASVS CSV; section-level rows (e.g. V5.3) are analyst fallbacks. Only requirements with findings are listed; an ASVS verification needs manual testing of every requirement of the chosen level.",
+   "note_ar": "صفوف المتطلبات مأخوذة من عمود CWE في ملف CSV الرسمي لمعيار ASVS، أما صفوف الأقسام (مثل V5.3) فهي ربط احتياطي من المحلل. لا تُدرج إلا المتطلبات التي عليها نتائج؛ والتحقق وفق ASVS يحتاج إلى اختبار يدوي لكل متطلب في المستوى المختار."
   },
   "cwe-top25-2024": {
    "title": "CWE Top 25 (2024)",
@@ -3991,7 +4011,8 @@
    "cwe_analyst": {},
    "cwe_na": {},
    "category": {},
-   "note": "A finding whose CWE is a descendant of a Top 25 entry is counted under that entry (basis \"inherited\")."
+   "note": "A finding whose CWE is a descendant of a Top 25 entry is counted under that entry (basis \"inherited\").",
+   "note_ar": "النتيجة التي يتفرع معرّف CWE الخاص بها من أحد بنود Top 25 تُحتسب تحت ذلك البند (الأساس «موروث»)."
   },
   "pci-dss-4.0": {
    "title": "PCI DSS v4.0",
@@ -4254,7 +4275,8 @@
    "all": [
     "6.3.1"
    ],
-   "note": "PCI DSS does not publish a CWE mapping; every row is an analyst mapping from the requirement wording. Requirement 6.2.4 lists attack classes as unnumbered bullets, so the suffix (-injection, -data, -crypto, -logic, -access) names the bullet. Requirements 3.x and 4.2.1 apply only where account data (PAN) is stored or transmitted, and 8.6.2 only to accounts that can be used for interactive login; a finding listed there needs that context confirmed. Requirement numbers are the same in v4.0.1."
+   "note": "PCI DSS does not publish a CWE mapping; every row is an analyst mapping from the requirement wording. Requirement 6.2.4 lists attack classes as unnumbered bullets, so the suffix (-injection, -data, -crypto, -logic, -access) names the bullet. Requirements 3.x and 4.2.1 apply only where account data (PAN) is stored or transmitted, and 8.6.2 only to accounts that can be used for interactive login; a finding listed there needs that context confirmed. Requirement numbers are the same in v4.0.1.",
+   "note_ar": "لا ينشر PCI DSS ربطًا مع CWE؛ فكل صف ربطٌ من المحلل مبني على نص المتطلب. يسرد المتطلب 6.2.4 فئات الهجمات في نقاط غير مرقّمة، لذا تدل لاحقة المعرّف على النقطة المقصودة: injection أو data أو crypto أو logic أو access. لا تنطبق المتطلبات 3.x و4.2.1 إلا حيث تُخزَّن بيانات الحساب (PAN) أو تُنقل، ولا ينطبق 8.6.2 إلا على الحسابات التي يمكن استخدامها لتسجيل الدخول التفاعلي؛ والنتيجة المدرجة هناك تحتاج إلى تأكيد هذا السياق. أرقام المتطلبات هي نفسها في v4.0.1."
   },
   "nist-ssdf-1.1": {
    "title": "NIST SSDF v1.1 (SP 800-218)",
@@ -4432,7 +4454,8 @@
     "RV.1.2",
     "RV.2.1"
    ],
-   "note": "SSDF practices describe the development process. A finding is an issue that tasks PW.7.2 and RV.1.2 are meant to discover and that RV.2.1 requires to be analyzed; it does not show that a practice is absent. NIST publishes no CWE mapping; rows are analyst mappings."
+   "note": "SSDF practices describe the development process. A finding is an issue that tasks PW.7.2 and RV.1.2 are meant to discover and that RV.2.1 requires to be analyzed; it does not show that a practice is absent. NIST publishes no CWE mapping; rows are analyst mappings.",
+   "note_ar": "تصف ممارسات SSDF عملية التطوير. النتيجة مشكلةٌ صُممت المهمتان PW.7.2 وRV.1.2 لاكتشافها، وتشترط المهمة RV.2.1 تحليلها؛ ولا تدل على غياب ممارسة ما. لا تنشر NIST ربطًا مع CWE؛ والصفوف ربطٌ من المحلل."
   },
   "nist-800-53r5": {
    "title": "NIST SP 800-53 Rev. 5",
@@ -4746,7 +4769,8 @@
    "all": [
     "SA-11"
    ],
-   "note": "NIST publishes no CWE mapping for SP 800-53; rows are analyst mappings from the control statements. SA-11 and SA-11(1) list every finding because static analysis is the activity those controls require; the findings are its output."
+   "note": "NIST publishes no CWE mapping for SP 800-53; rows are analyst mappings from the control statements. SA-11 and SA-11(1) list every finding because static analysis is the activity those controls require; the findings are its output.",
+   "note_ar": "لا تنشر NIST ربطًا مع CWE للمعيار SP 800-53؛ والصفوف ربطٌ من المحلل مبني على نصوص الضوابط. يُدرج الضابطان SA-11 وSA-11(1) كل النتائج لأن التحليل الساكن هو النشاط الذي يشترطانه، والنتائج مخرجاته."
   },
   "iso-27001-2022": {
    "title": "ISO/IEC 27001:2022 Annex A",
@@ -4986,7 +5010,8 @@
     ]
    },
    "all": [],
-   "note": "ISO publishes no CWE mapping; rows are analyst mappings from the control titles and the ISO/IEC 27002:2022 guidance. Control titles only; the standard text is copyrighted."
+   "note": "ISO publishes no CWE mapping; rows are analyst mappings from the control titles and the ISO/IEC 27002:2022 guidance. Control titles only; the standard text is copyrighted.",
+   "note_ar": "لا تنشر ISO ربطًا مع CWE؛ والصفوف ربطٌ من المحلل مبني على عناوين الضوابط وإرشادات ISO/IEC 27002:2022. تُعرض عناوين الضوابط فقط، لأن نص المعيار محمي بحقوق النشر."
   },
   "hipaa-164.312": {
    "title": "HIPAA Security Rule 164.312 (technical safeguards)",
@@ -5061,7 +5086,8 @@
     ]
    },
    "all": [],
-   "note": "Mapped only where a weakness class bears directly on a technical safeguard, and relevant only if the system creates, receives, maintains or transmits ePHI. Injection, XSS and similar findings are not mapped to a specific safeguard; they belong in the risk analysis required by 164.308(a)(1)(ii)(A). Analyst mapping; HHS publishes no CWE mapping."
+   "note": "Mapped only where a weakness class bears directly on a technical safeguard, and relevant only if the system creates, receives, maintains or transmits ePHI. Injection, XSS and similar findings are not mapped to a specific safeguard; they belong in the risk analysis required by 164.308(a)(1)(ii)(A). Analyst mapping; HHS publishes no CWE mapping.",
+   "note_ar": "لا يُربط إلا حيث تمس فئة نقطة الضعف ضمانةً تقنية مباشرةً، ولا يهم إلا إذا كان النظام يُنشئ المعلومات الصحية المحمية الإلكترونية (ePHI) أو يستقبلها أو يحتفظ بها أو ينقلها. لا تُربط نتائج الحقن وXSS وما شابهها بضمانة بعينها، فمكانها تحليل المخاطر الذي يشترطه البند 164.308(a)(1)(ii)(A). ربطٌ من المحلل؛ إذ لا تنشر HHS ربطًا مع CWE."
   },
   "gdpr-art32": {
    "title": "GDPR Article 32 (security of processing)",
@@ -5105,7 +5131,8 @@
    "all": [
     "Art.32(1)(b)"
    ],
-   "note": "Generic mapping, relevant only if the system processes personal data. Article 32 requires measures appropriate to the risk; it prescribes no technical control list. Running this analysis regularly supports Art. 32(1)(d) (regular testing and evaluation of measures)."
+   "note": "Generic mapping, relevant only if the system processes personal data. Article 32 requires measures appropriate to the risk; it prescribes no technical control list. Running this analysis regularly supports Art. 32(1)(d) (regular testing and evaluation of measures).",
+   "note_ar": "ربط عام، لا يهم إلا إذا كان النظام يعالج بيانات شخصية. تشترط المادة 32 تدابير تتناسب مع المخاطر، ولا تفرض قائمة ضوابط تقنية. إجراء هذا التحليل بانتظام يدعم المادة 32(1)(d) (الاختبار والتقييم المنتظمان للتدابير)."
   }
  },
  "rules": [

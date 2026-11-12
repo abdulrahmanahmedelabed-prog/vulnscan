@@ -44,17 +44,31 @@ try {
     Write-Host "kashif: checksum verified"
 
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+    $Dir = (Resolve-Path -LiteralPath $Dir).ProviderPath       # a relative KASHIF_INSTALL_DIR must not go on PATH as is
     Copy-Item -Force (Join-Path $Tmp $Asset) (Join-Path $Dir "kashif.exe")
     # "vulnscan" keeps working as an alias, the same shim the setup wizard installs (packaging/windows/vulnscan.cmd)
     Set-Content -Encoding Ascii -Path (Join-Path $Dir "vulnscan.cmd") -Value "@echo off`r`n`"%~dp0kashif.exe`" %*"
-    # an older install put a full copy at vulnscan.exe, which would win over vulnscan.cmd on PATH and never be updated
-    Remove-Item -Force (Join-Path $Dir "vulnscan.exe") -ErrorAction SilentlyContinue
+    # an older (0.9.x) install put a full copy at vulnscan.exe, which would win over vulnscan.cmd on PATH and never be
+    # updated; its in-app updater may also have left vulnscan.exe.old next to it
+    foreach ($name in @("vulnscan.exe", "vulnscan.exe.old")) {
+        $stale = Join-Path $Dir $name
+        Remove-Item -Force -LiteralPath $stale -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $stale) {
+            Write-Warning "kashif: could not remove the old $stale (is it running?); close it and delete it, or 'vulnscan' keeps starting the old version"
+        }
+    }
     $version = & (Join-Path $Dir "kashif.exe") --version
     Write-Host "kashif: installed $version to $Dir (vulnscan is kept as an alias)"
 
+    # The user PATH may be unset ($null), empty, end with ';' or hold empty entries, and may already list this folder
+    # in another letter case or with a trailing '\': compare case-insensitively without the trailing '\', and append
+    # the folder (dropping empty entries) only when it is missing.
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if (-not (($userPath -split ';') -contains $Dir)) {
-        [Environment]::SetEnvironmentVariable("Path", (($userPath.TrimEnd(';') + ";" + $Dir).TrimStart(';')), "User")
+    $entries = @("$userPath" -split ';' | Where-Object { $_.Trim() -ne "" })
+    $want = $Dir.TrimEnd('\').ToLowerInvariant()
+    $present = @($entries | Where-Object { $_.Trim().TrimEnd('\').ToLowerInvariant() -eq $want }).Count -gt 0
+    if (-not $present) {
+        [Environment]::SetEnvironmentVariable("Path", ((@($entries) + $Dir) -join ';'), "User")
         Write-Host "kashif: added $Dir to your PATH (open a new terminal to use it)"
     }
     Write-Host "kashif: run 'kashif ui' for the web interface, or 'kashif .\project' to scan from the terminal"

@@ -183,8 +183,11 @@ STR = {
         "e_exposure": "unknown exposure '{value}' (choose from: internet, internal, local)",
         "e_aws": "the asff format needs meta['aws_account_id'] (12 digits) and meta['aws_region'] "
                  "(--aws-account, --aws-region)",
+        "e_aws_cli": "the asff format needs --aws-account (the 12-digit AWS account ID) and --aws-region "
+                     "(e.g. eu-west-1)",
         "e_report": "cannot read the report '{path}': {error}",
-        "e_shape": "'{path}' is not a Kashif JSON report (expected an object with a 'findings' list, or a list)",
+        "e_shape": "'{path}' is not a Kashif JSON report (expected the output of 'kashif PATH -f json': an object "
+                   "with a 'findings' list, or a non-empty list of findings)",
         "e_write": "cannot write '{path}': {error}",
         "h_desc": "Convert a Kashif JSON report to the format of another security tool.",
         "h_report": "Kashif JSON report (kashif PATH --format json), or - for standard input",
@@ -245,8 +248,11 @@ STR = {
         "e_exposure": "قيمة التعرّض '{value}' غير معروفة (المتاح: internet أو internal أو local)",
         "e_aws": "تحتاج الصيغة asff إلى meta['aws_account_id'] (12 رقمًا) و meta['aws_region'] "
                  "(--aws-account و --aws-region)",
+        "e_aws_cli": "تحتاج صيغة asff إلى --aws-account (رقم حساب AWS من 12 رقمًا) وإلى --aws-region "
+                     "(مثل eu-west-1)",
         "e_report": "تعذّرت قراءة التقرير '{path}': {error}",
-        "e_shape": "'{path}' ليس تقرير JSON من كاشِف (المتوقع كائن فيه قائمة 'findings'، أو قائمة)",
+        "e_shape": "'{path}' ليس تقرير JSON من كاشِف (المتوقع مخرجات 'kashif PATH -f json': كائن فيه قائمة "
+                   "'findings'، أو قائمة نتائج غير فارغة)",
         "e_write": "تعذّرت الكتابة إلى '{path}': {error}",
         "h_desc": "تحويل تقرير JSON من كاشِف إلى صيغة أداة أمنية أخرى.",
         "h_report": "تقرير JSON من كاشِف (kashif PATH --format json)، أو - للقراءة من الدخل القياسي",
@@ -1299,23 +1305,32 @@ def export(findings, fmt: str, meta: "dict | None" = None) -> str:
 
 # ------------------------------------------------------------------------------------------------------- CLI
 
+def _bi(lang: str, key: str, **kw) -> str:
+    """A command-line text in ``lang``; "both" (the default of ``kashif``): the Arabic line, then the English line."""
+    from .i18n.cliargs import pick
+    return pick(lang, _t("ar", key, **kw), _t("en", key, **kw))
+
+
 def _parser(lang: str) -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="kashif export", description=_t(lang, "h_desc"))
-    p.add_argument("report", nargs="?", help=_t(lang, "h_report"))
-    p.add_argument("-f", "--format", dest="fmt", metavar="FORMAT", help=_t(lang, "h_format"))
-    p.add_argument("-o", "--output", metavar="FILE", help=_t(lang, "h_output"))
-    p.add_argument("--lang", choices=LANGS, default=lang, help=_t(lang, "h_lang"))
-    p.add_argument("--list-formats", action="store_true", help=_t(lang, "h_list"))
-    p.add_argument("--min-severity", metavar="SEVERITY", help=_t(lang, "h_min"))
-    p.add_argument("--fail-on", metavar="SEVERITY", help=_t(lang, "h_fail"))
-    p.add_argument("--project", help=_t(lang, "h_project"))
-    p.add_argument("--exposure", choices=sorted(_EXPOSURE), help=_t(lang, "h_exposure"))
-    p.add_argument("--aws-account", metavar="ID", help=_t(lang, "h_account"))
-    p.add_argument("--aws-region", metavar="REGION", help=_t(lang, "h_region"))
-    p.add_argument("--repo-url", metavar="URL", help=_t(lang, "h_repo"))
-    p.add_argument("--ref", help=_t(lang, "h_ref"))
-    p.add_argument("--bom", action="store_true", help=_t(lang, "h_bom"))
-    p.add_argument("--score", action="store_true", help=_t(lang, "h_score"))
+    from .i18n.cliargs import HelpFormatter
+    h = lambda key: _bi(lang, key)                                         # noqa: E731
+    p = argparse.ArgumentParser(prog="kashif export", description=h("h_desc"), formatter_class=HelpFormatter)
+    p.add_argument("report", nargs="?", help=h("h_report"))
+    p.add_argument("-f", "--format", dest="fmt", metavar="FORMAT", help=h("h_format"))
+    p.add_argument("-o", "--output", metavar="FILE", help=h("h_output"))
+    # "both" (from `kashif export` on a system with no language set): bilingual help and errors, English export
+    p.add_argument("--lang", choices=LANGS + ("both",), default=lang, metavar="{en,ar}", help=h("h_lang"))
+    p.add_argument("--list-formats", action="store_true", help=h("h_list"))
+    p.add_argument("--min-severity", metavar="SEVERITY", help=h("h_min"))
+    p.add_argument("--fail-on", metavar="SEVERITY", help=h("h_fail"))
+    p.add_argument("--project", help=h("h_project"))
+    p.add_argument("--exposure", choices=sorted(_EXPOSURE), help=h("h_exposure"))
+    p.add_argument("--aws-account", metavar="ID", help=h("h_account"))
+    p.add_argument("--aws-region", metavar="REGION", help=h("h_region"))
+    p.add_argument("--repo-url", metavar="URL", help=h("h_repo"))
+    p.add_argument("--ref", help=h("h_ref"))
+    p.add_argument("--bom", action="store_true", help=h("h_bom"))
+    p.add_argument("--score", action="store_true", help=h("h_score"))
     return p
 
 
@@ -1330,12 +1345,18 @@ def _load_report(path: str, lang: str):
                 text = fh.read()
         data = json.loads(text)
     except (OSError, ValueError, RecursionError) as e:     # RecursionError: JSON nested thousands of levels deep
-        raise ExportError(_t(lang, "e_report", path=path, error=str(e)[:300] or type(e).__name__)) from e
-    if isinstance(data, list):
+        raise ExportError(_bi(lang, "e_report", path=path, error=str(e)[:300] or type(e).__name__)) from e
+    # Only a Kashif report goes on: `[]`, `{}` or another tool's JSON would otherwise give an empty export (exit 0)
+    if isinstance(data, list) and data and all(_is_finding(d) for d in data):
         return data, {}
-    if isinstance(data, dict) and isinstance(data.get("findings"), list):
+    if isinstance(data, dict) and isinstance(data.get("findings"), list) and all(_is_finding(d) for d in data["findings"]):
         return data["findings"], {k: data[k] for k in ("target", "generated_at", "files_scanned") if k in data}
-    raise ExportError(_t(lang, "e_shape", path=path))
+    raise ExportError(_bi(lang, "e_shape", path=path))
+
+
+def _is_finding(d) -> bool:
+    """A finding of a Kashif JSON report (``Finding.to_dict()``): an object with a ``rule_id``."""
+    return isinstance(d, dict) and isinstance(d.get("rule_id"), str) and bool(d["rule_id"].strip())
 
 
 def _utf8_stdout() -> None:
@@ -1351,16 +1372,13 @@ def _utf8_stdout() -> None:
 def main(argv: "list[str] | None" = None) -> int:
     """Command line: ``python3 -m vulnscan.exporters report.json -f defectdojo -o out.json``.
     Exit status: 0 done, 2 usage or input error."""
+    from .i18n.cliargs import help_lang, localized_argparse
     argv = list(sys.argv[1:] if argv is None else argv)
-    lang = "en"
-    for i, arg in enumerate(argv):                         # the language also decides the language of --help
-        if arg == "--lang" and i + 1 < len(argv) and argv[i + 1] in LANGS:
-            lang = argv[i + 1]
-        elif arg.startswith("--lang=") and arg[7:] in LANGS:
-            lang = arg[7:]
-    parser = _parser(lang)
-    args = parser.parse_args(argv)
-    lang = args.lang
+    hlang = help_lang(argv)                                 # the language also decides the language of --help
+    with localized_argparse(hlang):
+        parser = _parser(hlang)
+        args = parser.parse_args(argv)
+    lang = "ar" if args.lang == "ar" else "en"             # "both": an English export, as from a "both" scan
     if args.list_formats:
         _utf8_stdout()
         for info in list_formats(lang):
@@ -1370,7 +1388,7 @@ def main(argv: "list[str] | None" = None) -> int:
         parser.print_usage(sys.stderr)
         return 2
     try:
-        findings, meta = _load_report(args.report, lang)
+        findings, meta = _load_report(args.report, args.lang)
         meta["lang"] = lang
         for key, value in (("min_severity", args.min_severity), ("fail_on", args.fail_on), ("project", args.project),
                            ("exposure", args.exposure), ("aws_account_id", args.aws_account),
@@ -1379,6 +1397,11 @@ def main(argv: "list[str] | None" = None) -> int:
                 meta[key] = value
         if args.bom:
             meta["bom"] = True
+        if args.fmt == "asff":                              # checked first, so the message names the options
+            try:
+                _asff([], [], meta, lang)
+            except ExportError:
+                raise ExportError(_bi(args.lang, "e_aws_cli")) from None
         if args.score:
             report = project_risk(findings, meta)
             print(_t(lang, "m_score", score=report["score"], rating=rating_label(report["rating"], lang),

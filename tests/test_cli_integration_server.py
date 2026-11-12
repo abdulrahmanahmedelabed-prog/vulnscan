@@ -7,6 +7,7 @@ The new endpoints keep the server's protections: a loopback Host header, no cros
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 import urllib.error
@@ -156,7 +157,11 @@ def test_attack_surface_job(server, done_scan):
     scan, _ = done_scan
     sid = scan["id"]
     status, doc = jcall(server, f"/api/scans/{sid}/surface")
-    assert status == 404 and doc == {"status": "none", "scan": sid, "available": True}
+    # no map yet is a normal state, not a missing resource: 200, so the browser logs no "Failed to load resource"
+    assert status == 200 and doc == {"status": "none", "scan": sid, "available": True}
+    proj_id = jcall(server, "/api/projects")[1][0]["id"]
+    assert jcall(server, f"/api/projects/{proj_id}/surface") == (200, {"status": "none", "scan": sid, "available": True})
+    assert jcall(server, "/api/projects/0123456789ab/surface")[0] == 404      # an unknown project still is 404
     # starting a build writes a file: JSON only, same origin only
     assert call(server, f"/api/scans/{sid}/surface", "POST", {}, headers={"Content-Type": "text/plain"})[0] == 403
     assert call(server, f"/api/scans/{sid}/surface", "POST", {}, headers={"Origin": "http://evil.example"})[0] == 403
@@ -242,6 +247,52 @@ def test_triage_requests_are_validated(server, done_scan):
         status = 413
     assert status == 413
     assert call(server, "/api/triage/set", "POST", None, headers={"Content-Length": "0"})[0] == 404   # {} -> no scan
+
+
+def _symlink(link, target, is_dir):
+    try:
+        os.symlink(target, link, target_is_directory=is_dir)
+    except (OSError, NotImplementedError) as e:            # Windows without the symlink privilege
+        pytest.skip(f"cannot create symbolic links here: {e}")
+
+
+@pytest.mark.parametrize("planted", ["dir", "file"])
+def test_triage_write_refuses_a_symlinked_kashif_dir_or_file(server, done_scan, tmp_path, planted):
+    """A hostile repository commits .kashif (or .kashif/triage.json) as a link to somewhere else: the UI must not
+    write the triage file through it."""
+    scan, proj = done_scan
+    sid = scan["id"]
+    fp = scan["findings"][0]["fingerprint"]
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    if planted == "dir":
+        _symlink(proj / ".kashif", elsewhere, True)
+    else:
+        (proj / ".kashif").mkdir()
+        _symlink(proj / ".kashif" / "triage.json", elsewhere / "triage.json", False)
+    status, err = jcall(server, "/api/triage/set", "POST", {"scan": sid, "fingerprint": fp, "status": "confirmed",
+                                                            "author": "t"})
+    assert status == 409 and err["code"] == "unsafe_triage_path", err
+    assert "symbolic link" in err["error"] and "رابط رمزي" in err["error_ar"]
+    assert list(elsewhere.iterdir()) == []                                  # nothing written through the link
+    assert jcall(server, "/api/triage/comment", "POST", {"scan": sid, "fingerprint": fp, "text": "x"})[0] == 409
+    assert list(elsewhere.iterdir()) == []
+
+
+def test_unsafe_triage_target_checks_the_resolved_folder(tmp_path):
+    """The resolved-path comparison also catches what is_symlink() misses (a Windows junction) and leaves a
+    normal project, a missing .kashif and uploads alone."""
+    from vulnscan.server import unsafe_triage_target
+    proj = tmp_path / "p"
+    proj.mkdir()
+    scan = {"kind": "path", "target": str(proj)}
+    assert not unsafe_triage_target(scan, proj / ".kashif" / "triage.json")          # not created yet
+    (proj / ".kashif").mkdir()
+    assert not unsafe_triage_target(scan, proj / ".kashif" / "triage.json")
+    assert unsafe_triage_target(scan, tmp_path / "other" / ".kashif" / "triage.json")  # not under the project
+    assert not unsafe_triage_target({"kind": "upload", "target": "x.zip"}, tmp_path / "t.json")
+    (proj / "a.py").write_text("x = 1\n", encoding="utf-8")                          # a single scanned file
+    assert not unsafe_triage_target({"kind": "path", "target": str(proj / "a.py")}, proj / ".kashif" / "triage.json")
 
 
 def test_new_get_endpoints_refuse_cross_site_and_rebinding(server, done_scan):

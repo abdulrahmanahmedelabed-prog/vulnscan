@@ -45,6 +45,13 @@ jobs:
           sh site/install.sh
           "$KASHIF_INSTALL_DIR/kashif" --version
           "$KASHIF_INSTALL_DIR/vulnscan" --version
+      - name: install.sh with a relative install folder leaves a working vulnscan alias
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          KASHIF_INSTALL_DIR=kashif-rel sh "$GITHUB_WORKSPACE/site/install.sh"
+          cd /
+          "$RUNNER_TEMP/kashif-rel/vulnscan" --version          # 1.0.0 made it a dangling link to "kashif-rel/kashif"
       - name: install.sh refuses a version that does not exist
         shell: bash
         env:
@@ -71,6 +78,69 @@ jobs:
           # the pre-rename name stays as an alias (a .cmd shim, like the setup wizard's)
           cmd /c "`"$env:KASHIF_INSTALL_DIR\vulnscan.cmd`" --version"
           if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: install.ps1 works with an unset, empty or messy user PATH
+        shell: pwsh
+        env:
+          KASHIF_INSTALL_DIR: ${{ runner.temp }}\kashif-path
+        run: |
+          $saved = [Environment]::GetEnvironmentVariable("Path", "User")
+          function Get-UserPath { [Environment]::GetEnvironmentVariable("Path", "User") }
+          try {
+            $dir = $env:KASHIF_INSTALL_DIR
+            # unset: GetEnvironmentVariable returns $null (1.0.0 failed here with "$userPath.TrimEnd")
+            [Environment]::SetEnvironmentVariable("Path", $null, "User")
+            ./site/install.ps1
+            if ((Get-UserPath) -ne $dir) { throw "unset PATH: got '$(Get-UserPath)'" }
+            # empty entries and a trailing ';' are dropped when the folder is appended
+            [Environment]::SetEnvironmentVariable("Path", "C:\kashif-test-a;;C:\kashif-test-b;", "User")
+            ./site/install.ps1
+            if ((Get-UserPath) -ne "C:\kashif-test-a;C:\kashif-test-b;$dir") { throw "messy PATH: got '$(Get-UserPath)'" }
+            # already there in another letter case and with a trailing '\': the PATH is left exactly as it was
+            $same = "C:\kashif-test-a;$($dir.ToUpperInvariant())\;"
+            [Environment]::SetEnvironmentVariable("Path", $same, "User")
+            ./site/install.ps1
+            if ((Get-UserPath) -ne $same) { throw "duplicate added: got '$(Get-UserPath)'" }
+          }
+          finally {
+            [Environment]::SetEnvironmentVariable("Path", $saved, "User")
+          }
+      - name: install.ps1 falls back to the legacy asset name for a release made before the rename
+        shell: pwsh
+        env:
+          KASHIF_INSTALL_DIR: ${{ runner.temp }}\kashif-old
+          KASHIF_VERSION: v0.9.0
+        run: |
+          ./site/install.ps1
+          $v = & "$env:KASHIF_INSTALL_DIR\kashif.exe" --version
+          if ($LASTEXITCODE -ne 0 -or "$v" -notmatch '\b0\.9\.0\b') { throw "unexpected version: $v" }
+          cmd /c "`"$env:KASHIF_INSTALL_DIR\vulnscan.cmd`" --version"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: install.ps1 upgrades a 0.9.x layout and removes its stale vulnscan.exe
+        shell: pwsh
+        env:
+          KASHIF_INSTALL_DIR: ${{ runner.temp }}\kashif-old
+        run: |
+          # a 0.9.x install.ps1 put a full copy at vulnscan.exe (and its updater a vulnscan.exe.old next to it)
+          Copy-Item "$env:KASHIF_INSTALL_DIR\kashif.exe" "$env:KASHIF_INSTALL_DIR\vulnscan.exe"
+          Copy-Item "$env:KASHIF_INSTALL_DIR\kashif.exe" "$env:KASHIF_INSTALL_DIR\vulnscan.exe.old"
+          ./site/install.ps1
+          foreach ($name in "vulnscan.exe", "vulnscan.exe.old") {
+            if (Test-Path "$env:KASHIF_INSTALL_DIR\$name") { throw "$name was not removed" }
+          }
+          $v = & "$env:KASHIF_INSTALL_DIR\kashif.exe" --version
+          if ($LASTEXITCODE -ne 0 -or "$v" -match '\b0\.9\.0\b') { throw "not upgraded: $v" }
+          $alias = cmd /c "`"$env:KASHIF_INSTALL_DIR\vulnscan.cmd`" --version"
+          if ($LASTEXITCODE -ne 0 -or "$alias" -ne "$v") { throw "vulnscan alias reports '$alias', kashif '$v'" }
+      - name: install.ps1 refuses a version that does not exist
+        shell: pwsh
+        env:
+          KASHIF_INSTALL_DIR: ${{ runner.temp }}\kashif-bad
+          KASHIF_VERSION: v0.0.1
+        run: |
+          $failed = $false
+          try { ./site/install.ps1 } catch { $failed = $true }
+          if (-not $failed) { throw "expected a failure" }
+          if (Test-Path "$env:KASHIF_INSTALL_DIR\kashif.exe") { throw "something was installed" }
 
   homebrew:
     runs-on: macos-latest

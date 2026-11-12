@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from . import __version__
 from .i18n import to_en
+from .i18n.plural import FILES_SCANNED, FINDINGS, ar_count
 from .model import (SARIF_LEVEL, SECURITY_SEVERITY, SEVERITIES, SEVERITY_AR, Finding,
                     ensure_fingerprints, sort_findings)
 
@@ -25,7 +26,7 @@ LANGS = ("ar", "en", "both")
 
 # Report labels: (Arabic, English). "both" keeps the historical Arabic labels (with English titles alongside).
 _LABELS = {
-    "scanned": ("{files} ملفًا مفحوصًا، {n} نتيجة", "{files} files scanned, {n} findings"),
+    "scanned": ("{files_ar}، {n_ar}", "{files_en}, {n_en}"),                     # see _scanned()
     "summary": ("الملخص (من الأعلى خطورة إلى الأقل):", "Summary (highest severity first):"),
     "none": ("✔ لم تُكتشف أي ثغرة بالقواعد المتاحة.", "✔ No vulnerabilities found by the available rules."),
     "md_title": ("تقرير الفحص الأمني", "Security scan report"),
@@ -125,13 +126,19 @@ def _fix_text(fix: dict, L: "_Lang") -> str:
                (fix.get("description_ar") or fix.get("description")))
 
 
+def _scanned(L: "_Lang", files: int, n: int) -> str:
+    """"12 files scanned, 1 finding", with nouns that agree with their numbers ("ملفان مفحوصان، 3 نتائج")."""
+    return L("scanned", files_ar=ar_count(files, FILES_SCANNED), n_ar=ar_count(n, FINDINGS),
+             files_en=f"{files} file{'' if files == 1 else 's'} scanned", n_en=f"{n} finding{'' if n == 1 else 's'}")
+
+
 def render_console(findings: list[Finding], target: str, files: int, notes: list[str], color: bool = True,
                    lang: str = "both") -> str:
     L = _Lang(lang)
     findings = sort_findings(findings)
     counts = summary_counts(findings)
     c = (lambda s, t: f"{COLORS[s]}{t}{RESET}") if color else (lambda s, t: t)
-    lines = [f"Kashif — {target}  ({L('scanned', files=files, n=len(findings))})", ""]
+    lines = [f"Kashif — {target}  ({_scanned(L, files, len(findings))})", ""]
     lines.append(L("summary"))
     for s in SEVERITIES:
         if L.en:

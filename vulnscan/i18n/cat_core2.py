@@ -12,6 +12,11 @@ CATALOG: dict[str, str] = {
     "لا تستخدم |safe أو autoescape off مع بيانات المستخدم؛ دع القالب يهرّب القيمة أو عقّمها (bleach) أولًا.":
         "Do not use |safe or autoescape off with user data; let the template escape the value or sanitize it (bleach) "
         "first.",
+    "بيانات غير موثوقة تُعرض في قالب عرض دون تهريب (<%- %> أو {{{ }}} أو != أو autoescape off)":
+        "Tainted data rendered unescaped by a view template (<%- %>, {{{ }}}, != or autoescape off)",
+    "اطبع القيمة بالوسم المهرِّب (<%= %> أو {{ }} أو #{}) وأبقِ autoescape مفعّلًا، أو عقّمها (DOMPurify) أولًا.":
+        "Print the value with the escaping tag (<%= %>, {{ }} or #{}) and keep autoescape on, or sanitize it "
+        "(DOMPurify) first.",
     "فعّل التهريب التلقائي (autoescape=True / select_autoescape) ولا تعطّله إلا لقوالب نصية غير HTML.":
         "Enable auto-escaping (autoescape=True / select_autoescape); disable it only for non-HTML text templates.",
     "أزل noent: true (الافتراضي آمن) أو استخدم محللًا لا يحلّ الكيانات الخارجية.":

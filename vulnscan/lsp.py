@@ -30,6 +30,7 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import sys
 import threading
 import time
@@ -40,7 +41,7 @@ import urllib.request
 from dataclasses import dataclass, field
 
 from . import __version__
-from .baseline import SCHEMA as BASELINE_SCHEMA, load_baseline
+from .baseline import SCHEMA as BASELINE_SCHEMA, load_baseline, read_baseline_text
 from .i18n import localize, to_en
 from .model import SEVERITIES, SEVERITY_AR, SEVERITY_EN, SEVERITY_RANK, Finding, assign_fingerprints
 from .plsql_frontend import PLSQL_EXTS
@@ -1309,8 +1310,12 @@ def add_to_baseline(path: pathlib.Path, finding: Finding) -> bool:
     is not a baseline (ValueError), so a typo in the setting cannot destroy unrelated JSON."""
     fp = finding.fingerprint()
     entries: list = []
-    if path.exists():
-        data = json.loads(path.read_text(encoding="utf-8"))
+    text = read_baseline_text(path)            # regular files only: not a committed symlink to /dev/zero or a FIFO
+    if text is not None:
+        try:
+            data = json.loads(text)
+        except RecursionError:
+            raise ValueError(f"{path} is not a vulnscan baseline") from None
         if not isinstance(data, dict) or not isinstance(data.get("fingerprints"), list):
             raise ValueError(f"{path} is not a vulnscan baseline")
         entries = [e for e in data["fingerprints"] if isinstance(e, dict)]
@@ -1320,9 +1325,20 @@ def add_to_baseline(path: pathlib.Path, finding: Finding) -> bool:
     entries.sort(key=lambda e: str(e.get("fp", "")))
     data = {"schema": BASELINE_SCHEMA, "tool_version": __version__, "count": len(entries), "fingerprints": entries}
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    # A fresh name opened with O_EXCL: a fixed "<baseline>.tmp" could be committed to the workspace as a symlink, and
+    # writing through it would overwrite the file it points to (e.g. ~/.bashrc) with text holding repository file names.
+    tmp = path.with_name(f"{path.name}.{secrets.token_hex(6)}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o666)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(data, ensure_ascii=False, indent=2))
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     return True
 
 

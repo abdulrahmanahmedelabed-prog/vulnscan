@@ -49,6 +49,46 @@ def _r(pat: str, flags: int = 0) -> re.Pattern:
     return re.compile(pat, flags)
 
 
+# SEC004 skips: placeholders, environment lookups, interpolation ...
+_SEC004_SKIP_HEAD = (r"""(?i)(example|sample|placeholder|changeme|your[_-]|xxx+|\$\{|\{\{|<[a-z_]+>|os\.environ|getenv|process\.env|"""
+                     r"""dummy|test|fake|mock|redacted|\*{3,}|"""
+                     r"""[:=]\s*['"]\$[A-Za-z_]\w*['"]|""")      # PHP / shell interpolation: password = '$pass_new'
+# ... a label table entry (i18n, column names): "secret": "secret" / 'password' => 'Password'. The key must be quoted: an
+# XML attribute or an assignment `password="password"` is a real (weak) credential. A quoted key whose value is that
+# same word is a label only in a table of such entries (see weak_credential_entry): `"Password": "password"` alone in a
+# JSON credentials object is the weak password itself ...
+_SEC004_LABEL = (r"""['"](?P<k>password|passwd|pwd|secret|api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|"""
+                 r"""client[_-]?secret)\b['"]?\s*[:=]>?\s*['"](?P=k)['"]""")
+# ... and an enum member named after a key kind (OpenAPI `apiKey = "apiKey"`) is a label whatever the quoting
+_SEC004_SKIP_TAIL = (r"""\b(?P<k2>api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret)\s*[:=]\s*"""
+                     r"""['"](?P=k2)['"])""")
+_SEC004_LABEL_RE = re.compile(r"(?i)" + _SEC004_LABEL)
+_SEC004_OTHER_SKIP = re.compile(_SEC004_SKIP_HEAD + _SEC004_SKIP_TAIL)
+# one `"key": "value"` / `'key' => 'value'` / `key = "value"` entry per line
+_KV_ENTRY = re.compile(r"""^\s*['"]?([A-Za-z_][\w.-]*)['"]?\s*(?::|=>?)\s*['"]([^'"]*)['"]\s*[,;]?\s*$""")
+
+
+def weak_credential_entry(rule_id: str, line: str, lines: list, lineno: int) -> bool:
+    """SEC004 skipped `line` only as a label-table entry (`"password": "password"`), but it is not one: its value is
+    not the display form of its key (`"password": "Password"`), and no line around it is another entry that repeats
+    its key (`"file": "file"`, `"status": "status"`): it is not part of a label table. `"Password" : "password"` in a JSON credentials
+    object (`"UserName": "Dummy"`, `"Description": …`) is a weak password: report it."""
+    if rule_id != "SEC004":
+        return False
+    m = _SEC004_LABEL_RE.search(line)
+    if not m or _SEC004_OTHER_SKIP.search(line):
+        return False
+    kv = _KV_ENTRY.match(line)
+    if kv and kv.group(1)[:1].islower() and kv.group(2)[:1].isupper():
+        return False                         # "password": "Password": the value is the key's display label
+    same = 0
+    for i in range(max(0, lineno - 11), min(len(lines), lineno + 10)):
+        e = _KV_ENTRY.match(lines[i]) if i != lineno - 1 else None
+        if e and e.group(1).lower() == e.group(2).lower():
+            same += 1
+    return same == 0
+
+
 RULES: list[Rule] = [
     # ------------------------------------------------------------------ secrets
     Rule("SEC001", "critical", "Private key committed", "مفتاح خاص مضمّن في الملفات",
@@ -64,13 +104,7 @@ RULES: list[Rule] = [
     Rule("SEC004", "high", "Hard-coded password / secret / API key", "كلمة مرور أو مفتاح API مكتوب في الكود",
          _r(r"""(?i)\b(password|passwd|pwd|secret|api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret)\b['"]?\s*[:=]\s*['"][^'"\s]{6,}['"]"""),
          "انقل القيمة إلى متغير بيئة أو مدير أسرار، وأصدر قيمة جديدة إذا كانت حقيقية.", "CWE-798",
-         skip=_r(r"""(?i)(example|sample|placeholder|changeme|your[_-]|xxx+|\$\{|\{\{|<[a-z_]+>|os\.environ|getenv|process\.env|dummy|test|fake|mock|redacted|\*{3,}|"""
-                 r"""[:=]\s*['"]\$[A-Za-z_]\w*['"]|"""      # PHP / shell interpolation: password = '$pass_new'
-                 # a label table (i18n, column names): "secret": "secret" / 'password' => 'Password'. The key must be
-                 # quoted: an XML attribute or an assignment `password="password"` is a real (weak) credential. An enum
-                 # member named after a key kind (OpenAPI `apiKey = "apiKey"`) is a label whatever the quoting
-                 r"""['"](?P<k>password|passwd|pwd|secret|api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret)\b['"]?\s*[:=]>?\s*['"](?P=k)['"]|"""
-                 r"""\b(?P<k2>api[_-]?key|apikey|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret)\s*[:=]\s*['"](?P=k2)['"])""")),
+         skip=_r(_SEC004_SKIP_HEAD + _SEC004_LABEL + "|" + _SEC004_SKIP_TAIL)),
     Rule("SEC005", "high", "JWT token literal", "رمز JWT مكتوب حرفيًا",
          _r(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
          "لا تضع رموز JWT في المصدر؛ أبطل الرمز إذا كان صالحًا.", "CWE-798"),

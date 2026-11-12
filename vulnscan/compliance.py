@@ -246,13 +246,13 @@ STR = {
                         "لا نتائج: لا شيء مرتبط بالضابط؛ هذا غياب للنتائج وليس إثباتًا لتحقق الضابط. الضابط الذي يخص كل نتيجة "
                         "(الأساس «عام»، مثل اختبار المطوّر الأمني) يظهر بحالة «مراجعة» على الأكثر: النتائج هي ناتج ذلك "
                         "النشاط وليست دليلًا على غيابه.",
-        "m_risk": "درجة المخاطر",
+        "m_risk": "درجة الخطر",
         "m_risk_txt": "W = 10 × الحرجة + 5 × العالية + 2 × المتوسطة + 0.5 × المنخفضة؛ الدرجة = 100 × (1 − e^(−W/25)) "
                       "مقرّبة. التصنيف: 0 لا يوجد، 1–24 منخفض، 25–49 متوسط، 50–74 عالٍ، 75–100 حرج؛ ولا يقل عن «عالٍ» "
                       "عند وجود نتيجة حرجة ولا عن «متوسط» عند وجود نتيجة عالية. الدرجة للمقارنة بين التقارير، وليست "
                       "درجة CVSS ولا احتمالًا.",
         "m_review": "ربط المحلل وربط الفئة اجتهاد. راجعهما قبل الاعتماد عليهما؛ المصادر في الملحق ب.",
-        "risk": "درجة المخاطر", "rating": "التصنيف",
+        "risk": "درجة الخطر", "rating": "التصنيف",
         "r_none": "لا يوجد", "r_low": "منخفض", "r_moderate": "متوسط", "r_high": "عالٍ", "r_critical": "حرج",
         "sev": "الخطورة", "count": "العدد",
         "critical": "حرج", "high": "عالٍ", "medium": "متوسط", "low": "منخفض", "info": "معلوماتي",
@@ -284,6 +284,11 @@ STR = {
 def _lang(lang: str | None) -> str:
     """Report language: "ar" or "en" (the shared "both" setting means Arabic here)."""
     return "en" if lang == "en" else "ar" if lang in ("ar", "both") else "en"
+
+
+def _comma(lang: str) -> str:
+    """The list separator of the report language: the Arabic comma in Arabic text."""
+    return "، " if _lang(lang) == "ar" else ", "
 
 
 def _t(lang: str, key: str, **kw) -> str:
@@ -349,10 +354,23 @@ def framework_info(framework: str, lang: str = "en") -> dict:
     if fid is None:
         raise ValueError(framework)
     fw = data["frameworks"][fid]
-    title = fw.get("title_ar") if _lang(lang) == "ar" and fw.get("title_ar") else fw["title"]
-    return {"id": fid, "title": title, "short": fw.get("short", fw["title"]), "note": fw.get("note", ""),
-            "source": dict(data["sources"].get(fw.get("source", ""), {}), id=fw.get("source", "")),
+    ar = _lang(lang) == "ar"
+    title = fw.get("title_ar") if ar and fw.get("title_ar") else fw["title"]
+    note = fw.get("note_ar") if ar and fw.get("note_ar") else fw.get("note", "")
+    return {"id": fid, "title": title, "short": fw.get("short", fw["title"]), "note": note,
+            "source": dict(_source_text(data["sources"].get(fw.get("source", ""), {}), lang), id=fw.get("source", "")),
             "controls": len(fw["controls"])}
+
+
+def _source_text(src: dict, lang: str = "en") -> dict:
+    """A mapping source in the report language: ``title`` and ``retrieved`` from their ``_ar`` variants in Arabic
+    (proper nouns such as OWASP or PCI DSS stay Latin there); the ``_ar`` keys themselves are not passed on."""
+    ar = _lang(lang) == "ar"
+    out = {k: v for k, v in src.items() if not k.endswith("_ar")}
+    for key in ("title", "retrieved"):
+        if ar and src.get(key + "_ar"):
+            out[key] = src[key + "_ar"]
+    return out
 
 
 def _control_title(fid: str, control: str, lang: str = "en") -> str:
@@ -864,14 +882,14 @@ def _notes(m: dict, lang: str) -> list[str]:
     return [str(n) for n in en] if isinstance(en, list) and len(en) == len(m["notes"]) else [_to_en(n) for n in m["notes"]]
 
 
-def _sources_used(fids) -> list[tuple[str, dict]]:
+def _sources_used(fids, lang: str = "en") -> list[tuple[str, dict]]:
     data = load_data()
     keys = [data["frameworks"][f].get("source", "") for f in fids] + ["cwe-hierarchy", "kashif-analyst"]
     seen, out = set(), []
     for k in keys:
         if k and k not in seen and k in data["sources"]:
             seen.add(k)
-            out.append((k, data["sources"][k]))
+            out.append((k, _source_text(data["sources"][k], lang)))
     return out
 
 
@@ -903,7 +921,7 @@ def render_json(findings, meta: dict | None = None, lang: str = "en", frameworks
             "fingerprint": f.get("fingerprint", ""), "source": f.get("source", ""), "categories": categories(f),
             "compliance": explain_finding(f, fids, lang),
         } for f in items],
-        "sources": dict(_sources_used(fids)),
+        "sources": dict(_sources_used(fids, lang)),
     }
     return json.dumps(out, ensure_ascii=False, indent=2)
 
@@ -935,7 +953,7 @@ def render_markdown(findings, meta: dict | None = None, lang: str = "en", framew
     risk = risk_score(items)
     lines = [f"# {_t(lang, 'report_title')}", "", f"> {_t(lang, 'not_cert')}", "",
              f"**{_t(lang, 'risk')}:** {risk['score']}/100 ({_t(lang, 'r_' + risk['rating'])}) - "
-             + ", ".join(f"{_t(lang, s)}: {risk['counts'][s]}" for s in SEVERITIES), ""]
+             + _comma(lang).join(f"{_t(lang, s)}: {risk['counts'][s]}" for s in SEVERITIES), ""]
     for fid, fw in summarize(items, frameworks, lang, fail_on).items():
         lines += [f"## {fw['title']}", ""]
         rows = [r for r in fw["rows"] if r["total"]]
@@ -1048,6 +1066,14 @@ def _bt(text) -> str:
     return f"<bdi dir='ltr'>{_e(text)}</bdi>"
 
 
+def _bt_text(text, lang: str) -> str:
+    """Like :func:`_bt` for prose in the report language: Arabic text that starts with a Latin name ("OWASP Top
+    10:2021، قائمة …") keeps the right-to-left direction instead of taking it from its first letter."""
+    if lang == "ar" and re.search(r"[\u0600-\u06FF]", str(text if text is not None else "")):
+        return f"<bdi dir='rtl'>{_e(text)}</bdi>"
+    return _bt(text)
+
+
 def _sev_badge(sev: str, lang: str) -> str:
     return f"<span class='sev {sev}'>{_e(_t(lang, sev))}</span>"
 
@@ -1080,7 +1106,7 @@ def _matrix_html(fw: dict, lang: str) -> str:
               f"<th>{_e(_t(lang, 'evidence'))}</th></tr></thead>")
     body = []
     for r in rows:
-        basis = ", ".join(_basis_label(b, lang) for b in r["basis"])
+        basis = _comma(lang).join(_basis_label(b, lang) for b in r["basis"])
         levels = data_fw["controls"][r["control"]].get("levels", "")
         title = _bt(r["title"]) + (f" <span class='small'>({_e(levels)})</span>" if levels else "")
         body.append(f"<tr><td class='id'>{_bt(r['control'])}</td><td>{title}</td>{_count_cells(r['counts'])}"
@@ -1088,11 +1114,11 @@ def _matrix_html(fw: dict, lang: str) -> str:
                     f"<td class='small'>{_e(basis)}</td><td>{_refs(r['findings'], lang) if r['findings'] else ''}</td></tr>")
     parts = [f"<h3 id='fw-{_e(fw['id'])}'>{_bt(fw['title'])}</h3>"]
     if fw.get("note"):
-        parts.append(f"<p class='small'><b>{_e(_t(lang, 'fw_note'))}:</b> {_bt(fw['note'])}</p>")
+        parts.append(f"<p class='small'><b>{_e(_t(lang, 'fw_note'))}:</b> {_bt_text(fw['note'], lang)}</p>")
     src = fw.get("source") or {}
     if src.get("title"):
         link = f" <a href='{_e(src['url'])}'>{_e(src['url'])}</a>" if src.get("url") else ""
-        parts.append(f"<p class='small'><b>{_e(_t(lang, 'fw_source'))}:</b> {_bt(src['title'])}{link}</p>")
+        parts.append(f"<p class='small'><b>{_e(_t(lang, 'fw_source'))}:</b> {_bt_text(src['title'], lang)}{link}</p>")
     if body:
         parts.append(f"<table class='mx'>{head}<tbody>{''.join(body)}</tbody></table>")
     else:
@@ -1277,10 +1303,10 @@ def render_html(findings, meta: dict | None = None, lang: str = "en", frameworks
     # appendix B
     p.append(f"<section class='pb'><h2 id='appendix-b'>{_e(T('s_sources'))}</h2><table><thead><tr>"
              f"<th>{_e(T('src_name'))}</th><th>{_e(T('src_ref'))}</th><th>{_e(T('src_retrieved'))}</th></tr></thead><tbody>")
-    for _key, src in _sources_used(fids):
+    for _key, src in _sources_used(fids, lang):
         links = " ".join(f"<a href='{_e(u)}' dir='ltr'>{_e(u)}</a>" for u in (src.get("url"), src.get("also")) if u)
-        p.append(f"<tr><td><span dir='ltr'>{_e(src.get('title', ''))}</span></td><td>{links}</td>"
-                 f"<td class='small'><span dir='ltr'>{_e(src.get('retrieved', ''))}</span></td></tr>")
+        p.append(f"<tr><td>{_bt_text(src.get('title', ''), lang)}</td><td>{links}</td>"
+                 f"<td class='small'>{_bt_text(src.get('retrieved', ''), lang)}</td></tr>")
     p.append(f"</tbody></table><footer>{_e(T('footer', v=m['tool_version']))}</footer></section></main></body></html>")
     return "".join(p)
 
@@ -1506,30 +1532,71 @@ def coverage_gaps(cwes=None) -> list[dict]:
 _RENDER = {"html": render_html, "json": render_json, "csv": render_csv, "md": render_markdown}
 
 
-def _parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(
-        prog="kashif compliance",
-        description="Map Kashif findings to security frameworks and write an auditor report. "
-                    "The report is evidence to support an assessment, not a certification.")
-    ap.add_argument("input", nargs="?", help="Kashif JSON report, SARIF file, or a path to scan")
-    ap.add_argument("--framework", "-F", action="append", default=[], metavar="ID",
-                    help="framework id or alias (repeatable or comma-separated; default: all). See --list-frameworks")
-    ap.add_argument("-f", "--format", choices=sorted(_RENDER), default=None, help="output format (default: from -o, else html)")
-    ap.add_argument("-o", "--output", metavar="FILE", help="output file (default: standard output)")
-    ap.add_argument("--lang", choices=("en", "ar"), default="en", help="report language (default: en)")
-    ap.add_argument("--fail-on", choices=SEVERITIES, default=None,
-                    help="exit 1 when a selected framework has a mapped finding of this severity or higher; "
-                         "also the severity from which a control is shown as Fail (default there: medium)")
-    ap.add_argument("--min-severity", choices=SEVERITIES, default="info", help="ignore findings below this severity")
-    ap.add_argument("--source-root", metavar="DIR", help="directory of the analysed sources, to show the code around "
-                                                         "each finding in the HTML report (default: the scanned PATH "
-                                                         "when the input is a directory; never taken from a report file)")
-    ap.add_argument("--show-secrets", action="store_true", help="do not mask string literals and values in the code of "
-                                                                "hard-coded secret findings (HTML report)")
-    ap.add_argument("--project", help="project name for the cover page")
-    ap.add_argument("--assessor", help="name of the person or team preparing the report, for the cover page")
-    ap.add_argument("--list-frameworks", action="store_true", help="list framework ids and exit")
-    ap.add_argument("--check-coverage", action="store_true", help="check that every CWE the engine emits is mapped")
+# --help in English and Arabic ("both": the Arabic line, then the English line; see vulnscan/i18n/cliargs.py)
+_HELP = {
+    "en": {
+        "desc": "Map Kashif findings to security frameworks and write an auditor report. "
+                "The report is evidence to support an assessment, not a certification.",
+        "input": "Kashif JSON report, SARIF file, or a path to scan",
+        "framework": "framework id or alias (repeatable or comma-separated; default: all). See --list-frameworks",
+        "format": "output format (default: from -o, else html)",
+        "output": "output file (default: standard output)",
+        "lang": "report language: en or ar (default: en)",
+        "fail_on": "exit 1 when a selected framework has a mapped finding of this severity or higher; "
+                   "also the severity from which a control is shown as Fail (default there: medium)",
+        "min_severity": "ignore findings below this severity",
+        "source_root": "directory of the analysed sources, to show the code around each finding in the HTML report "
+                       "(default: the scanned PATH when the input is a directory; never taken from a report file)",
+        "show_secrets": "do not mask string literals and values in the code of hard-coded secret findings "
+                        "(HTML report)",
+        "project": "project name for the cover page",
+        "assessor": "name of the person or team preparing the report, for the cover page",
+        "list": "list framework ids and exit",
+        "coverage": "check that every CWE the engine emits is mapped",
+    },
+    "ar": {
+        "desc": "ربط نتائج كاشِف بأطر الأمن والامتثال وكتابة تقرير للمدقق. "
+                "التقرير دليل يدعم التقييم، وليس شهادة.",
+        "input": "تقرير JSON من كاشِف، أو ملف SARIF، أو مسار لفحصه",
+        "framework": "معرّف الإطار أو اسمه المختصر (يمكن تكراره أو فصل الأسماء بفواصل؛ الافتراضي: كل الأطر). "
+                     "انظر --list-frameworks",
+        "format": "صيغة الإخراج (الافتراضي: من امتداد ملف -o، وإلا html)",
+        "output": "ملف الإخراج (الافتراضي: الخرج القياسي)",
+        "lang": "لغة التقرير: en أو ar (الافتراضي: en)",
+        "fail_on": "أعد رمز خروج 1 إذا كان في أحد الأطر المختارة نتيجة مرتبطة بهذه الخطورة أو أعلى؛ "
+                   "وهي أيضًا الخطورة التي يُعدّ الضابط منها «راسبًا» (الافتراضي هناك: medium)",
+        "min_severity": "تجاهل النتائج الأدنى من هذه الخطورة",
+        "source_root": "مجلد الكود المحلَّل، لعرض الكود حول كل نتيجة في تقرير HTML (الافتراضي: المسار المفحوص "
+                       "إذا كان المُدخل مجلدًا؛ ولا يؤخذ أبدًا من ملف تقرير)",
+        "show_secrets": "لا تحجب النصوص والقيم في كود نتائج الأسرار المكتوبة في الكود (تقرير HTML)",
+        "project": "اسم المشروع لصفحة الغلاف",
+        "assessor": "اسم من يُعِدّ التقرير، شخصًا أو فريقًا، لصفحة الغلاف",
+        "list": "اعرض معرّفات الأطر ثم اخرج",
+        "coverage": "تحقّق من أن كل معرّف CWE يصدره المحرّك مربوط بضوابط",
+    },
+}
+
+
+def _parser(lang: str = "en") -> argparse.ArgumentParser:
+    from .i18n.cliargs import HelpFormatter, pick
+
+    def h(key: str) -> str:
+        return pick(lang, _HELP["ar"][key], _HELP["en"][key])
+
+    ap = argparse.ArgumentParser(prog="kashif compliance", description=h("desc"), formatter_class=HelpFormatter)
+    ap.add_argument("input", nargs="?", help=h("input"))
+    ap.add_argument("--framework", "-F", action="append", default=[], metavar="ID", help=h("framework"))
+    ap.add_argument("-f", "--format", choices=sorted(_RENDER), default=None, help=h("format"))
+    ap.add_argument("-o", "--output", metavar="FILE", help=h("output"))
+    ap.add_argument("--lang", choices=("en", "ar", "both"), default="en", metavar="{en,ar}", help=h("lang"))
+    ap.add_argument("--fail-on", choices=SEVERITIES, default=None, help=h("fail_on"))
+    ap.add_argument("--min-severity", choices=SEVERITIES, default="info", help=h("min_severity"))
+    ap.add_argument("--source-root", metavar="DIR", help=h("source_root"))
+    ap.add_argument("--show-secrets", action="store_true", help=h("show_secrets"))
+    ap.add_argument("--project", help=h("project"))
+    ap.add_argument("--assessor", help=h("assessor"))
+    ap.add_argument("--list-frameworks", action="store_true", help=h("list"))
+    ap.add_argument("--check-coverage", action="store_true", help=h("coverage"))
     return ap
 
 
@@ -1547,12 +1614,16 @@ def _out(text: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     """Command line entry point; returns the exit code (0 ok, 1 gate failed or coverage gap, 2 usage/input error)."""
-    ap = _parser()
+    from .i18n.cliargs import help_lang, localized_argparse
+    argv = list(sys.argv[1:] if argv is None else argv)
+    hlang = help_lang(argv)                        # --help and usage errors follow --lang (en, ar or both)
     try:
-        args = ap.parse_args(argv)
+        with localized_argparse(hlang):
+            ap = _parser(hlang)
+            args = ap.parse_args(argv)
     except SystemExit as e:
         return int(e.code or 0)
-    lang = args.lang
+    lang = "ar" if args.lang == "ar" else "en"     # "both": the report is English, as from a "both" scan
     if args.list_frameworks:
         for fid in FRAMEWORKS:
             info = framework_info(fid, lang)

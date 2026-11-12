@@ -10,7 +10,7 @@ CLI (cli.py) - add a ``rules`` sub-command group that forwards to ``ruletest.mai
     kashif rules lint PACK [--allow-monolingual] [--json]
     kashif rules pack PACK [-o FILE] [--no-lint] [--sha256-file]
     kashif rules verify FILE [--sha256 HEX]
-    kashif rules install FILE [--packs-dir DIR] [--sha256 HEX] [--force]
+    kashif rules install FILE [--packs-dir DIR] [--sha256 HEX] [--require-sha256] [--force]
     kashif rules list [--packs-dir DIR]
     kashif rules docs [--lang en|ar]            # prints the rule language reference (Markdown)
 
@@ -57,7 +57,10 @@ Security model (state it in the README; do not promise more):
     duplicate entry (case-insensitively), no file/directory collision, size caps enforced on decompressed bytes,
     every hash checked, queries capped at 256 KB, and ``--force`` only replaces a directory that carries this
     module's install record. Output printed by ``main`` has control characters and bidi overrides replaced.
-  * A SHA-256 proves integrity, not authorship: there is no signature scheme here.
+  * A SHA-256 proves integrity, not authorship: there is no signature scheme here. Without ``--sha256``, ``install``
+    and ``verify`` check only the archive's own ``MANIFEST.json`` (integrity, not origin) and say so on stderr, with
+    the archive's SHA-256 to compare against the publisher's. ``install --require-sha256`` (or the environment
+    variable ``KASHIF_REQUIRE_PACK_SHA256=1``) refuses an install without ``--sha256``.
   * An installed pack is data, but it is still *detection logic you chose to trust*: its ``receiver`` and VQL
     ``matches`` regular expressions run against scanned code, so a malicious pack can slow a scan down
     (catastrophic backtracking), hide findings (a sanitizer declared in a user model is trusted for every sink)
@@ -206,6 +209,12 @@ STR = {
         "l_vql_parse": "the query does not parse: {msg}",
         "l_vql_size": "the query file is larger than the {cap}-byte limit",
         "e_bad_sha": "--sha256 must be 64 hexadecimal characters",
+        "w_origin": "origin not verified: without --sha256 only the archive's own MANIFEST.json was checked, which proves "
+                    "the files are intact, not who published them.\n  This file's SHA-256 is {sha}\n  Compare it with the "
+                    "value the pack's publisher gives you, and pass --sha256 {sha} to check it automatically.",
+        "e_sha_required": "--sha256 is required (--require-sha256 / KASHIF_REQUIRE_PACK_SHA256): nothing was installed.\n"
+                          "  This file's SHA-256 is {sha}; install it only if it matches the value its publisher gives you:\n"
+                          "  kashif rules install FILE --sha256 <the publisher's value>",
         "e_not_a_pack": "{path} exists but is not an installed pack (no install record); it is not replaced",
         "e_write": "the pack could not be written: {msg}",
         "l_vql_run": "the query fails when evaluated: {msg}",
@@ -294,6 +303,12 @@ STR = {
         "l_vql_parse": "تعذّر تحليل الاستعلام: {msg}",
         "l_vql_size": "ملف الاستعلام أكبر من الحد {cap} بايت",
         "e_bad_sha": "قيمة ‎--sha256 يجب أن تكون 64 خانة ست عشرية",
+        "w_origin": "المصدر غير مُتحقَّق منه: بدون ‎--sha256 فُحص ملف MANIFEST.json الذي داخل الأرشيف فقط، وهذا يثبت سلامة "
+                    "الملفات لا هوية ناشرها.\n  قيمة SHA-256 لهذا الملف: {sha}\n  قارنها بالقيمة التي يعلنها ناشر الحزمة، "
+                    "ومرّر ‎--sha256 {sha} ليُتحقَّق منها تلقائيًا.",
+        "e_sha_required": "الخيار ‎--sha256 مطلوب (‎--require-sha256 أو KASHIF_REQUIRE_PACK_SHA256): لم يُثبَّت شيء.\n"
+                          "  قيمة SHA-256 لهذا الملف: {sha}؛ لا تثبّته إلا إذا طابقت القيمة التي يعلنها ناشره:\n"
+                          "  kashif rules install FILE --sha256 <قيمة الناشر>",
         "e_not_a_pack": "{path} موجود لكنه ليس حزمة مثبّتة (لا سجل تثبيت)؛ لن يُستبدل",
         "e_write": "تعذّرت كتابة الحزمة: {msg}",
         "l_vql_run": "الاستعلام يفشل عند التقييم: {msg}",
@@ -2087,6 +2102,15 @@ def _emit(text: str, stream=None) -> None:
         stream.write((text if text.endswith("\n") else text + "\n").encode(enc, "replace").decode(enc))
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _warn_origin(lang: str, sha: str) -> None:
+    """Without --sha256 only the archive's own manifest was checked: say so, with the hash to compare by hand."""
+    _emit(f"{_t(lang, 'warning')}: " + _t(lang, "w_origin", sha=sha), sys.stderr)
+
+
 def _parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     # SUPPRESS: the option is accepted before and after the sub-command without one default hiding the other
@@ -2125,6 +2149,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("archive")
     p.add_argument("--packs-dir", help="where packs are installed (default: the Kashif home directory)")
     p.add_argument("--sha256", help="expected SHA-256 of the archive")
+    p.add_argument("--require-sha256", action="store_true", default=_env_flag("KASHIF_REQUIRE_PACK_SHA256"),
+                   help="refuse to install without --sha256 (default: on when KASHIF_REQUIRE_PACK_SHA256=1)")
     p.add_argument("--force", action="store_true", help="replace an installed pack of the same name")
     p = sub.add_parser("remove", parents=[common], help="delete an installed pack")
     p.add_argument("name")
@@ -2180,11 +2206,18 @@ def main(argv=None) -> int:
         if args.cmd == "verify":
             m = verify_pack(args.archive, args.sha256, lang=L)
             _emit(_t(L, "verified", name=m["name"], version=m["version"], files=len(m["files"]), sha=m["archive_sha256"]))
+            if not args.sha256:
+                _warn_origin(L, m["archive_sha256"])
             return 0
         if args.cmd == "install":
+            if not args.sha256 and args.require_sha256:
+                m = verify_pack(args.archive, None, lang=L)       # in memory only: nothing is written
+                raise PackError(_t(L, "e_sha_required", sha=m["archive_sha256"]))
             res = install_pack(args.archive, args.packs_dir, sha256=args.sha256, force=args.force, lang=L)
             _emit(_t(L, "installed", name=res.name, version=res.version, path=str(res.path), sha=res.sha256,
                      models=str(res.models_dir), queries=str(res.queries_dir)))
+            if not args.sha256:
+                _warn_origin(L, res.sha256)
             for w in res.warnings:
                 _emit(f"{_t(L, 'warning')}: {w}")
             return 0

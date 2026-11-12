@@ -155,6 +155,29 @@ CASES = {
     # --- unsafe reflection (CWE-470)
     "reflection": ({("DF026", "a.py", 8), ("DF026", "b.js", 3), ("DF026", "C.java", 5)},
                    {("DF026", "a.py", 11), ("DF026", "b.js", 4), ("DF026", "C.java", 6)}),
+    # --- 1.0.1 recall: PHP include / exit, server-side view templates (EJS, Handlebars, Pug, Swig, ERB)
+    # DVWA File Inclusion: the level's source file (picked by a switch) sets $file, the front controller includes it
+    "php_include_lfi": ({("DF012", "fi/index.php", 13), ("DF012", "lang.php", 3)},
+                        {("DF012", "safe/index.php", None), ("DF012", "lang.php", 5)}),
+    # a view included by a controller prints the controller's variable; the view's own source is reported once
+    "php_include_view_xss": ({("DF013", "ctrl.php", 4), ("DF013", "views/hello.php", 3)},
+                             {("DF013", "ctrl_safe.php", None), ("DF013", "ctrl.php", 3), ("DF013", "views/hello.php", 1),
+                              ("DF013", "views/hello.php", 2)}),
+    # `exit;` / `die(...)` end the script: a failed whitelist check that exits guards what follows
+    "php_exit_whitelist": ({("DF012", "unguarded.php", 6), ("DF013", "unguarded.php", 7)},
+                           {("DF012", "guarded.php", None), ("DF013", "guarded.php", None)}),
+    "js_view_templates": ({("DF013", "routes/app.js", 5), ("DF013", "routes/app.js", 12), ("DF013", "routes/app.js", 15),
+                           ("DF013", "routes/app.js", 20), ("DF013", "routes/app.js", 24)},
+                          {("DF013", "routes/app.js", 9), ("DF013", "routes/app.js", 18), ("DF013", "routes/app.js", 21)}),
+    "js_swig_autoescape_off": ({("DF013", "server.js", 7)}, {("DF013", "server.js", 10)}),
+    "js_swig_autoescape_on": (set(), {("DF013", "server.js", None)}),
+    "ruby_erb_views": ({("DF013", "app/views/users/show.html.erb", 2), ("DF013", "app/views/users/show.html.erb", 3),
+                        ("DF013", "app/views/users/show.html.erb", 4), ("DF013", "app/views/users/show.html.erb", 10),
+                        ("DF013", "app/views/layouts/application.html.erb", 2)},
+                       {("DF013", "app/views/users/show.html.erb", 1), ("DF013", "app/views/users/show.html.erb", 5),
+                        ("DF007", "app/views/users/show.html.erb", None), ("DF013", "app/views/users/show.html.erb", 9),
+                        ("DF013", "app/views/users/show.html.erb", 11),
+                        ("DF013", "app/views/layouts/application.html.erb", 3)}),
 }
 
 

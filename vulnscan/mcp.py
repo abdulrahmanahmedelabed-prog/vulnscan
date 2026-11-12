@@ -2195,30 +2195,56 @@ def _safe_cwd_root() -> str | None:
     return cwd
 
 
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        prog="kashif mcp",
-        description="Kashif MCP server (Model Context Protocol over stdio) for AI coding assistants. "
-                    "خادم كاشِف لمساعدات البرمجة بالذكاء الاصطناعي.")
-    p.add_argument("--root", action="append", default=[], metavar="DIR",
-                   help="allow scanning inside DIR (repeatable); the working directory and the client's roots "
-                        "are allowed too")
-    p.add_argument("--no-cwd-root", action="store_true", help="do not allow the working directory implicitly")
-    p.add_argument("--no-client-roots", action="store_true", help="ignore the roots the client advertises")
-    p.add_argument("--lang", choices=("en", "ar"), default=None,
-                   help="language of descriptions and results (default: VULNSCAN_LANG if en/ar, else en)")
-    p.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, metavar="SEC",
-                   help=f"hard limit for one scan (default {int(DEFAULT_TIMEOUT)})")
-    p.add_argument("--max-output", type=int, default=MAX_OUTPUT_BYTES, metavar="BYTES",
-                   help=f"size cap of one tool result (default {MAX_OUTPUT_BYTES})")
-    p.add_argument("--in-process", action="store_true",
-                   help="scan inside the server process (no worker; timeouts become soft)")
-    p.add_argument("--show-secrets", action="store_true",
-                   help="do not mask secret values in snippets and code context (they are masked by default)")
+# --help in English and Arabic ("both": the Arabic line, then the English line; see vulnscan/i18n/cliargs.py)
+_HELP = {
+    "en": {
+        "desc": "Kashif MCP server (Model Context Protocol over stdio) for AI coding assistants.",
+        "root": "allow scanning inside DIR (repeatable); the working directory and the client's roots are allowed too",
+        "no_cwd": "do not allow the working directory implicitly",
+        "no_client": "ignore the roots the client advertises",
+        "lang": "language of descriptions and results: en or ar (default: VULNSCAN_LANG if en/ar, else en)",
+        "timeout": "hard limit for one scan in seconds (default {timeout})",
+        "max_output": "size cap of one tool result in bytes (default {size})",
+        "in_process": "scan inside the server process (no worker; timeouts become soft)",
+        "show_secrets": "do not mask secret values in snippets and code context (they are masked by default)",
+        "print_config": "print ready client configuration and exit (all, claude, cursor, vscode, windsurf, zed)",
+        "stdio": "accepted for compatibility; stdio is the only transport",
+    },
+    "ar": {
+        "desc": "خادم كاشِف لبروتوكول MCP (عبر الدخل والخرج القياسيين) لمساعدات البرمجة بالذكاء الاصطناعي.",
+        "root": "اسمح بالفحص داخل DIR (يمكن تكراره)؛ ويُسمح أيضًا بمجلد العمل وبالجذور التي يعلنها العميل",
+        "no_cwd": "لا تسمح بمجلد العمل ضمنيًا",
+        "no_client": "تجاهل الجذور التي يعلنها العميل",
+        "lang": "لغة الأوصاف والنتائج: en أو ar (الافتراضي: VULNSCAN_LANG إن كانت en أو ar، وإلا en)",
+        "timeout": "الحد الأقصى لمدة الفحص الواحد بالثواني (الافتراضي {timeout})",
+        "max_output": "الحد الأقصى لحجم نتيجة الأداة الواحدة بالبايت (الافتراضي {size})",
+        "in_process": "افحص داخل عملية الخادم نفسها (دون عملية مساعدة؛ وتصبح المهلة غير صارمة)",
+        "show_secrets": "لا تحجب قيم الأسرار في المقتطفات وسياق الكود (تُحجب افتراضيًا)",
+        "print_config": "اطبع إعداد العميل جاهزًا ثم اخرج (all أو claude أو cursor أو vscode أو windsurf أو zed)",
+        "stdio": "مقبول للتوافق؛ الدخل والخرج القياسيان هما وسيلة النقل الوحيدة",
+    },
+}
+
+
+def build_parser(lang: str = "en") -> argparse.ArgumentParser:
+    from .i18n.cliargs import HelpFormatter, pick
+
+    def h(key: str) -> str:
+        values = {"timeout": int(DEFAULT_TIMEOUT), "size": MAX_OUTPUT_BYTES}
+        return pick(lang, _HELP["ar"][key].format(**values), _HELP["en"][key].format(**values))
+
+    p = argparse.ArgumentParser(prog="kashif mcp", description=h("desc"), formatter_class=HelpFormatter)
+    p.add_argument("--root", action="append", default=[], metavar="DIR", help=h("root"))
+    p.add_argument("--no-cwd-root", action="store_true", help=h("no_cwd"))
+    p.add_argument("--no-client-roots", action="store_true", help=h("no_client"))
+    p.add_argument("--lang", choices=("en", "ar", "both"), default=None, metavar="{en,ar}", help=h("lang"))
+    p.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, metavar="SEC", help=h("timeout"))
+    p.add_argument("--max-output", type=int, default=MAX_OUTPUT_BYTES, metavar="BYTES", help=h("max_output"))
+    p.add_argument("--in-process", action="store_true", help=h("in_process"))
+    p.add_argument("--show-secrets", action="store_true", help=h("show_secrets"))
     p.add_argument("--print-config", nargs="?", const="all", metavar="CLIENT",
-                   choices=("all", "claude", "cursor", "vscode", "windsurf", "zed"),
-                   help="print ready client configuration and exit")
-    p.add_argument("--stdio", action="store_true", help="accepted for compatibility; stdio is the only transport")
+                   choices=("all", "claude", "cursor", "vscode", "windsurf", "zed"), help=h("print_config"))
+    p.add_argument("--stdio", action="store_true", help=h("stdio"))
     p.add_argument("--scan-worker", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--version", action="version", version=f"kashif-mcp {__version__}")
     return p
@@ -2226,10 +2252,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """``kashif mcp`` / ``python3 -m vulnscan.mcp``: run the MCP server on stdin/stdout."""
-    args = build_parser().parse_args(sys.argv[1:] if argv is None else argv)
+    from .i18n.cliargs import help_lang, localized_argparse
+    argv = list(sys.argv[1:] if argv is None else argv)
+    hlang = help_lang(argv, default=_norm_lang((os.environ.get("VULNSCAN_LANG") or "").strip().lower()))
+    with localized_argparse(hlang):                # --help and usage errors follow --lang (en, ar or both)
+        args = build_parser(hlang).parse_args(argv)
     if args.scan_worker:
         return _worker_main()
-    lang = args.lang or _norm_lang((os.environ.get("VULNSCAN_LANG") or "").strip().lower())
+    lang = _norm_lang(args.lang) if args.lang else _norm_lang((os.environ.get("VULNSCAN_LANG") or "").strip().lower())
     if args.print_config:
         try:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
