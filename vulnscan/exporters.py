@@ -176,6 +176,8 @@ STR = {
         "line": "line", "found_by": "Found by Kashif static analysis.", "no_findings": "No findings",
         "no_findings_body": "Kashif reported no findings.", "title": "Title", "file": "File", "cwe": "CWE",
         "url": "URL", "project": "Project",
+        "confidence": "Confidence", "c_certain": "certain", "c_firm": "firm", "c_tentative": "tentative",
+        "found_by_web": "Found by Kashif's passive web scan.",
         "r_none": "None", "r_low": "Low", "r_medium": "Medium", "r_high": "High", "r_critical": "Critical",
         "e_format": "unknown export format '{fmt}' (choose from: {choices})",
         "e_findings": "findings must be a list of Finding objects or of their dict form",
@@ -250,6 +252,8 @@ STR = {
         "line": "السطر", "found_by": "اكتشفه التحليل الساكن في كاشِف.", "no_findings": "لا نتائج",
         "no_findings_body": "لم يُبلّغ كاشِف عن أي نتيجة.", "title": "العنوان", "file": "الملف", "cwe": "CWE",
         "url": "الرابط", "project": "المشروع",
+        "confidence": "الثقة", "c_certain": "مؤكَّدة", "c_firm": "مرجَّحة", "c_tentative": "محتملة",
+        "found_by_web": "اكتشفه الفحص السلبي للمواقع في كاشِف.",
         "r_none": "لا خطر", "r_low": "منخفض", "r_medium": "متوسط", "r_high": "عالٍ", "r_critical": "حرج",
         "e_format": "صيغة التصدير '{fmt}' غير معروفة (المتاح: {choices})",
         "e_findings": "يجب أن تكون النتائج قائمة من كائنات Finding أو من صيغتها القاموسية",
@@ -310,6 +314,8 @@ _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff\ufffe\uffff]")
 _CLOSED = frozenset({"false_positive", "fixed"})                  # no longer a risk
 _PARKED = frozenset({"accepted_risk", "wont_fix"})                # still present, deliberately not worked on
 _CVE = re.compile(r"\bCVE-\d{4}-\d{4,19}\b", re.I)
+_CONFIDENCES = ("certain", "firm", "tentative")                     # Burp's meanings (spec §0.5)
+_ASFF_CONFIDENCE = {"certain": 100, "firm": 75, "tentative": 25}
 _MAX_LINE = 2 ** 31 - 1                                           # the importers store a line as a 32-bit int
 
 
@@ -362,7 +368,7 @@ class _F:
     """One finding, normalised from a ``Finding`` or from its ``to_dict()`` form. Read-only view."""
 
     __slots__ = ("rule_id", "severity", "title_en", "title_ar", "file", "line", "snippet", "snippet_en", "advice",
-                 "advice_en", "cwe", "source", "extra", "fingerprint", "steps", "status")
+                 "advice_en", "cwe", "source", "extra", "fingerprint", "steps", "status", "confidence")
 
     def __init__(self, d: dict):
         extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
@@ -393,6 +399,8 @@ class _F:
                                    "text_en": _s(st.get("text_en")) or _s(to_en(text))})
         triage = extra.get("triage")
         self.status = _one_line(_s(triage.get("status"))).lower() if isinstance(triage, dict) else ""
+        conf = _s(extra.get("confidence")).lower()          # web findings (1.1.0): certain | firm | tentative
+        self.confidence = conf if conf in _CONFIDENCES else ""
 
     # language-dependent text
     def title(self, lang: str) -> str:
@@ -684,6 +692,8 @@ def _markdown_body(f: _F, risk: dict, meta: dict, lang: str, marker: bool = Fals
     link = _link(f, meta)
     loc = f"[{_md_code(f.location)}]({link})" if link else _md_code(f.location)
     out += ["", f"**{L('location')}:** {loc}", ""]
+    if f.confidence:
+        out += [f"**{L('confidence')}:** {L('c_' + f.confidence)}", ""]
     out.append(f"**{L('risk')}:** {risk['score']}/10 ({rating_label(risk['rating'], lang)}) — "
                f"{_md_code(risk['vector'])}")
     code = f.code(lang)
@@ -701,7 +711,7 @@ def _markdown_body(f: _F, risk: dict, meta: dict, lang: str, marker: bool = Fals
     fix = f.fix(lang)
     if fix:
         out += ["", f"**{L('fix')}:** {_md_text(fix)}"]
-    out += ["", f"{L('found_by')} {L('fingerprint')}: {_md_code(f.fingerprint)}. {L('risk_note')}."]
+    out += ["", f"{L('found_by_web' if f.source == 'web' else 'found_by')} {L('fingerprint')}: {_md_code(f.fingerprint)}. {L('risk_note')}."]
     if marker:
         out.append(f"<!-- kashif-fingerprint: {re.sub(r'[^0-9a-zA-Z:]', '', f.fingerprint)} -->")
     return "\n".join(out)
@@ -717,6 +727,7 @@ def _plain_body(f: _F, risk: dict, lang: str) -> str:
     lines = [f"{L('rule')}: {f.rule_id}" + (f" ({f.cwe})" if f.cwe else ""),
              f"{L('severity')}: {_sev_name(f.severity, lang)}",
              f"{L('location')}: {f.location}",
+             *([f"{L('confidence')}: {L('c_' + f.confidence)}"] if f.confidence else []),
              f"{L('risk')}: {risk['score']}/10 ({rating_label(risk['rating'], lang)}) {risk['vector']}"]
     if f.code(lang):
         lines.append(f"{L('snippet')}: {f.code(lang)}")
@@ -960,11 +971,12 @@ def _csv(items, risks, meta, lang) -> str:
     """RFC 4180 CSV (CRLF records, quotes doubled), one row per finding, every text cell neutralised."""
     L = lambda key: _t(lang, key)                                           # noqa: E731
     rows = [[L("fingerprint"), L("risk"), L("severity"), L("rule"), L("cwe"), L("title"), L("file"), L("line"),
-             L("engine"), L("snippet"), L("fix"), L("flow"), L("source"), L("status"), L("url")]]
+             L("engine"), L("snippet"), L("fix"), L("flow"), L("source"), L("status"), L("url"), L("confidence")]]
     for f, risk in zip(items, risks):
         rows.append([f.fingerprint, risk["score"], _sev_name(f.severity, lang), f.rule_id, f.cwe, f.title(lang),
                      f.file, f.line if f.line else "", f.source, f.code(lang), f.fix(lang), _flow_cell(f, lang),
-                     f.taint_source(lang), f.status or "open", _link(f, meta) or _safe_url(f.extra.get("url"))])
+                     f.taint_source(lang), f.status or "open", _link(f, meta) or _safe_url(f.extra.get("url")),
+                     L("c_" + f.confidence) if f.confidence else ""])
     return _csv_text(rows, meta)
 
 
@@ -1068,6 +1080,7 @@ def _asff(items, risks, meta, lang) -> str:
             "Types": [f"Software and Configuration Checks/Vulnerabilities/{f.cwe or 'SAST'}"],
             "CreatedAt": when, "UpdatedAt": when,
             "Severity": {"Label": _ASFF_SEVERITY[f.severity], "Original": f.severity},
+            **({"Confidence": _ASFF_CONFIDENCE[f.confidence]} if f.confidence else {}),
             "Title": _cut(f.title(lang), 256),
             "Description": _cut(_plain_body(f, risk, lang), 1024),
             "ProductFields": {"kashif/rule_id": _cut(f.rule_id, 2048), "kashif/fingerprint": f.fingerprint,

@@ -22,7 +22,7 @@ from .baseline import apply_baseline, load_baseline, save_baseline
 from .exporters import FORMATS as EXPORT_FORMATS
 from .rules import RULES
 from .scanner import scan_path
-from .web import WebUnreachable, scan_site
+from .web import WebUnreachable, scan_site  # noqa: F401 - scan_site: kept for callers of 1.0.x (cli.scan_site)
 
 AUTHORIZATION_NOTICE = (
     "افحص فقط ما تملكه أو ما لديك تصريح كتابي بفحصه. "
@@ -47,7 +47,110 @@ SUBCOMMANDS = {
     "policy": "السياسة ككود: بوابة أمان من kashif.yml (check وinit وvalidate وpresets)",
     "surface": "خريطة سطح الهجوم: نقاط الدخول ومدخلاتها والمصادقة الظاهرة والمصارف التي تصل إليها",
     "rules": "اكتب قواعدك واختبرها: حزم القواعد (new وtest وlint وpack وverify وinstall وlist وdocs)",
+    "update-data": "تحديث بيانات فاحص المواقع (--web) من آخر إصدار رسمي لكاشِف بعد التحقق منها",
 }
+# English of sub-command descriptions added after the i18n catalogue (1.1.0); the rest come from to_en().
+_SUBCOMMANDS_EN = {
+    "update-data": "update the web scanner's data (--web) from the latest official Kashif release, after verifying it",
+}
+
+# 1.1.0 passive web scanning options (spec §4.5): help and messages in Arabic and English.
+WEB_PROFILES = ("minimal", "standard", "deep")
+WEB_SENSITIVITIES = ("strict", "default", "paranoid")
+# Requests a profile may send, crawl pages excluded (spec §0.1): the entry chain, standard and deep budgets
+WEB_BUDGET = {"minimal": 10, "standard": 45, "deep": 150}
+_WEB_HELP = {
+    "ar": {
+        "deep": "فحص ويب أعمق (يساوي --web-profile deep): ملفات مكشوفة شائعة من قائمة ثابتة مع خطوط أساس لصفحات 404، "
+                "وسكربتات الأطراف الثالثة وخرائط المصدر (150 طلبًا على الأكثر، عدا صفحات الزحف)",
+        "crawl": "زحف على صفحات الموقع من نفس النطاق وفحصها مع احترام robots.txt (لتطبيقات مثل Moodle وبوابات الجامعات)",
+        "delay": "أقل فاصل بالثواني بين طلبين إلى المضيف نفسه، لكل الطلبات (الافتراضي 0.5، والحد الأدنى 0.2)",
+        "profile": "ملف الفحص السلبي: minimal طلب الصفحة وتوجيهاتها فقط (10 طلبات على الأكثر)، standard (الافتراضي) "
+                   "يضيف نسخة http/https وطلب CORS واحدًا والملفات المعروفة وسكربتات الصفحة (45 طلبًا على الأكثر)، "
+                   "deep يضيف الملفات المكشوفة الشائعة (150 طلبًا على الأكثر)",
+        "sensitivity": "الحساسية: strict النتائج المؤكَّدة فقط، default (الافتراضي) المؤكَّدة والمرجَّحة، paranoid كل شيء "
+                       "مع الفحوص الخاصة بهذا المستوى",
+        "ignore_robots": "تجاهل robots.txt عند الزحف (لمالك الموقع فقط)",
+        "third_party": "اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (مثل hstspreload.org)؛ معطّلة افتراضيًا",
+        "compare_previous": "قارن بآخر فحص محفوظ لهذا الموقع (في سجل الفحوص المحلي) واحفظ هذا الفحص فيه: "
+                            "نتائج جديدة ومحلولة وتغيّر الدرجات وتغييرات الوضع الأمني",
+        "compare": "قارن بفحص سابق: معرّف فحص محفوظ في السجل المحلي، أو ملف تقرير JSON من كاشِف",
+        "cookie_ignore": "تجاهل كوكي بهذا الاسم في فحوص الكوكيز (يمكن تكراره)",
+        "no_proxy": "لا تستخدم الوكيل (HTTP(S)_PROXY) حتى لو كان معرَّفًا في البيئة",
+        "web_only": "الخيار {opt} يعمل مع عناوين الويب http(s):// فقط",
+        "deep_conflict": "الخيار --deep يعني --web-profile deep؛ لا تجمعه مع --web-profile {profile}",
+        "compare_both": "استخدم --compare أو --compare-previous، لا كليهما",
+        "compare_missing": "لم يُعثر على الفحص السابق المطلوب للمقارنة (معرّف أو ملف): {what}",
+        "compare_bad": "الملف المطلوب للمقارنة ليس تقرير فحص ويب من كاشِف 1.1 (لا لقطة web.snapshot فيه): {what}",
+        "no_previous": "لا يوجد فحص سابق محفوظ لهذا الموقع؛ حُفظ هذا الفحص لتُقارن به الفحوص القادمة.",
+        "saved": "حُفظ الفحص في السجل المحلي (المعرّف {id}).",
+        "budget": "ملف الفحص {profile}: {requests} على الأكثر{crawl}، بلا أي اختبار نشط.",
+        "budget_crawl": " إضافةً إلى {pages} من الزحف",
+        "ud_desc": "تحديث بيانات فاحص المواقع (مكتبات JavaScript المصابة، وقوائم HSTS والنطاقات العامة، والتقنيات) "
+                   "من حزمة آخر إصدار رسمي لكاشِف، بعد التحقق من بصمتها SHA-256. لا يُرسل شيء عن المواقع التي تفحصها.",
+        "ud_web": "حدّث بيانات فحص المواقع",
+        "ud_check": "تحقّق من وجود بيانات أحدث دون تنزيلها",
+        "ud_what": "حدّد ما يُراد تحديثه: --web",
+        "ud_path": "المجلد: {path}",
+    },
+    "en": {
+        "deep": "deeper web scan (same as --web-profile deep): a fixed list of commonly exposed files with 404 baselines, "
+                "third-party scripts and source maps (at most 150 requests, crawled pages excluded)",
+        "crawl": "crawl same-site pages and scan each one, honouring robots.txt (for apps such as Moodle and university "
+                 "portals)",
+        "delay": "minimum gap in seconds between two requests to one host, for every request (default 0.5, floor 0.2)",
+        "profile": "passive scan profile: minimal fetches the page and its redirects only (at most 10 requests), standard "
+                   "(default) adds the http/https counterpart, one CORS GET, the well-known files and the page's own "
+                   "scripts (at most 45 requests), deep adds commonly exposed files (at most 150 requests)",
+        "sensitivity": "sensitivity: strict shows certain findings only, default (the default) certain and firm, paranoid "
+                       "everything, including the paranoid-only checks",
+        "ignore_robots": "ignore robots.txt when crawling (for the site's owner only)",
+        "third_party": "allow third-party lookups that reveal the site's name (such as hstspreload.org); off by default",
+        "compare_previous": "compare with the last saved scan of this site (in the local scan history) and save this "
+                            "scan there: new and resolved findings, grade changes and posture changes",
+        "compare": "compare with an earlier scan: a scan id from the local history, or a Kashif JSON report file",
+        "cookie_ignore": "ignore the cookie of this name in the cookie checks (repeatable)",
+        "no_proxy": "do not use a proxy (HTTP(S)_PROXY) even when the environment sets one",
+        "web_only": "{opt} applies to http(s):// web targets only",
+        "deep_conflict": "--deep means --web-profile deep; do not combine it with --web-profile {profile}",
+        "compare_both": "use --compare or --compare-previous, not both",
+        "compare_missing": "the earlier scan to compare with was not found (id or file): {what}",
+        "compare_bad": "the file to compare with is not a Kashif 1.1 web scan report (it has no web.snapshot): {what}",
+        "no_previous": "No earlier saved scan of this site; this scan was saved so the next ones can compare with it.",
+        "saved": "Scan saved in the local history (id {id}).",
+        "budget": "Profile {profile}: at most {requests}{crawl}; no active test.",
+        "budget_crawl": " plus up to {pages} crawled",
+        "ud_desc": "Update the web scanner's data (vulnerable JavaScript libraries, HSTS preload and public suffix lists, "
+                   "technologies) from the package of the latest official Kashif release, after verifying its SHA-256. "
+                   "Nothing about the sites you scan is sent.",
+        "ud_web": "update the web scanning data",
+        "ud_check": "check for newer data without downloading it",
+        "ud_what": "say what to update: --web",
+        "ud_path": "folder: {path}",
+    },
+}
+_REQUESTS_AR = ("طلب واحد", "طلبان", "{n} طلبات", "{n} طلبًا", "{n} طلب")
+_PAGES_AFTER_PREP = ("صفحة واحدة", "صفحتين", "{n} صفحات", "{n} صفحةً", "{n} صفحة")
+
+
+def _wh(key: str, lang: str, **kw) -> str:
+    """A 1.1.0 web text: Arabic, English, or for "both" the Arabic line then the English line."""
+    ar, en = _WEB_HELP["ar"][key], _WEB_HELP["en"][key]
+    if kw:
+        ar, en = ar.format(**kw), en.format(**kw)
+    return pick(lang, ar, en)
+
+
+def web_budget_note(profile: str, crawl: bool = False, max_pages: int = 20) -> tuple[str, str]:
+    """(Arabic, English) note stating the profile's real request budget (spec §0.1) instead of 1.0's "one request"."""
+    n = WEB_BUDGET.get(profile, WEB_BUDGET["standard"])
+    ar = _WEB_HELP["ar"]["budget"].format(
+        profile=profile, requests=ar_count(n, _REQUESTS_AR),
+        crawl=_WEB_HELP["ar"]["budget_crawl"].format(pages=ar_count(max_pages, _PAGES_AFTER_PREP)) if crawl else "")
+    en = _WEB_HELP["en"]["budget"].format(
+        profile=profile, requests=f"{n} request{'s' if n != 1 else ''}",
+        crawl=_WEB_HELP["en"]["budget_crawl"].format(pages=f"{max_pages} page{'s' if max_pages != 1 else ''}") if crawl else "")
+    return ar, en
 # Sub-commands that forward their arguments to the module's own main(argv): name -> module of this package.
 DELEGATES = {"mcp": "mcp", "export": "exporters", "compliance": "compliance", "history": "history",
              "secrets-history": "history", "triage": "triage", "policy": "policy", "surface": "surface",
@@ -97,13 +200,14 @@ def _lang_from_argv(argv: list[str]) -> str:
 
 def _subcommand_help(lang: str = "both") -> str:
     """The sub-command list printed under `kashif --help` (Arabic, English, or Arabic with English for "both")."""
-    def desc(text: str, indent: str = "") -> str:
+    def desc(text: str, indent: str = "", en: str | None = None) -> str:
+        en = en or to_en(text)
         if lang == "en":
-            return to_en(text)
-        return text if lang == "ar" else f"{text}\n{indent}{to_en(text)}"
+            return en
+        return text if lang == "ar" else f"{text}\n{indent}{en}"
     pad = " " * 15
     lines = [desc("الأوامر الفرعية:")]
-    lines += [f"  {name:<12} {desc(text, pad)}" for name, text in SUBCOMMANDS.items()]
+    lines += [f"  {name:<12} {desc(text, pad, _SUBCOMMANDS_EN.get(name))}" for name, text in SUBCOMMANDS.items()]
     lines += ["", desc("شغّل kashif <أمر فرعي> --help لعرض خياراته.")]
     return "\n".join(lines)
 
@@ -334,11 +438,19 @@ def build_parser(lang: str = "both") -> argparse.ArgumentParser:
     p.add_argument("--packs", action="store_true", help=h("استخدم كل حزم القواعد المثبّتة"))
     p.add_argument("--no-deps", action="store_true", help=h("لا تستعلم OSV.dev عن ثغرات الاعتماديات (دون إنترنت)"))
     p.add_argument("--no-external", action="store_true", help=h("لا تشغّل bandit/semgrep/gitleaks/npm حتى لو كانت مثبّتة"))
-    p.add_argument("--deep", action="store_true", help=h("فحص ويب أعمق: تحليل HTML وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)"))
-    p.add_argument("--crawl", action="store_true", help=h("زحف على صفحات الموقع من نفس النطاق وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)"))
+    p.add_argument("--deep", action="store_true", help=_wh("deep", lang))
+    p.add_argument("--crawl", action="store_true", help=_wh("crawl", lang))
     p.add_argument("--max-pages", type=int, default=20, metavar="N", help=h("أقصى عدد صفحات عند الزحف (الافتراضي 20)"))
-    p.add_argument("--delay", type=float, default=0.5, metavar="SEC", help=h("تأخير بين طلبات الزحف بالثواني (الافتراضي 0.5؛ ألطف على الخادم)"))
+    p.add_argument("--delay", type=float, default=0.5, metavar="SEC", help=_wh("delay", lang))
     p.add_argument("--max-depth", type=int, default=2, metavar="N", help=h("أقصى عمق للزحف (الافتراضي 2)"))
+    p.add_argument("--web-profile", choices=WEB_PROFILES, default=None, help=_wh("profile", lang))
+    p.add_argument("--web-sensitivity", choices=WEB_SENSITIVITIES, default="default", help=_wh("sensitivity", lang))
+    p.add_argument("--ignore-robots", action="store_true", help=_wh("ignore_robots", lang))
+    p.add_argument("--third-party-lookups", action="store_true", help=_wh("third_party", lang))
+    p.add_argument("--compare-previous", action="store_true", help=_wh("compare_previous", lang))
+    p.add_argument("--compare", metavar="ID|FILE", help=_wh("compare", lang))
+    p.add_argument("--web-cookie-ignore", action="append", default=[], metavar="NAME", help=_wh("cookie_ignore", lang))
+    p.add_argument("--no-proxy", action="store_true", help=_wh("no_proxy", lang))
     p.add_argument("--timeout", type=float, default=20.0, metavar="SEC",
                    help=h("مهلة كل طلب ويب بالثواني (الافتراضي 20؛ يُعاد الطلب الأول مرة بمهلة مضاعفة)"))
     p.add_argument("--models", action="append", default=[], metavar="DIR",
@@ -363,6 +475,36 @@ def build_parser(lang: str = "both") -> argparse.ArgumentParser:
     # Keep "vulnscan X.Y.Z": the in-app updater of every release (0.9.x included) checks a new binary by this exact text.
     p.add_argument("--version", action="version", version=f"vulnscan {__version__}")
     return p
+
+
+def update_data_main(argv: list[str]) -> int:
+    """`kashif update-data --web [--check]`: install the web data snapshot of the latest release (spec §4.4 step 2).
+    Exit: 0 up to date or installed, 1 failure, 10 newer data available (--check)."""
+    from . import updater
+    lang = _lang_from_argv(argv)
+    p = argparse.ArgumentParser(prog="kashif update-data", description=_wh("ud_desc", lang), formatter_class=_HelpFormatter)
+    p.add_argument("--web", action="store_true", help=_wh("ud_web", lang))
+    p.add_argument("--check", action="store_true", help=_wh("ud_check", lang))
+    p.add_argument("--lang", choices=LANG_CHOICES, default="auto", help=argparse.SUPPRESS)
+    a = p.parse_args(argv)
+    lang = resolve_lang(a.lang)
+    out_lang = "en" if lang == "en" else "ar"
+    if not a.web:
+        p.error(_wh("ud_what", lang))
+    try:
+        res = updater.update_web_data(check_only=a.check)
+    except updater.UpdateError as e:
+        msg = getattr(e, "message_en", None) if out_lang == "en" else e.message
+        msg = msg or (to_en(e.message) if out_lang == "en" else e.message)
+        print(f"✖ {msg}" + (f" ({e.detail})" if e.detail else ""), file=sys.stderr)
+        return 1
+    print(res.get("message_en") if out_lang == "en" else res.get("message"))
+    if res.get("path"):
+        print(_wh("ud_path", out_lang, path=res["path"]))
+    for n in res.get("notes") or []:
+        if isinstance(n, dict) and n.get("en"):
+            print(f"ℹ {n['en'] if out_lang == 'en' else n.get('ar') or n['en']}")
+    return 10 if res.get("status") == "available" else 0
 
 
 def ui_main(argv: list[str]) -> int:
@@ -431,20 +573,7 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]] |
             print(f"✖ {localize('فحص عنوان ويب يتطلب --authorized (تأكيد أنك مخوَّل بفحص هذا الهدف).', lang)}",
                   file=sys.stderr)
             raise SystemExit(2)
-        try:
-            findings, err, pages = scan_site(target, timeout=args.timeout, deep=args.deep, crawl=args.crawl,
-                                             max_pages=args.max_pages, max_depth=args.max_depth, delay=args.delay)
-        except WebUnreachable as e:
-            print(f"✖ {localize(str(e), lang)}", file=sys.stderr)
-            return 2
-        if err:
-            notes.append(err)
-        if args.crawl:
-            notes.append("فحص ويب سلبي مع زحف على صفحات النطاق نفسه، بلا اختبار نشط.")
-        else:
-            notes.append("فحص ويب سلبي أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة، بلا اختبار نشط."
-                         if args.deep else "فحص ويب سلبي: طلب واحد فقط، بلا أي اختبار نشط.")
-        return findings, target, 1, notes
+        return _run_web(args, target, lang)
 
     path = pathlib.Path(target)
     if not path.exists():
@@ -475,6 +604,111 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]] |
             scanners.add("external")
     args.scanners_ran = sorted(scanners)
     return findings, str(path), files, notes
+
+
+def web_profile(args: argparse.Namespace) -> str:
+    """The scan profile of --web-profile / --deep (1.1.0 default: standard)."""
+    return getattr(args, "web_profile", None) or ("deep" if getattr(args, "deep", False) else "standard")
+
+
+def _web_options(args: argparse.Namespace):
+    from .web import options_for
+    return options_for(timeout=args.timeout, crawl=args.crawl, max_pages=args.max_pages, max_depth=args.max_depth,
+                       delay=args.delay, profile=web_profile(args), sensitivity=getattr(args, "web_sensitivity", "default"),
+                       respect_robots=not getattr(args, "ignore_robots", False),
+                       third_party_lookups=getattr(args, "third_party_lookups", False),
+                       cookie_ignore=tuple(getattr(args, "web_cookie_ignore", None) or ()),
+                       use_proxy=not getattr(args, "no_proxy", False))
+
+
+def load_web_snapshot(ref: str, store=None) -> dict | None:
+    """The web snapshot (spec §3.7) of --compare REF: a scan id of the local history, a Kashif JSON report
+    (``web.snapshot``), a saved scan file (``web_snapshot``) or a bare snapshot. None when REF names nothing;
+    raises ValueError when it names a file that holds no web snapshot."""
+    import json
+    if ref.isalnum() and len(ref) <= 64:
+        from .store import Store
+        scan = (store or Store()).get_scan(ref)
+        if scan is not None:
+            snap = scan.get("web_snapshot") or ((scan.get("web") or {}).get("snapshot") if isinstance(scan.get("web"), dict) else None)
+            if not isinstance(snap, dict) or not snap:
+                raise ValueError(ref)
+            return snap
+    path = pathlib.Path(ref)
+    if not path.is_file():
+        return None
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError) as e:
+        raise ValueError(ref) from e
+    if isinstance(doc, dict):
+        for snap in ((doc.get("web") or {}).get("snapshot") if isinstance(doc.get("web"), dict) else None,
+                     doc.get("web_snapshot"), doc if "checks" in doc and "schema" in doc else None):
+            if isinstance(snap, dict) and snap:
+                return snap
+    raise ValueError(ref)
+
+
+def _run_web(args: argparse.Namespace, target: str, lang: str):
+    """A passive web scan (spec §4.3) with the 1.1.0 options; the ``web`` report object goes to args.web_report."""
+    from . import report
+    from .web import scan_web
+    previous = None
+    store = None
+    if args.compare:
+        try:
+            previous = load_web_snapshot(args.compare)
+        except ValueError:
+            print(f"✖ {_wh('compare_bad', lang, what=args.compare)}", file=sys.stderr)
+            return 2
+        if previous is None:
+            print(f"✖ {_wh('compare_missing', lang, what=args.compare)}", file=sys.stderr)
+            return 2
+    elif args.compare_previous:
+        from .store import Store
+        store = Store()
+        previous = store.latest_web_snapshot(target)
+    opts = _web_options(args)
+    scan_id = ""
+    if store is not None:
+        import uuid
+        scan_id = uuid.uuid4().hex[:12]
+    try:
+        res = scan_web(target, options=opts, previous=previous if (args.compare or previous) else None, scan_id=scan_id)
+    except WebUnreachable as e:
+        print(f"✖ {localize(str(e), lang)}", file=sys.stderr)
+        return 2
+    web = report.web_section(res, sensitivity=opts.sensitivity)
+    ar, en = web_budget_note(opts.profile, opts.crawl, opts.max_pages)
+    web["notes"] = [{"en": en, "ar": ar}] + list(web.get("notes") or [])
+    notes = [ar] + list(res.notes)
+    if store is not None:
+        if previous is None:
+            notes.append(_WEB_HELP["ar"]["no_previous"])
+            web["notes"].append({"en": _WEB_HELP["en"]["no_previous"], "ar": _WEB_HELP["ar"]["no_previous"]})
+        saved = _save_web_scan(store, scan_id, target, res, web, notes)
+        if saved:
+            print(_wh("saved", "en" if lang == "en" else "ar", id=saved), file=sys.stderr)
+    args.web_report = web
+    return res.findings, target, 1, notes
+
+
+def _save_web_scan(store, scan_id: str, target: str, res, web: dict, notes: list[str]) -> str:
+    """--compare-previous: keep this scan in the local history (as the UI does), so the next run compares with it."""
+    import time
+    from .report import summary_counts
+    findings = list(res.findings)
+    assign_fingerprints(findings)
+    now = time.time()
+    scan = {"id": scan_id, "target": target, "kind": "url", "status": "done", "started_at": now, "finished_at": now,
+            "files_scanned": 1, "notes": notes, "notes_en": [n.get("en", "") for n in web.get("notes") or []][:len(notes)],
+            "summary": summary_counts(findings), "findings": [f.to_dict() for f in findings], "error": None,
+            "source": "cli", "web": {k: v for k, v in web.items() if k != "snapshot"}, "web_snapshot": res.snapshot}
+    try:
+        store.save_scan(scan)
+    except OSError:
+        return ""
+    return scan_id
 
 
 def _pack_dirs(args: argparse.Namespace, lang: str) -> tuple[list[str], list[str]]:
@@ -598,7 +832,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # Everything `kashif <word>` routes to before the scan parser: the sub-commands and the built-in ui/lsp/update.
-_ROUTED = frozenset(DELEGATES) | {"ui", "lsp", "update"}
+_ROUTED = frozenset(DELEGATES) | {"ui", "lsp", "update", "update-data"}
 
 
 def _hoist_lang(argv: list[str]) -> list[str]:
@@ -636,6 +870,9 @@ def _main(argv: list[str]) -> int:
         from .updater import cli_main as update_main
         with localized_argparse(_lang_from_argv(argv[1:])):
             return update_main(argv[1:])
+    if argv and argv[0] == "update-data":
+        with localized_argparse(_lang_from_argv(argv[1:])):
+            return update_data_main(argv[1:])
     if argv and argv[0] in DELEGATES:               # mcp, export, compliance, history, triage, policy, surface, rules
         return run_subcommand(argv[0], argv[1:])
     lang = _lang_from_argv(argv)
@@ -665,6 +902,14 @@ def _scan_main(argv: list[str], lang: str) -> int:
     if (args.fix or args.fix_dry_run) and is_web:
         from .autofix import MSG as FIX_MSG
         parser.error(bi(FIX_MSG["local_only"]))
+    if not is_web:
+        for opt, on in (("--compare", args.compare), ("--compare-previous", args.compare_previous)):
+            if on:
+                parser.error(_wh("web_only", lang, opt=opt))
+    if args.deep and args.web_profile not in (None, "deep"):
+        parser.error(_wh("deep_conflict", lang, profile=args.web_profile))
+    if args.compare and args.compare_previous:
+        parser.error(_wh("compare_both", lang))
     exports = _parse_exports(args.export, parser, bi)
     _check_output_paths(args, parser, bi)
     _check_asff(args, exports, parser, bi)
@@ -752,17 +997,18 @@ def _scan_main(argv: list[str], lang: str) -> int:
             print(f"✖ {err}", file=sys.stderr)
             raise SystemExit(2) from None
 
+    web = getattr(args, "web_report", None)          # a web scan's grades, coverage, inventory, diff (report.web_section)
     renderers = {"console": lambda: render_console(findings, target, files, notes,
-                                                   color=not args.no_color and args.output is None, lang=lang),
-                 "markdown": lambda: render_markdown(findings, target, files, notes, lang=lang),
-                 "json": lambda: render_json(findings, target, files, notes, scanners=scanners),
-                 "html": lambda: render_html(findings, target, files, notes, lang=lang),
-                 "sarif": lambda: render_sarif(findings, target, files, notes, lang=lang, suppressed=hidden)}
+                                                   color=not args.no_color and args.output is None, lang=lang, web=web),
+                 "markdown": lambda: render_markdown(findings, target, files, notes, lang=lang, web=web),
+                 "json": lambda: render_json(findings, target, files, notes, scanners=scanners, web=web),
+                 "html": lambda: render_html(findings, target, files, notes, lang=lang, web=web),
+                 "sarif": lambda: render_sarif(findings, target, files, notes, lang=lang, suppressed=hidden, web=web)}
     machine_stdout = False
     if args.all_formats:
         for ext, fmt in (("md", "markdown"), ("json", "json"), ("html", "html"), ("sarif", "sarif")):
             _write_file(f"{args.all_formats}.{ext}", renderers[fmt]())
-        print(render_console(findings, target, files, notes, color=not args.no_color, lang=lang))
+        print(render_console(findings, target, files, notes, color=not args.no_color, lang=lang, web=web))
         print("\n" + m(f"كُتبت التقارير: {args.all_formats}.md / .json / .html / .sarif"))
     else:
         text = renderers[args.format]() if args.format in renderers else export(args.format)

@@ -35,6 +35,7 @@ import json
 import re
 import sys
 import tarfile
+import warnings
 import zlib
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -55,6 +56,19 @@ MAX_FILE = 16 * 1024 * 1024        # no single data file comes near this (decomp
 NEVER_PATHS = re.compile(r"heapdump|threaddump|/debug/pprof|/actuator/(?:shutdown|restart|refresh|jolokia/exec)|"
                          r"/cache/(?:purge|flush|clear)|/install/(?:step|submit|finish)", re.I)
 _FLAGS = {"i": re.I, "m": re.M, "s": re.S, "x": re.X}
+
+
+def never_listed(path: str) -> bool:
+    """On the §0.1 never-list: this module's own list or the scanner's (``webscan.exposure.NEVER_LIST``, which
+    ``probe()`` enforces). The release gate must be at least as strict as the scanner, or a refresh could install a
+    path that the scanner then silently refuses (and test_exposure only catches it later)."""
+    if NEVER_PATHS.search(path):
+        return True
+    try:
+        from vulnscan.webscan.exposure import NEVER_LIST
+    except ImportError:            # pragma: no cover - the scanner package is always next to this tool
+        return False
+    return bool(NEVER_LIST.search(path))
 
 
 def expected_files() -> tuple[str, ...]:
@@ -129,8 +143,12 @@ def _regex_errors(name: str, obj) -> list[str]:
         for ch in flags or "":
             f |= _FLAGS.get(ch, 0)
         try:
-            re.compile(pattern, f)
-        except re.error as e:
+            # A DeprecationWarning from re on Python 3.10 (e.g. global flags such as "(?i)" not at the start) is an
+            # error from 3.11 on: the scanner would then skip the pattern, so the gate fails it on every version.
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", DeprecationWarning)
+                re.compile(pattern, f)
+        except (re.error, DeprecationWarning) as e:
             errs.append(f"{name}: {where}: regex does not compile ({e})")
 
     def walk(node, where: str) -> None:
@@ -145,7 +163,11 @@ def _regex_errors(name: str, obj) -> list[str]:
             for i, v in enumerate(node):
                 walk(v, f"{where}[{i}]")
 
-    walk(obj, "$")
+    re.purge()            # a pattern compiled earlier in this process would not warn again (re's cache)
+    try:
+        walk(obj, "$")
+    except RecursionError:
+        return [f"{name}: nested too deeply to check"]
     if name == "tech.json":
         for t in obj.get("technologies", []):
             for i, s in enumerate(t.get("signals", [])):
@@ -223,12 +245,16 @@ def validate_dir(directory: Path = DATA_DIR, *, max_age: int | None = None, toda
                 age = ((today or datetime.now(timezone.utc).date()) - date.fromisoformat(d)).days
             except (TypeError, ValueError):
                 age = None
+            shown = n
+            for binary, side in data.SIDECARS.items():
+                shown = binary if side == n else shown
             if age is not None and age > max_age:
-                shown = n
-                for binary, side in data.SIDECARS.items():
-                    shown = binary if side == n else shown
                 errs.append(f"{shown}: snapshot of {d} is {age} days old (limit {max_age}); "
                             "run python tools/webdata/refresh.py")
+            elif age is not None and age < -1:     # one day of slack for time zones
+                # A future date becomes the manifest's "generated": installed by update_web_data(), such a snapshot
+                # would look newer than every later release and every newer bundled snapshot, for good.
+                errs.append(f"{shown}: dated {d}, in the future (a typo in --date?)")
     for binary, side in data.SIDECARS.items():
         meta = objs.get(side)
         if meta and binary in present:
@@ -242,7 +268,7 @@ def validate_dir(directory: Path = DATA_DIR, *, max_age: int | None = None, toda
     if both:
         errs.append(f"exposed-paths.json / tech.json: paths listed in both files: {both}")
     for p in exposed + platform:
-        if NEVER_PATHS.search(p):
+        if never_listed(p):
             errs.append(f"deep path {p!r} is on the §0.1 never-list (expensive or state-changing GET)")
     if not (want - present):
         size = compressed_size(directory, sorted(want))
@@ -345,6 +371,16 @@ def sha256_line(path: Path) -> str:
 
 # --------------------------------------------------------------------------------------------------- CLI
 
+def safe_streams() -> None:
+    """Problems can quote data (Arabic titles, upstream text): on a Windows pipe stdout/stderr use the ANSI code page,
+    where printing them would raise UnicodeEncodeError instead of listing the problems."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError):     # not a TextIOWrapper (captured by a test, redirected)
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dir", default=str(DATA_DIR), help="snapshot directory (default: vulnscan/data/web)")
@@ -353,6 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--today", type=date.fromisoformat, help="reference date for --max-age (YYYY-MM-DD; default: today, UTC)")
     ap.add_argument("--pack", metavar="DIR", help="also write the release asset kashif-webdata-<date>.tar.gz into DIR")
     args = ap.parse_args(argv)
+    safe_streams()
     directory = Path(args.dir)
     errs = validate_dir(directory, max_age=args.max_age, today=args.today)
     if errs:

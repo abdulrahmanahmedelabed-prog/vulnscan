@@ -320,6 +320,9 @@ def record(steps, mirror: Path, day: str, fetch: Callable[[str], bytes | None] =
             if body is None:
                 if not inp.optional:
                     raise RefreshError(f"{step.name}: {inp.rel} not found upstream ({', '.join(inp.urls)})")
+                # a copy from an earlier recording into the same directory would otherwise still be read by the
+                # generator (eol.py reads <slug>.md when it exists) although sources.json says it is missing
+                (mirror / step.name / _safe_rel(inp.rel)).unlink(missing_ok=True)
                 entries[inp.rel] = {"url": inp.urls[0], "missing": True}
                 continue
             dest = mirror / step.name / _safe_rel(inp.rel)
@@ -356,10 +359,13 @@ def verify_mirror(steps, mirror: Path, index: dict) -> None:
             e = entries.get(inp.rel)
             if e is None:
                 raise RefreshError(f"{step.name}: {inp.rel} not recorded in the mirror")
+            path = mirror / step.name / _safe_rel(inp.rel)
             if e.get("missing"):
+                if path.exists():
+                    raise RefreshError(f"{step.name}: {inp.rel} is in the mirror but recorded as missing upstream")
                 continue
             try:
-                raw = (mirror / step.name / _safe_rel(inp.rel)).read_bytes()
+                raw = path.read_bytes()
             except OSError as err:
                 raise RefreshError(f"{step.name}: {inp.rel} missing from the mirror") from err
             if _sha(raw) != e.get("sha256"):
@@ -509,6 +515,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--keep-curated-dates", action="store_true", help="do not restamp hand-curated files")
     ap.add_argument("--list", action="store_true", help="list the steps and their upstream URLs")
     args = ap.parse_args(argv)
+    validate.safe_streams()            # errors quote upstream text and Arabic titles (Windows code-page pipes)
     if args.list:
         _list()
         return 0

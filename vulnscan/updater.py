@@ -1191,8 +1191,11 @@ def update_web_data(*, net: Net = NET, root: pathlib.Path | None = None, check_o
     bundled = d._bundled_generated()
     inst = _webdata_installed(root)
     current = max(bundled, inst[0]) if inst else bundled
+    # "path": the installed snapshot in use, None while the bundled one is (an installed snapshot that is not newer
+    # than the bundled data is ignored by webscan.data, so naming it would mislead)
+    in_use = str(inst[1]) if inst and inst[0] > bundled else None
     out = {"ok": True, "latest": day, "current": current, "bundled": bundled, "installed": inst[0] if inst else None,
-           "release": release["version"], "asset": asset, "path": str(inst[1]) if inst else None}
+           "release": release["version"], "asset": asset, "path": in_use}
     if day <= current:
         return {**out, "status": "up_to_date", **_webdata_text("webdata_current", current),
                 "notes": d.staleness()}

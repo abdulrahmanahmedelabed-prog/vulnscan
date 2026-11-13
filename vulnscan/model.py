@@ -21,7 +21,18 @@ SEVERITY_AR = {
 SEVERITY_EN = {s: s.capitalize() for s in SEVERITIES}
 
 
-_COOKIE_RULES = frozenset({"WEB020", "WEB021", "WEB022"})
+# Cookie rules fingerprint on the title (it names the cookie), never on the Set-Cookie value. 1.1.0: + WEB400–WEB414.
+_COOKIE_RULES = frozenset({"WEB020", "WEB021", "WEB022"} | {f"WEB{n}" for n in range(400, 415)})
+# Web rules of 1.0.1 whose 1.0.1 snippet the 1.1.0 scanner can reproduce exactly: they keep their 1.0.1 fingerprint
+# (title + the snippet below), so baselines and triage decisions taken on 1.0.x stay valid. Every other web finding
+# that carries ``extra["fp_key"]`` (rule|host|kind|normalised value, spec §3.5) fingerprints on it instead.
+_LEGACY_WEB_SNIPPETS = {
+    "WEB-strict-transport-security": "HTTP", "WEB-content-security-policy": "HTTP", "WEB-x-frame-options": "HTTP",
+    "WEB-x-content-type-options": "HTTP", "WEB-referrer-policy": "HTTP", "WEB-permissions-policy": "HTTP",
+    "WEB040": "script-src 'unsafe-inline'", "WEB041": "script-src 'unsafe-eval'", "WEB042": "script-src *",
+    "WEB043": None, "WEB010": None, "WEB011": None,     # None: the snippet itself (the CSP or header value, ≤ 120)
+}
+_LEGACY_COOKIE_RULES = frozenset({"WEB020", "WEB021", "WEB022"})   # 1.0.1 snippet: the title (names the cookie)
 
 
 @dataclass
@@ -48,12 +59,23 @@ class Finding:
         * For findings inside an archive (``app-1.2.apk!src/x.java``) the archive's own name is dropped, so a
           baseline taken on one release of an artifact still applies to the next.
         * Web findings fingerprint on the title plus a snippet with volatile values removed (cookie values,
-          HTTP status codes), so an unchanged site is not reported as new on every run.
+          HTTP status codes), so an unchanged site is not reported as new on every run. 1.1.0 web findings that carry
+          ``extra["fp_key"]`` fingerprint on it (rule, host, response kind and normalised value: no nonces, dates
+          or counts); the 1.0.1 header, CSP and cookie rules keep their 1.0.1 fingerprints (``extra["fp_title"]``).
         A deduplication index (added by assign_fingerprints) distinguishes identical findings in one file."""
         file = self.extra.get("archive_member") or self.file
         snippet = self.snippet or ""
         if self.source == "web":
-            title = re.sub(r"\b\d+ days\b", "N days", self.title)   # "expires in 9 days" must not change identity
+            fp_key, fp_title = self.extra.get("fp_key"), self.extra.get("fp_title")
+            title = self.title
+            if isinstance(fp_title, str) and fp_title and (self.rule_id in _LEGACY_WEB_SNIPPETS
+                                                           or self.rule_id in _LEGACY_COOKIE_RULES):
+                title = fp_title                          # the 1.0.1 title: a 1.0.x baseline still matches
+                snippet = _LEGACY_WEB_SNIPPETS.get(self.rule_id) or snippet
+            elif isinstance(fp_key, str) and fp_key:      # 1.1.0 grouping key: stable across reruns (spec §3.5)
+                raw = f"{self.rule_id}\x00{file.replace(chr(92), '/')}\x00fp:{fp_key}"
+                return hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()[:16]
+            title = re.sub(r"\b\d+ days\b", "N days", title)   # "expires in 9 days" must not change identity
             if self.rule_id in _COOKIE_RULES:
                 snippet = title                  # exact cookie name is in the title; values and Expires vary
             else:                                # drop status codes and query/attribute values (?v=1699 cache-busters)

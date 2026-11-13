@@ -1,10 +1,21 @@
-"""Deep passive web checks exercised against a local throwaway HTTP server."""
+"""Passive web checks through the 1.0.1 facade (``vulnscan.web``), exercised against local throwaway HTTP servers.
+
+Kashif 1.1.0 runs the same API on the ``vulnscan.webscan`` engine. Every request stays on 127.0.0.1: proxies are
+removed from the environment and the test-only resolver hook (``KASHIF_TEST_RESOLVE=1``) answers every other name
+with a documentation address, so no DNS query or connection leaves the machine.
+
+Tests that were rewritten for 1.1.0 say why next to the change: either they asserted a 1.0.1 defect (spec §1.6,
+named by its D-number) or they patched the 1.0.1 ``urllib`` transport (``web._get``), which the scanner no longer
+uses (every request goes through ``webscan.http.Fetcher``, spec §4.1, §0.7).
+"""
+import json
+import socket
 import threading
+import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
-
-import urllib.parse
 
 from vulnscan.web import _analyze_html, scan_url
 
@@ -16,6 +27,27 @@ PAGE = b"""<!doctype html><html><head>
 <form action="http://insecure.example/login" method="post">
 <input type="password" name="pw"></form>
 </body></html>"""
+
+PROXY_VARS = ("http_proxy", "https_proxy", "all_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
+
+
+@pytest.fixture(autouse=True)
+def _offline(monkeypatch, tmp_path):
+    """No proxy, no real DNS (test-only resolver hook), no user web data."""
+    for k in PROXY_VARS:
+        monkeypatch.delenv(k, raising=False)
+    rmap = tmp_path / "resolve.json"
+    rmap.write_text(json.dumps({"version": 1, "hosts": {},
+                                "default": {"status": "ok", "addresses": ["192.0.2.1"], "public": True}}),
+                    encoding="utf-8")
+    monkeypatch.setenv("KASHIF_TEST_RESOLVE", "1")
+    monkeypatch.setenv("KASHIF_TEST_RESOLVE_MAP", str(rmap))
+    monkeypatch.delenv("KASHIF_TEST_CAFILE", raising=False)
+    monkeypatch.setenv("KASHIF_HOME", str(tmp_path / "home"))
+    from vulnscan.webscan import data
+    data.clear_cache()
+    yield
+    data.clear_cache()
 
 
 class H(BaseHTTPRequestHandler):
@@ -47,10 +79,15 @@ class H(BaseHTTPRequestHandler):
             self.wfile.write(b"not found")
 
 
+def _serve(handler):
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
+
+
 @pytest.fixture
 def site():
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    httpd = _serve(H)
     yield f"http://127.0.0.1:{httpd.server_address[1]}/"
     httpd.shutdown()
 
@@ -76,6 +113,14 @@ def test_shallow_scan_is_one_request(site):
     assert "WEB062" not in got
 
 
+def test_minimal_profile_is_the_1_0_1_single_request(site):
+    """1.1.0 default is the ``standard`` profile (spec §4.3); ``minimal`` keeps the 1.0.1 one-request behaviour."""
+    from vulnscan.web import scan_web
+    res = scan_web(site, profile="minimal", delay=0.2)
+    assert res.requests == 1 and res.profile == "minimal"
+    assert {"WEB051", "WEB040", "WEB021"} <= ids(res.findings)
+
+
 def test_mixed_content_on_https_page():
     # Mixed content is only meaningful on an https page; analyze directly.
     parsed = urllib.parse.urlparse("https://site.example/")
@@ -86,7 +131,7 @@ def test_mixed_content_on_https_page():
 
 
 def test_deep_scan_probes_exposed_paths(site):
-    findings, err = scan_url(site, deep=True)
+    findings, err = scan_url(site, deep=True, delay=0.2)
     assert err is None
     exposed = [f for f in findings if f.rule_id == "WEB062"]
     snippets = " ".join(f.snippet for f in exposed)
@@ -128,10 +173,25 @@ class Moodle(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def moodle():
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Moodle)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    httpd = _serve(Moodle)
     yield f"http://127.0.0.1:{httpd.server_address[1]}/"
     httpd.shutdown()
+
+
+class WordPress(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        if self.path != "/":
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b'<!doctype html><html><head><meta name="generator" content="WordPress 4.9">'
+                         b'<link rel="stylesheet" href="/wp-content/themes/t/style.css"></head><body>Blog</body></html>')
 
 
 def test_platform_detection(moodle):
@@ -140,7 +200,21 @@ def test_platform_detection(moodle):
     assert err is None
     plat = [f for f in findings if f.rule_id == "WEB080"]
     assert plat and plat[0].extra["platform"] == "Moodle"
-    assert any(f.rule_id == "WEB081" for f in findings)   # 3.5 < 3.9 -> outdated
+    # Rewritten for D15 (spec §1.6): 1.0.1 read the version from page prose ("This site is using Moodle 3.5.2"),
+    # which also fires on documentation and blog posts. Versions now come only from scoped signals (generator
+    # meta, headers, asset paths); prose never makes a WEB081.
+    assert not any(f.rule_id == "WEB081" for f in findings)
+
+
+def test_outdated_platform_version_from_the_generator_meta():
+    httpd = _serve(WordPress)
+    try:
+        findings, err = scan_url(f"http://127.0.0.1:{httpd.server_address[1]}/", deep=False)
+    finally:
+        httpd.shutdown()
+    assert err is None
+    old = [f for f in findings if f.rule_id == "WEB081"]
+    assert old and old[0].extra["platform"] == "WordPress" and old[0].extra["version"].startswith("4.9")
 
 
 def test_crawl_reaches_other_pages(moodle):
@@ -165,38 +239,71 @@ def test_crawl_skips_external_and_logout(moodle):
     assert not any("logout" in l for l in links)          # logout skipped
 
 
-def test_unreachable_site_is_an_error_not_a_clean_result(monkeypatch):
-    """A timed-out site must never look like a scan with zero findings."""
-    import pytest
-    from vulnscan import web
-    calls = []
+class _BlackHole:
+    """Accepts TCP connections and never answers (a site that times out); counts the connections."""
 
-    def fake_get(url, timeout, read_body=False, retries=0):
-        calls.append((url, retries))
-        return None, None, b"", "timed out"
-    monkeypatch.setattr(web, "_get", fake_get)
-    with pytest.raises(web.WebUnreachable) as ei:
-        web.scan_site("https://example.invalid/", timeout=5)
+    def __init__(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(8)
+        self.sock.settimeout(0.1)
+        self.port = self.sock.getsockname()[1]
+        self.conns: list = []
+        self.times: list[float] = []
+        self._stop = threading.Event()
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):
+        while not self._stop.is_set():
+            try:
+                c, _ = self.sock.accept()
+            except (socket.timeout, OSError):
+                continue
+            self.conns.append(c)
+            self.times.append(time.monotonic())
+
+    def close(self):
+        self._stop.set()
+        for c in self.conns:
+            c.close()
+        self.sock.close()
+
+
+def test_unreachable_site_is_an_error_not_a_clean_result():
+    """A timed-out site must never look like a scan with zero findings.
+
+    Rewritten for 1.1.0: the 1.0.1 test patched ``web._get`` (the urllib transport), which the scanner no longer
+    uses; a local server that accepts and never answers gives the same timeout through the real fetcher."""
+    from vulnscan import web
+    hole = _BlackHole()
+    try:
+        with pytest.raises(web.WebUnreachable) as ei:
+            web.scan_site(f"http://127.0.0.1:{hole.port}/", timeout=0.3, delay=0.2)
+    finally:
+        hole.close()
     msg = str(ei.value)
     assert "لم يُفحص" in msg and "انتهت مهلة" in msg and "timed out" in msg
-    assert calls and calls[0][1] == 1          # the entry request is retried
+    assert len(hole.times) == 2                # the entry request is retried once (with a doubled timeout)
 
 
-def test_server_marks_unreachable_scan_as_error(monkeypatch, tmp_path):
-    from vulnscan import server, web
+def test_server_marks_unreachable_scan_as_error(tmp_path):
+    from vulnscan import server
     from vulnscan.store import Store
-    monkeypatch.setattr(web, "_get", lambda *a, **k: (None, None, b"", "timed out"))
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()                                   # nothing listens there: connection refused
     store = Store(tmp_path)
-    scan = store.new_scan("https://example.invalid/", "web")
-    server.run_scan(store, scan, store.settings(), True)
+    scan = store.new_scan(f"http://127.0.0.1:{port}/", "web")
+    server.run_scan(store, scan, {**store.settings(), "web_timeout": 2, "web_delay": 0.2}, True)
     saved = store.get_scan(scan["id"])
     assert saved["status"] == "error" and "لم يُفحص" in saved["error"]
     assert saved["summary"]["high"] == 0 and not saved["findings"]
 
 
-def test_windows_error_messages_are_explained_and_retried(monkeypatch):
-    import pytest
+def test_windows_error_messages_are_explained_and_retried():
     from vulnscan import web
+    from vulnscan.webscan import http as whttp
     win = ("[WinError 10060] A connection attempt failed because the connected party did not properly respond after a "
            "period of time, or established connection failed because connected host has failed to respond")
     msg = web.explain_failure(win, "https://www.example.edu/", 20)
@@ -204,69 +311,90 @@ def test_windows_error_messages_are_explained_and_retried(monkeypatch):
     assert "رفض الخادم" in web.explain_failure("[WinError 10061] No connection could be made because the target machine actively refused it", "https://x/", 20)
     assert "اسم النطاق" in web.explain_failure("[Errno 11001] getaddrinfo failed", "https://x/", 20)
     assert "قطع الخادم" in web.explain_failure("[WinError 10054] An existing connection was forcibly closed by the remote host", "https://x/", 20)
-    calls = []
-
-    class Opener:
-        def open(self, req, timeout):
-            calls.append(timeout)
-            raise OSError(win)
-    monkeypatch.setattr(web.urllib.request, "build_opener", lambda *a: Opener())
-    with pytest.raises(web.WebUnreachable):
-        web.scan_site("https://www.example.edu/", timeout=5)
-    assert calls == [5, 10]                     # the Windows timeout is recognised as transient: retried with double timeout
+    # Rewritten for 1.1.0 (the 1.0.1 test patched urllib's build_opener, no longer used): Windows raises
+    # WinError 10060 as TimeoutError, which the fetcher classifies as a timeout (retried once, doubled timeout).
+    code, text = whttp.classify_error(TimeoutError(10060, win))
+    assert code == "timeout" and "انتهت مهلة" in web.explain_failure(text, "https://x/", 20)
+    code, text = whttp.classify_error(ConnectionResetError(10054, "An existing connection was forcibly closed"))
+    assert code == "reset" and any(w in text.lower() for w in web.TRANSIENT)
 
 
 def test_vulnerable_library_versions_are_flagged():
     from vulnscan.web import _analyze_html
     import urllib.parse
     p = urllib.parse.urlparse("https://x/")
+    # Rewritten for 1.1.0: versions come from retire.js's URL patterns, which read the file name, not a query-string
+    # cache-buster (``handlebars.min.js?v=4.0.5`` names the site's build, not the library's version); names are
+    # retire.js component names, so compare without case.
     html = ('<script src="/js/jquery-1.12.4.min.js"></script>'
             '<script src="/js/bootstrap-3.3.7.js"></script>'
-            '<script src="/vendor/handlebars.min.js?v=4.0.5"></script>')
+            '<script src="/vendor/handlebars-4.0.5.min.js"></script>')
     ids = {(f.rule_id, f.title) for f in _analyze_html(html, p, "x")}
-    titles = " ".join(t for _, t in ids)
-    assert "jQuery 1.12.4" in titles and "Bootstrap 3.3.7" in titles and "Handlebars 4.0.5" in titles
+    titles = " ".join(t for _, t in ids).lower()
+    assert "jquery 1.12.4" in titles and "bootstrap 3.3.7" in titles and "handlebars 4.0.5" in titles
     # a current version is not flagged
     ok = _analyze_html('<script src="/js/jquery-3.7.1.min.js"></script>', p, "x")
     assert not [f for f in ok if "jQuery" in f.title]
 
 
-def _hdrs(d):
-    import email.message
-    m = email.message.Message()
-    for k, v in d.items():
-        m[k] = v
-    return m
+SITE_PAGES = {
+    "/": b'<html><a href="/a">a</a><a href="/b">b</a><form action="http://site.example/x"></form></html>',
+    "/a": b'<html><p>first page</p><form action="http://site.example/x"></form></html>',
+    "/b": b'<html><p>second page, a little different</p><form action="http://site.example/x"></form></html>',
+}
 
 
-def test_crawl_groups_repeated_findings_and_counts_pages(monkeypatch):
+class Pages(BaseHTTPRequestHandler):
+    times: list = []
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        Pages.times.append(time.monotonic())
+        body = SITE_PAGES.get(self.path.split("?")[0])
+        if body is None:
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def test_crawl_groups_repeated_findings_and_counts_pages():
+    """Rewritten for 1.1.0 (local server instead of the patched ``web._get``); grouping is systemic (D24)."""
     from vulnscan import web
-    pages = {
-        "https://site/": b'<html><a href="/a">a</a><a href="/b">b</a><form action="http://site/x"></form></html>',
-        "https://site/a": b'<html><form action="http://site/x"></form></html>',
-        "https://site/b": b'<html><form action="http://site/x"></form></html>',
-    }
-
-    def fake_get(url, timeout, read_body=False, retries=0):
-        body = pages.get(url.rstrip("/") if url != "https://site/" else url, pages["https://site/"])
-        return 200, _hdrs({"content-type": "text/html"}), body, None
-    monkeypatch.setattr(web, "_get", fake_get)
-    findings, note, count = web.scan_site("https://site/", crawl=True, max_pages=10, delay=0)
+    httpd = _serve(Pages)
+    try:
+        findings, note, count = web.scan_site(f"http://127.0.0.1:{httpd.server_address[1]}/", crawl=True,
+                                              max_pages=10, delay=0.2)
+    finally:
+        httpd.shutdown()
     forms = [f for f in findings if f.rule_id == "WEB051"]
     assert len(forms) == 1                                  # the same HTTP form on 3 pages -> one grouped finding
-    assert forms[0].extra.get("page_count", 1) >= 2
+    assert forms[0].extra.get("page_count", 1) >= 2 and forms[0].extra["instances"] >= 3
     assert count >= 3                                       # entry + /a + /b counted
+    assert note and "التغطية" in note                       # the note carries the coverage summary
 
 
-def test_crawl_delay_throttles_requests(monkeypatch):
+def test_crawl_delay_throttles_requests():
+    """Rewritten for D25 (spec §1.6): 1.0.1 slept only between crawled pages; now every request to a host, well-known
+    files and the CORS GET included, is at least ``delay`` apart (one global limiter)."""
     from vulnscan import web
-    slept = []
-    monkeypatch.setattr(web.time, "sleep", lambda s: slept.append(s))
-    monkeypatch.setattr(web, "_get", lambda *a, **k: (200, _hdrs({"content-type": "text/html"}), b'<a href="/p">p</a>', None))
-    web.scan_site("https://site/", crawl=True, max_pages=3, delay=0.5)
-    assert slept and all(abs(x - 0.5) < 1e-9 for x in slept)
+    Pages.times = []
+    httpd = _serve(Pages)
+    try:
+        web.scan_site(f"http://127.0.0.1:{httpd.server_address[1]}/", crawl=True, max_pages=3, delay=0.5)
+    finally:
+        httpd.shutdown()
+    times = sorted(Pages.times)
+    gaps = [b - a for a, b in zip(times, times[1:])]
+    assert len(times) >= 5 and gaps and min(gaps) >= 0.45
 
 
 def test_user_agent_identifies_the_scanner_and_does_not_impersonate():
     from vulnscan.web import USER_AGENT
     assert "vulnscan" in USER_AGENT.lower()                 # honest identification, no stealth
+    assert USER_AGENT.startswith("Kashif/") and "Mozilla" not in USER_AGENT

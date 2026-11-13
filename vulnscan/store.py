@@ -25,6 +25,14 @@ DEFAULT_SETTINGS = {
     "min_severity": "info",
     "web_timeout": 20,
     "web_delay": 0.5,
+    # 1.1.0 passive web scanning (spec §4.5): the same options as the CLI's --web-* flags
+    "web_profile": "standard",          # minimal | standard | deep
+    "web_sensitivity": "default",       # strict | default | paranoid
+    "web_respect_robots": True,
+    "web_third_party_lookups": False,
+    "web_use_proxy": True,
+    "web_compare_previous": True,       # diff against the last scan of the same site (spec §3.7: default on in the UI)
+    "web_cookie_ignore": [],
     "exclude": ["tests/*", "**/test_*", "**/*.test.*"],
     "ignore_rules": [],
     "use_osv": True,
@@ -42,7 +50,10 @@ DEFAULT_SETTINGS = {
 }
 
 SEVERITIES = ("critical", "high", "medium", "low", "info")
-INDEX_VERSION = 2          # 2: per-scan legacy keys, occurrence-numbered keys (older indexes are rebuilt)
+INDEX_VERSION = 2          # 2: per-scan legacy keys, occurrence-numbered keys (older indexes are rebuilt).
+# 1.1.0 web scans are indexed without their inventory and snapshot; scans saved by 1.0.x carry neither, so an index
+# of version 2 needs no rebuild for them.
+WEB_HEAVY_KEYS = ("web", "web_snapshot")  # kept in the scan file only; the index carries "web_brief"
 TREND_POINTS = 20          # scans shown in a project's trend
 DIFF_LIST_CAP = 200        # new / fixed findings listed per project
 
@@ -146,6 +157,17 @@ def _counts(meta: dict | None) -> dict:
             out[k] = max(0, int(summary.get(k) or 0))
         except (TypeError, ValueError):
             out[k] = 0
+    return out
+
+
+def web_brief(web: dict, has_snapshot: bool = False) -> dict:
+    """What lists and dashboards show of a web scan: its profile and the three grades (letter and score)."""
+    grades = web.get("grades") if isinstance(web.get("grades"), dict) else {}
+    out = {"profile": web.get("profile") if isinstance(web.get("profile"), str) else "", "snapshot": bool(has_snapshot)}
+    for alg in ("kashif", "observatory", "ssllabs"):
+        g = grades.get(alg) if isinstance(grades.get(alg), dict) else {}
+        out[alg] = {"grade": g.get("grade") if isinstance(g.get("grade"), str) else None,
+                    "score": g.get("score") if isinstance(g.get("score"), (int, float)) else None}
     return out
 
 
@@ -255,6 +277,10 @@ class Store:
                     seen.discard(sid)
                     continue
                 findings = scan.pop("findings", None) or []
+                web = scan.pop("web", None)
+                snap = scan.pop("web_snapshot", None)
+                if isinstance(web, dict) or isinstance(snap, dict):
+                    scan["web_brief"] = web_brief(web if isinstance(web, dict) else {}, isinstance(snap, dict) and bool(snap))
                 findings = [f for f in findings if isinstance(f, dict)] if isinstance(findings, list) else []
                 scan["id"] = sid                         # the file name is the id the API serves it under
                 if not isinstance(scan.get("summary"), dict):
@@ -340,6 +366,22 @@ class Store:
                 "latest": latest["id"] if latest else None, "files_scanned": (latest or {}).get("files_scanned", 0),
                 "summary": summary, "total": sum(summary.values()),
                 "previous": previous, "new": new, "fixed": fixed, "delta": delta, "trend": trend}
+
+    def latest_web_snapshot(self, target: str, exclude: str | None = None) -> dict | None:
+        """The ``web_snapshot`` (spec §3.7) of the newest completed scan of the same normalised target, or None.
+        ``exclude``: a scan id to skip (the scan being compared)."""
+        pid = project_id(project_key({"target": target, "kind": "url"}))
+        for meta in self.list_scans(pid):
+            if meta.get("status") != "done" or meta.get("id") == exclude:
+                continue
+            brief = meta.get("web_brief")
+            if isinstance(brief, dict) and not brief.get("snapshot"):
+                continue
+            scan = self.get_scan(str(meta.get("id") or ""))
+            snap = (scan or {}).get("web_snapshot")
+            if isinstance(snap, dict) and snap:
+                return snap
+        return None
 
     def delete_scan(self, scan_id: str) -> bool:
         p = self.scans_dir / f"{scan_id}.json"

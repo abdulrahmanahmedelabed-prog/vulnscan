@@ -975,3 +975,135 @@ def test_validate_reports_wrongly_shaped_files_instead_of_crashing(snap, name, t
     errs = validate.validate_dir(snap)
     assert any(e.startswith(name + ":") for e in errs), errs
     validate.build_manifest(snap)
+
+
+# ===================================================================================== review (WP17, second pass)
+
+def test_validate_survives_a_deeply_nested_file(snap):
+    # 3.12+ parses 5000 levels of JSON; walking them for regexes must not crash the gate with RecursionError
+    text = (snap / "takeover.json").read_text(encoding="utf-8")
+    text = text.replace('"meta": {', '"meta": {"x": ' + "[" * 5000 + "]" * 5000 + ", ", 1)
+    (snap / "takeover.json").write_text(text, encoding="utf-8", newline="\n")
+    errs = validate.validate_dir(snap)
+    assert any(e.startswith("takeover.json:") for e in errs), errs
+    validate.build_manifest(snap)
+
+
+@pytest.mark.parametrize("path", ["/jolokia/exec/java.lang:type=Memory/gc", "/actuator/loggers", "/wp-cron.php"])
+def test_validate_uses_the_scanners_never_list_too(snap, path):
+    from vulnscan.webscan import exposure
+    assert exposure.NEVER_LIST.search(path) and not validate.NEVER_PATHS.search(path)
+    exposed = json.loads((snap / "exposed-paths.json").read_text(encoding="utf-8"))
+    exposed["paths"][0] = dict(exposed["paths"][0], path=path)
+    (snap / "exposed-paths.json").write_text(json.dumps(exposed, indent=1, ensure_ascii=False) + "\n",
+                                             encoding="utf-8", newline="\n")
+    assert any("never-list" in e and path in e for e in validate.validate_dir(snap))
+
+
+def test_validate_fails_a_regex_that_only_warns_on_python_310(snap):
+    import re
+    import warnings
+    pattern = "wp-content(?i)/themes"            # 3.10: DeprecationWarning; 3.11+: re.error. The scanner skips it.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            re.compile(pattern)                  # cached on 3.10: the gate must still see the warning
+        except re.error:
+            pass
+    tech = json.loads((snap / "tech.json").read_text(encoding="utf-8"))
+    t = next(t for t in tech["technologies"] if t.get("signals"))
+    t["signals"][0] = dict(t["signals"][0], pattern=pattern, flags="")
+    (snap / "tech.json").write_text(json.dumps(tech, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    assert any("regex does not compile" in e for e in validate.validate_dir(snap))
+
+
+def test_release_checklist_rejects_future_dates(snap):
+    from datetime import date, timedelta
+    newest = date.fromisoformat(validate.build_manifest(snap)["generated"])
+    assert validate.validate_dir(snap, max_age=30, today=newest - timedelta(days=1)) == []      # time-zone slack
+    errs = validate.validate_dir(snap, max_age=30, today=newest - timedelta(days=2))
+    assert errs and any("in the future" in e for e in errs), errs
+
+
+def test_validate_cli_prints_problems_on_a_code_page_stream(snap, monkeypatch):
+    # a Windows pipe: stderr is cp1252; problems quoting Arabic text must still be listed, not raise
+    raw = io.BytesIO()
+    err = io.TextIOWrapper(raw, encoding="cp1252")
+    monkeypatch.setattr(sys, "stderr", err)
+    monkeypatch.setattr(validate, "validate_dir", lambda *a, **k: ["exposed-paths.json: $.title_ar: 'ملف' is bad"])
+    assert validate.main(["--dir", str(snap)]) == 1
+    err.flush()
+    assert b"exposed-paths.json" in raw.getvalue() and b"\\u0645" in raw.getvalue()
+
+
+def _archive_with(tmp_path: Path, day: str, replace: dict[str, bytes], drop: tuple[str, ...] = ()) -> bytes:
+    """A dated snapshot's archive with some members replaced or left out, and a manifest that matches them."""
+    good = _snapshot(tmp_path, day, name="mod")
+    files = {p.name: p.read_bytes() for p in good.iterdir() if p.name not in drop}
+    files.update(replace)
+    man = json.loads(files[data.MANIFEST])
+    man["files"] = {n: e for n, e in man["files"].items() if n in files}
+    for n, raw in replace.items():
+        man["files"][n] = dict(man["files"].get(n, {}), sha256=hashlib.sha256(raw).hexdigest(), size=len(raw))
+    files[data.MANIFEST] = json.dumps(man).encode()
+    return _tar(files)
+
+
+def test_a_decompression_bomb_member_is_refused(fake, home, tmp_path):
+    bomb = gzip.compress(b"[" + b" " * (updater.MAX_WEBDATA_TOTAL + 10) + b"]", 9, mtime=0)
+    assert len(bomb) < 200_000
+    fake.release({"kashif-webdata-2099-01-02.tar.gz": _archive_with(tmp_path, "2099-01-02",
+                                                                    {"hsts-preload.json.gz": bomb})})
+    with pytest.raises(updater.WebDataError) as e:
+        updater.update_web_data(net=fake.net)
+    assert e.value.code == "webdata_invalid" and "cap" in e.value.detail
+    assert list(home.iterdir()) == [] and data.user_dir() is None
+
+
+def test_a_partial_archive_updates_only_its_files(fake, home, tmp_path):
+    keep = {"takeover.json"}
+    drop = tuple(n for n in validate.expected_files() if n not in keep)
+    fake.release({"kashif-webdata-2099-01-02.tar.gz": _archive_with(tmp_path, "2099-01-02", {}, drop)})
+    res = updater.update_web_data(net=fake.net)
+    assert res["status"] == "installed"
+    assert sorted(p.name for p in (home / "2099-01-02").iterdir()) == [data.MANIFEST, "takeover.json"]
+    assert data.path_for("takeover.json")[1] == "user" and data.path_for("eol.json")[1] == "bundled"
+    assert updater.update_web_data(net=fake.net)["status"] == "up_to_date"
+
+
+def test_psl_without_its_sidecar_is_refused(fake, home, tmp_path):
+    fake.release({"kashif-webdata-2099-01-02.tar.gz": _archive_with(tmp_path, "2099-01-02", {},
+                                                                    ("psl.dat.meta.json",))})
+    with pytest.raises(updater.WebDataError) as e:
+        updater.update_web_data(net=fake.net)
+    assert e.value.code == "webdata_invalid" and "come together" in e.value.detail
+    assert list(home.iterdir()) == []
+
+
+def test_a_rerecorded_mirror_drops_inputs_that_went_missing(tmp_path):
+    table = synthetic_mirror()
+    eol_urls = [i.urls[0] for i in refresh.BY_NAME["eol"].inputs(refresh.load_module("eol"))]
+    present = next(u for u in eol_urls if u in table and table[u] is not None)
+    rel = present.rsplit("/", 1)[1]
+    m = tmp_path / "m"
+    refresh.record([refresh.BY_NAME["eol"]], m, DAY, fetch=lambda u: table.get(u), log=_quiet)
+    assert (m / "eol" / rel).is_file()
+    # a month later the product page is gone upstream: the old copy must not stay behind for the generator to read
+    index = refresh.record([refresh.BY_NAME["eol"]], m, DAY, fetch=lambda u: None if u == present else table.get(u),
+                           log=_quiet)
+    assert index["inputs"]["eol"][rel]["missing"] and not (m / "eol" / rel).exists()
+    # and a mirror whose files disagree with sources.json about it never builds
+    (m / "eol" / rel).write_bytes(table[present])
+    with pytest.raises(refresh.RefreshError, match="recorded as missing"):
+        refresh.verify_mirror([refresh.BY_NAME["eol"]], m, refresh.read_index(m))
+
+
+def test_path_names_the_snapshot_in_use_only(fake, home, tmp_path):
+    # an installed snapshot older than the bundled data (e.g. after upgrading Kashif) is not used by webscan.data
+    old = _snapshot(tmp_path, "2020-01-01", name="old")
+    shutil.copytree(old, home / "2020-01-01")
+    name, body = _asset(tmp_path, "2020-01-01")
+    fake.release({name: body})
+    res = updater.update_web_data(net=fake.net)
+    assert res["status"] == "up_to_date" and res["installed"] == "2020-01-01" and res["path"] is None
+    assert res["current"] == _bundled_date() and data.user_dir() is None

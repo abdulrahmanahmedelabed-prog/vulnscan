@@ -185,6 +185,56 @@ class _SurfaceJobs:
 _PAGES_OBL = ("صفحة واحدة", "صفحتين", "{n} صفحات", "{n} صفحةً", "{n} صفحة")
 
 
+WEB_PROFILES = ("minimal", "standard", "deep")
+WEB_SENSITIVITIES = ("strict", "default", "paranoid")
+
+
+def web_scan_options(body: dict, settings: dict) -> dict:
+    """The web options of one UI scan (spec §4.5): the scan request's own choices, else the settings. Unknown values
+    fall back to the defaults, so a crafted request cannot pass anything the CLI would refuse."""
+    def flag(key: str, setting: str, default: bool) -> bool:
+        value = body.get(key)
+        return bool(value) if isinstance(value, bool) else bool(settings.get(setting, default))
+    profile = body.get("profile")
+    if profile not in WEB_PROFILES:
+        profile = "deep" if body.get("deep") is True else settings.get("web_profile")
+    profile = profile if profile in WEB_PROFILES else "standard"
+    sens = body.get("sensitivity") if body.get("sensitivity") in WEB_SENSITIVITIES else settings.get("web_sensitivity")
+    ignore = body.get("cookie_ignore") if isinstance(body.get("cookie_ignore"), list) else settings.get("web_cookie_ignore")
+    ignore = [str(x)[:200] for x in (ignore or []) if isinstance(x, str) and x.strip()][:50]
+    return {"profile": profile, "sensitivity": sens if sens in WEB_SENSITIVITIES else "default",
+            "crawl": body.get("crawl") is True, "respect_robots": not body.get("ignore_robots") is True
+            and bool(settings.get("web_respect_robots", True)),
+            "third_party_lookups": flag("third_party_lookups", "web_third_party_lookups", False),
+            "use_proxy": flag("use_proxy", "web_use_proxy", True),
+            "compare_previous": flag("compare_previous", "web_compare_previous", True),
+            "cookie_ignore": ignore}
+
+
+def _run_web_scan(store: Store, scan: dict, settings: dict):
+    """A passive web scan of the UI (spec §4.3): findings, Arabic notes, pages, {Arabic note: English note}.
+    Saves the web report object (``web``: grades, coverage, inventory, diff) and ``web_snapshot`` on the scan."""
+    from .cli import web_budget_note
+    from .report import web_section
+    from .web import options_for, scan_web
+    opts = scan.get("web_options") if isinstance(scan.get("web_options"), dict) else web_scan_options({}, settings)
+    target = scan["target"]
+    previous = store.latest_web_snapshot(target, exclude=scan["id"]) if opts.get("compare_previous") else None
+    o = options_for(timeout=float(settings.get("web_timeout") or 20), delay=float(settings.get("web_delay", 0.5)),
+                    profile=opts["profile"], sensitivity=opts["sensitivity"], crawl=opts["crawl"],
+                    respect_robots=opts["respect_robots"], third_party_lookups=opts["third_party_lookups"],
+                    cookie_ignore=tuple(opts["cookie_ignore"]), use_proxy=opts["use_proxy"])
+    res = scan_web(target, options=o, previous=previous, scan_id=scan["id"])    # raises WebUnreachable
+    web = web_section(res, sensitivity=o.sensitivity)
+    ar, en = web_budget_note(o.profile, o.crawl, o.max_pages)
+    web["notes"] = [{"en": en, "ar": ar}] + list(web.get("notes") or [])
+    pages = 1 + (int(res.inventory.get("crawl_fetched", 0) or 0) if o.crawl else 0)
+    scan["web"] = {k: v for k, v in web.items() if k != "snapshot"}
+    scan["web_snapshot"] = res.snapshot
+    english = {n["ar"]: n["en"] for n in web["notes"] if isinstance(n, dict) and n.get("ar") and n.get("en")}
+    return list(res.findings), [ar] + list(res.notes), pages, english
+
+
 def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None:
     """Executes in a worker thread and persists progress."""
     target = scan["target"]
@@ -192,22 +242,11 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
         findings: list[Finding] = []
         notes: list[str] = []
         files = 0
+        web_notes_en: dict = {}
         if target.startswith(("http://", "https://")):
             if not authorized:
                 raise PermissionError("فحص عنوان ويب يتطلب تأكيد الصلاحية.")
-            deep = bool(scan.get("deep"))
-            crawl = bool(scan.get("crawl"))
-            timeout = float(settings.get("web_timeout") or 20)
-            delay = float(settings.get("web_delay", 0.5))
-            # raises WebUnreachable -> status "error"
-            findings, extra, files = scan_site(target, timeout=timeout, deep=deep, crawl=crawl, delay=delay)
-            if crawl:
-                notes.append(f"فحص ويب سلبي مع زحف على {ar_count(files, _PAGES_OBL)} من النطاق نفسه "
-                             f"(طلب كل {delay:g} ثانية).")
-            else:
-                notes.append("فحص ويب سلبي أعمق: تحليل الصفحة ومسارات مكشوفة شائعة." if deep else "فحص ويب سلبي: طلب واحد فقط.")
-            if extra:
-                notes.append(extra)
+            findings, notes, files, web_notes_en = _run_web_scan(store, scan, settings)
         else:
             path = pathlib.Path(target)
             if not path.exists():
@@ -241,8 +280,11 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
                 autofix.attach_fixes(findings, target)
             except Exception:  # noqa: BLE001 - a missing or failing fixer never fails the scan
                 pass
+        notes_en = [to_en(n) for n in notes]
+        if target.startswith(("http://", "https://")):        # the engine's own English for its notes
+            notes_en = [web_notes_en.get(n) or to_en(n) for n in notes]
         scan.update(status="done", finished_at=time.time(), files_scanned=files, notes=notes,
-                    notes_en=[to_en(n) for n in notes], summary=summary_counts(findings), findings=[f.to_dict() for f in findings])
+                    notes_en=notes_en, summary=summary_counts(findings), findings=[f.to_dict() for f in findings])
     except Exception as e:  # noqa: BLE001 - surfaced to the UI
         scan.update(status="error", finished_at=time.time(), error=str(e), error_en=to_en(str(e)))
     finally:
@@ -517,18 +559,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._surface_get(scan["id"])
             findings = [_dict_to_finding(d) for d in scan.get("findings") or [] if isinstance(d, dict) and "rule_id" in d]
             args = (findings, scan.get("target", ""), scan.get("files_scanned", 0), scan.get("notes") or [])
+            web = scan.get("web") if isinstance(scan.get("web"), dict) else None   # a 1.1.0 web scan
             name = f"vulnscan-{scan['id']}"
             # ?lang=ar|en|both picks the report language (default both, as before)
             lang = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("lang") or ["both"])[0]
             lang = lang if lang in ("ar", "en", "both") else "both"
             if fmt == "report.md":
-                return self._text(render_markdown(*args, lang=lang), "text/markdown", name + ".md")
+                return self._text(render_markdown(*args, lang=lang, web=web), "text/markdown", name + ".md")
             if fmt == "report.json":
-                return self._text(render_json(*args), "application/json", name + ".json")
+                if web is not None:
+                    web = {**web, "snapshot": scan.get("web_snapshot") or {}}
+                return self._text(render_json(*args, web=web), "application/json", name + ".json")
             if fmt == "report.html":
-                return self._text(render_html(*args, lang=lang), "text/html", name + ".html")
+                return self._text(render_html(*args, lang=lang, web=web), "text/html", name + ".html")
             if fmt == "report.sarif":             # SARIF 2.1.0 (code-scanning platforms); messages are English
-                return self._text(render_sarif(*args, lang=lang), "application/sarif+json", name + ".sarif")
+                return self._text(render_sarif(*args, lang=lang, web=web), "application/sarif+json", name + ".sarif")
         return self._json({"error": "not found"}, 404)
 
     # ------------------------------------------------- 1.0: exports, compliance, attack surface, triage
@@ -810,11 +855,11 @@ class Handler(BaseHTTPRequestHandler):
         if target.startswith(("http://", "https://")) and not authorized:
             return self._json({"error": "authorization required"}, 403)
         scan = self.store.new_scan(target, body.get("kind") or ("url" if target.startswith("http") else "path"))
-        if body.get("deep"):
-            scan["deep"] = True
-        if body.get("crawl"):
-            scan["crawl"] = True
-        if body.get("deep") or body.get("crawl"):
+        if target.startswith(("http://", "https://")):
+            opts = web_scan_options(body, settings)
+            scan["web_options"] = opts
+            scan["deep"] = opts["profile"] == "deep"          # 1.0.x keys, read by older UIs
+            scan["crawl"] = opts["crawl"]
             self.store.save_scan(scan)
         threading.Thread(target=run_scan, args=(self.store, scan, settings, authorized), daemon=True).start()
         return self._json(scan, 202)

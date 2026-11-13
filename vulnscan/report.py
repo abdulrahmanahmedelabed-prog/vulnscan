@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import pathlib
+import re
 import urllib.parse
 from datetime import datetime, timezone
 
@@ -133,8 +134,12 @@ def _scanned(L: "_Lang", files: int, n: int) -> str:
 
 
 def render_console(findings: list[Finding], target: str, files: int, notes: list[str], color: bool = True,
-                   lang: str = "both") -> str:
+                   lang: str = "both", web: dict | None = None) -> str:
+    """The terminal report. ``web``: the ``web`` object of a web scan (:func:`web_section`): grades and the diff
+    summary are added under the notes. Text from a scanned site never carries control characters or ANSI escape
+    sequences to the terminal."""
     L = _Lang(lang)
+    web = web if _web_ok(web) else None
     findings = sort_findings(findings)
     counts = summary_counts(findings)
     c = (lambda s, t: f"{COLORS[s]}{t}{RESET}") if color else (lambda s, t: t)
@@ -146,7 +151,9 @@ def render_console(findings: list[Finding], target: str, files: int, notes: list
         else:
             lines.append(f"  {c(s, SEVERITY_AR[s].rjust(9))}  {s.upper():<8} {counts[s]}")
     for n in notes:
-        lines.append(f"  ℹ {L.text(n)}")
+        lines.append(f"  ℹ {_note(L, n, web)}")
+    if web:
+        lines += _web_console(web, L)
     lines.append("")
     if not findings:
         lines.append(L("none"))
@@ -158,6 +165,14 @@ def render_console(findings: list[Finding], target: str, files: int, notes: list
             lines.append(c(current, f"━━ {L.sev_pair(current)} ({counts[current]}) ━━"))
         loc = f"{f.file}:{f.line}" if f.line else f.file
         cwe = f" [{f.cwe}]" if f.cwe else ""
+        if f.source == "web":                    # target-controlled text: no control characters to the terminal
+            conf = f" ({_wl(L, 'c_' + _conf(f))})" if _conf(f) else ""
+            lines.append(f"  {BADGE[f.severity]} {f.rule_id}{cwe} {clean_text(L.title(f), 300)}{conf}")
+            lines.append(f"     📄 {clean_text(loc, 300)}")
+            if f.snippet:
+                lines.append(f"     ▸ {clean_text(L.text(f.snippet), 140)}")
+            lines.append(f"     💡 {clean_text(L.text(f.advice), 2000)}")
+            continue
         lines.append(f"  {BADGE[f.severity]} {f.rule_id}{cwe} {L.title(f)}")
         lines.append(f"     📄 {loc}")
         if f.snippet:
@@ -170,15 +185,19 @@ def render_console(findings: list[Finding], target: str, files: int, notes: list
     return "\n".join(lines)
 
 
-def render_markdown(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both") -> str:
+def render_markdown(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both",
+                    web: dict | None = None) -> str:
+    """The Markdown report. ``web`` (:func:`web_section`) adds the web scan sections: grades, coverage and the diff
+    before the findings; the inventory and the copy-paste fixes after them."""
     L = _Lang(lang)
+    web = web if _web_ok(web) else None
     findings = sort_findings(findings)
     counts = summary_counts(findings)
     meta = _meta(target, files, notes)
-    md = [f"# {L('md_title')} — `{target}`", "",
+    md = [f"# {L('md_title')} — `{_md_code(target, 500) if web else target}`", "",
           f"- {L('date')}: {meta['generated_at']}", f"- {L('files')}: {files}", f"- {L('total')}: {len(findings)}", ""]
     for n in notes:
-        md.append(f"- {L('note')}: {L.text(n)}")
+        md.append(f"- {L('note')}: {_md_cell(_note(L, n, web), 2000) if web else L.text(n)}")
     if L.en:
         md += ["", f"## {L('exec')}", "", "| Severity | Count |", "|---|---|"]
         for s in SEVERITIES:
@@ -188,8 +207,12 @@ def render_markdown(findings: list[Finding], target: str, files: int, notes: lis
         for s in SEVERITIES:
             md.append(f"| {BADGE[s]} {SEVERITY_AR[s]} | {s} | {counts[s]} |")
     md.append("")
+    if web:
+        md += _web_markdown(findings, web, L, "top") + [""]
     if not findings:
         md.append(L("none"))
+        if web:
+            md += [""] + _web_markdown(findings, web, L, "bottom")
         return "\n".join(md) + "\n"
     top = [f for f in findings if f.severity in ("critical", "high")][:10]
     if top:
@@ -197,7 +220,9 @@ def render_markdown(findings: list[Finding], target: str, files: int, notes: lis
         for i, f in enumerate(top, 1):
             loc = f"{f.file}:{f.line}" if f.line else f.file
             name = f.title if L.en else f.title_ar
-            md.append(f"{i}. **{name}** (`{f.rule_id}`) — `{loc}`")
+            if f.source == "web":
+                name = _md_cell(name, 300)
+            md.append(f"{i}. **{name}** (`{f.rule_id}`) — `{_md_code(loc, 300) if f.source == 'web' else loc}`")
         md.append("")
     md += [f"## {L('by_sev')}", ""]
     current = None
@@ -207,6 +232,21 @@ def render_markdown(findings: list[Finding], target: str, files: int, notes: lis
             md += [f"### {BADGE[current]} {L.sev_pair(current)} ({counts[current]})", ""]
         loc = f"{f.file}:{f.line}" if f.line else f.file
         cwe = f" · {f.cwe}" if f.cwe else ""
+        if f.source == "web":                      # every value can come from the scanned site (spec §0.6)
+            md.append(f"#### {_md_cell(L.title(f), 300)}")
+            md.append(f"- {L('rule')}: `{f.rule_id}`{cwe} · {L('source')}: web"
+                      + (f" · {_wl(L, 'confidence')}: {_wl(L, 'c_' + _conf(f))}" if _conf(f) else ""))
+            md.append(f"- {L('location')}: `{_md_code(loc, 300)}`")
+            if f.snippet:
+                md.append(f"- {L('snippet')}: `{_md_code(L.text(f.snippet), 160)}`")
+            md.append(f"- {L('fix')}: {_md_cell(L.text(f.advice), 2000)}")
+            if f.extra.get("url"):
+                md.append(f"- {_wl(L, 'page_url')}: `{_md_code(f.extra['url'], 500)}`")
+            pages = f.extra.get("page_count") or f.extra.get("instances")
+            if isinstance(pages, int) and pages > 1:
+                md.append(f"- ×{pages}")
+            md.append("")
+            continue
         md.append(f"#### {L.title(f)}")
         md.append(f"- {L('rule')}: `{f.rule_id}`{cwe} · {L('source')}: {f.source}")
         md.append(f"- {L('location')}: `{loc}`")
@@ -226,30 +266,43 @@ def render_markdown(findings: list[Finding], target: str, files: int, notes: lis
         if f.extra.get("url"):
             md.append(f"- {L('ref')}: {f.extra['url']}")
         md.append("")
+    if web:
+        md += _web_markdown(findings, web, L, "bottom")
     return "\n".join(md) + "\n"
 
 
 def render_json(findings: list[Finding], target: str, files: int, notes: list[str],
-                scanners: list[str] | None = None) -> str:
+                scanners: list[str] | None = None, web: dict | None = None) -> str:
     """The JSON report. ``scanners`` (optional) names the analyses that ran (sast, secrets, deps, external); the
-    policy gate (``kashif policy check``) reads it to verify ``required_scanners``."""
+    policy gate (``kashif policy check``) reads it to verify ``required_scanners``. ``web`` (a web scan) is written
+    as the ``web`` key: grades, coverage, inventory, diff and the snapshot (:func:`web_section`)."""
     findings = sort_findings(findings)
     ensure_fingerprints(findings)
-    meta = {**_meta(target, files, notes), "notes_en": [to_en(n) for n in notes]}
+    web = web if _web_ok(web) else None
+    meta = {**_meta(target, files, notes), "notes_en": _notes_en(notes, web)}
     if scanners is not None:
         meta["scanners"] = sorted(set(scanners))
-    return json.dumps({**meta, "summary": summary_counts(findings),
-                       "findings": [f.to_dict() for f in findings]}, ensure_ascii=False, indent=2)
+    doc = {**meta, "summary": summary_counts(findings), "findings": [f.to_dict() for f in findings]}
+    if web:
+        doc["web"] = web
+    return json.dumps(doc, ensure_ascii=False, indent=2, default=str)
 
 
-def render_html(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both") -> str:
+def render_html(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both",
+                web: dict | None = None) -> str:
+    """The HTML report (one self-contained file, no script). ``web`` (:func:`web_section`) adds the confidence
+    column and the web sections: grades, coverage, diff, then after the findings the inventory tabs and the
+    copy-paste fixes with platform tabs."""
     L = _Lang(lang)
+    web = web if _web_ok(web) else None
+    show_conf = any(_conf(f) for f in findings)
     findings = sort_findings(findings)
     counts = summary_counts(findings)
-    e = html.escape
     rows = []
     for f in findings:
         loc = f"{f.file}:{f.line}" if f.line else f.file
+        # a web finding's text can come from the scanned site: escaped, and stripped of control characters / ANSI
+        e = (lambda s: html.escape(clean_text(s, 2000))) if f.source == "web" else html.escape
         if L.en:
             title_html = f"<b>{e(L.title(f))}</b>"
         elif L.lang == "ar":
@@ -259,7 +312,8 @@ def render_html(findings: list[Finding], target: str, files: int, notes: list[st
         steps = _steps(f)
         # engine text (snippets, trail steps) mixes code and Arabic: each piece takes the direction of its first
         # letter, isolated from the cell around it
-        rows.append(f"<tr class='{f.severity}'><td><span class='b {f.severity}'>{e(L.sev(f.severity))}</span></td>"
+        conf_cell = (f"<td>{e(_wl(L, 'c_' + _conf(f))) if _conf(f) else ''}</td>" if show_conf else "")
+        rows.append(f"<tr class='{f.severity}'><td><span class='b {f.severity}'>{e(L.sev(f.severity))}</span></td>{conf_cell}"
                     f"<td><code>{e(f.rule_id)}</code><br><small>{e(f.cwe)}</small></td>"
                     f"<td>{title_html}</td>"
                     f"<td><code>{e(loc)}</code><br><small dir='auto'>{e(L.text(f.snippet)[:140])}</small>"
@@ -267,11 +321,16 @@ def render_html(findings: list[Finding], target: str, files: int, notes: list[st
                                                      f"<bdi>{e(L.text(st.get('text', '')))}</bdi></li>" for st in steps) + "</ol>"
                        if steps else "")
                     + f"</td><td>{e(L.text(f.advice))}{_fix_html(f, L)}</td></tr>")
+    e = (lambda s: html.escape(clean_text(s, 2000))) if web else html.escape
     summary = "".join(f"<div class='tile {s}'><div class='n'>{counts[s]}</div><div>{e(L.sev(s))}"
                       + ("" if L.en else f"<br><small>{s}</small>") + "</div></div>"
                       for s in SEVERITIES)
-    notes_html = "".join(f"<li>{e(L.text(n))}</li>" for n in notes)
-    empty = f"<tr><td colspan=5>{e(L('no_results'))}</td></tr>"
+    notes_html = "".join(f"<li>{e(_note(L, n, web))}</li>" for n in notes)
+    empty = f"<tr><td colspan={6 if show_conf else 5}>{e(L('no_results'))}</td></tr>"
+    conf_head = f"<th>{e(_wl(L, 'confidence'))}</th>" if show_conf else ""
+    web_top = _web_html(findings, web, L, "top") if web else ""
+    web_bottom = _web_html(findings, web, L, "bottom") if web else ""
+    web_css = (_WEB_CSS + _TAB_CSS) if web else ""
     html_lang, html_dir, align = ("en", "ltr", "left") if L.en else ("ar", "rtl", "right")
     return f"""<!doctype html><html lang="{html_lang}" dir="{html_dir}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -295,14 +354,16 @@ td{{min-width:5rem}}td:nth-child(3),td:nth-child(4),td:nth-child(5){{min-width:1
 .fix{{margin-top:.5rem}}.fix summary{{cursor:pointer;font-weight:600;color:#166534}}
 .diff{{direction:ltr;text-align:left;background:#f6f8fa;padding:.5rem;overflow:auto;font-size:.8em;margin:.3rem 0 0}}
 .diff span{{display:block}}.diff .add{{background:#dcfce7}}.diff .del{{background:#fee2e2}}\n.flow{{margin:.4rem 0 0;padding-inline-start:1.2rem;font-size:.8em;color:#555}}
-</style></head><body>
+{web_css}</style></head><body>
 <h1>{e(L('md_title'))} — <code dir="ltr">{e(target)}</code></h1>
 <p>{e(L('files'))}: {files} · {e(L('findings'))}: {len(findings)} · <bdi dir="ltr">{e(_meta(target, files, notes)['generated_at'])}</bdi></p>
 <ul>{notes_html}</ul>
 <div class="tiles">{summary}</div>
+{web_top}
 <h2>{e(L('html_by_sev'))}</h2>
-<div class="tw"><table><thead><tr><th>{e(L('sev_col'))}</th><th>{e(L('col_rule'))}</th><th>{e(L('col_vuln'))}</th><th>{e(L('location'))}</th><th>{e(L('fix'))}</th></tr></thead>
+<div class="tw"><table><thead><tr><th>{e(L('sev_col'))}</th>{conf_head}<th>{e(L('col_rule'))}</th><th>{e(L('col_vuln'))}</th><th>{e(L('location'))}</th><th>{e(L('fix'))}</th></tr></thead>
 <tbody>{''.join(rows) or empty}</tbody></table></div>
+{web_bottom}
 </body></html>"""
 
 
@@ -388,7 +449,7 @@ def _sarif_fixes(f: Finding, base_id: str, en_only: bool) -> list | None:
 
 
 def render_sarif(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both",
-                 suppressed: list[Finding] | None = None) -> str:
+                 suppressed: list[Finding] | None = None, web: dict | None = None) -> str:
     """SARIF 2.1.0 — the OASIS standard consumed by GitHub Code Scanning, VS Code's SARIF viewer,
     Azure DevOps and others. Rules carry CWE tags and a GitHub security-severity; each result carries
     a stable partialFingerprint so the platform can track an issue across commits.
@@ -398,7 +459,12 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
 
     ``suppressed``: findings hidden by a triage decision (false positive, accepted risk, won't fix ...). They are
     written as results carrying a SARIF ``suppressions`` entry (kind "external", status "accepted", with the
-    justification), so code-scanning platforms close the alert instead of losing track of it."""
+    justification), so code-scanning platforms close the alert instead of losing track of it.
+
+    Web findings (1.1.0) also carry ``properties.precision`` (confidence certain → very-high, firm → high,
+    tentative → low) on the rule and the result, and the tags ``wstg:…``, ``asvs4:…`` and ``asvs5:…`` of the rule's
+    analyst mapping; a rule's ``security-severity`` is that of its most severe result (findings are sorted by
+    severity, so the first one) and its ``precision`` that of its most certain result. ``web`` adds the three grades and the coverage counts to ``run.properties``."""
     en_only = lang == "en"
     hidden = {id(f) for f in suppressed or []}
     findings = sort_findings(list(findings) + [f for f in suppressed or [] if f is not None])
@@ -406,12 +472,26 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
     web_base = urllib.parse.urlsplit(target) if target.startswith(("http://", "https://")) else None
     rules: dict[str, dict] = {}
     results = []
+    best_conf: dict[str, int] = {}
+    for f in findings:                      # a rule's precision: its most certain result
+        if _conf(f):
+            rank = CONFIDENCES.index(_conf(f))
+            best_conf[f.rule_id] = min(rank, best_conf.get(f.rule_id, rank))
     for f in findings:
         if f.rule_id not in rules:
             props = {"security-severity": SECURITY_SEVERITY.get(f.severity, "0")}
             tags = ["security", f.source]
             if f.cwe:
                 tags.append(f.cwe.lower().replace("cwe-", "external/cwe/cwe-"))
+            if f.source == "web":
+                for scheme in ("wstg", "asvs4", "asvs5"):
+                    ids = f.extra.get(scheme)
+                    for rid in ids if isinstance(ids, list) else []:
+                        tag = f"{scheme}:{clean_text(rid, 40)}"
+                        if tag not in tags:
+                            tags.append(tag)
+            if f.rule_id in best_conf:
+                props["precision"] = SARIF_PRECISION[CONFIDENCES[best_conf[f.rule_id]]]
             props["tags"] = tags
             title_en = f.title or to_en(f.title_ar) or f.rule_id
             advice_en = to_en(f.advice or "")
@@ -421,7 +501,7 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
             rule = {"id": f.rule_id, "name": f.rule_id,
                     "shortDescription": {"text": title_en},
                     "fullDescription": {"text": title_en},
-                    "helpUri": f.extra.get("url") or f"{REPO_URL}#{f.rule_id}",
+                    "helpUri": (f.extra.get("url") if f.source != "web" else None) or f"{REPO_URL}#{f.rule_id}",
                     "help": {"text": advice_en, "markdown": _help_markdown(title_en, advice_en, f.cwe)},
                     "defaultConfiguration": {"level": SARIF_LEVEL.get(f.severity, "warning")},
                     "properties": props}
@@ -434,7 +514,7 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
             # a web finding has no source file: point at the exact page that was fetched (already a valid URL),
             # falling back to the scanned URL itself; no line region
             # (a grouped finding raised on the entry page keeps the entry URL; extra.pages lists the others)
-            page_url = f.extra.get("page") or target
+            page_url = f.extra.get("page") or f.extra.get("url") or target
             phys = {"artifactLocation": {"uri": _norm_url(page_url)}}
         else:
             phys = _file_location(member or f.file, f.line, base_id, target)
@@ -448,6 +528,9 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
                            {"severity": f.severity, "title_ar": f.title_ar, "advice": to_en(f.advice or ""),
                             "advice_ar": f.advice or ""}),
         }
+        if f.source == "web" and _conf(f):
+            result["properties"]["confidence"] = _conf(f)
+            result["properties"]["precision"] = SARIF_PRECISION[_conf(f)]
         path = f.extra.get("path")
         if path:   # a data-flow finding: emit the source→sink trail as a SARIF codeFlow
             locs = [{"location": {"physicalLocation": _file_location(
@@ -478,8 +561,585 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
             }},
             "results": results,
             **({} if web_base else {"originalUriBaseIds": _base_ids(target, findings)}),
-            "properties": ({"target": target, "filesScanned": files, "notes": [to_en(n) for n in notes]} if en_only else
-                           {"target": target, "filesScanned": files, "notes": notes, "notes_en": [to_en(n) for n in notes]}),
+            "properties": ({"target": target, "filesScanned": files, "notes": _notes_en(notes, web)} if en_only else
+                           {"target": target, "filesScanned": files, "notes": notes, "notes_en": _notes_en(notes, web)}),
         }],
     }
+    if _web_ok(web):
+        sarif["runs"][0]["properties"].update(_sarif_web_properties(web))
+
     return json.dumps(sarif, ensure_ascii=False, indent=2)
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Passive web scan (1.1.0): the "web" object of the JSON report and the web sections of the HTML / Markdown /
+# console reports (grades, coverage, inventory, remediation snippets, diff against the previous scan).
+# Every value that came from the scanned site is untrusted (spec §0.6): HTML-escaped, Markdown-escaped and stripped
+# of control characters and ANSI escape sequences before it reaches any report.
+# ----------------------------------------------------------------------------------------------------------------
+
+CONFIDENCES = ("certain", "firm", "tentative")
+SARIF_PRECISION = {"certain": "very-high", "firm": "high", "tentative": "low"}     # spec §0.5
+WEB_SCHEMA = 1
+INVENTORY_TABS = ("headers", "csp", "cookies", "tls", "technologies", "third_parties")
+
+_WEB_LABELS = {
+    "confidence": ("الثقة", "Confidence"),
+    "c_certain": ("مؤكَّدة", "certain"), "c_firm": ("مرجَّحة", "firm"), "c_tentative": ("محتملة", "tentative"),
+    "grades": ("الدرجات", "Grades"),
+    "g_kashif": ("درجة كاشِف للويب", "Kashif Web Grade"),
+    "g_observatory": ("متوافقة مع MDN Observatory", "MDN Observatory-compatible"),
+    "g_ssllabs": ("متوافقة مع SSL Labs", "SSL Labs-compatible"),
+    "g_none": ("لم تُحسب", "not computed"),
+    "g_caps": ("حدود الدرجة", "Grade caps"),
+    "g_provisional": ("درجة مؤقتة (*): بعض المجموعات لم تُفحص فلم تُحسب", "Provisional grade (*): some families were not tested and do not count"),
+    "coverage": ("تغطية الفحوص", "Check coverage"),
+    "cov_state": ("الحالة", "State"), "cov_count": ("العدد", "Count"), "cov_check": ("الفحص", "Check"),
+    "cov_reason": ("السبب", "Reason"), "cov_details": ("الفحوص التي لم تنجح أو لم تُجرَ", "Checks that did not pass or did not run"),
+    "s_pass": ("ناجح", "passed"), "s_fail": ("فاشل", "failed"), "s_not_applicable": ("غير منطبق", "not applicable"),
+    "s_not_tested": ("لم يُجرَ", "not tested"), "s_inconclusive": ("غير حاسم", "inconclusive"),
+    "cov_never_pass": ("الفحص الذي لم يُجرَ أو كان غير حاسم لا يُعدّ ناجحًا ولا يدخل في الدرجة.",
+                       "A check that was not tested or was inconclusive is never shown as passed and never counts in a grade."),
+    "inventory": ("جرد الموقع", "Site inventory"),
+    "t_headers": ("ترويسات الأمان", "Security headers"), "t_csp": ("CSP", "CSP"), "t_cookies": ("الكوكيز", "Cookies"),
+    "t_tls": ("TLS", "TLS"), "t_technologies": ("التقنيات", "Technologies"), "t_third_parties": ("أطراف ثالثة", "Third parties"),
+    "inv_empty": ("لا شيء", "nothing recorded"),
+    "h_header": ("الترويسة", "Header"), "h_value": ("القيمة", "Value"), "h_verdict": ("الحكم", "Verdict"),
+    "h_url": ("العنوان", "URL"), "h_origin": ("المصدر", "Origin"), "h_policy": ("السياسة", "Policy"),
+    "h_name": ("الاسم", "Name"), "h_host": ("المضيف", "Host"), "h_class": ("الصنف", "Class"),
+    "h_attrs": ("الخصائص", "Attributes"), "h_version": ("الإصدار", "Version"), "h_kind": ("النوع", "Kind"),
+    "h_protocols": ("البروتوكولات", "Protocols"), "h_suites": ("التشفير المختار", "Chosen cipher suites"),
+    "h_cert": ("الشهادة", "Certificate"), "h_expires": ("تنتهي", "Expires"), "h_ip": ("العنوان IP", "IP"),
+    "h_vulnerable": ("ثغرات معروفة", "Known vulnerabilities"), "yes": ("نعم", "yes"), "no": ("لا", "no"),
+    "remediation": ("إصلاحات جاهزة للنسخ", "Copy-paste fixes"),
+    "rem_other": ("منصّات أخرى", "Other platforms"),
+    "rem_detected": ("المنصّات المكتشفة أولًا", "Detected platforms first"),
+    "diff": ("مقارنة بالفحص السابق", "Compared with the previous scan"),
+    "d_new": ("نتائج جديدة", "New findings"), "d_resolved": ("نتائج حُلّت", "Resolved findings"),
+    "d_unchanged": ("نتائج لم تتغير", "Unchanged findings"), "d_posture": ("تغييرات في الوضع الأمني", "Posture changes"),
+    "d_grade": ("تغيّر الدرجات", "Grade changes"), "d_none": ("لا تغييرات", "no changes"),
+    "d_regression": ("تراجع", "regression"), "d_change": ("تغيير", "change"), "d_improvement": ("تحسّن", "improvement"),
+    "d_previous": ("الفحص السابق", "Previous scan"),
+    "web_summary": ("ملخص فحص الموقع", "Web scan summary"),
+    "w_profile": ("ملف الفحص", "Profile"), "w_requests": ("الطلبات", "Requests"), "w_final": ("العنوان النهائي", "Final URL"),
+    "w_data": ("بيانات الويب بتاريخ", "Web data as of"),
+    "page_url": ("الصفحة", "Page"),
+}
+_STATE_ORDER = ("pass", "fail", "not_applicable", "not_tested", "inconclusive")
+_ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-_]|\x9b[0-?]*[ -/]*[@-~]")
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f​-‏‪-‮⁦-⁩]")
+
+
+def _wl(L: "_Lang", key: str) -> str:
+    ar, en = _WEB_LABELS[key]
+    return en if L.en else ar
+
+
+def _pair(L: "_Lang", value) -> str:
+    """An {en, ar} text (or an (en, ar) pair, or plain text) in the report language."""
+    if isinstance(value, dict):
+        return str((value.get("en") if L.en else value.get("ar")) or value.get("en") or value.get("ar") or "")
+    if isinstance(value, (list, tuple)) and len(value) == 2 and all(isinstance(x, str) for x in value):
+        return value[0] if L.en else value[1]
+    return "" if value is None else str(value)
+
+
+def clean_text(value, limit: int = 300) -> str:
+    """Target-controlled text made inert for any report: ANSI escape sequences and C0/C1/bidi control characters
+    removed, whitespace collapsed, length capped."""
+    text = _ANSI.sub("", "" if value is None else str(value))
+    text = _CTRL.sub(" ", text)
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def _md_code(value, limit: int = 300) -> str:
+    """Untrusted text for an inline code span: everything inside is literal except a backtick."""
+    return clean_text(value, limit).replace("`", "ˋ")
+
+
+def _note(L: "_Lang", note: str, web: dict | None) -> str:
+    """A scan note in the report language: the engine's own English text for a web scan's notes, else to_en."""
+    if L.en and web:
+        for n in web.get("notes") or []:
+            if isinstance(n, dict) and n.get("ar") == note and n.get("en"):
+                return clean_text(n["en"], 2000)
+    return clean_text(L.text(note), 2000) if web else L.text(note)
+
+
+def _notes_en(notes: list[str], web: dict | None) -> list[str]:
+    web = web if _web_ok(web) else None
+    return [_note(_Lang("en"), n, web) for n in notes] if web else [to_en(n) for n in notes]
+
+
+def _md_cell(value, limit: int = 300) -> str:
+    """Untrusted text for a Markdown table cell or inline code: no pipes, backticks, newlines or markup."""
+    text = clean_text(value, limit)
+    for ch, rep in (("\\", "\\\\"), ("|", "\\|"), ("`", "ˋ"), ("<", "&lt;"), (">", "&gt;"), ("*", "\\*"),
+                    ("_", "\\_"), ("[", "\\["), ("]", "\\]")):
+        text = text.replace(ch, rep)
+    return text
+
+
+def _conf(f: Finding) -> str:
+    c = f.extra.get("confidence") if isinstance(f.extra, dict) else None
+    return c if c in CONFIDENCES else ""
+
+
+def _check_rules() -> dict[str, list[str]]:
+    try:
+        from .webscan.rules import RULES as WEB_RULES
+    except ImportError:                                          # pragma: no cover - the package always ships it
+        return {}
+    out: dict[str, list[str]] = {}
+    for rid, meta in WEB_RULES.items():
+        out.setdefault(meta.check_id or rid, []).append(rid)
+    return out
+
+
+def web_section(result, *, sensitivity: str | None = None) -> dict:
+    """The ``web`` object of the JSON report (and of a saved UI scan) from a ``webscan.types.WebScanResult``.
+
+    Keys: ``schema``, ``profile``, ``sensitivity``, ``target``, ``final_url``, ``requests``, ``bytes_received``,
+    ``data_date``, ``grades`` (kashif / observatory / ssllabs, spec §3.4), ``coverage`` (one record per check:
+    ``check``, ``rules``, ``state``, ``reason``, ``reasons`` [{code, en, ar}], ``hosts``), ``coverage_counts``,
+    ``coverage_summary`` {en, ar}, ``inventory`` (§3.9), ``notes`` [{en, ar}], ``diff`` (§3.7, or None) and
+    ``snapshot`` (what ``--compare FILE`` reads back)."""
+    cov = getattr(result, "coverage", None) or {}
+    rules_of = _check_rules()
+    checks = []
+    for c in cov.get("checks") or []:
+        if not isinstance(c, dict):
+            continue
+        cid = str(c.get("check") or "")
+        reasons = [r for r in c.get("reasons") or [] if isinstance(r, dict)]
+        checks.append({"check": cid, "rules": rules_of.get(cid, [cid]), "state": c.get("state"),
+                       "reason": "; ".join(str(r.get("en") or r.get("code") or "") for r in reasons),
+                       "reasons": reasons, "hosts": c.get("hosts") or {}})
+    inv = getattr(result, "inventory", None) or {}
+    inv = dict(inv) if isinstance(inv, dict) else {}
+    notes = inv.get("notes") if isinstance(inv.get("notes"), list) else []
+    return {"schema": WEB_SCHEMA, "profile": getattr(result, "profile", ""), "sensitivity": sensitivity or "",
+            "target": getattr(result, "target", ""), "final_url": getattr(result, "final_url", ""),
+            "requests": getattr(result, "requests", 0), "bytes_received": getattr(result, "bytes_received", 0),
+            "data_date": getattr(result, "data_date", ""), "grades": getattr(result, "grades", None) or {},
+            "coverage": checks, "coverage_counts": dict(cov.get("counts") or {}),
+            "coverage_summary": inv.get("coverage_summary") or {}, "inventory": inv, "notes": notes,
+            "diff": getattr(result, "diff", None), "snapshot": getattr(result, "snapshot", None) or {}}
+
+
+def _web_ok(web) -> bool:
+    return isinstance(web, dict) and isinstance(web.get("grades", {}), dict)
+
+
+def _grade_rows(web: dict, L: "_Lang") -> list[dict]:
+    """[{key, name, grade, score, max, label, caps, provisional}] for the three algorithms."""
+    g = web.get("grades") if isinstance(web.get("grades"), dict) else {}
+    rows = []
+    for key in ("kashif", "observatory", "ssllabs"):
+        d = g.get(key) if isinstance(g.get(key), dict) else {}
+        grade = d.get("grade") or d.get("letter")
+        caps = [clean_text(_pair(L, c), 200) for c in d.get("caps") or [] if isinstance(c, dict)]
+        rows.append({"key": key, "name": _wl(L, f"g_{key}"), "grade": clean_text(grade, 8) if grade else "",
+                     "score": d.get("score") if isinstance(d.get("score"), (int, float)) else None,
+                     "max": d.get("max_score") if isinstance(d.get("max_score"), (int, float)) else None,
+                     "label": clean_text(_pair(L, d.get("label")), 300), "caps": caps,
+                     "provisional": bool(d.get("provisional"))})
+    return rows
+
+
+def _coverage_counts(web: dict) -> dict[str, int]:
+    counts = web.get("coverage_counts") if isinstance(web.get("coverage_counts"), dict) else {}
+    out = {}
+    for s in _STATE_ORDER:
+        try:
+            out[s] = int(counts.get(s) or 0)
+        except (TypeError, ValueError):
+            out[s] = 0
+    return out
+
+
+def _coverage_problems(web: dict, L: "_Lang", limit: int = 400) -> list[tuple[str, str, str]]:
+    """(check, state, reason) of every check that did not pass (not applicable is left out: it is not a gap)."""
+    out = []
+    for c in web.get("coverage") or []:
+        if not isinstance(c, dict) or c.get("state") not in ("fail", "not_tested", "inconclusive"):
+            continue
+        reasons = [clean_text(_pair(L, r), 200) for r in c.get("reasons") or [] if isinstance(r, dict)]
+        out.append((clean_text(c.get("check"), 60), str(c.get("state")), "; ".join(x for x in reasons if x)))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _yn(L: "_Lang", value) -> str:
+    return _wl(L, "yes") if value is True else _wl(L, "no") if value is False else clean_text(value, 40)
+
+
+def inventory_tables(web: dict, L: "_Lang") -> dict[str, tuple[list[str], list[list[str]]]]:
+    """The inventory tabs as plain tables: {tab: (header row, rows)}; every cell is cleaned untrusted text."""
+    inv = web.get("inventory") if isinstance(web.get("inventory"), dict) else {}
+    out: dict[str, tuple[list[str], list[list[str]]]] = {}
+    rows = []
+    for entry in inv.get("security_headers") or []:
+        if not isinstance(entry, dict):
+            continue
+        for name, d in (entry.get("headers") or {}).items():
+            d = d if isinstance(d, dict) else {"value": d}
+            rows.append([clean_text(entry.get("url"), 200), clean_text(name, 80), clean_text(d.get("value"), 300) or "—",
+                         clean_text(d.get("verdict"), 80)])
+    out["headers"] = ([_wl(L, "h_url"), _wl(L, "h_header"), _wl(L, "h_value"), _wl(L, "h_verdict")], rows[:300])
+    rows = []
+    for entry in inv.get("csp") or []:
+        if not isinstance(entry, dict):
+            continue
+        for pol in list(entry.get("policies") or []) + list(entry.get("report_only") or []):
+            if isinstance(pol, dict):
+                rows.append([clean_text(entry.get("url"), 200), clean_text(pol.get("origin"), 30),
+                             clean_text(pol.get("raw"), 1000)])
+    out["csp"] = ([_wl(L, "h_url"), _wl(L, "h_origin"), _wl(L, "h_policy")], rows[:100])
+    rows = []
+    for c in inv.get("cookies") or []:
+        if not isinstance(c, dict):
+            continue
+        attrs = [a for a in ("secure", "httponly", "partitioned") if c.get(a) is True]
+        if c.get("samesite"):
+            attrs.append(f"SameSite={c['samesite']}")
+        for k in ("domain", "path"):
+            if c.get(k):
+                attrs.append(f"{k.capitalize()}={c[k]}")
+        if c.get("persistent_days"):
+            attrs.append(f"{c['persistent_days']}d")
+        rows.append([clean_text(c.get("name"), 80), clean_text(c.get("host"), 120), clean_text(c.get("class"), 30),
+                     clean_text("; ".join(str(a) for a in attrs), 300)])
+    out["cookies"] = ([_wl(L, "h_name"), _wl(L, "h_host"), _wl(L, "h_class"), _wl(L, "h_attrs")], rows[:300])
+    rows = []
+    tls = inv.get("tls") if isinstance(inv.get("tls"), dict) else {}
+    for hostkey, rep in tls.items():
+        if not isinstance(rep, dict):
+            continue
+        for ip, d in (rep.get("ips") or {}).items():
+            if not isinstance(d, dict):
+                continue
+            protos = [p for p, v in (d.get("protocols") or {}).items() if v == "yes"]
+            chosen = [f"{p}: {s}" for p, s in (d.get("chosen") or {}).items() if s]
+            chain = [x for x in d.get("chain") or [] if isinstance(x, dict)]
+            leaf = chain[0] if chain else {}
+            cert = " · ".join(str(x) for x in (leaf.get("subject"), leaf.get("issuer"), leaf.get("key")) if x)
+            rows.append([clean_text(hostkey, 120), clean_text(ip, 60), clean_text(", ".join(protos), 120),
+                         clean_text("; ".join(chosen), 300), clean_text(cert, 300), clean_text(leaf.get("not_after"), 40)])
+    out["tls"] = ([_wl(L, "h_host"), _wl(L, "h_ip"), _wl(L, "h_protocols"), _wl(L, "h_suites"), _wl(L, "h_cert"),
+                   _wl(L, "h_expires")], rows[:50])
+    rows = []
+    for t in inv.get("technologies") or []:
+        if isinstance(t, dict):
+            rows.append([clean_text(t.get("name"), 80), clean_text(t.get("version"), 40),
+                         clean_text(", ".join(str(c) for c in t.get("categories") or []), 120), ""])
+    for lib in inv.get("libraries") or []:
+        if isinstance(lib, dict):
+            rows.append([clean_text(lib.get("name"), 80), clean_text(lib.get("version"), 40), "JavaScript",
+                         _yn(L, lib.get("vulnerable")) if "vulnerable" in lib else ""])
+    for s in inv.get("server_software") or []:
+        if isinstance(s, dict):
+            rows.append([clean_text(s.get("name") or s.get("product"), 80), clean_text(s.get("version"), 40),
+                         clean_text(s.get("source") or "server", 60), ""])
+    out["technologies"] = ([_wl(L, "h_name"), _wl(L, "h_version"), _wl(L, "h_kind"), _wl(L, "h_vulnerable")], rows[:200])
+    rows = []
+    tp = inv.get("third_parties") if isinstance(inv.get("third_parties"), dict) else {}
+    for host, kinds in tp.items():
+        rows.append([clean_text(host, 200), clean_text(", ".join(str(k) for k in kinds or []) if isinstance(kinds, list)
+                                                      else kinds, 120)])
+    out["third_parties"] = ([_wl(L, "h_host"), _wl(L, "h_kind")], rows[:200])
+    return out
+
+
+def remediation_snippets(findings: list[Finding], web: dict | None, lang: str) -> list[dict]:
+    """Copy-paste fixes (webscan/remediation.py) for the web findings, detected platforms first."""
+    rule_ids = []
+    for f in sort_findings(findings):
+        if f.source == "web" and f.rule_id not in rule_ids:
+            rule_ids.append(f.rule_id)
+    if not rule_ids:
+        return []
+    try:
+        from .webscan import remediation
+    except ImportError:                                          # pragma: no cover
+        return []
+    inv = (web or {}).get("inventory") if isinstance((web or {}).get("inventory"), dict) else {}
+    detected = [p for p in inv.get("platforms") or [] if isinstance(p, str)]
+    host = ""
+    try:
+        host = urllib.parse.urlsplit(str((web or {}).get("final_url") or (web or {}).get("target") or "")).hostname or ""
+    except ValueError:
+        host = ""
+    try:
+        return remediation.for_rules(rule_ids, "en" if lang == "en" else "ar", host=host or None, detected=detected)
+    except Exception:  # noqa: BLE001 - a report never fails on the snippet library
+        return []
+
+
+def _diff_parts(web: dict) -> dict | None:
+    d = web.get("diff") if isinstance(web.get("diff"), dict) else None
+    if not d:
+        return None
+    f = d.get("findings") if isinstance(d.get("findings"), dict) else {}
+    return {"comparable": bool(d.get("comparable")), "notes": [n for n in d.get("notes") or [] if isinstance(n, dict)],
+            "new": [r for r in f.get("new") or [] if isinstance(r, dict)],
+            "resolved": [r for r in f.get("resolved") or [] if isinstance(r, dict)],
+            "unchanged": [r for r in f.get("unchanged") or [] if isinstance(r, dict)],
+            "posture": [p for p in d.get("posture") or [] if isinstance(p, dict)],
+            "grades": d.get("grades") if isinstance(d.get("grades"), dict) else {},
+            "previous": d.get("previous") if isinstance(d.get("previous"), dict) else {}}
+
+
+def _row_title(L: "_Lang", r: dict) -> str:
+    return clean_text((r.get("title_en") if L.en else r.get("title_ar")) or r.get("title_en") or r.get("rule"), 200)
+
+
+def _grade_change_text(L: "_Lang", key: str, ch) -> str:
+    if not isinstance(ch, dict):
+        return ""
+    before, after = ch.get("before"), ch.get("after")
+    if isinstance(before, dict):
+        before = before.get("grade")
+    if isinstance(after, dict):
+        after = after.get("grade")
+    return f"{_wl(L, 'g_' + key) if key in ('kashif', 'observatory', 'ssllabs') else clean_text(key, 30)}: " \
+           f"{clean_text(before, 10) or '—'} → {clean_text(after, 10) or '—'}"
+
+
+# ------------------------------------------------------------------------------------------- web: HTML
+
+
+_TAB_CSS = "".join(f".tabs>input:nth-of-type({i}):checked~div.panel:nth-of-type({i}){{display:block}}" for i in range(1, 25))
+_WEB_CSS = """
+.web h2{margin-top:2rem}.grades{display:flex;gap:.75rem;flex-wrap:wrap}
+.grade{background:#fff;border:1px solid #ddd;border-radius:.5rem;padding:.75rem 1rem;min-width:12rem;flex:1}
+.grade .letter{font-size:2.2rem;font-weight:800}.grade small{color:#555;display:block}
+.grade ul{margin:.3rem 0 0;padding-inline-start:1.1rem;font-size:.85em}
+.cov{display:flex;gap:.5rem;flex-wrap:wrap;margin:.5rem 0}.cov span{background:#fff;border:1px solid #ddd;border-radius:1rem;padding:.2rem .7rem}
+.cov .s-fail{border-color:#c2410c}.cov .s-not_tested,.cov .s-inconclusive{border-color:#a16207}
+.tabs{margin:.5rem 0}.tabs>input{position:absolute;opacity:0;pointer-events:none}
+.tabs>label{display:inline-block;padding:.35rem .8rem;border:1px solid #ddd;border-bottom:none;border-radius:.4rem .4rem 0 0;
+background:#f1f1f1;cursor:pointer;margin-inline-end:.2rem}.tabs>input:checked+label{background:#fff;font-weight:700}
+.tabs>input:focus-visible+label{outline:2px solid #0e7490}
+.tabs>div.panel{display:none;border:1px solid #ddd;background:#fff;padding:.6rem;overflow-x:auto}
+.snip{background:#fff;border:1px solid #ddd;border-radius:.5rem;padding:.6rem 1rem;margin:.6rem 0}
+.snip pre{direction:ltr;text-align:left;background:#f6f8fa;padding:.5rem;overflow:auto;font-size:.82em;white-space:pre}
+.caveat{color:#92400e}.conf{font-size:.75em;color:#555;display:block;margin-top:.2rem}
+.posture li.regression{color:#991b1b}.posture li.improvement{color:#166534}
+"""
+
+
+def _html_table(head: list[str], rows: list[list[str]], L: "_Lang") -> str:
+    e = html.escape
+    if not rows:
+        return f"<p>{e(_wl(L, 'inv_empty'))}</p>"
+    th = "".join(f"<th>{e(h)}</th>" for h in head)
+    body = "".join("<tr>" + "".join(f"<td><bdi dir='auto'>{e(c)}</bdi></td>" for c in r) + "</tr>" for r in rows)
+    return f"<table><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table>"
+
+
+def _html_tabs(name: str, tabs: list[tuple[str, str]]) -> str:
+    """CSS-only tabs (radio buttons): no script, so the report works under any CSP and offline."""
+    e = html.escape
+    inputs = []
+    panels = []
+    for i, (label, body) in enumerate(tabs):
+        tid = f"{name}-{i}"
+        inputs.append(f"<input type='radio' name='{e(name)}' id='{e(tid)}'{' checked' if i == 0 else ''}>"
+                      f"<label for='{e(tid)}'>{e(label)}</label>")
+        panels.append(f"<div class='panel'>{body}</div>")
+    return f"<div class='tabs'>{''.join(inputs)}{''.join(panels)}</div>"
+
+
+def _web_html(findings: list[Finding], web: dict, L: "_Lang", part: str = "top") -> str:
+    e = html.escape
+    out = ["<section class='web'>"]
+    if part == "bottom":
+        return _web_html_bottom(findings, web, L)
+    # summary line
+    facts = [(_wl(L, "w_profile"), clean_text(web.get("profile"), 20)), (_wl(L, "w_requests"), clean_text(web.get("requests"), 10)),
+             (_wl(L, "w_final"), clean_text(web.get("final_url"), 300)), (_wl(L, "w_data"), clean_text(web.get("data_date"), 20))]
+    out.append("<p>" + " · ".join(f"{e(k)}: <bdi dir='ltr'>{e(v)}</bdi>" for k, v in facts if v) + "</p>")
+    # grades
+    out.append(f"<h2>{e(_wl(L, 'grades'))}</h2><div class='grades'>")
+    provisional = False
+    for g in _grade_rows(web, L):
+        provisional = provisional or g["provisional"]
+        score = "" if g["score"] is None else f"{g['score']:g}" + (f"/{g['max']:g}" if g["max"] else "")
+        caps = "".join(f"<li>{e(c)}</li>" for c in g["caps"][:8])
+        out.append(f"<div class='grade g-{e(g['key'])}'><b>{e(g['name'])}</b>"
+                   f"<div class='letter' dir='ltr'>{e(g['grade'] or '—')}</div>"
+                   + (f"<small dir='ltr'>{e(score)}</small>" if score else f"<small>{e(_wl(L, 'g_none'))}</small>" if not g['grade'] else "")
+                   + (f"<small>{e(g['label'])}</small>" if g["label"] else "")
+                   + (f"<small>{e(_wl(L, 'g_caps'))}:</small><ul>{caps}</ul>" if caps else "") + "</div>")
+    out.append("</div>")
+    if provisional:
+        out.append(f"<p><small>{e(_wl(L, 'g_provisional'))}</small></p>")
+    # coverage
+    counts = _coverage_counts(web)
+    out.append(f"<h2>{e(_wl(L, 'coverage'))}</h2><div class='cov'>"
+               + "".join(f"<span class='s-{s}'>{e(_wl(L, 's_' + s))}: <b>{counts[s]}</b></span>" for s in _STATE_ORDER)
+               + f"</div><p><small>{e(_wl(L, 'cov_never_pass'))}</small></p>")
+    problems = _coverage_problems(web, L)
+    if problems:
+        rows = [[c, _wl(L, "s_" + s) if ("s_" + s) in _WEB_LABELS else s, r] for c, s, r in problems]
+        out.append(f"<details><summary>{e(_wl(L, 'cov_details'))} ({len(problems)})</summary>"
+                   + _html_table([_wl(L, "cov_check"), _wl(L, "cov_state"), _wl(L, "cov_reason")], rows, L) + "</details>")
+    # diff
+    dp = _diff_parts(web)
+    if dp:
+        out.append(f"<h2>{e(_wl(L, 'diff'))}</h2>")
+        for n in dp["notes"]:
+            out.append(f"<p>{e(clean_text(_pair(L, n), 400))}</p>")
+        if dp["comparable"]:
+            changes = [_grade_change_text(L, k, v) for k, v in dp["grades"].items()]
+            changes = [c for c in changes if c]
+            if changes:
+                out.append(f"<p><b>{e(_wl(L, 'd_grade'))}:</b> " + " · ".join(f"<bdi>{e(c)}</bdi>" for c in changes) + "</p>")
+            if dp["posture"]:
+                out.append(f"<h3>{e(_wl(L, 'd_posture'))}</h3><ul class='posture'>"
+                           + "".join(f"<li class='{e(str(p.get('direction')))}'>{e(_wl(L, 'd_' + p['direction']) if ('d_' + str(p.get('direction'))) in _WEB_LABELS else '')}: "
+                                     f"<bdi>{e(clean_text(_pair(L, p), 400))}</bdi></li>" for p in dp["posture"][:200]) + "</ul>")
+            for key in ("new", "resolved"):
+                items = dp[key]
+                out.append(f"<h3>{e(_wl(L, 'd_' + key))} ({len(items)})</h3>")
+                if items:
+                    out.append("<ul>" + "".join(f"<li><span class='b {e(str(r.get('severity')))}'>{e(L.sev(r['severity']) if r.get('severity') in SEVERITY_AR else '?')}</span> "
+                                                f"<code>{e(clean_text(r.get('rule'), 40))}</code> <bdi>{e(_row_title(L, r))}</bdi></li>"
+                                                for r in items[:200]) + "</ul>")
+            out.append(f"<p><small>{e(_wl(L, 'd_unchanged'))}: {len(dp['unchanged'])}</small></p>")
+    out.append("</section>")
+    return "".join(out)
+
+
+def _web_html_bottom(findings: list[Finding], web: dict, L: "_Lang") -> str:
+    e = html.escape
+    out = ["<section class='web'>"]
+    # inventory tabs
+    tables = inventory_tables(web, L)
+    out.append(f"<h2>{e(_wl(L, 'inventory'))}</h2>")
+    out.append(_html_tabs("inv", [(_wl(L, "t_" + k), _html_table(*tables[k], L)) for k in INVENTORY_TABS]))
+    # remediation snippets with platform tabs
+    snippets = remediation_snippets(findings, web, L.lang)
+    if snippets:
+        out.append(f"<h2>{e(_wl(L, 'remediation'))}</h2>")
+        for i, sn in enumerate(snippets):
+            blocks = [b for b in list(sn.get("detected") or []) + list(sn.get("other") or []) if isinstance(b, dict)]
+            tabs = []
+            for b in blocks:
+                body = (f"<pre><code>{e(str(b.get('code') or ''))}</code></pre>" if b.get("code") else "") \
+                    + (f"<p>{e(str(b.get('note') or ''))}</p>" if b.get("note") else "")
+                tabs.append((str(b.get("name") or b.get("platform") or ""), body))
+            out.append(f"<div class='snip'><h3><code>{e(str(sn.get('id')))}</code> {e(str(sn.get('title') or ''))}</h3>"
+                       f"<p>{e(str(sn.get('summary') or ''))}</p>"
+                       + (f"<p class='caveat'><b>{e(str(sn.get('caveat_label') or ''))}:</b> {e(str(sn.get('caveat') or ''))}</p>" if sn.get("caveat") else "")
+                       + (_html_tabs(f"rem{i}", tabs) if tabs else "") + "</div>")
+    out.append("</section>")
+    return "".join(out)
+
+
+# --------------------------------------------------------------------------------------- web: Markdown
+
+def _md_table(head: list[str], rows: list[list[str]], L: "_Lang") -> list[str]:
+    if not rows:
+        return [f"_{_wl(L, 'inv_empty')}_", ""]
+    out = ["| " + " | ".join(_md_cell(h, 80) for h in head) + " |", "|" + "---|" * len(head)]
+    out += ["| " + " | ".join(_md_cell(c, 1000) or " " for c in r) + " |" for r in rows]
+    return out + [""]
+
+
+def _web_markdown(findings: list[Finding], web: dict, L: "_Lang", part: str = "top") -> list[str]:
+    if part == "bottom":
+        return _web_markdown_bottom(findings, web, L)
+    md = [f"## {_wl(L, 'web_summary')}", ""]
+    for k, v in ((_wl(L, "w_profile"), web.get("profile")), (_wl(L, "w_requests"), web.get("requests")),
+                 (_wl(L, "w_final"), web.get("final_url")), (_wl(L, "w_data"), web.get("data_date"))):
+        if v not in (None, ""):
+            md.append(f"- {k}: `{_md_code(v, 300)}`")
+    md += ["", f"### {_wl(L, 'grades')}", ""]
+    rows = []
+    for g in _grade_rows(web, L):
+        score = "" if g["score"] is None else f"{g['score']:g}" + (f"/{g['max']:g}" if g["max"] else "")
+        rows.append([g["name"], g["grade"] or "—", score, "; ".join(g["caps"][:6]) or g["label"]])
+    md += _md_table(["", "", "", ""], rows, L)
+    counts = _coverage_counts(web)
+    md += [f"### {_wl(L, 'coverage')}", "",
+           " · ".join(f"{_wl(L, 's_' + s)}: **{counts[s]}**" for s in _STATE_ORDER), "", f"_{_wl(L, 'cov_never_pass')}_", ""]
+    problems = _coverage_problems(web, L, limit=200)
+    if problems:
+        md += _md_table([_wl(L, "cov_check"), _wl(L, "cov_state"), _wl(L, "cov_reason")],
+                        [[c, _wl(L, "s_" + s) if ("s_" + s) in _WEB_LABELS else s, r] for c, s, r in problems], L)
+    dp = _diff_parts(web)
+    if dp:
+        md += [f"### {_wl(L, 'diff')}", ""]
+        md += [f"- {_md_cell(_pair(L, n), 400)}" for n in dp["notes"]]
+        if dp["comparable"]:
+            changes = [c for c in (_grade_change_text(L, k, v) for k, v in dp["grades"].items()) if c]
+            if changes:
+                md.append(f"- {_wl(L, 'd_grade')}: " + " · ".join(_md_cell(c, 100) for c in changes))
+            for p in dp["posture"][:200]:
+                direction = str(p.get("direction"))
+                label = _wl(L, "d_" + direction) if ("d_" + direction) in _WEB_LABELS else direction
+                md.append(f"- **{label}**: {_md_cell(_pair(L, p), 400)}")
+            for key in ("new", "resolved"):
+                md += ["", f"#### {_wl(L, 'd_' + key)} ({len(dp[key])})", ""]
+                md += [f"- `{_md_code(r.get('rule'), 40)}` {_md_cell(_row_title(L, r), 200)} ({_md_cell(r.get('severity'), 10)})"
+                       for r in dp[key][:200]]
+            md += ["", f"{_wl(L, 'd_unchanged')}: {len(dp['unchanged'])}"]
+        md.append("")
+    return md
+
+
+def _web_markdown_bottom(findings: list[Finding], web: dict, L: "_Lang") -> list[str]:
+    tables = inventory_tables(web, L)
+    md = [f"## {_wl(L, 'inventory')}", ""]
+    for k in INVENTORY_TABS:
+        md += [f"### {_wl(L, 't_' + k)}", ""] + _md_table(*tables[k], L)
+    snippets = remediation_snippets(findings, web, L.lang)
+    if snippets:
+        md += [f"## {_wl(L, 'remediation')}", ""]
+        for sn in snippets:
+            md += [f"### {sn.get('id')} · {sn.get('title')}", "", str(sn.get("summary") or ""), ""]
+            if sn.get("caveat"):
+                md += [f"**{sn.get('caveat_label')}:** {sn.get('caveat')}", ""]
+            for b in list(sn.get("detected") or []) + list(sn.get("other") or []):
+                if not isinstance(b, dict):
+                    continue
+                md += [f"**{b.get('name')}**", ""]
+                code = str(b.get("code") or "")
+                if code:
+                    fence = "````" if "```" in code else "```"
+                    md += [fence + str(b.get("lang") or ""), code, fence, ""]
+                if b.get("note"):
+                    md += [str(b["note"]), ""]
+    return md
+
+
+def _web_console(web: dict, L: "_Lang") -> list[str]:
+    lines = []                               # the grades and coverage are already in the scan notes
+    dp = _diff_parts(web)
+    if dp and dp["comparable"]:
+        lines.append(f"  ⇄ {_wl(L, 'diff')}: {_wl(L, 'd_new')} {len(dp['new'])} · {_wl(L, 'd_resolved')} "
+                     f"{len(dp['resolved'])} · {_wl(L, 'd_regression')} "
+                     f"{sum(1 for p in dp['posture'] if p.get('direction') == 'regression')}")
+        for p in dp["posture"][:5]:
+            if p.get("direction") == "regression":
+                lines.append(f"     ↓ {clean_text(_pair(L, p), 200)}")
+    return lines
+
+
+def _sarif_web_properties(web: dict) -> dict:
+    """``run.properties`` additions for a web scan: the three grades and the coverage counts (spec §4.5)."""
+    g = web.get("grades") if isinstance(web.get("grades"), dict) else {}
+    grades = {}
+    for key in ("kashif", "observatory", "ssllabs"):
+        d = g.get(key) if isinstance(g.get(key), dict) else {}
+        if d:
+            grades[key] = {k: d.get(k) for k in ("grade", "score", "max_score", "provisional", "algorithm") if k in d}
+    not_run = [{"check": c.get("check"), "state": c.get("state"), "reason": c.get("reason", "")}
+               for c in web.get("coverage") or [] if isinstance(c, dict) and c.get("state") in ("not_tested", "inconclusive")]
+    summary = web.get("coverage_summary") if isinstance(web.get("coverage_summary"), dict) else {}
+    return {"webProfile": web.get("profile", ""), "grades": grades,
+            "coverage": {"counts": _coverage_counts(web), "summary": summary.get("en", ""), "notTested": not_run[:500]}}

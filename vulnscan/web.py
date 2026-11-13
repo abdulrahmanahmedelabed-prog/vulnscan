@@ -1,97 +1,48 @@
-"""Passive and light posture checks against a running web application.
+"""Passive web scanning: the 1.0.x facade over the 1.1.0 scanner (``vulnscan.webscan``).
 
-Only runs when the user asserts authorization (``--authorized``): even a
-single request is traffic against someone else's system. The default scan is
-one GET of the given URL. ``deep=True`` reads the returned HTML (no extra
-traffic) to flag mixed content, insecure forms, missing SRI and weak CSP, and
-then makes a small, bounded number of extra GETs for well-known files that are
-commonly left exposed by mistake (``.git/HEAD``, ``.env`` …). It never submits
-forms, sends payloads, fuzzes parameters or tries to bypass anything: it only
-reads what the server already serves.
+Only runs when the user asserts authorization (``--authorized``): every request is traffic against someone else's
+system. The public API of 1.0.1 is unchanged — :func:`scan_url`, :func:`scan_site`, :class:`WebUnreachable`,
+:func:`explain_failure`, ``USER_AGENT``, ``TRANSIENT``, ``DEFAULT_TIMEOUT``, ``DEFAULT_DELAY``, ``MAX_BODY`` and the
+helpers ``_get``, ``_analyze_html``, ``_group`` and ``_same_origin_links`` — while the work is done by
+``webscan.engine`` (spec §4.3): a profile-bounded set of GET requests through one polite fetcher, response
+classification, every check module, grouping, grades and an honest coverage table. New code calls
+:func:`scan_web` (the full :class:`~vulnscan.webscan.types.WebScanResult`) or ``vulnscan.webscan.scan``.
+
+Profiles (spec §0.1): ``minimal`` is the 1.0.1 single request (the entry chain only); ``standard`` (the default) adds
+the http(s) counterpart chain, one cookieless CORS GET, the well-known files and the page's own scripts and styles
+(≤ 45 requests); ``deep`` (``deep=True``) adds the fixed list of commonly exposed files with soft-404 baselines,
+third-party scripts, source maps and images (≤ 150). It never submits forms, sends payloads, fuzzes parameters or
+tries to bypass anything: it only reads what the server already serves, with an honest User-Agent.
 """
 
 from __future__ import annotations
 
 import http.client
 import re
-import ssl
-import time
+import time   # noqa: F401 - kept for callers and tests that patch web.time (1.0.1 API)
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from .model import Finding
+from .webscan import engine as _engine
+from .webscan.engine import SKIP_LINK, WebUnreachable
+from .webscan.types import ACCEPT_DOCUMENT, ScanOptions, WebScanResult, user_agent
 
-EXPECTED_HEADERS = [
-    ("strict-transport-security", "high", "Missing Strict-Transport-Security", "ترويسة HSTS مفقودة",
-     "أضف Strict-Transport-Security: max-age=31536000; includeSubDomains.", "CWE-319"),
-    ("content-security-policy", "medium", "Missing Content-Security-Policy", "ترويسة CSP مفقودة",
-     "أضف سياسة CSP تقيّد مصادر السكربتات.", "CWE-1021"),
-    ("x-content-type-options", "low", "Missing X-Content-Type-Options", "ترويسة X-Content-Type-Options مفقودة",
-     "أضف X-Content-Type-Options: nosniff.", "CWE-16"),
-    ("x-frame-options", "medium", "Missing X-Frame-Options / frame-ancestors", "لا حماية من Clickjacking",
-     "أضف X-Frame-Options: DENY أو frame-ancestors في CSP.", "CWE-1021"),
-    ("referrer-policy", "info", "Missing Referrer-Policy", "ترويسة Referrer-Policy مفقودة",
-     "أضف Referrer-Policy: strict-origin-when-cross-origin.", "CWE-200"),
-    ("permissions-policy", "info", "Missing Permissions-Policy", "ترويسة Permissions-Policy مفقودة",
-     "قيّد الصلاحيات الحساسة (الكاميرا، الموقع…) بترويسة Permissions-Policy.", "CWE-16"),
-]
-
-# Well-known files that should not be reachable; probed only in deep mode.
-# (path, severity, english, arabic, remediation, body-signature regex or None)
-EXPOSED_PATHS = [
-    ("/.git/HEAD", "high", "Exposed .git repository", "مستودع .git مكشوف",
-     "امنع الوصول إلى مجلد .git من خادم الويب؛ المصدر الكامل قد يكون قابلًا للتنزيل.", r"ref:\s*refs/"),
-    ("/.env", "critical", "Exposed .env file", "ملف .env مكشوف",
-     "أزل .env من جذر الويب فورًا وأبطل أي أسرار فيه.", r"(?im)^[A-Z0-9_]{3,}\s*="),
-    ("/.svn/entries", "high", "Exposed .svn metadata", "بيانات .svn مكشوفة",
-     "امنع الوصول إلى .svn من خادم الويب.", None),
-    ("/.DS_Store", "low", "Exposed .DS_Store", "ملف .DS_Store مكشوف",
-     "احذف .DS_Store من النشر؛ قد يكشف أسماء الملفات.", None),
-    ("/server-status", "medium", "Apache server-status exposed", "صفحة server-status مكشوفة",
-     "قيّد mod_status على localhost فقط.", r"Apache Server Status"),
-    ("/phpinfo.php", "high", "phpinfo() exposed", "صفحة phpinfo مكشوفة",
-     "احذف ملفات phpinfo من الإنتاج؛ تكشف إعدادات الخادم.", r"phpinfo\(\)"),
-    ("/.well-known/security.txt", "info", "No security.txt", "لا يوجد security.txt",
-     "أضف /.well-known/security.txt لتسهيل الإبلاغ عن الثغرات (غيابه ليس ثغرة).", "__absent__"),
-    ("/robots.txt", "info", "robots.txt reveals sensitive paths", "robots.txt يكشف مسارات حساسة",
-     "لا تضع مسارات إدارية حساسة في robots.txt؛ فهو عام.", "__robots__"),
-    ("/.env.bak", "critical", "Exposed .env backup", "نسخة احتياطية من .env مكشوفة",
-     "احذف ملفات النسخ الاحتياطي من جذر الويب وأبطل أي أسرار.", r"(?im)^[A-Z0-9_]{3,}\s*="),
-    ("/backup.sql", "high", "Exposed database backup", "نسخة احتياطية لقاعدة البيانات مكشوفة",
-     "أزل ملفات .sql من جذر الويب؛ قد تحوي بيانات حساسة.", r"(?i)(insert into|create table|dump)"),
-    ("/.git/config", "high", "Exposed .git/config", "ملف .git/config مكشوف",
-     "امنع الوصول إلى مجلد .git من خادم الويب.", r"\[core\]"),
-    ("/wp-config.php.bak", "critical", "Exposed wp-config backup", "نسخة احتياطية من wp-config مكشوفة",
-     "احذف النسخ الاحتياطية وأبطل بيانات قاعدة البيانات.", r"DB_PASSWORD"),
-    ("/.htaccess", "medium", "Exposed .htaccess", "ملف .htaccess مكشوف",
-     "امنع تقديم ملفات .htaccess من خادم الويب.", r"(?i)(RewriteRule|AuthType|Require)"),
-    ("/config.php.bak", "high", "Exposed PHP config backup", "نسخة احتياطية من config.php مكشوفة",
-     "احذف النسخ الاحتياطية من جذر الويب.", r"(?i)(password|db_|define\()"),
-    ("/.aws/credentials", "critical", "Exposed AWS credentials", "بيانات اعتماد AWS مكشوفة",
-     "أبطل المفاتيح فورًا وأزل الملف من جذر الويب.", r"aws_access_key_id"),
-    ("/actuator/env", "high", "Spring Boot actuator env exposed", "نقطة Spring actuator/env مكشوفة",
-     "قيّد نقاط actuator الحساسة أو عطّلها في الإنتاج.", r"(?i)(propertySources|systemEnvironment)"),
-    ("/swagger-ui/index.html", "low", "API docs (Swagger UI) exposed", "واجهة توثيق API (Swagger) مكشوفة",
-     "قيّد الوصول إلى توثيق API في الإنتاج إن لم يكن عامًا بقصد.", r"(?i)swagger"),
-]
-MAX_BODY = 600_000
+MAX_BODY = 2_000_000           # bytes of a document (the fetcher's document cap, spec §4.3)
 DEFAULT_TIMEOUT = 20.0
-DEFAULT_DELAY = 0.5          # seconds between requests while crawling: gentle on the server and its WAF
-# Honest identification: the scanner says what it is, like a respectful defensive crawler. It does not hide.
-USER_AGENT = "Mozilla/5.0 (compatible; vulnscan/0.4; +https://github.com/abdulrahmanahmedelabed-prog/vulnscan passive security posture check)"
-
-
-class WebUnreachable(Exception):
-    """The entry URL could not be fetched, so nothing was scanned. Never reported as a clean result."""
-
+DEFAULT_DELAY = 0.5            # seconds between two requests to one host (all requests; the floor is 0.2 s)
+# Honest identification (spec §0.2): the scanner says what it is and links to the page that explains its traffic.
+USER_AGENT = user_agent()
 
 # Windows (WinError / WSA codes), Linux and macOS phrasings of the same network failures
-_TIMEOUT = ("timed out", "timeout", "10060", "did not properly respond", "failed to respond", "wsaetimedout")
+_TIMEOUT = ("timed out", "timeout", "10060", "did not properly respond", "failed to respond", "wsaetimedout",
+            "deadline exceeded")
 _DNS = ("name or service not known", "nodename nor servname", "getaddrinfo", "no address associated", "11001", "11004",
         "temporary failure in name resolution", "name resolution", "wsahost_not_found", "no such host")
 _REFUSED = ("refused", "10061", "wsaeconnrefused")
-_RESET = ("reset", "aborted", "10054", "10053", "forcibly closed", "connection was closed", "remote end closed")
+_RESET = ("reset", "aborted", "10054", "10053", "forcibly closed", "connection was closed", "remote end closed",
+          "closed by the server")
 _UNREACHABLE = ("unreachable", "10051", "10065", "no route to host")
 TRANSIENT = _TIMEOUT + _RESET + ("temporarily",)
 
@@ -99,7 +50,10 @@ TRANSIENT = _TIMEOUT + _RESET + ("temporarily",)
 def explain_failure(err: str, url: str, timeout: float) -> str:
     """A clear Arabic explanation of why a site could not be reached (the raw error is kept at the end)."""
     low = (err or "").lower()
-    host = urllib.parse.urlparse(url).hostname or url
+    try:
+        host = urllib.parse.urlparse(url).hostname or url
+    except ValueError:
+        host = url
     other = "http://" if url.lower().startswith("https://") else "https://"
     if any(w in low for w in _TIMEOUT):
         why = (f"انتهت مهلة الاتصال بـ {host} بعد {int(timeout)} ثانية في محاولتين. الموقع لم يرد: قد يكون بطيئًا أو متوقفًا، "
@@ -126,11 +80,13 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _get(url: str, timeout: float, read_body: bool = False, retries: int = 0):
-    """GET without following redirects. On a timeout or dropped connection, retry with a doubled timeout."""
+    """One GET without following redirects (1.0.1 helper, kept for callers; the scanner itself fetches through
+    ``webscan.http.Fetcher``). On a timeout or dropped connection, retry with a doubled timeout.
+    Returns ``(status, headers, body, error)``."""
     opener = urllib.request.build_opener(_NoRedirect)
     last = None
     for attempt in range(retries + 1):
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml,*/*;q=0.8"})  # nosec - the URL is the user's own, --authorized scan target (intentional outbound request)
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": ACCEPT_DOCUMENT})  # nosec - the URL is the user's own, --authorized scan target (intentional outbound request)
         try:
             resp = opener.open(req, timeout=timeout * (2 ** attempt))
             body = resp.read(MAX_BODY) if read_body else b""
@@ -146,287 +102,78 @@ def _get(url: str, timeout: float, read_body: bool = False, retries: int = 0):
     return None, None, b"", last
 
 
-def scan_url(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False) -> tuple[list[Finding], str | None]:
-    """Passive checks of one URL. Raises WebUnreachable when the URL cannot be fetched at all."""
-    findings: list[Finding] = []
-    parsed = urllib.parse.urlparse(url)
-    label = parsed.netloc or url
-    https = parsed.scheme == "https"
-    if parsed.scheme == "http":
-        findings.append(Finding("WEB000", "high", "Site served over plain HTTP", "الموقع يُقدَّم عبر HTTP غير مشفّر",
-                                label, 0, url, "فعّل HTTPS وأعد توجيه HTTP إليه.", "CWE-319", source="web"))
+# ----------------------------------------------------------------------------------------------- scanning
 
-    status, headers, body, err = _get(url, timeout, read_body=True, retries=1)
-    if status is None:
-        raise WebUnreachable(explain_failure(err, url, timeout))
-    h = {k.lower(): v for k, v in headers.items()}
-
-    for name, sev, title, title_ar, advice, cwe in EXPECTED_HEADERS:
-        if name == "strict-transport-security" and not https:
-            continue
-        if name == "x-frame-options" and "frame-ancestors" in h.get("content-security-policy", ""):
-            continue
-        if name not in h:
-            findings.append(Finding(f"WEB-{name}", sev, title, title_ar, label, 0, f"HTTP {status}", advice, cwe, source="web"))
-
-    findings.extend(_csp_weaknesses(h.get("content-security-policy", ""), label))
-
-    server = h.get("server", "")
-    if any(ch.isdigit() for ch in server):
-        findings.append(Finding("WEB010", "low", f"Server header reveals version: {server}", "ترويسة Server تكشف الإصدار",
-                                label, 0, server, "أخفِ رقم الإصدار من ترويسة Server.", "CWE-200", source="web"))
-    powered = h.get("x-powered-by")
-    if powered:
-        findings.append(Finding("WEB011", "low", f"X-Powered-By reveals stack: {powered}", "ترويسة X-Powered-By تكشف التقنية",
-                                label, 0, powered, "احذف ترويسة X-Powered-By.", "CWE-200", source="web"))
-
-    for cookie in headers.get_all("set-cookie") or []:
-        low = cookie.lower()
-        cname = cookie.split("=", 1)[0].strip()
-        if https and "secure" not in low:
-            findings.append(Finding("WEB020", "medium", f"Cookie without Secure flag: {cname}", "كوكي بدون علامة Secure",
-                                    label, 0, cookie[:120], "أضف Secure لكل الكوكيز.", "CWE-614", source="web"))
-        if "httponly" not in low:
-            findings.append(Finding("WEB021", "medium", f"Cookie without HttpOnly flag: {cname}", "كوكي بدون علامة HttpOnly",
-                                    label, 0, cookie[:120], "أضف HttpOnly للكوكيز التي لا يحتاجها JavaScript.", "CWE-1004", source="web"))
-        if "samesite" not in low:
-            findings.append(Finding("WEB022", "low", f"Cookie without SameSite: {cname}", "كوكي بدون SameSite",
-                                    label, 0, cookie[:120], "أضف SameSite=Lax أو Strict.", "CWE-1275", source="web"))
-
-    ctype = h.get("content-type", "")
-    if "text/html" in ctype and body:
-        page = body.decode("utf-8", "replace")
-        findings.extend(_analyze_html(page, parsed, label))
-        blob = page + "\n" + "\n".join(f"{k}: {v}" for k, v in headers.items())
-        findings.extend(detect_platform(blob, label, deep, parsed, timeout))
-
-    if https:
-        findings.extend(_tls_checks(parsed.hostname or "", parsed.port or 443, label, timeout))
-
-    if deep:
-        findings.extend(_probe_paths(parsed, timeout))
-
-    return findings, None
+def options_for(*, timeout: float = DEFAULT_TIMEOUT, deep: bool = False, crawl: bool = False, max_pages: int = 20,
+                max_depth: int = 2, delay: float = DEFAULT_DELAY, profile: str | None = None,
+                sensitivity: str = "default", respect_robots: bool = True, third_party_lookups: bool = False,
+                cookie_ignore=(), use_proxy: bool = True, max_requests: int | None = None,
+                time_budget: float = 600.0, lang: str = "ar") -> ScanOptions:
+    """``ScanOptions`` from the facade's keyword arguments: ``profile`` wins over ``deep`` (deep → ``"deep"``, else
+    ``"standard"``, the 1.1.0 default)."""
+    return ScanOptions(profile=profile or ("deep" if deep else "standard"), crawl=bool(crawl), max_pages=int(max_pages),
+                       max_depth=int(max_depth), delay=float(delay), timeout=float(timeout), sensitivity=sensitivity,
+                       respect_robots=bool(respect_robots), third_party_lookups=bool(third_party_lookups),
+                       max_requests=max_requests, time_budget=float(time_budget),
+                       cookie_ignore=tuple(cookie_ignore or ()), lang=lang, use_proxy=bool(use_proxy))
 
 
-def _csp_weaknesses(csp: str, label: str) -> list[Finding]:
-    out = []
-    if not csp:
-        return out
-    low = csp.lower()
-    script = re.search(r"(?:script-src|default-src)([^;]*)", low)
-    scope = script.group(1) if script else ""
-    if "'unsafe-inline'" in scope:
-        out.append(Finding("WEB040", "medium", "CSP allows 'unsafe-inline' scripts", "CSP يسمح بسكربتات inline",
-                           label, 0, "script-src 'unsafe-inline'", "أزل 'unsafe-inline' واستخدم nonce أو hash.", "CWE-1021", source="web"))
-    if "'unsafe-eval'" in scope:
-        out.append(Finding("WEB041", "medium", "CSP allows 'unsafe-eval'", "CSP يسمح بـ unsafe-eval",
-                           label, 0, "script-src 'unsafe-eval'", "أزل 'unsafe-eval'.", "CWE-1021", source="web"))
-    if re.search(r"(script-src|default-src)[^;]*\*", low) and "'none'" not in scope:
-        out.append(Finding("WEB042", "medium", "CSP script source uses wildcard *", "CSP يسمح بأي مصدر للسكربتات",
-                           label, 0, "script-src *", "حدّد النطاقات المسموحة بدل *.", "CWE-1021", source="web"))
-    if "object-src" not in low:
-        out.append(Finding("WEB043", "low", "CSP missing object-src 'none'", "CSP بلا object-src",
-                           label, 0, csp[:120], "أضف object-src 'none' لمنع الإضافات القديمة.", "CWE-1021", source="web"))
-    return out
+def scan_web(url: str, *, previous: dict | None = None, scan_id: str = "", progress=None,
+             options: ScanOptions | None = None, **kw) -> WebScanResult:
+    """The full 1.1.0 result (findings, grades, coverage, inventory, notes, snapshot, diff). ``kw`` are the
+    arguments of :func:`options_for` (ignored when ``options`` is given). Raises :class:`WebUnreachable`."""
+    opts = options or options_for(**kw)
+    return _engine.scan(url, opts, previous=previous, scan_id=scan_id, progress=progress)
 
 
-_ATTR = re.compile(r"""(src|href|action)\s*=\s*['"]([^'"]+)['"]""", re.I)
+def scan_url(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False, **kw) -> tuple[list[Finding], str | None]:
+    """Passive checks of one URL (no crawl). Raises WebUnreachable when the URL cannot be fetched at all.
 
+    Returns ``(findings, None)`` as in 1.0.1; :func:`scan_site` and :func:`scan_web` also return the scan notes."""
+    kw.pop("crawl", None)
+    res = scan_web(url, timeout=timeout, deep=deep, crawl=False, **kw)
+    return res.findings, None
+
+
+def scan_site(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False,
+              crawl: bool = False, max_pages: int = 20, max_depth: int = 2,
+              delay: float = DEFAULT_DELAY, **kw) -> tuple:
+    """Scan a web app. Returns ``(findings, note, pages)`` as in 1.0.1.
+
+    Always scans the entry URL (and, in the default ``standard`` profile, its well-known files, the http(s)
+    counterpart, one CORS GET and the page's own scripts). With ``crawl`` it also follows same-origin links
+    breadth-first (robots.txt honoured), up to ``max_pages`` pages and ``max_depth`` deep. ``delay`` is the minimum gap
+    between two requests to one host (every request, floor 0.2 s). ``note`` is the scan's notes, one per line: the
+    profile and request count, anything that limited the scan, the coverage summary and the grades. ``pages`` counts
+    the entry page plus the crawled pages fetched. Extra keyword arguments are those of :func:`options_for`
+    (``profile``, ``sensitivity``, …) plus ``previous``/``scan_id``/``progress`` of :func:`scan_web`."""
+    passthrough = {k: kw.pop(k) for k in ("previous", "scan_id", "progress", "options") if k in kw}
+    res = scan_web(url, timeout=timeout, deep=deep, crawl=crawl, max_pages=max_pages, max_depth=max_depth,
+                   delay=delay, **kw, **passthrough)
+    pages = 1 + (int(res.inventory.get("crawl_fetched", 0) or 0) if crawl else 0)
+    note = "\n".join(res.notes) if res.notes else None
+    return res.findings, note, pages
+
+
+# ----------------------------------------------------------------------------------------------- 1.0.1 helpers
 
 def _analyze_html(html: str, parsed, label: str) -> list[Finding]:
-    out = []
-    https = parsed.scheme == "https"
-    # Mixed content: http resources referenced from an https page.
-    if https:
-        for m in _ATTR.finditer(html):
-            val = m.group(2).strip()
-            if val.lower().startswith("http://"):
-                out.append(Finding("WEB050", "medium", "Mixed content: insecure resource on HTTPS page",
-                                   "محتوى مختلط: مورد عبر HTTP في صفحة HTTPS", label, 0, val[:120],
-                                   "حمّل كل الموارد عبر https://.", "CWE-311", source="web"))
-                break
-    # Forms posting to http, or to a different origin.
-    for fm in re.finditer(r"<form\b[^>]*>", html, re.I):
-        action = re.search(r"""action\s*=\s*['"]([^'"]+)['"]""", fm.group(0), re.I)
-        if action and action.group(1).lower().startswith("http://"):
-            out.append(Finding("WEB051", "high", "Form submits over plain HTTP", "نموذج يُرسل عبر HTTP",
-                               label, 0, fm.group(0)[:120], "اجعل action للنموذج https://.", "CWE-319", source="web"))
-            break
-    # Password field served where the page or its form is not clearly https.
-    if not https and re.search(r"<input[^>]*type\s*=\s*['\"]password['\"]", html, re.I):
-        out.append(Finding("WEB052", "high", "Password field on non-HTTPS page", "حقل كلمة مرور في صفحة غير HTTPS",
-                           label, 0, "<input type=password>", "قدّم صفحات تسجيل الدخول عبر HTTPS فقط.", "CWE-319", source="web"))
-    # External scripts without Subresource Integrity.
-    for sc in re.finditer(r"<script\b[^>]*\bsrc\s*=\s*['\"]([^'\"]+)['\"][^>]*>", html, re.I):
-        src = sc.group(1)
-        host = urllib.parse.urlparse(src).netloc
-        if host and host != parsed.netloc and "integrity=" not in sc.group(0).lower():
-            out.append(Finding("WEB053", "low", "External script without Subresource Integrity",
-                               "سكربت خارجي بلا تحقق سلامة (SRI)", label, 0, src[:120],
-                               "أضف السمة integrity (SRI) للسكربتات الخارجية.", "CWE-353", source="web"))
-            break
-    # Outdated front-end libraries with known-vulnerable versions, read from the script URL.
-    for f in _library_findings(html, label):
-        out.append(f)
-    # Directory listing.
-    if re.search(r"<title>\s*Index of /", html, re.I):
-        out.append(Finding("WEB055", "medium", "Directory listing enabled", "عرض فهرس المجلدات مفعّل",
-                           label, 0, "Index of /", "عطّل autoindex/directory listing على الخادم.", "CWE-548", source="web"))
-    # Leaked stack trace / debug output.
-    if re.search(r"(Traceback \(most recent call last\)|Warning: .*on line \d+|Exception in thread|at [\w.$]+\([\w.]+\.java:\d+\))", html):
-        out.append(Finding("WEB056", "medium", "Stack trace / debug output in response", "أثر استثناء أو تصحيح في الاستجابة",
-                           label, 0, "stack trace", "عطّل عرض الأخطاء التفصيلية في الإنتاج.", "CWE-209", source="web"))
-    return out
-
-
-# (library, regex capturing version, "version is vulnerable" test, severity, advice-ar, cwe)
-_LIBS = [
-    ("jQuery", re.compile(r"jquery[-/.](\d+)\.(\d+)(?:\.(\d+))?", re.I),
-     lambda v: v < (3, 5, 0), "medium",
-     "حدّث jQuery إلى 3.5 أو أحدث (إصدارات أقدم بها XSS معروفة: CVE-2020-11022/11023 وأقدم).", "CWE-1104"),
-    ("jQuery UI", re.compile(r"jquery[-.]?ui[-/.](\d+)\.(\d+)(?:\.(\d+))?", re.I),
-     lambda v: v < (1, 13, 2), "medium",
-     "حدّث jQuery UI إلى 1.13.2 أو أحدث (XSS في إصدارات أقدم).", "CWE-79"),
-    ("AngularJS", re.compile(r"angular(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
-     lambda v: v[0] == 1, "medium",
-     "AngularJS 1.x انتهى دعمه ولا يتلقى تصحيحات أمان؛ انتقل إلى إطار مدعوم.", "CWE-1104"),
-    ("Bootstrap", re.compile(r"bootstrap[-/.](\d+)\.(\d+)(?:\.(\d+))?", re.I),
-     lambda v: v < (3, 4, 1) or (v[0] == 4 and v < (4, 3, 1)), "medium",
-     "حدّث Bootstrap (XSS في tooltip/popover قبل 3.4.1 و4.3.1: CVE-2019-8331).", "CWE-79"),
-    ("Lodash", re.compile(r"lodash(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
-     lambda v: v < (4, 17, 21), "medium",
-     "حدّث Lodash إلى 4.17.21 (تلويث prototype في إصدارات أقدم).", "CWE-1321"),
-    ("Moment.js", re.compile(r"moment(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
-     lambda v: v < (2, 29, 4), "low",
-     "حدّث Moment.js إلى 2.29.4 (ReDoS/path traversal في إصدارات أقدم).", "CWE-400"),
-    ("Handlebars", re.compile(r"handlebars(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
-     lambda v: v < (4, 7, 7), "high",
-     "حدّث Handlebars إلى 4.7.7 (تلويث prototype وتنفيذ قوالب: CVE-2019-20920).", "CWE-1321"),
-    ("DOMPurify", re.compile(r"(?:dom)?purify(?:\.min)?\.js[^0-9]*?(\d+)\.(\d+)(?:\.(\d+))?", re.I),
-     lambda v: v < (2, 4, 0), "high",
-     "حدّث DOMPurify إلى 2.4.0 أو أحدث (تجاوزات تعقيم معروفة في إصدارات أقدم).", "CWE-79"),
-]
-
-
-def _library_findings(html: str, label: str) -> list[Finding]:
-    out, seen = [], set()
-    for name, pat, vulnerable, sev, advice, cwe in _LIBS:
-        m = pat.search(html)
-        if not m:
-            continue
-        parts = tuple(int(g) for g in m.groups() if g is not None)
-        parts = (parts + (0, 0, 0))[:3]
-        if name in seen or not vulnerable(parts):
-            continue
-        seen.add(name)
-        ver = ".".join(str(x) for x in parts)
-        out.append(Finding("WEB054", sev, f"Outdated {name} {ver} (known vulnerabilities)",
-                           f"مكتبة {name} قديمة {ver} (ثغرات معروفة)", label, 0, m.group(0)[:120],
-                           advice, cwe, source="web"))
-    return out
-
-
-def _probe_paths(parsed, timeout: float) -> list[Finding]:
-    out = []
-    base = f"{parsed.scheme}://{parsed.netloc}"
-    label = parsed.netloc
-    for path, sev, title, title_ar, advice, sig in EXPOSED_PATHS:
-        status, headers, body, err = _get(base + path, timeout, read_body=True)
-        text = body.decode("utf-8", "replace") if body else ""
-        if sig == "__absent__":
-            if status != 200:
-                out.append(Finding("WEB060", sev, title, title_ar, label, 0, path, advice, "CWE-200", source="web",
-                                   extra={"page": base + path}))
-            continue
-        if sig == "__robots__":
-            if status == 200:
-                hits = [l for l in text.splitlines() if re.match(r"(?i)\s*disallow", l) and re.search(r"(admin|internal|private|backup|secret|config|db|sql)", l, re.I)]
-                if hits:
-                    out.append(Finding("WEB061", sev, title, title_ar, label, 0, hits[0][:120], advice, "CWE-200", source="web",
-                                       extra={"page": base + path}))
-            continue
-        ctype = (headers.get("content-type", "") if headers else "").lower()
-        if status == 200 and "text/html" not in ctype and (sig is None or re.search(sig, text)):
-            out.append(Finding("WEB062", sev, title, title_ar, label, 0, f"{path} → HTTP 200", advice, "CWE-538", source="web",
-                               extra={"page": base + path}))
-    return out
-
-
-# -------------------------------------------------------------- platform fingerprint
-# (name, signature regex over html+headers, version regex or None,
-#  outdated-major threshold or None, admin/login/config paths probed in deep mode)
-PLATFORMS = [
-    ("Moodle", r"""(MoodleSession|var M\s*=\s*M\b|/theme/[^\s"']+/pix|pluginfile\.php|this site is using moodle)""",
-     r"Moodle\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)", 3.9,
-     ["/login/index.php", "/admin/", "/admin/tool/", "/config-dist.php", "/install.php"]),
-    ("Oracle APEX", r"(apex_[a-z]+\.|/ords/|wwv_flow|Oracle APEX|apex\.oracle)",
-     r"(?:APEX|Application Express)[ _]?v?([0-9]+\.[0-9]+)", None,
-     ["/ords/", "/apex/", "/i/", "/pls/apex/"]),
-    ("WordPress", r"""(wp-content/|wp-includes/|/wp-json/|name=["']?generator["']?[^>]*WordPress)""",
-     r"WordPress\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)", 6.0,
-     ["/wp-login.php", "/wp-admin/", "/xmlrpc.php", "/wp-config.php.bak"]),
-    ("Joomla", r"(/media/jui/|generator[^>]*Joomla|option=com_|/administrator/)",
-     r"Joomla!?\s*([0-9]+\.[0-9]+)", 4.0,
-     ["/administrator/", "/configuration.php-dist", "/README.txt"]),
-    ("Drupal", r"(generator[^>]*Drupal|X-Generator[^\n]*Drupal|/sites/default/|Drupal\.settings)",
-     r"Drupal\s*([0-9]+)", 9,
-     ["/user/login", "/admin", "/CHANGELOG.txt", "/core/CHANGELOG.txt"]),
-    ("phpMyAdmin", r"(phpMyAdmin|pmahomme)", r"phpMyAdmin\s*([0-9]+\.[0-9]+)", None,
-     ["/phpmyadmin/", "/pma/", "/phpMyAdmin/"]),
-    ("Laravel", r"(laravel_session|/vendor/laravel|X-Powered-By[^\n]*Laravel)", None, None,
-     ["/.env", "/telescope", "/storage/logs/laravel.log"]),
-]
-# Links we never follow while crawling (state-changing or non-HTML).
-SKIP_LINK = re.compile(r"(?i)(logout|signout|sign-out|log-off|/delete|/remove|/destroy|action=delete|\.(zip|pdf|png|jpe?g|gif|svg|css|js|ico|woff2?|ttf|mp4|mp3)(\?|$))")
-
-
-def detect_platform(blob: str, label: str, deep: bool, parsed, timeout: float) -> list:
-    out = []
-    for name, sig, verre, old_major, paths in PLATFORMS:
-        if not re.search(sig, blob, re.I):
-            continue
-        ver = None
-        if verre:
-            m = re.search(verre, blob)
-            ver = m.group(1) if m else None
-        shown = f"{name} {ver}" if ver else name
-        out.append(Finding("WEB080", "info", f"Detected platform: {shown}", f"منصّة مكتشفة: {shown}",
-                           label, 0, shown, f"تأكد أن {name} محدّث لآخر إصدار مُصحَّح، وأن إضافاته وقوالبه محدّثة.",
-                           "CWE-1395", source="web", extra={"platform": name, "version": ver}))
-        if ver and old_major is not None:
-            try:
-                major = float(re.match(r"[0-9]+(?:\.[0-9]+)?", ver).group(0))
-                if major < old_major:
-                    out.append(Finding("WEB081", "medium", f"Outdated {name} ({ver})", f"إصدار {name} قديم ({ver})",
-                                       label, 0, shown, f"حدّث {name}؛ الإصدارات القديمة بها ثغرات معروفة.", "CWE-1104",
-                                       source="web", extra={"platform": name, "version": ver}))
-            except (ValueError, AttributeError):
-                pass
-        if deep:
-            base = f"{parsed.scheme}://{parsed.netloc}"
-            for path in paths:
-                status, headers, body, err = _get(base + path, timeout, read_body=True)
-                ctype = (headers.get("content-type", "") if headers else "").lower()
-                text = body.decode("utf-8", "replace") if body else ""
-                if status == 200 and path.endswith((".bak", "-dist", "-dist.php", ".log", "/.env", ".txt")) and "text/html" not in ctype:
-                    out.append(Finding("WEB082", "high", f"{name}: sensitive file exposed {path}",
-                                       f"{name}: ملف حساس مكشوف {path}", label, 0, f"{path} -> HTTP 200",
-                                       "امنع الوصول إلى هذا الملف من خادم الويب.", "CWE-538", source="web",
-                                       extra={"page": base + path}))
-                elif status == 200 and re.search(r"(?i)(login|admin|sign in|user)", text[:4000]):
-                    out.append(Finding("WEB083", "info", f"{name}: admin/login page reachable {path}",
-                                       f"{name}: صفحة إدارة أو دخول متاحة {path}", label, 0, f"{path} -> HTTP 200",
-                                       "قيّد الوصول إلى لوحات الإدارة (شبكة داخلية أو مصادقة قوية وحدّ للمحاولات).",
-                                       "CWE-284", source="web", extra={"page": base + path}))
-        break
-    return out
-
-
-_HREF = re.compile(r"""<a\b[^>]*\bhref\s*=\s*['"]([^'"#]+)['"]""", re.I)
+    """Page-content checks of one HTML document already in hand (no network): mixed content, forms, password fields,
+    SRI, libraries, directory listings and error pages — the content, libs and disclosure modules of 1.1.0."""
+    from .webscan.types import HeaderList, Response
+    url = parsed.geturl() if hasattr(parsed, "geturl") else str(parsed)
+    resp = Response(url=url or "https://localhost/", status=200,
+                    headers=HeaderList((("Content-Type", "text/html; charset=utf-8"),)),
+                    body=(html or "").encode("utf-8", "replace"), source="entry")
+    findings, _ctx = _engine.analyze_responses(resp.url, resp, ScanOptions(profile="minimal"),
+                                               modules=("content", "libs", "disclosure"))
+    for f in findings:
+        f.file = label
+    return findings
 
 
 def _same_origin_links(html: str, base_url: str, origin) -> list:
+    """Same-origin ``<a href>`` links of a page that the crawl may follow (state-changing and binary links skipped)."""
     out, seen = [], set()
     for m in _HREF.finditer(html):
         href = m.group(1).strip()
@@ -445,62 +192,12 @@ def _same_origin_links(html: str, base_url: str, origin) -> list:
     return out
 
 
-def scan_site(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False,
-              crawl: bool = False, max_pages: int = 20, max_depth: int = 2,
-              delay: float = DEFAULT_DELAY) -> tuple:
-    """Scan a web app. Always scans the entry URL (headers, TLS, HTML, platform).
-
-    With ``crawl`` it also follows same-origin links breadth-first, up to
-    ``max_pages`` pages and ``max_depth`` deep, running the per-page HTML checks
-    on each so multi-page apps (a university portal, Moodle, APEX) are covered.
-    A ``delay`` between requests keeps the crawl gentle on the server (and keeps
-    it below the rate that triggers a web application firewall). Fully passive
-    and gated on authorization by the caller. Returns ``(findings, note, pages)``.
-    """
-    findings, err = scan_url(url, timeout=timeout, deep=deep)
-    if err or not crawl:
-        return _group(findings), err, 1
-    failed: list[str] = []
-    origin = urllib.parse.urlparse(url)
-    seen = {origin._replace(fragment="").geturl()}
-    frontier = [(url, 0)]
-    fetched = 1                                   # the entry page already fetched by scan_url
-    while frontier and fetched < max_pages:
-        page_url, depth = frontier.pop(0)
-        if delay:
-            time.sleep(delay)                     # throttle: one request every `delay` seconds
-        status, headers, body, e = _get(page_url, timeout, read_body=True)
-        fetched += 1
-        if status is None:
-            failed.append(page_url)
-            continue
-        ctype = headers.get("content-type", "") if headers else ""
-        if "text/html" not in ctype:
-            continue
-        html = body.decode("utf-8", "replace")
-        if depth > 0:
-            label = urllib.parse.urlparse(page_url).path or "/"
-            for f in _analyze_html(html, urllib.parse.urlparse(page_url), label):
-                f.extra["page"] = page_url
-                findings.append(f)
-        if depth < max_depth:
-            for link in _same_origin_links(html, page_url, origin):
-                if link not in seen:
-                    seen.add(link)
-                    frontier.append((link, depth + 1))
-    note = None
-    if failed:
-        shown = "، ".join(urllib.parse.urlparse(u).path or "/" for u in failed[:5])
-        note = f"تعذّر جلب {len(failed)} صفحة أثناء الزحف فلم تُفحص: {shown}{' …' if len(failed) > 5 else ''}"
-    return _group(findings), note, fetched
+_HREF = re.compile(r"""<a\b[^<>]{0,2048}?\bhref\s*=\s*['"]([^'"#]+)['"]""", re.I)
 
 
 def _group(findings: list[Finding]) -> list[Finding]:
-    """Collapse the same issue seen on many pages into one finding that lists where it occurred.
-
-    A site-wide problem (a missing header, a form posting over HTTP in a shared layout) otherwise repeats
-    on every crawled page and inflates the counts. Keyed by (rule, snippet); the page list goes in extra.
-    """
+    """1.0.1 grouping, kept for callers: collapse the same (rule, title, snippet) seen on many pages into one finding
+    that lists where it occurred (``extra.pages``/``page_count``). The 1.1.0 engine groups systemically (§3.5)."""
     out: list[Finding] = []
     by_key: dict = {}
     for f in findings:
@@ -524,44 +221,5 @@ def _group(findings: list[Finding]) -> list[Finding]:
     return out
 
 
-def _tls_checks(host: str, port: int, label: str, timeout: float) -> list[Finding]:
-    out = []
-    import socket
-    # Certificate validity / expiry.
-    try:
-        ctx = ssl.create_default_context()
-        with socket.create_connection((host, port), timeout=timeout) as sock:
-            with ctx.wrap_socket(sock, server_hostname=host) as ss:
-                cert = ss.getpeercert()
-        import datetime
-        not_after = datetime.datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
-        days = (not_after - datetime.datetime.utcnow()).days
-        if days < 0:
-            out.append(Finding("WEB070", "high", "TLS certificate expired", "شهادة TLS منتهية",
-                               label, 0, cert["notAfter"], "جدّد شهادة TLS فورًا.", "CWE-298", source="web"))
-        elif days < 15:
-            out.append(Finding("WEB071", "medium", f"TLS certificate expires in {days} days", f"شهادة TLS تنتهي خلال {days} يومًا",
-                               label, 0, cert["notAfter"], "جدّد الشهادة قبل انتهائها (ويفضَّل التجديد الآلي).", "CWE-298", source="web"))
-    except ssl.SSLCertVerificationError as e:
-        out.append(Finding("WEB072", "high", "TLS certificate does not validate", "شهادة TLS لا تجتاز التحقق",
-                           label, 0, str(e)[:120], "استخدم شهادة موثوقة مطابقة للنطاق (مثل Let's Encrypt).", "CWE-295", source="web"))
-    except (OSError, ssl.SSLError, KeyError, ValueError):
-        pass
-    # Obsolete protocol support.
-    for proto_name, min_v, max_v in (("TLS 1.0", ssl.TLSVersion.TLSv1, ssl.TLSVersion.TLSv1),
-                                      ("TLS 1.1", ssl.TLSVersion.TLSv1_1, ssl.TLSVersion.TLSv1_1)):
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE  # nosec - we only probe protocol support
-        try:
-            ctx.minimum_version, ctx.maximum_version = min_v, max_v
-        except (ValueError, ssl.SSLError):
-            continue
-        try:
-            with socket.create_connection((host, port), timeout=timeout) as sock:
-                with ctx.wrap_socket(sock, server_hostname=host):
-                    out.append(Finding("WEB030", "medium", f"Server accepts {proto_name}", f"الخادم يقبل {proto_name} القديم",
-                                       label, 0, proto_name, "عطّل TLS 1.0/1.1 واقبل TLS 1.2+ فقط.", "CWE-326", source="web"))
-        except (OSError, ssl.SSLError):
-            pass
-    return out
+__all__ = ["scan_url", "scan_site", "scan_web", "options_for", "WebUnreachable", "explain_failure", "USER_AGENT",
+           "TRANSIENT", "DEFAULT_TIMEOUT", "DEFAULT_DELAY", "MAX_BODY", "SKIP_LINK"]

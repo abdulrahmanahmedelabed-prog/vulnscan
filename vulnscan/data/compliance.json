@@ -433,6 +433,11 @@
   "1035": ["components"],
   "1026": ["components"],
   "1104": ["components-unmaintained"],
+  "1188": ["config"],
+  "436": ["config"],
+  "698": ["info-exposure"],
+  "1059": ["config"],
+  "506": ["integrity"],
   "494": ["integrity"],
   "829": ["integrity"],
   "426": ["integrity"],
@@ -1112,6 +1117,41 @@
     ]
    },
    "cwe_analyst": {
+    "1188": {
+     "controls": [
+      "A05"
+     ],
+     "note": "An insecure default (a default server page, a server left with a configuration that differs from its peers) is the 'insecure default configuration' of A05.",
+     "note_ar": "الإعداد الافتراضي غير الآمن (صفحة الخادم الافتراضية، أو خادم بإعداد يختلف عن نظرائه) هو «الإعدادات الافتراضية غير الآمنة» في الفئة A05."
+    },
+    "436": {
+     "controls": [
+      "A05"
+     ],
+     "note": "Kashif emits CWE-436 when the browser and the server read a response differently (undeclared charset, duplicate or oversized cookies): a configuration weakness of the response.",
+     "note_ar": "يُصدر كاشِف CWE-436 حين يقرأ المتصفح والخادم الاستجابة بشكل مختلف (ترميز غير معلن، أو كوكيز مكررة أو كبيرة): نقطة ضعف في إعداد الاستجابة."
+    },
+    "698": {
+     "controls": [
+      "A01"
+     ],
+     "note": "Execution after redirect sends the protected page body with the redirect, which exposes content the redirect was meant to withhold (broken access control).",
+     "note_ar": "التنفيذ بعد التوجيه يرسل محتوى الصفحة المحمية مع استجابة التوجيه، فيكشف ما أريد حجبه (خلل في التحكم بالوصول)."
+    },
+    "1059": {
+     "controls": [
+      "A05"
+     ],
+     "note": "Kashif emits CWE-1059 for a missing or invalid security.txt, the published security contact that A05's hardening process expects.",
+     "note_ar": "يُصدر كاشِف CWE-1059 عند غياب ملف security.txt أو عدم صلاحيته، وهو جهة الاتصال الأمنية المنشورة التي تتوقعها عملية التحصين في الفئة A05."
+    },
+    "506": {
+     "controls": [
+      "A08"
+     ],
+     "note": "Malicious code injected into a served script (cryptominer, loader) is a software integrity failure of A08.",
+     "note_ar": "الشيفرة الخبيثة المحقونة في سكربت مُقدَّم (معدِّن عملات أو محمِّل) إخفاق في سلامة البرمجيات ضمن الفئة A08."
+    },
     "1395": {
      "controls": [
       "A06"
