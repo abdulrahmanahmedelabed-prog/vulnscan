@@ -764,7 +764,7 @@ _PRODUCT_RX = "|".join(re.escape(p) for p in PRODUCTS)
 VERSION_TOKEN = re.compile(r"(?<![\w.-])[A-Za-z][\w.-]*/v?\d+(?:\.\d+)+")
 PRODUCT_VERSION = re.compile(r"\b(?:" + _PRODUCT_RX + r")\b[\s/(:-]{0,3}v?\d+\.\d+(?:\.\d+)?\b", re.I)
 BARE_PRODUCT = re.compile(r"\b(?:" + _PRODUCT_RX + r")\b", re.I)
-_POWERED_VERSION = re.compile(r"\d+(?:\.\d+)+|/v?\d")
+_POWERED_VERSION = re.compile(r"(?<!\d)\d{1,10}(?:\.\d{1,10})+|/v?\d")   # bounded: hostile "000…" values
 HEARTBLEED = re.compile(r"\bOpenSSL/(1\.0\.(?:1[a-f]?|1-beta\d?|2-beta\d?))(?![\w.])", re.I)
 BACKPORT = re.compile(r"-fips\b|red ?hat|\brhel\b|\bel\d\b|centos|ubuntu|debian|\bdeb\d|rocky|almalinux|amazon|amzn|"
                       r"suse|\bsles\b|fedora|oracle linux|raspbian", re.I)
@@ -810,7 +810,7 @@ def _banners(st: _Run) -> None:
 
 _ST_INTERNAL = re.compile(r"\b(?:db|sql|mysql|mariadb|pg|postgres(?:ql)?|psql|query|queries|redis|memcache[d]?|mongo(?:db)?|"
                           r"elastic(?:search)?|cassandra|dynamo(?:db)?|oracle|mssql|sqlite|orm|table|select)\b", re.I)
-_ST_HOSTLIKE = re.compile(r"\b[\w-]+\.(?:internal|local|lan|corp|intranet|cluster\.local|svc)\b|\b(?:\d{1,3}\.){3}\d{1,3}\b",
+_ST_HOSTLIKE = re.compile(r"\b[\w-]{1,63}\.(?:internal|local|lan|corp|intranet|cluster\.local|svc)\b|\b(?:\d{1,3}\.){3}\d{1,3}\b",
                           re.I)
 
 
@@ -818,8 +818,8 @@ def server_timing_leaks(value: str) -> list[str]:
     """Server-Timing entries whose name or ``desc`` reveals backend internals (``db``, ``sql``, a host name …);
     plain ``cdn-cache``/``edge``/``total`` timings are not reported."""
     out = []
-    for entry in value.split(","):
-        entry = entry.strip()
+    for entry in value[:8192].split(",")[:64]:
+        entry = entry.strip()[:512]          # bounded: a hostile 64 KB header must stay linear
         if not entry:
             continue
         name, _, params = entry.partition(";")
@@ -1648,7 +1648,7 @@ def _cards(st: _Run) -> None:
 
 SENSITIVE_COMMENT = re.compile(
     r"pass(?:word|wd)\s*[=:]|\bpasswd\b|\bapi[_-]?key\b|BEGIN [A-Z ]*PRIVATE|"
-    r"\b[\w-]+(?:\.[\w-]+)*\.(?:internal|local|corp)\b|\b(?:TODO|FIXME)\b[^\n]{0,80}\b(?:security|auth\w*|password)\b",
+    r"\b[\w-]{1,63}(?:\.[\w-]{1,63}){0,8}\.(?:internal|local|corp)\b|\b(?:TODO|FIXME)\b[^\n]{0,80}\b(?:security|auth\w*|password)\b",
     re.I)
 _SECRETISH = re.compile(r"((?:pass(?:word|wd)?|api[_-]?key|secret|token)\s*[=:]\s*)\S+", re.I)
 
@@ -1661,7 +1661,7 @@ def _comments(st: _Run) -> None:
             continue
         st.seen("WEB614", b.r.host)
         for c in b.doc.comments:
-            m = SENSITIVE_COMMENT.search(c.text)
+            m = SENSITIVE_COMMENT.search(c.text[:65536])
             if not m:
                 continue
             shown = _short(_SECRETISH.sub(lambda mm: mm.group(1) + "…", c.text), 160)
@@ -2000,7 +2000,7 @@ def parse_sourcemap(text: str) -> dict | None:
         t = t.split("\n", 1)[1] if "\n" in t else ""
     try:
         obj = json.loads(t)
-    except ValueError:
+    except (ValueError, RecursionError):        # hostile "[[[[…" nests deeper than the parser allows
         return None
     if not isinstance(obj, dict) or not (isinstance(obj.get("sources"), list) or isinstance(obj.get("sections"), list)):
         return None
@@ -2020,23 +2020,27 @@ def _data_url_text(url: str) -> str | None:
 
 def _map_sources(obj: dict) -> Iterator[tuple[str, str]]:
     """``(source name, content)`` of the embedded sources (``sections`` flattened)."""
-    maps = [obj] + [s.get("map") for s in obj.get("sections", []) if isinstance(s, dict) and isinstance(s.get("map"), dict)]
+    maps = [obj] + [s.get("map") for s in _as_list(obj.get("sections"))
+                    if isinstance(s, dict) and isinstance(s.get("map"), dict)]
     for m in maps:
-        names = m.get("sources") or []
-        contents = m.get("sourcesContent") or []
-        if not isinstance(contents, list):
-            continue
+        names = _as_list(m.get("sources"))
+        contents = _as_list(m.get("sourcesContent"))
         for i, c in enumerate(contents):
             if isinstance(c, str) and c:
                 name = names[i] if i < len(names) and isinstance(names[i], str) else f"source {i}"
                 yield name, c[:SCRIPT_CAP]
 
 
+def _as_list(value: Any) -> list:
+    """``value`` when it is a list, else ``[]`` (a hostile map may put any JSON type in any field)."""
+    return value if isinstance(value, list) else []
+
+
 def _source_count(obj: dict) -> int:
-    n = len(obj.get("sources") or [])
-    for s in obj.get("sections") or []:
+    n = len(_as_list(obj.get("sources")))
+    for s in _as_list(obj.get("sections")):
         if isinstance(s, dict) and isinstance(s.get("map"), dict):
-            n += len(s["map"].get("sources") or [])
+            n += len(_as_list(s["map"].get("sources")))
     return n
 
 

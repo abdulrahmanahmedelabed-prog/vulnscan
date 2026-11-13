@@ -41,6 +41,7 @@ EOL_FILE = "eol.json"
 VERSION_RX = r"[0-9][0-9.a-z_\-]+"
 CONTENT_CAP = 2 * 1024 * 1024
 MAX_NOTES = 12
+MAX_VERSION_LEN = 64                      # a longer run of [0-9.a-z_-] is not a version (hostile bodies)
 
 _SEV_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 _HASHLIKE = re.compile(r"^[0-9a-f]{7,}$")
@@ -97,9 +98,11 @@ def _note(key: str, **values: Any) -> tuple[str, str]:
 # ----------------------------------------------------------------------------------------------- versions
 
 def _comparable(part: str | None) -> int | str:
-    if part is None:
+    if not part:                          # retire: ``if (!n) return 0`` (missing or empty part, "1.0-")
         return 0
-    return int(part) if part.isdigit() and part.isascii() else part
+    if part.isdigit() and part.isascii():
+        return int(part[:18])             # bounded: Python 3.11+ refuses int() of > 4300 digits (hostile input)
+    return part
 
 
 def is_at_or_above(version1: str, version2: str) -> bool:
@@ -473,6 +476,10 @@ class Detection:
 
 def _clean_version(v: str) -> str:
     return _MIN_SUFFIX.sub("", v)
+
+
+def _plausible(v: str) -> bool:
+    return 0 < len(v) <= MAX_VERSION_LEN and not _HASHLIKE.match(v)
 
 
 def _matches(ex: _Extractor, text: str, *, anchored: bool = False) -> Iterable[tuple[str, str, int]]:

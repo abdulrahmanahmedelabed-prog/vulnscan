@@ -194,9 +194,11 @@ OWN: list[dict] = [
                         what_ar="سجل التغييرات يكشف إصدار Drupal بدقة.")]),
     T("phpmyadmin", "phpMyAdmin", ["database-admin"], [
         S("cookie", r"^(?:pma_lang|pma_collation_connection|phpMyAdmin(?:_https)?|pmaUser-\d+|pmaAuth-\d+)$", 80),
-        S("link", r"/themes/(?:pmahomme|original|metro|bootstrap)/(?:css|jquery)/", 50),
+        S("link", r"/themes/(?:pmahomme|metro)/(?:css|jquery)/", 50),
+        # "original" and "bootstrap" are common theme names on any site: weak alone
+        S("link", r"/themes/(?:original|bootstrap)/jquery/jquery-ui\.css", 20),
         S("html", r"<title>phpMyAdmin\s*</title>", 60),
-        S("html", r"<(?:div|form)\b[^>]+(?:id|class)=[\"'](?:pma_navigation|pma_console_container|login_form)[\"']", 50),
+        S("html", r"<(?:div|form)\b[^>]+(?:id|class)=[\"'](?:pma_navigation|pma_console_container)[\"']", 50),
         S("script", r"/js/(?:vendor/)?jquery/jquery\.min\.js\?v=" + V, 20, version="\\1"),
     ], cpe="cpe:2.3:a:phpmyadmin:phpmyadmin", implies=("php",), website="https://www.phpmyadmin.net",
         deep=[admin(p, "phpMyAdmin", [r"phpMyAdmin|pma_", PASSWORD]) for p in ("/phpmyadmin/", "/pma/", "/phpMyAdmin/")]),
@@ -211,7 +213,7 @@ OWN: list[dict] = [
         S("cookie", r"^(?:X-Magento-Vary|mage-cache-sessid|mage-cache-storage|mage-messages)$", 80),
         S("header", r".", 80, name="x-magento-cache-debug"),
         S("header", r".", 70, name="x-magento-tags"),
-        S("script", r"/static/(?:version\d+/)?frontend/[^/]+/[^/]+/", 50),
+        S("script", r"/static/(?:version\d+/)?frontend/[^/]+/[^/]+/[a-z]{2}_[A-Z]{2}/", 50),
         S("script", r"/skin/frontend/|/js/mage/", 50),
     ], cpe="cpe:2.3:a:magento:magento", implies=("php",), eol="magento"),
     T("typo3", "TYPO3", ["cms"], [

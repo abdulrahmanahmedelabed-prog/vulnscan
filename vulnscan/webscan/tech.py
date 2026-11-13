@@ -137,6 +137,17 @@ def _short(value: str, limit: int = 160) -> str:
 
 # ----------------------------------------------------------------------------------------------- versions
 
+MAX_VERSION_LEN = 64            # a longer "version" is not one (hostile banners, §0.6)
+MAX_BANNER_LEN = 1024           # only the first KB of a Server/X-Powered-By value is parsed
+MAX_BANNER_TOKENS = 8           # product/version tokens read from one banner value
+MAX_VERSIONS_PER_PRODUCT = 5    # distinct versions of one product reported per scan (load balancers show a few)
+
+
+def _int(digits: str) -> int:
+    """``int`` of a run of digits, safe for hostile input (Python 3.11+ refuses > 4300 digits)."""
+    return int(digits[:18])
+
+
 def version_key(v: str) -> tuple:
     """Order of server/platform versions: numbers numerically; a letter right after a number is a later patch
     (OpenSSL ``1.0.1e`` > ``1.0.1``); alphabetic parts (``M1``, ``RC1``, ``beta``) are pre-releases. Missing parts
@@ -147,11 +158,11 @@ def version_key(v: str) -> tuple:
             continue
         m = re.match(r"^(\d+)([a-z]*)$", part)
         if m:
-            out.append((2, int(m.group(1)), m.group(2), 0))
+            out.append((2, _int(m.group(1)), m.group(2), 0))
             continue
         m = re.match(r"^([a-z]+)(\d*)$", part)
         if m:
-            out.append((0, 0, m.group(1), int(m.group(2) or 0)))
+            out.append((0, 0, m.group(1), _int(m.group(2) or "0")))
             continue
         out.append((1, 0, part, 0))
     while out and out[-1] == (2, 0, "", 0):
@@ -316,6 +327,11 @@ def token_index(text: str) -> str:
     return "\n" + b"\n".join(words).decode("ascii", "replace") + "\n"
 
 
+# a pattern that names a host: "//", or an escaped dot before a common TLD or a domain-like label
+_HOSTISH = re.compile(r"//|\\\.(?:com|net|org|io|co|cloud|app|dev|me|ly|ai|xyz)\b")
+CROSS_SITE_FACTOR = 2           # a path-only script/link signal on another site's URL counts half (§2.9 scoped sources)
+
+
 @dataclass
 class Signal:
     tech: str
@@ -326,6 +342,11 @@ class Signal:
     confidence: int
     index: int
     need: str = ""            # html signals: word_requirement(pattern)
+    host_specific: bool = False   # script/link signals that name a host (cdn.shopify.com), not only a path
+
+    def __post_init__(self) -> None:
+        if self.source in ("script", "link"):
+            self.host_specific = bool(_HOSTISH.search(self.rx.pattern))
 
 
 @dataclass
@@ -481,7 +502,7 @@ def _expand(template: str, m: re.Match) -> str:
     except (re.error, IndexError):
         return ""
     v = v.strip()
-    return v if re.match(r"^\d+(?:\.\d+)*[a-z]?$", v) else ""
+    return v if len(v) <= MAX_VERSION_LEN and re.match(r"^\d+(?:\.\d+)*[a-z]?$", v) else ""
 
 
 def _cookie_names(r: Response, ctx: ScanContext) -> list[str]:
@@ -494,6 +515,14 @@ def _cookie_names(r: Response, ctx: ScanContext) -> list[str]:
         if name:
             names.append(name)
     return names
+
+
+def _cross_site(url: str, sites: set[str]) -> bool:
+    try:
+        host = urllib.parse.urlsplit(url).hostname or ""
+    except ValueError:
+        return True
+    return bool(host) and psl.site(host) not in sites
 
 
 def _metas(doc) -> list[tuple[str, str]]:
@@ -561,12 +590,20 @@ class _Detector:
         if h.version and conf > d.version_confidence:
             d.version, d.version_confidence = h.version, conf
 
-    def run_signals(self, source: str, items: Iterable[tuple[str, str, Response | None]]) -> None:
-        """``items`` = (name, value, response); a signal with a ``name`` only sees items of that name."""
+    def _is_platform(self, tid: str) -> bool:
+        t = self.db.techs.get(tid)
+        return t is not None and t.platform
+
+    def run_signals(self, source: str, items: Iterable[tuple]) -> None:
+        """``items`` = (name, value, response[, cross_site]); a signal with a ``name`` only sees items of that name.
+        A path-only ``script``/``link`` signal of a *platform* on a URL of another site (``cross_site``) counts half:
+        a page that embeds a widget from somebody's WordPress (``…/wp-content/…``) is not itself WordPress."""
         sigs = self.db.signals.get(source, [])
         if not sigs:
             return
-        for name, value, resp in items:
+        for item in sorted(items, key=lambda it: bool(it[3]) if len(it) > 3 else False):
+            name, value, resp = item[0], item[1], item[2]
+            cross = bool(item[3]) if len(item) > 3 else False
             index = token_index(value) if source == "html" and len(value) > 2048 else None
             for s in sigs:
                 if s.name and s.name != name:
@@ -575,8 +612,11 @@ class _Detector:
                     continue
                 m = s.rx.search(value)
                 if m:
+                    conf = s.confidence
+                    if cross and not s.host_specific and self._is_platform(s.tech):
+                        conf //= CROSS_SITE_FACTOR
                     self.hit(s.tech, Hit(s, source, name, m.group(0) if source == "html" else value, resp,
-                                         _expand(s.version, m)), s.confidence)
+                                         _expand(s.version, m)), conf)
 
     def detect(self) -> dict[str, Detected]:
         ctx = self.ctx
@@ -591,16 +631,17 @@ class _Detector:
         self.run_signals("header", header_items)
         self.run_signals("cookie", cookie_items)
         meta_items, script_items, link_items, html_items, url_items = [], [], [], [], []
+        sites = _own_sites(ctx)
         for page in ctx.pages:
             r = page.response
-            if r.host and psl.site(r.host) not in _own_sites(ctx):
+            if r.host and psl.site(r.host) not in sites:
                 continue
             url_items.append(("", r.url, r))
             if page.doc is None:
                 continue
             meta_items.extend((k, v, r) for k, v in _metas(page.doc))
-            script_items.extend(("", u, r) for u in _urls(page.doc, "script", "src"))
-            link_items.extend(("", u, r) for u in _urls(page.doc, "link", "href"))
+            script_items.extend(("", u, r, _cross_site(u, sites)) for u in _urls(page.doc, "script", "src"))
+            link_items.extend(("", u, r, _cross_site(u, sites)) for u in _urls(page.doc, "link", "href"))
             try:
                 html_items.append(("", r.text()[:HTML_CAP], r))
             except (LookupError, ValueError):
@@ -616,7 +657,9 @@ class _Detector:
             if hit:
                 self.hit(hit[0], Hit(None, "favicon", hit[1], str(h), r), 60)
         self._implies()
-        for d in self.found.values():
+        for d in list(self.found.values()):
+            if d.tech.id not in self.found:
+                continue
             for ex in d.tech.excludes:
                 other = self.found.get(ex)
                 if other is not None and other.confidence < d.confidence:
@@ -679,14 +722,19 @@ def _distro_of(token_version: str, comments: list[str]) -> str:
 
 
 def parse_banner(value: str) -> list[tuple[str, str, str, list[str]]]:
-    """``[(token name, version, display key, comments)]`` for every ``product/version`` token of a banner."""
-    comments = _COMMENT.findall(value)
+    """``[(token name, version, display key, comments)]`` for every ``product/version`` token of a banner (the first
+    :data:`MAX_BANNER_TOKENS` tokens of its first :data:`MAX_BANNER_LEN` characters; hostile values are bounded)."""
+    value = value[:MAX_BANNER_LEN]
+    comments = _COMMENT.findall(value)[:MAX_BANNER_TOKENS]
     stripped = _COMMENT.sub(" ", value)
     out = []
     for m in _TOKEN.finditer(stripped):
-        name = m.group(1)
-        out.append((name, m.group(2), name.lower(), comments))
-    m = re.search(r"\bApache Tomcat/(\d[\w.\-]*)", value)
+        name, version = m.group(1), m.group(2)
+        if len(version) <= MAX_VERSION_LEN:
+            out.append((name, version, name.lower(), comments))
+        if len(out) >= MAX_BANNER_TOKENS:
+            break
+    m = re.search(r"\bApache Tomcat/(\d[\w.\-]{0,63})", value)
     if m:
         out = [t for t in out if t[2] != "tomcat"] + [("Apache Tomcat", m.group(1), "apache tomcat", comments)]
     return out
@@ -741,7 +789,7 @@ def cve_matches(product_cves: list[dict], b: Banner) -> list[tuple[dict, dict]]:
     out = []
     if b.incomplete:
         parts = numeric_parts(b.base)
-        nxt = parts[:-1] + [str(int(parts[-1]) + 1)] if parts else []
+        nxt = parts[:-1] + [str(_int(parts[-1]) + 1)] if parts else []
         upper = ".".join(nxt)
     for cve in product_cves:
         for rng in cve.get("ranges", []):
@@ -900,15 +948,24 @@ def _server_issues(st: _Run, cve_data: dict | None, eol_data: dict | None) -> No
     seen800: set[tuple[str, str]] = set()
     seen801: set[tuple[str, str]] = set()
     inventory: list[dict] = []
+    versions: dict[str, set[str]] = {}
     for b in banners(ctx):
         key = (b.product, b.version)
+        seen_versions = versions.setdefault(b.product, set())
+        if b.version not in seen_versions:
+            if len(seen_versions) >= MAX_VERSIONS_PER_PRODUCT:
+                continue                 # a hostile or very mixed site: a few versions per product are enough
+            seen_versions.add(b.version)
+        else:
+            continue                     # already judged (one finding per product and version)
         inventory.append({"product": b.display, "version": b.version, "distro": b.distro, "where": b.where})
         ev = Evidence.for_response(b.response, where="header" if b.where != "error page" else "body",
                                    name=b.where, value=_short(b.raw, 300), now=ctx.now)
         where = ("error page", "صفحة خطأ") if b.where == "error page" else (b.where, b.where)
         seen_note = _note("seen_in", where=where, value=_short(b.raw, 120))
         # WEB800
-        if b.product in cves and key not in seen800 and b.base:
+        # a major version alone ("Apache/2", ServerTokens Major) says nothing about the patch level: no CVE list
+        if b.product in cves and key not in seen800 and len(numeric_parts(b.base)) >= 2:
             seen800.add(key)
             st.evaluated.add("WEB800")
             matches = cve_matches(cves[b.product], b)

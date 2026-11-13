@@ -245,8 +245,8 @@ SIGNATURES = [
 ]
 
 # (name, match, rule, version_pattern, decode, severity, note)
-_V = r"\d+(?:\.\d+)+"
-_VV = r"\d+(?:\.\d+)*"
+_V = r"(?<!\d)\d{1,10}(?:\.\d{1,10})+"     # bounded and anchored: linear on a hostile 64 KB "000…" value
+_VV = r"(?<!\d)\d{1,10}(?:\.\d{1,10})*"
 LEAK_HEADERS = [
     # WEB600: backend software / version
     ("X-AspNet-Version", "exact", "WEB600", _V, "", "", "ASP.NET runtime version"),

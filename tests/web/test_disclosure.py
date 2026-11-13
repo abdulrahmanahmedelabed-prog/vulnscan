@@ -918,3 +918,201 @@ def test_corpus_covers_the_c_disc_group():
     labelled = {r for c in corpus.CASES if c.group == "C-DISC" for r in c.labels}
     assert {"WEB010", "WEB011", "WEB055", "WEB056", "WEB600", "WEB601", "WEB602", "WEB603", "WEB604", "WEB605", "WEB606",
             "WEB607", "WEB608", "WEB609", "WEB610", "WEB611", "WEB612", "WEB613", "WEB615", "WEB617"} <= labelled
+
+
+# =============================================================================================== adversarial review
+
+def _evidence_dump(issues) -> str:
+    return json.dumps([{"ev": i.evidence.to_dict(), "gv": i.group_value, "notes": i.notes, "params": i.params}
+                       for i in issues], ensure_ascii=False)
+
+
+def test_excerpt_never_shows_a_neighbouring_card_hash_or_secret(ctx_for, make_response):
+    cards = run(ctx_for("<table><tr><td>4539 1488 0343 6467</td><td>5425 2334 3010 9903</td></tr></table>"))
+    assert len(by_rule(cards)["WEB613"]) == 2
+    dump = _evidence_dump(cards)
+    assert "4539 1488" not in dump and "5425 2334" not in dump
+    h1, h2 = "$2b$12$" + "R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW", "$2b$12$" + "Q" * 22 + "abcDEF" * 5 + "x"
+    hashes = run(ctx_for('[{"h":"' + h1 + '"},{"h":"' + h2 + '"}]', content_type="application/json"))
+    assert len(by_rule(hashes)["WEB612"]) == 2
+    assert h1 not in _evidence_dump(hashes) and h2 not in _evidence_dump(hashes)
+    gh = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+    secrets = run(_secret_ctx(ctx_for, make_response, html=f'<script>var a="{SK}";var b="{gh}";</script>'))
+    assert len(by_rule(secrets)["WEB609"]) == 2
+    _no_raw_secret(secrets, SK)
+    _no_raw_secret(secrets, gh)
+
+
+def test_excerpt_masks_and_window_edges():
+    text = "aaaa SECRET1 bbbb TARGET cccc SECRET2 dddd"
+    s = text.index("TARGET")
+    masks = [(5, 12, "<m1>"), (s, s + 6, "<t>"), (30, 37, "<m2>")]
+    assert disclosure._excerpt(text, s, s + 6, replace="<t>", masks=masks) == "aaaa <m1> bbbb <t> cccc <m2> dddd"
+    # a mask straddling the window edge is cut off, never shown half in clear
+    out = disclosure._excerpt(text, s, s + 6, replace="<t>", masks=masks, around=10)
+    assert "SECRET" not in out and "<t>" in out
+
+
+def test_firmer_sighting_replaces_a_tentative_duplicate(make_page, make_response, make_ctx):
+    """A traceback quoted in a 2xx docs page (tentative) must not hide the same signature on a 500 page (firm)."""
+    docs = make_page(f"<h1>Docs</h1><pre>{PY_TB}</pre>")
+    boom = make_page(f"<div>{PY_TB}</div>", url=URL + "boom", status=500, kind="error_page", source="crawl")
+    ctx = make_ctx(entry=docs, pages=[boom])
+    ctx.coverage = coverage.Coverage()
+    got = by_rule(run(ctx), ctx.options)
+    (i,) = got["WEB056"]
+    assert i.confidence == "firm" and i.url.endswith("/boom")
+    assert ctx.coverage.state("WEB056").state == "fail"
+
+
+@pytest.mark.parametrize("body", [
+    "<article><p>The Werkzeug Debugger is great locally; never enable it in production.</p></article>",
+    "<p>If you get “You're seeing this error because you have DEBUG = True” check your URLconf.</p>",
+    "<p>Rails shows Action Controller: Exception caught when something breaks.</p>",
+    "<p>Symfony is a PHP framework. The sf-toolbar shows Symfony\\Component\\ErrorHandler output.</p>",
+    "<p>Server Error in '/' Application. Stack Trace: we explain the yellow screen of death.</p>",
+    "<p>Spring Boot shows a Whitelabel Error Page; read at java.lang.Thread.run( in the log.</p>",
+    "<p>Install spatie/laravel-ignition with composer.</p>",
+    "<p>Whoops is an error handler: use Whoops\\Handler\\PrettyPageHandler.</p>",
+])
+def test_debug_page_prose_on_a_2xx_blog_is_not_debug_mode(ctx_for, body):
+    assert "WEB605" not in by_rule(run(ctx_for(body)))
+
+
+def test_debug_markup_still_detected_on_2xx(ctx_for):
+    toolbar = '<p>app</p><div id="sfwdt3c2b1a" class="sf-toolbar sf-display-none" role="region"></div>'
+    assert "WEB605" in by_rule(run(ctx_for(toolbar)))
+    djdt = '<p>app</p><div id="djDebug" class="djdt-hidden" dir="ltr"></div>'
+    assert "WEB605" in by_rule(run(ctx_for(djdt)))
+    wz = ('<title>KeyError // Werkzeug Debugger</title><div class="debugger"><script src="?__debugger__=yes&amp;cmd='
+          'resource&amp;f=debugger.js"></script></div>')
+    (i,) = by_rule(run(ctx_for(wz)))["WEB605"]
+    assert sev(i) == "critical"
+    for body in ("<p>Rails: Action Controller: Exception caught</p>", "<p>Whoops\\Handler\\PrettyPageHandler</p>"):
+        assert "WEB605" in by_rule(run(ctx_for(body, status=500))), body
+
+
+@pytest.mark.parametrize("body", [
+    "<p>The mysqli_query() function performs a query against the database.</p>",
+    "<h1>Class SQLException</h1><p>java.sql.SQLException An exception that provides information</p>",
+    "<p>PG::Connection is the main class of the pg gem.</p>",
+    "<p>Throws SQLiteException if the database cannot be opened.</p>",
+    "<p>The System.Data.SqlClient.SqlException class.</p>",
+    "<p>Catch psycopg2.OperationalError and sqlalchemy.exc.OperationalError in your code.</p>",
+    "<p>SQLITE_ERROR (1) is the generic result code.</p>",
+])
+def test_database_class_names_in_docs_are_not_errors(ctx_for, body):
+    assert "WEB606" not in by_rule(run(ctx_for(body)))
+
+
+@pytest.mark.parametrize("body", [
+    "Warning: mysqli_query(): (HY000/1045): Access denied for user",
+    "mysql_fetch_array() expects parameter 1 to be resource, boolean given",
+    "java.sql.SQLSyntaxErrorException: Table 'shop.items' doesn't exist",
+    "PG::UndefinedTable: ERROR:  relation \"users\" does not exist",
+    "psycopg2.errors.UndefinedTable: relation \"x\" does not exist",
+    "(sqlalchemy.exc.OperationalError) (sqlite3.OperationalError) no such table: users",
+    "android.database.sqlite.SQLiteException: no such table: notes",
+    "[SqlException (0x80131904): Invalid object name 'Users'.]",
+    "System.Data.SqlClient.SqlException (0x80131904): Invalid object name 'Users'.",
+    "Error: SQLITE_ERROR: no such table: users",
+    "org.hibernate.exception.SQLGrammarException: could not extract ResultSet",
+])
+def test_database_error_messages_still_detected(ctx_for, body):
+    assert "WEB606" in by_rule(run(ctx_for(f"<p>{body}</p>", status=500))), body
+
+
+def test_raw_binary_serialized_body_is_detected(ctx_for):
+    for body, ctype, fmt in ((b"\xac\xed\x00\x05sr\x00\x11java.util.HashMap", "application/x-java-serialized-object",
+                              "Java"),
+                             (b"\x80\x04\x95\x10\x00\x00\x00\x00\x00\x00\x00}\x94.", "application/octet-stream",
+                              "Python pickle")):
+        (i,) = by_rule(run(ctx_for(body, content_type=ctype)))["WEB610"]
+        assert i.evidence.match["value"] == fmt
+    assert "WEB610" not in by_rule(run(ctx_for(b"\x89PNG\r\n\x1a\n\x00\x00\x00", content_type="image/png")))
+
+
+def test_aws_pair_needs_a_base64_secret_not_a_hex_digest(ctx_for, make_response):
+    sha = "3f2a1c9e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39"
+    js = 'var cfg={accessKeyId:"AKIA2E0A8F3B244C9986",build:"' + sha + '"};'
+    assert "WEB609" not in by_rule(run(_secret_ctx(ctx_for, make_response, js=js)))
+    real = "tL9Qx2vR8mN4bK7pW1zY6cF3hJ5sD0gA8eU2iO4r"
+    js = 'var cfg={accessKeyId:"AKIA2E0A8F3B244C9986",secretAccessKey:"' + real + '"};'
+    issues = run(_secret_ctx(ctx_for, make_response, js=js))
+    assert "WEB609" in by_rule(issues)
+    _no_raw_secret(issues, real)
+
+
+def test_long_unseparated_digit_ids_are_not_cards():
+    # int64 ids (Snowflake/Instagram style) are 17–19 digits; 1 in 10 is Luhn-valid by chance
+    ids = ("3612345678901234001", "4000000000000000006", "353000000000000003")
+    assert all(disclosure.luhn_ok(i) for i in ids)                    # each would pass the Luhn and brand checks
+    assert disclosure.card_numbers('{"ids": [' + ", ".join(ids) + "]}") == []
+    assert disclosure.card_numbers("Diners 3056 930902 5904") and disclosure.card_numbers("visa 4539148803436467")
+
+
+@pytest.mark.parametrize("obj", [
+    {"version": 3, "sections": [], "sources": 5},
+    {"version": 3, "sources": ["a"], "sourcesContent": "x"},
+    {"version": 3, "sections": [{"map": {"sources": 7, "sourcesContent": ["k"]}}]},
+    {"sources": [], "sections": [{"map": {"sources": None, "sourcesContent": [1, "x"]}}]},
+    {"sources": [], "sections": {"a": 1}},
+])
+def test_malformed_source_maps_do_not_crash(make_page, make_response, make_ctx, obj):
+    smap = make_response(URL + "a.js.map", body=json.dumps(obj).encode(), content_type="application/json",
+                         source="sourcemap")
+    run(make_ctx(entry=make_page("<p/>"), sourcemaps=[smap], profile="deep"))
+
+
+def test_deeply_nested_source_map_does_not_crash(make_page, make_response, make_ctx):
+    deep = b"[" * 200_000
+    smap = make_response(URL + "a.js.map", body=deep, content_type="application/json", source="sourcemap")
+    assert disclosure.parse_sourcemap(deep.decode()) is None
+    inline = make_response(URL + "a.js", content_type="text/javascript", source="subresource",
+                           body=b"x;\n//# sourceMappingURL=data:application/json;base64," + base64.b64encode(deep))
+    run(make_ctx(entry=make_page("<p/>"), sourcemaps=[smap], subresources=[inline], profile="deep"))
+
+
+HOSTILE_2XX = [
+    "<pre " * 60000, "<a " * 80000, "<div " * 60000, "<img " * 60000, "<script " * 40000, "<code a=" * 40000,
+    "<!--" + "a." * 100000 + "-->", "<!--" + "0-" * 100000 + "-->",
+]
+
+
+@pytest.mark.parametrize("n", range(len(HOSTILE_2XX)))
+def test_hostile_2xx_documents_are_fast(make_response, make_ctx, n):
+    """The pre/code guard, listing and 2xx-only signatures are quadratic with an unbounded ``[^>]*`` / ``[\\w-]+``."""
+    body = HOSTILE_2XX[n][:250_000].encode()
+    r = make_response(URL, body=body, content_type="text/html", kind="document")
+    ctx = make_ctx(entry=Page(r, None), sensitivity="paranoid")
+    t = time.perf_counter()
+    disclosure.run(ctx)
+    assert time.perf_counter() - t < 4.0
+
+
+@pytest.mark.parametrize("value", ['"' + "0-" * 32000 + '"', "ip-10" + "-1" * 30000, "0" * 65000, "a." * 32000])
+def test_hostile_64k_header_values_are_fast(ctx_for, value):
+    headers = [(n, value) for n in ("Server", "X-Powered-By", "X-Foo", "ETag", "Server-Timing", "X-Debug-Token",
+                                    "Location", "X-AspNet-Version", "X-Generator")]
+    ctx = ctx_for("<p>x</p>", headers=headers, sensitivity="paranoid")
+    t = time.perf_counter()
+    run(ctx)
+    assert time.perf_counter() - t < 2.0
+
+
+@pytest.mark.parametrize("seed", range(10))
+def test_random_structured_documents_never_crash(make_response, make_ctx, seed):
+    import random
+    rnd = random.Random(1000 + seed)
+    parts = ["<pre>", "</pre>", "<code>", "<input type=hidden name=__VIEWSTATE value=", "/wE", "rO0AB", "<!--", "-->",
+             "Traceback (most recent call last)", 'File "/a.py", line 3', "at a.b(C.java:1)", "4539 1488 0343 6467",
+             "$2b$12$", "10.0.0.", "fc00::1", "<?php", ";", "SQLSTATE[42000]", "sk_live_", "AKIA", "-----BEGIN ",
+             "PRIVATE KEY-----", "<a href=../>", "<title>Index of /", "\x00", "ا", "%", "&#x27;", "javax.faces.ViewState",
+             "<script>", "</script>", '"', "'", ">", "<", "\n"]
+    html = "".join(rnd.choice(parts) + rnd.choice(["", "x", "A" * rnd.randint(1, 40), str(rnd.random())])
+                   for _ in range(rnd.randint(1, 400)))
+    status = rnd.choice([200, 404, 500])
+    r = make_response(URL, status=status, body=html, content_type="text/html",
+                      kind="document" if status == 200 else "error_page")
+    ctx = make_ctx(entry=Page(r, htmlparse.parse_response(r)), sensitivity="paranoid", profile="deep")
+    run(ctx)

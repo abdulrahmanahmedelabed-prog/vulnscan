@@ -12,14 +12,14 @@
    "name": "X-AspNet-Version",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "ASP.NET runtime version"
   },
   {
    "name": "X-AspNetMvc-Version",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "ASP.NET MVC version"
   },
   {
@@ -50,14 +50,14 @@
    "name": "X-OWA-Version",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "Outlook Web Access build"
   },
   {
    "name": "X-Generator",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})*",
    "note": "CMS / generator name and version"
   },
   {
@@ -78,49 +78,49 @@
    "name": "X-Php-Version",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "PHP version"
   },
   {
    "name": "X-Joomla-Version",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "Joomla version"
   },
   {
    "name": "X-Umbraco-Version",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "Umbraco version"
   },
   {
    "name": "Liferay-Portal",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "Liferay edition and version"
   },
   {
    "name": "MicrosoftSharePointTeamServices",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "SharePoint build"
   },
   {
    "name": "X-Jenkins",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "Jenkins version"
   },
   {
    "name": "X-Hudson",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "Hudson/Jenkins version"
   },
   {
@@ -167,42 +167,42 @@
    "name": "X-Powered-CMS",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})*",
    "note": "CMS name"
   },
   {
    "name": "X-Server-Powered-By",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})*",
    "note": "backend software"
   },
   {
    "name": "X-CF-Powered-By",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})*",
    "note": "ColdFusion / CF platform"
   },
   {
    "name": "X-Mod-Pagespeed",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "mod_pagespeed version"
   },
   {
    "name": "X-Page-Speed",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})+",
    "note": "ngx_pagespeed version"
   },
   {
    "name": "X-Turbo-Charged-By",
    "match": "exact",
    "rule": "WEB600",
-   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "version_pattern": "(?<!\\d)\\d{1,10}(?:\\.\\d{1,10})*",
    "note": "LiteSpeed"
   },
   {
