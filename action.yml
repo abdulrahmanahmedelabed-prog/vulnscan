@@ -67,7 +67,7 @@ runs:
   using: composite
   steps:
     - name: Set up Python
-      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -156,7 +156,7 @@ runs:
     - name: Upload SARIF to code scanning
       if: inputs.upload-sarif == 'true'
       continue-on-error: true   # pull requests from forks get no security-events write permission
-      uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9 # v3.39.3
+      uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
       with:
         sarif_file: ${{ steps.scan.outputs.sarif }}
         category: kashif
