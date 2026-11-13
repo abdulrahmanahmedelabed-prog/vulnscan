@@ -505,6 +505,23 @@ def test_web115_subdomain_with_preload():
     assert "not fetched" in notes_en(i)
 
 
+def test_web115_subdomain_mirroring_a_preloadable_header_is_info():
+    """www./app. sending the apex's full preload header (Mozilla/nginx configs copy it to every vhost) is correct: the
+    only failed rule is that the host is a subdomain, which it cannot fix, so it is an eligibility note (1.1.0 accuracy)."""
+    h = chain(redirect("http://www.a.example/", "https://www.a.example/"),
+              R("https://www.a.example/", headers=[sts(GOOD + "; preload")]))
+    e = R("https://www.a.example/", headers=[sts(GOOD + "; preload")])
+    ctx = ctx_for(e)
+    ctx.http_probe = h
+    (i,) = issues(ctx)["WEB115"]
+    assert sev(i) == "info" and i.group_value == "domain.is_subdomain"
+    assert "a.example" in notes_en(i) and "a.example" in " ".join(n[1] for n in i.notes)
+    # a subdomain whose own redirect is broken still fails (the broken redirect is fixable on this host)
+    ctx.http_probe = chain(R("http://www.a.example/"))
+    (i,) = issues(ctx)["WEB115"]
+    assert sev(i) == "low" and "redirects.http.no_redirect" in i.group_value
+
+
 def _apex_scan(http_chain: Response, https_headers=None) -> dict:
     e = R("https://kashif-apex.example/", headers=list(https_headers or [sts(GOOD + "; preload")]))
     ctx = ctx_for(e)

@@ -617,6 +617,36 @@ def test_web212_static_and_cached_nonce(make_response, make_ctx):
     assert "WEB212" not in {i.rule for i in _run(make_ctx(entry=Page(priv, htmlparse.parse_response(priv))))}
 
 
+@pytest.mark.parametrize("cache, reused", [
+    ("public, max-age=0, must-revalidate", False),           # Netlify/Vercel/Cloudflare Pages default: revalidated each use
+    ("public,max-age=0,must-revalidate", False),
+    ("public, no-cache", False),
+    ("public, max-age=600, no-cache", False),
+    ("public, s-maxage=0, max-age=600", False),              # s-maxage overrides max-age for shared caches
+    ("public", True),                                        # heuristic freshness: may be reused
+    ("public, max-age=600, stale-while-revalidate=60", True),
+    ("public, max-age=0, stale-while-revalidate=30", True),  # a stale copy (and its nonce) may still be served
+    ("s-maxage=120", True),
+    ("public, max-age=abc", False),                          # invalid delta-seconds = stale
+])
+def test_web212_cached_nonce_needs_shared_freshness(make_response, make_ctx, cache, reused):
+    """1.1.0 accuracy: ``public`` alone is not reuse when every use is revalidated with the origin (which mints a new nonce)."""
+    r = _nonce_doc(make_response, "ZnJlc2gtbm9uY2UtcGVyLXJlc3BvbnNl", cache=cache)
+    got = {i.rule for i in _run(make_ctx(entry=Page(r, htmlparse.parse_response(r))))}
+    assert ("WEB212" in got) is reused, cache
+    assert bool(csp.cache_reuses_nonce(r)) is reused
+
+
+def test_web212_cached_nonce_expires_header(make_response, make_ctx):
+    def doc(*extra):
+        return make_response("https://example.test/", headers=[("Content-Security-Policy", "script-src 'nonce-abcdefghijklmnopqrstuv'"),
+                                                               ("Cache-Control", "public"), *extra],
+                             body="<html><body>1</body></html>", content_type="text/html; charset=utf-8", kind="document")
+    assert csp.cache_reuses_nonce(doc(("Expires", "0"))) == ""     # invalid Expires = already expired
+    assert csp.cache_reuses_nonce(doc(("Expires", "-1"))) == ""
+    assert csp.cache_reuses_nonce(doc(("Expires", "Fri, 13 Nov 2026 12:10:00 GMT"))) == "public"
+
+
 # ======================================================================================== stage 1 facts
 
 def test_parse_all_facts(make_page, make_ctx, make_response):

@@ -268,7 +268,7 @@ def test_html_report_has_every_web_section(scanned, lang):
     for key in ("grades", "coverage", "inventory", "remediation"):
         assert report._wl(L, key) in html, key
     for tab in report.INVENTORY_TABS:
-        assert f">{report._wl(L, 't_' + tab)}</label>" in html, tab
+        assert f">{report._wl(L, 't_' + tab)}</bdi></label>" in html, tab     # tab names are isolates ("ASP.NET Core 8+")
     assert "<input type='radio' name='inv'" in html and "name='rem0'" in html      # CSS tabs: inventory, platforms
     assert "<script" not in html                                                     # no script at all
     assert f"<th>{report._wl(L, 'confidence')}</th>" in html
@@ -330,6 +330,19 @@ def test_untrusted_inventory_values_cannot_break_markdown_tables():
     row = next(line for line in md.splitlines() if "X-Test" in line)
     assert row.count(" | ") == 3 and "<img" not in row and "\x1b" not in md
     assert "c\\|o" in md
+
+
+def test_json_and_sarif_escape_c1_controls_from_the_target():
+    # §0.6: json.dumps(ensure_ascii=False) escapes C0 only, so a site's "\x9b" (8-bit CSI) reached the terminal raw on
+    # `-f json`/`-f sarif` to stdout; it is written as \u009b now and parses back to the same value
+    hostile = "nginx/1.0 \x9b2J\x9d0;title\x07 \x85 \u00e9 \u0639"
+    f = Finding("WEB-x-powered-by", "low", hostile, "عنوان " + hostile, "http://x/", 0, hostile, "fix", "CWE-200")
+    for text in (report.render_json([f], "http://x/", 1, [hostile]), report.render_sarif([f], "http://x/", 1, [hostile])):
+        assert not re.search("[\x80-\x9f]", text)
+        assert "\\u009b2J" in text and "\u00e9" in text and "\u0639" in text      # other text stays readable
+        doc = json.loads(text)
+        notes = doc["notes"] if "notes" in doc else doc["runs"][0]["properties"]["notes"]
+        assert notes == [hostile]                                                   # the parsed value is unchanged
 
 
 def test_reports_without_web_are_byte_identical_to_the_1_0_layout():

@@ -285,7 +285,16 @@ def render_json(findings: list[Finding], target: str, files: int, notes: list[st
     doc = {**meta, "summary": summary_counts(findings), "findings": [f.to_dict() for f in findings]}
     if web:
         doc["web"] = web
-    return json.dumps(doc, ensure_ascii=False, indent=2, default=str)
+    return _json_text(json.dumps(doc, ensure_ascii=False, indent=2, default=str))
+
+
+_C1 = re.compile("[\x80-\x9f]")
+
+
+def _json_text(text: str) -> str:
+    """JSON text with C1 control characters written as ``\\u00XX`` escapes (§0.6). ``json.dumps`` escapes C0 only, so
+    a scanned site's ``\\x9b`` (CSI) would reach the terminal raw on ``-f json``; the parsed value is unchanged."""
+    return _C1.sub(lambda m: f"\\u{ord(m.group()):04x}", text)
 
 
 def render_html(findings: list[Finding], target: str, files: int, notes: list[str], lang: str = "both",
@@ -325,7 +334,7 @@ def render_html(findings: list[Finding], target: str, files: int, notes: list[st
     summary = "".join(f"<div class='tile {s}'><div class='n'>{counts[s]}</div><div>{e(L.sev(s))}"
                       + ("" if L.en else f"<br><small>{s}</small>") + "</div></div>"
                       for s in SEVERITIES)
-    notes_html = "".join(f"<li>{e(_note(L, n, web))}</li>" for n in notes)
+    notes_html = "".join(f"<li>{_bidi_html(L, _note(L, n, web)) if web else e(_note(L, n, web))}</li>" for n in notes)
     empty = f"<tr><td colspan={6 if show_conf else 5}>{e(L('no_results'))}</td></tr>"
     conf_head = f"<th>{e(_wl(L, 'confidence'))}</th>" if show_conf else ""
     web_top = _web_html(findings, web, L, "top") if web else ""
@@ -568,7 +577,7 @@ def render_sarif(findings: list[Finding], target: str, files: int, notes: list[s
     if _web_ok(web):
         sarif["runs"][0]["properties"].update(_sarif_web_properties(web))
 
-    return json.dumps(sarif, ensure_ascii=False, indent=2)
+    return _json_text(json.dumps(sarif, ensure_ascii=False, indent=2))
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -633,6 +642,53 @@ _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f​-‏‪-‮⁦-⁩]")
 def _wl(L: "_Lang", key: str) -> str:
     ar, en = _WEB_LABELS[key]
     return en if L.en else ar
+
+
+# Arabic names of the inventory's own tokens (header verdicts, cookie classes, third-party and technology kinds);
+# values that are header syntax (DENY, nosniff, strict-origin, same-origin …) stay as sent
+_INV_AR = {
+    "missing": "مفقودة", "invalid": "غير صالحة", "present": "موجودة", "unrecognised": "غير معروفة",
+    "multi": "مكررة", "ignored-on-http": "مُهمَلة عبر HTTP", "frame-ancestors-broad": "frame-ancestors واسع",
+    "session": "جلسة", "auth": "مصادقة", "csrf": "رمز CSRF", "preference": "تفضيلات", "analytics": "تحليلات",
+    "lb": "موازن حمل", "cdn_bot": "CDN أو حماية من البوتات", "consent": "موافقة", "unknown": "غير معروفة",
+    "unknown_secret": "غير معروفة (قيمة عشوائية)",
+    "script": "سكربت", "style": "ملف أنماط", "frame": "إطار", "image": "صورة", "other": "أخرى", "server": "خادم",
+    "web-server": "خادم ويب", "web-framework": "إطار ويب", "javascript-framework": "إطار JavaScript",
+    "javascript-library": "مكتبة JavaScript", "ui-framework": "إطار واجهات", "language": "لغة برمجة",
+    "cms": "نظام إدارة محتوى", "ecommerce": "تجارة إلكترونية", "collaboration": "تعاون", "cdn": "شبكة توزيع محتوى",
+    "hosting": "استضافة", "admin-panel": "لوحة إدارة", "static-site-generator": "مولّد مواقع ثابتة", "waf": "جدار حماية",
+    "blog": "مدونة", "wiki": "ويكي", "forum": "منتدى", "monitoring": "مراقبة", "webmail": "بريد ويب",
+    "lms": "نظام إدارة تعلّم", "low-code": "منصة low-code", "database-admin": "إدارة قواعد بيانات", "devops": "DevOps",
+    "ci": "تكامل مستمر", "portal": "بوابة", "page-builder": "منشئ صفحات", "database": "قاعدة بيانات", "proxy": "وكيل",
+    "cache": "تخزين مؤقت", "load-balancer": "موازن حمل", "tag-manager": "مدير وسوم",
+    "security": "أمان", "font": "خطوط",
+}
+
+
+def _inv(L: "_Lang", token) -> str:
+    """An inventory token in the report language (Arabic name when one is known, else the token as recorded)."""
+    text = clean_text(token, 80)
+    return text if L.en else _INV_AR.get(text, text)
+
+
+_BIDI_WORD = r"(?:--?)?[A-Za-z0-9_$./~][A-Za-z0-9_$:/.~-]*[+*]*(?:\([^()؀-ۿ]*\))*"
+_BIDI_RUN = re.compile(rf"{_BIDI_WORD}(?:\.? +{_BIDI_WORD})*")
+
+
+def _bidi_html(L: "_Lang", text: str) -> str:
+    """Escaped engine text for an Arabic page with every Latin run isolated left-to-right (the UI's bidi()): without
+    it "كاشف F* · Observatory 0 (F)" displays the Observatory grade beside "كاشف", and "A+" as "+A"."""
+    text = str(text or "")
+    if L.en or not re.search("[؀-ۿ]", text):
+        return html.escape(text)
+    out, last = [], 0
+    for m in _BIDI_RUN.finditer(text):
+        run = m.group().rstrip(".:,;-")
+        if not re.search("[A-Za-z]", run):
+            continue
+        out.append(html.escape(text[last:m.start()]) + f"<bdi dir='ltr'>{html.escape(run)}</bdi>")
+        last = m.start() + len(run)
+    return "".join(out) + html.escape(text[last:])
 
 
 def _pair(L: "_Lang", value) -> str:
@@ -738,7 +794,8 @@ def _web_ok(web) -> bool:
 
 
 def _grade_rows(web: dict, L: "_Lang") -> list[dict]:
-    """[{key, name, grade, score, max, label, caps, provisional}] for the three algorithms."""
+    """[{key, name, grade, score, max, label, caps, notes, provisional}] for the three algorithms (``notes``: why
+    there is no grade, which families made it provisional, what A+ still needs)."""
     g = web.get("grades") if isinstance(web.get("grades"), dict) else {}
     rows = []
     for key in ("kashif", "observatory", "ssllabs"):
@@ -749,6 +806,7 @@ def _grade_rows(web: dict, L: "_Lang") -> list[dict]:
                      "score": d.get("score") if isinstance(d.get("score"), (int, float)) else None,
                      "max": d.get("max_score") if isinstance(d.get("max_score"), (int, float)) else None,
                      "label": clean_text(_pair(L, d.get("label")), 300), "caps": caps,
+                     "notes": [clean_text(_pair(L, n), 300) for n in d.get("notes") or [] if isinstance(n, dict)],
                      "provisional": bool(d.get("provisional"))})
     return rows
 
@@ -771,7 +829,7 @@ def _coverage_problems(web: dict, L: "_Lang", limit: int = 400) -> list[tuple[st
         if not isinstance(c, dict) or c.get("state") not in ("fail", "not_tested", "inconclusive"):
             continue
         reasons = [clean_text(_pair(L, r), 200) for r in c.get("reasons") or [] if isinstance(r, dict)]
-        out.append((clean_text(c.get("check"), 60), str(c.get("state")), "; ".join(x for x in reasons if x)))
+        out.append((clean_text(c.get("check"), 60), str(c.get("state")), ("; " if L.en else "؛ ").join(x for x in reasons if x)))
         if len(out) >= limit:
             break
     return out
@@ -792,7 +850,7 @@ def inventory_tables(web: dict, L: "_Lang") -> dict[str, tuple[list[str], list[l
         for name, d in (entry.get("headers") or {}).items():
             d = d if isinstance(d, dict) else {"value": d}
             rows.append([clean_text(entry.get("url"), 200), clean_text(name, 80), clean_text(d.get("value"), 300) or "—",
-                         clean_text(d.get("verdict"), 80)])
+                         _inv(L, d.get("verdict"))])
     out["headers"] = ([_wl(L, "h_url"), _wl(L, "h_header"), _wl(L, "h_value"), _wl(L, "h_verdict")], rows[:300])
     rows = []
     for entry in inv.get("csp") or []:
@@ -815,7 +873,7 @@ def inventory_tables(web: dict, L: "_Lang") -> dict[str, tuple[list[str], list[l
                 attrs.append(f"{k.capitalize()}={c[k]}")
         if c.get("persistent_days"):
             attrs.append(f"{c['persistent_days']}d")
-        rows.append([clean_text(c.get("name"), 80), clean_text(c.get("host"), 120), clean_text(c.get("class"), 30),
+        rows.append([clean_text(c.get("name"), 80), clean_text(c.get("host"), 120), _inv(L, c.get("class")),
                      clean_text("; ".join(str(a) for a in attrs), 300)])
     out["cookies"] = ([_wl(L, "h_name"), _wl(L, "h_host"), _wl(L, "h_class"), _wl(L, "h_attrs")], rows[:300])
     rows = []
@@ -839,7 +897,7 @@ def inventory_tables(web: dict, L: "_Lang") -> dict[str, tuple[list[str], list[l
     for t in inv.get("technologies") or []:
         if isinstance(t, dict):
             rows.append([clean_text(t.get("name"), 80), clean_text(t.get("version"), 40),
-                         clean_text(", ".join(str(c) for c in t.get("categories") or []), 120), ""])
+                         ("، " if not L.en else ", ").join(_inv(L, c) for c in t.get("categories") or [])[:120], ""])
     for lib in inv.get("libraries") or []:
         if isinstance(lib, dict):
             rows.append([clean_text(lib.get("name"), 80), clean_text(lib.get("version"), 40), "JavaScript",
@@ -847,13 +905,13 @@ def inventory_tables(web: dict, L: "_Lang") -> dict[str, tuple[list[str], list[l
     for s in inv.get("server_software") or []:
         if isinstance(s, dict):
             rows.append([clean_text(s.get("name") or s.get("product"), 80), clean_text(s.get("version"), 40),
-                         clean_text(s.get("source") or "server", 60), ""])
+                         _inv(L, s.get("source") or s.get("where") or "server"), ""])
     out["technologies"] = ([_wl(L, "h_name"), _wl(L, "h_version"), _wl(L, "h_kind"), _wl(L, "h_vulnerable")], rows[:200])
     rows = []
     tp = inv.get("third_parties") if isinstance(inv.get("third_parties"), dict) else {}
     for host, kinds in tp.items():
-        rows.append([clean_text(host, 200), clean_text(", ".join(str(k) for k in kinds or []) if isinstance(kinds, list)
-                                                      else kinds, 120)])
+        rows.append([clean_text(host, 200), ("، " if not L.en else ", ").join(_inv(L, k) for k in kinds or [])[:120]
+                     if isinstance(kinds, list) else clean_text(kinds, 120)])
     out["third_parties"] = ([_wl(L, "h_host"), _wl(L, "h_kind")], rows[:200])
     return out
 
@@ -909,8 +967,10 @@ def _grade_change_text(L: "_Lang", key: str, ch) -> str:
         before = before.get("grade")
     if isinstance(after, dict):
         after = after.get("grade")
-    return f"{_wl(L, 'g_' + key) if key in ('kashif', 'observatory', 'ssllabs') else clean_text(key, 30)}: " \
-           f"{clean_text(before, 10) or '—'} → {clean_text(after, 10) or '—'}"
+    name = _wl(L, 'g_' + key) if key in ('kashif', 'observatory', 'ssllabs') else clean_text(key, 30)
+    before, after = clean_text(before, 10) or '—', clean_text(after, 10) or '—'
+    # Arabic reads right to left: "من B إلى A" as in webscan/diff.py, not an arrow that points back at the old grade
+    return f"{name}: {before} → {after}" if L.en else f"{name}: من {before} إلى {after}"
 
 
 # ------------------------------------------------------------------------------------------- web: HTML
@@ -942,7 +1002,7 @@ def _html_table(head: list[str], rows: list[list[str]], L: "_Lang") -> str:
         return f"<p>{e(_wl(L, 'inv_empty'))}</p>"
     th = "".join(f"<th>{e(h)}</th>" for h in head)
     body = "".join("<tr>" + "".join(f"<td><bdi dir='auto'>{e(c)}</bdi></td>" for c in r) + "</tr>" for r in rows)
-    return f"<table><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table>"
+    return f"<div class='tw'><table><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table></div>"
 
 
 def _html_tabs(name: str, tabs: list[tuple[str, str]]) -> str:
@@ -953,7 +1013,7 @@ def _html_tabs(name: str, tabs: list[tuple[str, str]]) -> str:
     for i, (label, body) in enumerate(tabs):
         tid = f"{name}-{i}"
         inputs.append(f"<input type='radio' name='{e(name)}' id='{e(tid)}'{' checked' if i == 0 else ''}>"
-                      f"<label for='{e(tid)}'>{e(label)}</label>")
+                      f"<label for='{e(tid)}'><bdi dir='auto'>{e(label)}</bdi></label>")
         panels.append(f"<div class='panel'>{body}</div>")
     return f"<div class='tabs'>{''.join(inputs)}{''.join(panels)}</div>"
 
@@ -973,11 +1033,12 @@ def _web_html(findings: list[Finding], web: dict, L: "_Lang", part: str = "top")
     for g in _grade_rows(web, L):
         provisional = provisional or g["provisional"]
         score = "" if g["score"] is None else f"{g['score']:g}" + (f"/{g['max']:g}" if g["max"] else "")
-        caps = "".join(f"<li>{e(c)}</li>" for c in g["caps"][:8])
+        caps = "".join(f"<li>{_bidi_html(L, c)}</li>" for c in g["caps"][:8])
         out.append(f"<div class='grade g-{e(g['key'])}'><b>{e(g['name'])}</b>"
                    f"<div class='letter' dir='ltr'>{e(g['grade'] or '—')}</div>"
                    + (f"<small dir='ltr'>{e(score)}</small>" if score else f"<small>{e(_wl(L, 'g_none'))}</small>" if not g['grade'] else "")
-                   + (f"<small>{e(g['label'])}</small>" if g["label"] else "")
+                   + (f"<small>{_bidi_html(L, g['label'])}</small>" if g["label"] else "")
+                   + "".join(f"<small>{_bidi_html(L, n)}</small>" for n in g["notes"][:4])
                    + (f"<small>{e(_wl(L, 'g_caps'))}:</small><ul>{caps}</ul>" if caps else "") + "</div>")
     out.append("</div>")
     if provisional:
@@ -997,16 +1058,16 @@ def _web_html(findings: list[Finding], web: dict, L: "_Lang", part: str = "top")
     if dp:
         out.append(f"<h2>{e(_wl(L, 'diff'))}</h2>")
         for n in dp["notes"]:
-            out.append(f"<p>{e(clean_text(_pair(L, n), 400))}</p>")
+            out.append(f"<p>{_bidi_html(L, clean_text(_pair(L, n), 400))}</p>")
         if dp["comparable"]:
             changes = [_grade_change_text(L, k, v) for k, v in dp["grades"].items()]
             changes = [c for c in changes if c]
             if changes:
-                out.append(f"<p><b>{e(_wl(L, 'd_grade'))}:</b> " + " · ".join(f"<bdi>{e(c)}</bdi>" for c in changes) + "</p>")
+                out.append(f"<p><b>{e(_wl(L, 'd_grade'))}:</b> " + " · ".join(f"<bdi>{_bidi_html(L, c)}</bdi>" for c in changes) + "</p>")
             if dp["posture"]:
                 out.append(f"<h3>{e(_wl(L, 'd_posture'))}</h3><ul class='posture'>"
                            + "".join(f"<li class='{e(str(p.get('direction')))}'>{e(_wl(L, 'd_' + p['direction']) if ('d_' + str(p.get('direction'))) in _WEB_LABELS else '')}: "
-                                     f"<bdi>{e(clean_text(_pair(L, p), 400))}</bdi></li>" for p in dp["posture"][:200]) + "</ul>")
+                                     f"<bdi>{_bidi_html(L, clean_text(_pair(L, p), 400))}</bdi></li>" for p in dp["posture"][:200]) + "</ul>")
             for key in ("new", "resolved"):
                 items = dp[key]
                 out.append(f"<h3>{e(_wl(L, 'd_' + key))} ({len(items)})</h3>")
@@ -1067,7 +1128,7 @@ def _web_markdown(findings: list[Finding], web: dict, L: "_Lang", part: str = "t
     rows = []
     for g in _grade_rows(web, L):
         score = "" if g["score"] is None else f"{g['score']:g}" + (f"/{g['max']:g}" if g["max"] else "")
-        rows.append([g["name"], g["grade"] or "—", score, "; ".join(g["caps"][:6]) or g["label"]])
+        rows.append([g["name"], g["grade"] or "—", score, ("; " if L.en else "؛ ").join((g["notes"] + g["caps"])[:6]) or g["label"]])
     md += _md_table(["", "", "", ""], rows, L)
     counts = _coverage_counts(web)
     md += [f"### {_wl(L, 'coverage')}", "",
@@ -1155,7 +1216,7 @@ def web_view(findings: list[Finding], web: dict, lang: str = "ar") -> dict:
     in the UI language and cleaned of control characters (the UI escapes every value again before display).
 
     ``facts`` (profile, requests, final URL, data date) · ``grades`` [{key, name, grade, score, max, label, caps,
-    provisional}] · ``coverage`` {counts, states (labels), problems [[check, state, reason]]} · ``diff`` (None, or
+    notes, provisional}] · ``coverage`` {counts, states (labels), problems [[check, state, reason]]} · ``diff`` (None, or
     {comparable, notes, new, resolved, unchanged (count), posture [{direction, label, text}], grades [text]}) ·
     ``inventory`` [{id, label, head, rows}] · ``remediation`` (the snippet library's render(), detected platforms
     first)."""

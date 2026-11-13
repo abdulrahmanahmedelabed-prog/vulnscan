@@ -140,7 +140,7 @@ SIGNATURES = [
                  min_count=2)],
         any_=[rx(r"\b(?:[\w$]{1,80}\.){1,15}[\w$]{0,80}(?:Exception|Error)\b"), has("Exception")]),
     sig("dotnet-stack", "WEB056", ".NET",
-        all_=[rx(r"(?m)^\s*at\s+(?:[\w`<>\[\]]{1,80}\.){0,15}[\w`<>\[\]]{1,80}\([^)\n]{0,300}\)", min_count=2)],
+        all_=[rx(r"(?m)^[ \t]*at[ \t]+(?:[\w`<>\[\]]{1,80}\.){0,15}[\w`<>\[\]]{1,80}\([^)\n]{0,300}\)", min_count=2)],
         any_=[has("--- End of stack trace"), rx(r":line \d+"), rx(r"\bSystem\.(?:\w{1,80}\.){0,10}\w{0,80}Exception\b")]),
     sig("php-error-html", "WEB056", "PHP",
         all_=[rx(r"<b>\s*(?:Warning|Fatal error|Parse error|Notice|Deprecated|Catchable fatal error|Recoverable fatal "

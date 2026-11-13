@@ -911,6 +911,39 @@ def shared_cacheable(r: Response) -> str:
     return ""
 
 
+def _seconds(value: str | None) -> int | None:
+    try:
+        return int(value) if value not in (None, "") else None
+    except ValueError:
+        return 0                                       # RFC 9111 §1.2.2: an invalid delta-seconds is treated as stale
+
+
+def cache_reuses_nonce(r: Response) -> str:
+    """:func:`shared_cacheable`, narrowed to responses a shared cache may hand out again **without** asking the origin.
+
+    ``public, max-age=0, must-revalidate`` (the Netlify, Vercel and Cloudflare Pages default) or ``no-cache`` makes the cache
+    revalidate every use, and the origin then answers with a fresh nonce: no reuse. Zero freshness with
+    ``stale-while-revalidate``/``stale-if-error`` still allows a stale copy (and its nonce) to be served, so it counts."""
+    label = shared_cacheable(r)
+    if not label:
+        return ""
+    cc = _cache_control(r)
+    if "no-cache" in cc:
+        return ""
+    lifetime = _seconds(cc.get("s-maxage"))
+    if lifetime is None:
+        lifetime = _seconds(cc.get("max-age"))
+    if lifetime is None and r.headers.has("expires"):
+        expires = (r.headers.first("expires") or "").strip()
+        if not expires or expires.lstrip("-").isdigit():  # "0" / "-1": an invalid Expires means already expired
+            lifetime = 0
+    if lifetime is not None and lifetime <= 0:
+        stale = max(_seconds(cc.get("stale-while-revalidate")) or 0, _seconds(cc.get("stale-if-error")) or 0)
+        if stale <= 0:
+            return ""
+    return label
+
+
 # ----------------------------------------------------------------------------------------------- evaluation
 
 @dataclass
@@ -1712,7 +1745,7 @@ def _values(st: _Run, r: Response, doc: ParsedHTML | None, facts: CspFacts) -> N
                 severity=h.severity, confidence=h.confidence, notes=h.notes, params=h.params, group_value=h.group)
     # WEB212 (cached nonce): a nonce'd document that shared caches may store
     if facts.nonces:
-        cache = shared_cacheable(r)
+        cache = cache_reuses_nonce(r)
         if cache:
             st.emit("WEB212", r, _ev(ctx, r, name="Cache-Control", value=", ".join(r.headers.get_all("cache-control"))),
                     confidence="firm", notes=[_note("cached_nonce", cache=cache)], group_value="cached")
@@ -1936,6 +1969,6 @@ def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
 __all__ = ["CHECKS", "run", "parse_all", "facts_for", "parse_policy", "parse_header", "split_policies",
            "classify_source", "Source", "effective", "chain", "restricts_scripts", "broad_sources", "is_any",
            "nonce_hash_based", "valid_nonces", "source_matches_url", "list_allows_url", "BypassData", "load_bypass",
-           "find_bypasses", "compare_nonces", "response_nonces", "shared_cacheable", "evaluate", "Hit", "DocInfo",
+           "find_bypasses", "compare_nonces", "response_nonces", "shared_cacheable", "cache_reuses_nonce", "evaluate", "Hit", "DocInfo",
            "policy_notes", "typo_of", "observatory_slug", "observatory_auto", "obs_parse_csp", "effective_summary",
            "meta_policies", "STR", "NEEDS_EVAL", "KNOWN_DIRECTIVES", "DEPRECATED_DIRECTIVES", "i18n_catalog"]

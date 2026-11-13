@@ -930,6 +930,23 @@ def test_public_with_vary_cookie_only_is_low(make_page, make_ctx):
     assert i.severity == "medium"
 
 
+def test_private_vary_cookie_on_a_cookieless_request_is_silent(make_page, make_ctx):
+    """Django's SessionMiddleware adds ``Vary: Cookie`` to every page that reads the session; fetched without cookies the
+    response is the anonymous variant, and only the browser may store it (1.1.0 accuracy)."""
+    hs = [("Cache-Control", "max-age=600"), ("Vary", "Cookie, Accept-Language")]
+    page = _doc(make_page, headers_=hs)
+    assert not _rules(_run(make_ctx(entry=page)), "WEB315")
+    # the same page fetched with the scan's cookie jar is a personalised variant: still reported
+    page = _doc(make_page, headers_=hs)
+    page.response.request_headers = HeaderList.of(("Cookie", "sessionid=abc123def456"))
+    [i] = _rules(_run(make_ctx(entry=page)), "WEB315")
+    assert (i.severity, i.group_value) == ("low", "no-store-missing")
+    # a password page is sensitive on its own, cookies or not
+    login = make_page('<form method="post"><input type="password" name="p"></form>', headers=hs)
+    [i] = _rules(_run(make_ctx(entry=login)), "WEB315")
+    assert i.group_value == "no-store-missing"
+
+
 def test_clear_site_data_on_logout_query_is_silent(make_response, make_ctx):
     r = make_response("https://example.test/wp-login.php?action=logout", content_type="text/html", body=b"bye",
                       headers=[("Clear-Site-Data", '"cookies", "storage"')], kind="document")

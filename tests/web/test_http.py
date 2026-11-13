@@ -425,6 +425,28 @@ def test_monotonic_deadline_stops_a_dripping_body():
     assert any(e["code"] == "deadline" for e in f.events)
 
 
+def test_connect_attempts_to_many_blackholed_addresses_are_bounded_by_the_deadline(monkeypatch):
+    # §0.6: the watchdog only sees a socket once it is connected; a hostile name resolving to dozens of blackholed
+    # addresses must not cost one full socket timeout per address (40 × 20 s), only the per-response deadline
+    attempts = []
+
+    def blackhole(addr, timeout=None, *_a, **_k):
+        attempts.append((addr[0], timeout))
+        time.sleep(min(timeout, 0.25))
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(wh.socket, "create_connection", blackhole)
+    addrs = [f"203.0.113.{i}" for i in range(1, 41)]
+    hooks = hooks_for({"many.kashif.test": {"status": "ok", "addresses": addrs, "public": True}})
+    f = wh.Fetcher(ScanOptions(response_deadline=0.6, timeout=5), "http://many.kashif.test/", hooks=hooks, proxies={})
+    t = time.monotonic()
+    r = f.fetch("http://many.kashif.test/")
+    assert time.monotonic() - t < 3.0                    # ≤ 2 deadlines (one transient retry), not 40 × 0.25 s
+    assert r.status is None and wh.error_code(r) in ("timeout", "deadline")
+    assert len(attempts) < 12 and all(to <= 0.6 + 1e-6 for _a, to in attempts)
+    assert f.requests == 0                               # nothing was sent
+
+
 def test_monotonic_deadline_stops_dripping_headers():
     def drip(c, _i):
         _read_request(c)
@@ -743,6 +765,10 @@ def test_cookie_date_parser(value, ok):
     ("fd12::1", "private"), ("100.64.0.1", "private"), ("169.254.1.1", "link-local"), ("fe80::1", "link-local"),
     ("8.8.8.8", "public"), ("2606:4700::1", "public"), ("192.0.2.1", "reserved"), ("224.0.0.1", "reserved"),
     ("not-an-ip", "reserved"),
+    # deprecated IPv6 site-local (RFC 3879): ipaddress calls it global, but it is an internal network like ULA
+    ("fec0::1", "private"), ("feff:ffff::1", "private"),
+    # embedded IPv4 forms of the metadata address
+    ("::a9fe:a9fe", "metadata"), ("64:ff9b::a9fe:a9fe", "metadata"), ("2002:a9fe:a9fe::1", "metadata"),
 ])
 def test_address_categories(addr, cat):
     assert wh.address_category(addr) == cat
@@ -757,6 +783,7 @@ def test_guard_rules_per_target_category():
                  "http://[::ffff:169.254.169.254]/"):
         assert f.guard_url(meta) == "metadata", meta
     assert make("http://169.254.169.254/").guard_url("http://169.254.169.254/") == "metadata"   # even as the target
+    assert make("http://[2606:4700::1]/").guard_url("http://[fec0::1]/") == "ssrf"           # public → site-local
     lo = make("http://127.0.0.1:8000/")
     assert lo.guard_url("http://127.0.0.2/") == "" and lo.guard_url("http://10.0.0.1/") == "ssrf"
     assert lo.guard_url("file:///etc/passwd") == "scheme" and lo.guard_url("http://[::1/") == "bad_url"
@@ -955,6 +982,27 @@ def test_https_goes_through_a_connect_tunnel():
                                        ("socks5://p.example:1080", False), ("", False), ("http://:80", False)])
 def test_parse_proxy(value, ok):
     assert (wh.parse_proxy(value) is not None) is ok
+
+
+@pytest.mark.parametrize("value", ["socks5://user:pw@127.0.0.1:1080", "socks5h://127.0.0.1:1080", "http://127.0.0.1:99999"])
+def test_an_unusable_proxy_setting_fails_closed_instead_of_connecting_directly(raw_http_server, http_reply_builder,
+                                                                               value):
+    # §0.7: the operator routes traffic through a proxy; a value Kashif cannot use (urllib 1.0.1 failed on it too) must
+    # not turn into a direct connection that shows their own address to the target
+    raw_http_server.routes["/"] = http_reply_builder("200 OK", [], "direct")
+    f = make(raw_http_server.url("/"), proxies={"http": value, "https": value})
+    r = f.fetch(raw_http_server.url("/"))
+    assert r.status is None and wh.error_code(r) == "proxy" and wh.coverage_reason(r) == "network"
+    assert "--no-proxy" in r.error and "pw" not in r.error and "user" not in r.error
+    with pytest.raises(wh.FetchRefused) as exc:
+        f.open_tcp("127.0.0.1", raw_http_server.port)
+    assert exc.value.code == "proxy"
+    assert raw_http_server.requests == [] and f.handshakes == 0
+    # NO_PROXY and --no-proxy still allow the direct scan the user asked for
+    bypass = make(raw_http_server.url("/"), proxies={"http": value, "no": "127.0.0.1"})
+    assert bypass.fetch(raw_http_server.url("/")).status == 200
+    off = wh.Fetcher(ScanOptions(use_proxy=False), raw_http_server.url("/"), proxies={"http": value})
+    assert off.fetch(raw_http_server.url("/")).status == 200
 
 
 # ----------------------------------------------------------------------------------------------- test-only hooks

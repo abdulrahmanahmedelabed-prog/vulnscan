@@ -132,6 +132,10 @@ STR: dict[str, tuple[str, str]] = {
     "preload_ok": ("Eligible for the HSTS preload list but not in the bundled snapshot of {date} (it may be pending).",
                    "مستوفٍ لشروط قائمة HSTS المسبقة لكنه غير موجود في النسخة المضمّنة بتاريخ {date} (ربما ما زال الطلب قيد "
                    "المراجعة)."),
+    "preload_subdomain": ("{host} is a subdomain and its header is otherwise preloadable: only the registrable domain "
+                          "{apex} is ever submitted, so check https://{apex}/ for eligibility.",
+                          "المضيف {host} نطاق فرعي، وترويسته مستوفية لبقية شروط الإدراج المسبق: لا يُقدَّم إلا النطاق "
+                          "القابل للتسجيل {apex}، فافحص https://{apex}/ للتحقق من استيفائه الشروط."),
     "preload_unchecked": ("Not checked: {what}.", "لم يُفحص: {what}."),
     "preload_http_unchecked": ("the HTTP redirect of {host} was not fetched", "لم يُجلب توجيه HTTP للمضيف {host}"),
     "sts_on_http": ("{url} sends Strict-Transport-Security over plain HTTP, where browsers ignore it.",
@@ -1194,7 +1198,13 @@ def _hsts(st: _Run, verdicts: dict[str, HstsVerdict]) -> None:
         if not header.preload or pre:
             continue                     # not requesting preload, or already preloaded (a positive, not a finding)
         codes, extra = preload_eligibility(ctx, host, vr, header, len(fields), host in st.cert_hosts)
-        if codes:
+        if codes == ["domain.is_subdomain"]:
+            # www./app. mirroring the apex's preloadable header is the usual, correct setup: nothing on this host can be
+            # fixed, and only the apex is ever submitted (hstspreload), so this is an eligibility note, not a failure.
+            st.emit("WEB115", vr, st.ev(vr, name="Strict-Transport-Security", value=fields[0]), severity="info",
+                    group_value="domain.is_subdomain", key="preload",
+                    notes=[_note("preload_subdomain", host=host, apex=psl.registrable_domain(host) or host)] + extra)
+        elif codes:
             st.emit("WEB115", vr, st.ev(vr, name="Strict-Transport-Security", value=fields[0]), severity="low",
                     group_value=" ".join(sorted(codes)), key="preload",
                     notes=[_note("preload_fail", codes=_codes_text(codes))] + extra)

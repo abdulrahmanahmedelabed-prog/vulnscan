@@ -235,6 +235,8 @@ def address_category(address: str) -> str:
         return "link-local"
     if ip.version == 4 and ip in ipaddress.ip_network("100.64.0.0/10"):   # carrier-grade NAT (shared address space)
         return "private"
+    if ip.version == 6 and ip in _SITE_LOCAL:            # deprecated site-local (RFC 3879), ULA's predecessor: still
+        return "private"                                 # routed inside some networks, yet ipaddress calls it global
     if ip.is_private and (ip.version == 6 and ip in ipaddress.ip_network("fc00::/7")
                           or ip.version == 4 and any(ip in ipaddress.ip_network(n)
                                                      for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))):
@@ -246,6 +248,7 @@ def address_category(address: str) -> str:
 
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")             # RFC 6052 well-known prefix
 _V4COMPAT = ipaddress.ip_network("::/96")                 # deprecated IPv4-compatible addresses
+_SITE_LOCAL = ipaddress.ip_network("fec0::/10")
 
 
 _LOCAL_NAMES = ("localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback")
@@ -435,6 +438,21 @@ def parse_proxy(value: str) -> Proxy | None:
     host = normalise_host(p.hostname)
     shown = f"[{host}]" if ":" in host else host
     return Proxy(host, port, auth, f"http://{shown}:{port}")
+
+
+def unusable_proxy(value: str) -> Proxy:
+    """A placeholder for a configured proxy Kashif cannot use (``socks5://``, a bad port …). Requests that would go
+    through it fail with ``error:proxy`` instead of silently connecting directly: the operator chose to route traffic
+    through a proxy, so a direct connection would expose their own address to the target (§0.7; 1.0.1's urllib failed
+    too). ``display`` keeps scheme, host and port, never credentials."""
+    v = (value or "").strip()
+    try:
+        p = urllib.parse.urlsplit(v if "://" in v else "http://" + v)
+        netloc = p.netloc.rpartition("@")[2]
+        shown = f"{p.scheme}://{netloc}" if netloc else (p.scheme + "://")
+    except ValueError:
+        shown = "?"
+    return Proxy("", 0, None, re.sub(r"[^\x21-\x7e]", "", shown)[:120])
 
 
 # ----------------------------------------------------------------------------------------------- cookie jar
@@ -755,6 +773,7 @@ class _Watchdog:
 
     def __init__(self, seconds: float):
         self.fired = False
+        self.deadline_at = time.monotonic() + max(0.0, seconds)
         self._socks: list[socket.socket] = []
         self._lock = threading.Lock()
         self._timer = threading.Timer(max(0.0, seconds), self._fire)
@@ -783,6 +802,10 @@ class _Watchdog:
     def cancel(self) -> None:
         self._timer.cancel()
 
+    def remaining(self) -> float:
+        """Seconds left before the deadline (≤ 0 once it has passed)."""
+        return self.deadline_at - time.monotonic()
+
 
 def _kill(sock: Any) -> None:
     try:
@@ -792,16 +815,30 @@ def _kill(sock: Any) -> None:
 
 
 def _connect_factory(addresses: tuple[str, ...] | None, port_override: int | None,
-                     on_socket: Callable[[socket.socket], None], on_address: Callable[[str], None] | None = None):
+                     on_socket: Callable[[socket.socket], None], on_address: Callable[[str], None] | None = None,
+                     remaining: Callable[[], float | None] | None = None):
     """A replacement for ``HTTPConnection._create_connection``: connects to the pinned addresses (never re-resolving
-    the name, so DNS rebinding cannot change the address) and registers the socket with the current watchdog."""
+    the name, so DNS rebinding cannot change the address) and registers the socket with the current watchdog.
+
+    ``remaining`` gives the seconds left of the per-response deadline (None: no deadline). The watchdog only sees a
+    socket once it is connected, so the attempts themselves are bounded here: a hostile name that resolves to dozens of
+    blackholed addresses would otherwise cost one full socket timeout per address (§0.6)."""
     def create(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None, *args, **kwargs):
         host, port = address[0], address[1]
         targets = list(addresses) if addresses else [host]
         last: OSError | None = None
         for a in targets:
+            left = remaining() if remaining is not None else None
+            attempt_timeout = timeout
+            if left is not None:
+                if left <= 0:
+                    raise last if last is not None else TimeoutError("response deadline exceeded while connecting")
+                if isinstance(timeout, (int, float)):
+                    attempt_timeout = min(float(timeout), left)
+                else:
+                    attempt_timeout = left
             try:
-                sock = socket.create_connection((a, port_override or port), timeout, source_address)
+                sock = socket.create_connection((a, port_override or port), attempt_timeout, source_address)
             except OSError as e:
                 last = e
                 continue
@@ -1038,9 +1075,9 @@ class Fetcher:
         raw = injected if injected is not None else urllib.request.getproxies()
         out = {}
         for scheme in ("http", "https"):
-            p = parse_proxy(raw.get(scheme, "")) if raw.get(scheme) else None
-            if p is not None:
-                out[scheme] = p
+            value = raw.get(scheme)
+            if value:
+                out[scheme] = parse_proxy(value) or unusable_proxy(value)   # never a silent direct connection
         if injected is not None and injected.get("no"):
             out["no"] = injected["no"]
         return out
@@ -1303,6 +1340,8 @@ class Fetcher:
         if self.port_blocked(int(port)):
             raise FetchRefused("port", f"port {port} is never contacted (scanner safety guard)")
         proxy = self.proxy_for(f"https://{host}:{port}/")
+        if proxy is not None and not proxy.host:
+            raise FetchRefused("proxy", _unusable_proxy_message(proxy))
         addrs, code, _cat = self._guard(host, proxied=proxy is not None)
         if code:
             raise FetchRefused(code, f"connection to {host} refused by the scanner's guard ({code})")
@@ -1468,6 +1507,8 @@ class Fetcher:
             return self._error(prep.url, source, "port", f"blocked: port {prep.port} is never contacted "
                                "(browsers block it; scanner safety guard)")
         proxy = self.proxy_for(prep.url)
+        if proxy is not None and not proxy.host:
+            return self._error(prep.url, source, "proxy", _unusable_proxy_message(proxy))
         addrs, code, cat = self._guard(prep.host, proxied=proxy is not None)
         if code:
             if code == "dns":
@@ -1561,7 +1602,8 @@ class Fetcher:
                 best = self._preferred[prep.host]          # the address that answered last time goes first, so a
                 addrs = (best,) + tuple(a for a in addrs if a != best)   # dead AAAA costs one timeout per scan
             conn._create_connection = _connect_factory(addrs, None, on_socket,
-                                                       lambda a, h=prep.host: self._preferred.__setitem__(h, a))
+                                                       lambda a, h=prep.host: self._preferred.__setitem__(h, a),
+                                                       self._connect_remaining)
         else:
             if https:
                 conn = _HTTPSConnection(proxy.host, proxy.port, timeout=timeout, context=self.tls_context(verified))
@@ -1569,8 +1611,13 @@ class Fetcher:
                 conn.set_tunnel(prep.host, prep.port, headers=self._tunnel_headers(proxy))
             else:
                 conn = http.client.HTTPConnection(proxy.host, proxy.port, timeout=timeout)
-            conn._create_connection = _connect_factory(None, None, on_socket)
+            conn._create_connection = _connect_factory(None, None, on_socket, remaining=self._connect_remaining)
         return conn, key, False
+
+    def _connect_remaining(self) -> float | None:
+        """Seconds left of the current response's deadline (None outside a request)."""
+        wd = getattr(self._local, "watchdog", None)
+        return None if wd is None else wd.remaining()
 
     def _register_socket(self, sock: socket.socket) -> None:
         wd = getattr(self._local, "watchdog", None)
@@ -1730,6 +1777,14 @@ class Fetcher:
             incomplete = True
         if not raw_truncated and not wd.fired and isinstance(getattr(resp, "length", None), int) and resp.length > 0:
             incomplete = True            # the connection closed before Content-Length bytes arrived
+        elif (not incomplete and not raw_truncated and not wd.fired and getattr(resp, "length", None) == 0
+              and not resp.isclosed()):
+            # Python 3.10: read1() does not mark the response closed when Content-Length is used up (3.11+ does),
+            # so the keep-alive connection would never return to the pool. read() of the 0 bytes left closes it.
+            try:
+                resp.read()
+            except (OSError, ValueError, http.client.HTTPException):
+                incomplete = True
         raw = b"".join(chunks)
         if len(raw) > raw_limit:
             raw, raw_truncated = raw[:raw_limit], True
@@ -1883,6 +1938,11 @@ def _cap_for(source: str, headers: HeaderList) -> int:
     return CAPS[cls]
 
 
+def _unusable_proxy_message(proxy: Proxy) -> str:
+    return (f"proxy {proxy.display} is not supported (only http:// proxies are); nothing was sent directly instead. "
+            "Fix the HTTP(S)_PROXY setting or scan with --no-proxy")
+
+
 def _close(conn: Any) -> None:
     try:
         conn.close()
@@ -1951,7 +2011,7 @@ def coverage_reason(response: Response | None) -> str | None:
 
 __all__ = ["MIN_DELAY", "MAX_CRAWL_DELAY", "MAX_HOPS", "PROFILE_BUDGETS", "CRAWL_HARD_CAP", "CAPS", "SOURCE_CLASS",
            "METADATA_ADDRESSES", "BAD_PORTS", "ERROR_CODES", "EVENTS", "TOO_MANY_HEADERS", "CorpusHooks", "Resolver", "Resolution",
-           "Proxy", "parse_proxy", "CookieJar", "parse_cookie_date", "HostLimiter", "FetchRefused", "Fetcher",
+           "Proxy", "parse_proxy", "unusable_proxy", "CookieJar", "parse_cookie_date", "HostLimiter", "FetchRefused", "Fetcher",
            "address_category", "ssrf_allows", "ip_literal", "gai_status", "content_codings", "decode_body",
            "parse_retry_after", "normalise_headers", "next_url", "classify_error", "error_code", "coverage_reason",
            "redact_cookie_request", "i18n_catalog"]

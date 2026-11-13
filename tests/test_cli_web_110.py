@@ -210,7 +210,8 @@ def test_json_report_and_english_output_of_a_web_scan(site, tmp_path, capsys):
     doc = json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))
     assert doc["web"]["profile"] == "standard" and doc["web"]["grades"]["kashif"]["grade"]
     assert doc["notes_en"][0] == "Profile standard: at most 45 requests; no active test."
-    assert doc["notes"][0].startswith("ملف الفحص standard: 45 طلبًا على الأكثر")
+    # "standard: 45" no longer joins into one left-to-right run that shows 45 beside "ملف الفحص" (ux-i18n review)
+    assert doc["notes"][0].startswith("ملف الفحص standard: بحدٍّ أقصى 45 طلبًا")
     for text in (out, *(prefix.with_suffix(f".{x}").read_text(encoding="utf-8") for x in ("md", "html", "sarif"))):
         assert not ARABIC.search(text), sorted(set(ARABIC.findall(text)))[:20]
     assert "Kashif Web Grade" in prefix.with_suffix(".html").read_text(encoding="utf-8")

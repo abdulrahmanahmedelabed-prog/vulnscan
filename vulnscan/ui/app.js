@@ -340,11 +340,12 @@ const pill = (s) => `<span class="pill sev-${s}"><span class="dot"></span>${esc(
 /* In Arabic text, isolate each Latin run so the bidi algorithm neither mirrors its brackets (order_query()) nor
    reorders its words: a run is words of letters, digits and code punctuation joined by spaces, so the numbers of
    "OWASP Top 10:2021", "45 CFR 164.312" or "NIST SP 800-53 Rev. 5" and the dashes of "--sha256" stay in place.
-   Trailing punctuation is left to the Arabic sentence; a run without a Latin letter (a plain number) needs no isolate. */
+   Trailing punctuation is left to the Arabic sentence, but a grade's "+" or "*" stays in its run ("A+", "F*", which
+   otherwise display as "+A", "*F"); a run without a Latin letter (a plain number) needs no isolate. */
 const bidi = (text) => {
   const str = String(text ?? '');
   if (lang !== 'ar' || !/[؀-ۿ]/.test(str)) return esc(str);
-  const word = String.raw`(?:--?)?[A-Za-z0-9_$./~][\w$:/.~-]*(?:\([^()؀-ۿ]*\))*`;
+  const word = String.raw`(?:--?)?[A-Za-z0-9_$./~][\w$:/.~-]*[+*]*(?:\([^()؀-ۿ]*\))*`;
   const rx = new RegExp(String.raw`${word}(?:\.? +${word})*`, 'g');
   let out = '', last = 0, m;
   while ((m = rx.exec(str))) {
@@ -1109,12 +1110,12 @@ function webDetailHTML(f) {
   if (ids.length) out += `<section class="d-sec"><h2>${ic('compliance')}${esc(t('web.mapping'))}</h2><div class="d-tags">${ids.map((v) => `<span class="tag code" dir="ltr">${esc(v)}</span>`).join('')}</div></section>`;
   return out;
 }
-const webTable = (head, rows) => (rows.length
-  ? `<div class="tw"><table class="web-table"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td dir="auto">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+const webTable = (head, rows, cls = '') => (rows.length
+  ? `<div class="tw"><table class="web-table${cls ? ' ' + cls : ''}"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td dir="auto">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
   : `<p class="muted">${esc(t('web.empty'))}</p>`);
 function webTabs(name, tabs) {
   if (!tabs.length) return '';
-  return `<div class="wtabs" data-wtabs="${esc(name)}"><div class="tabs" role="tablist">${tabs.map((tb, i) => `<button class="tab${i ? '' : ' active'}" type="button" role="tab" aria-selected="${i ? 'false' : 'true'}" data-wt="${i}">${esc(tb.label)}</button>`).join('')}</div>`
+  return `<div class="wtabs" data-wtabs="${esc(name)}"><div class="tabs" role="tablist">${tabs.map((tb, i) => `<button class="tab${i ? '' : ' active'}" type="button" role="tab" aria-selected="${i ? 'false' : 'true'}" data-wt="${i}"><bdi dir="auto">${esc(tb.label)}</bdi></button>`).join('')}</div>`
     + tabs.map((tb, i) => `<div class="wpane${i ? ' hidden' : ''}" role="tabpanel" data-wp="${i}">${tb.body}</div>`).join('') + '</div>';
 }
 function wireTabs(root) {
@@ -1136,26 +1137,27 @@ function webPanelHTML(v) {
     const caps = strList(g.caps);
     return `<div class="grade-card g-${esc(g.key)}"><span class="g-name">${esc(g.name)}</span><span class="g-letter" dir="ltr">${esc(g.grade || '—')}</span>`
       + `<span class="muted" dir="ltr">${esc(score || (g.grade ? '' : t('web.none')))}</span>`
-      + (g.label ? `<small class="muted">${esc(g.label)}</small>` : '')
-      + (caps.length ? `<details><summary>${esc(t('web.caps'))}</summary><ul>${caps.slice(0, 8).map((c) => `<li>${esc(c)}</li>`).join('')}</ul></details>` : '') + '</div>';
+      + (g.label ? `<small class="muted">${bidi(g.label)}</small>` : '')
+      + strList(g.notes).slice(0, 4).map((n) => `<small class="muted">${bidi(n)}</small>`).join('')
+      + (caps.length ? `<details><summary>${esc(t('web.caps'))}</summary><ul>${caps.slice(0, 8).map((c) => `<li>${bidi(c)}</li>`).join('')}</ul></details>` : '') + '</div>';
   }).join('')}</div>`;
   if (grades.some((g) => g.provisional)) html += `<p class="muted small">${esc(t('web.provisional'))}</p>`;
   const cov = v.coverage || {}; const counts = cov.counts || {}; const states = cov.states || {};
   html += `<h2 class="web-h">${ic('check')}${esc(t('web.coverage'))}</h2><div class="cov-chips">${['pass', 'fail', 'not_applicable', 'not_tested', 'inconclusive']
     .map((s) => `<span class="chip cov-${s}">${esc(states[s] || s)} <b>${esc(num(counts[s]) || '0')}</b></span>`).join('')}</div><p class="muted small">${esc(t('web.covNote'))}</p>`;
   const probs = Array.isArray(cov.problems) ? cov.problems : [];
-  if (probs.length) html += `<details class="web-details"><summary>${esc(t('web.covDetails'))} (${probs.length})</summary>${webTable([t('web.check'), t('web.state'), t('web.reason')], probs.map((r) => strList(r)))}</details>`;
+  if (probs.length) html += `<details class="web-details"><summary>${esc(t('web.covDetails'))} (${probs.length})</summary>${webTable([t('web.check'), t('web.state'), t('web.reason')], probs.map((r) => strList(r)), 'cov-table')}</details>`;
   const d = v.diff;
   if (d && typeof d === 'object') {
-    html += `<h2 class="web-h">${ic('compare')}${esc(t('web.diff'))}</h2>` + strList(d.notes).map((n) => `<p class="muted">${esc(n)}</p>`).join('');
+    html += `<h2 class="web-h">${ic('compare')}${esc(t('web.diff'))}</h2>` + strList(d.notes).map((n) => `<p class="muted">${bidi(n)}</p>`).join('');
     if (d.comparable) {
       const rowsOf = (list) => (Array.isArray(list) ? list : []).map((r) => `<li>${pill(['critical', 'high', 'medium', 'low', 'info'].includes(r.severity) ? r.severity : 'info')} <code dir="ltr">${esc(r.rule)}</code> <span dir="auto">${esc(r.title)}</span></li>`).join('');
       const post = Array.isArray(d.posture) ? d.posture : [];
-      if (strList(d.grades).length) html += `<p><b>${esc(t('web.dGrades'))}:</b> ${strList(d.grades).map((g) => `<bdi>${esc(g)}</bdi>`).join(' · ')}</p>`;
+      if (strList(d.grades).length) html += `<p><b>${esc(t('web.dGrades'))}:</b> ${strList(d.grades).map((g) => `<bdi>${bidi(g)}</bdi>`).join(' · ')}</p>`;
       html += `<div class="diff-grid"><div><h3>${esc(t('web.dNew'))} <span class="count">${esc(String((d.new || []).length))}</span></h3><ul class="diff-list">${rowsOf(d.new)}</ul></div>`
         + `<div><h3>${esc(t('web.dResolved'))} <span class="count">${esc(String((d.resolved || []).length))}</span></h3><ul class="diff-list">${rowsOf(d.resolved)}</ul></div></div>`
         + `<p class="muted small">${esc(t('web.dUnchanged'))}: ${esc(num(d.unchanged) || '0')}</p>`
-        + `<h3>${esc(t('web.dPosture'))}</h3>` + (post.length ? `<ul class="posture">${post.map((p) => `<li class="dir-${esc(p.direction)}"><b>${esc(p.label)}</b> <span dir="auto">${esc(p.text)}</span></li>`).join('')}</ul>` : `<p class="muted">${esc(t('web.dNone'))}</p>`);
+        + `<h3>${esc(t('web.dPosture'))}</h3>` + (post.length ? `<ul class="posture">${post.map((p) => `<li class="dir-${esc(p.direction)}"><b>${esc(p.label)}</b> <span dir="auto">${bidi(p.text)}</span></li>`).join('')}</ul>` : `<p class="muted">${esc(t('web.dNone'))}</p>`);
     }
   }
   const inv = Array.isArray(v.inventory) ? v.inventory : [];

@@ -88,7 +88,7 @@ STR: dict[str, tuple[str, str]] = {
                 "أعاد عنوان البدء التوجيه إلى موقع آخر ({host})؛ والمضيف النهائي هو الذي فُحص."),
     "blocked": ("The site answered with {what}; optional requests were not sent and the affected checks are "
                 "inconclusive (WEB990).",
-                "أجاب الموقع بـ {what}؛ فلم تُرسل الطلبات الاختيارية، والفحوص المتأثرة غير حاسمة (WEB990)."),
+                "أجاب الموقع ب{what}؛ فلم تُرسل الطلبات الاختيارية، والفحوص المتأثرة غير حاسمة (WEB990)."),
     "waf_what": ("a {provider} challenge or block page", "صفحة تحدٍّ أو حظر من {provider}"),
     "rate_what": ("a rate limit (HTTP {status})", "تقييد لمعدل الطلبات (HTTP {status})"),
     "waf_provider": ("Detected provider: {provider}.", "المزوّد المكتشف: {provider}."),

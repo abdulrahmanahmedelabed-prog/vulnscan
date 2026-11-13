@@ -95,7 +95,8 @@ def test_web_panel_shows_site_text_only_as_escaped_text():
     # panel built itself from escaped parts
     raw = [m for m in re.findall(r"\$\{([a-z]+\.[A-Za-z_]+)\b(?!\()", sec) if m != "tb.body" and not m.endswith(".length")]
     assert not raw, raw
-    assert "esc(g.grade" in sec and "esc(sn.caveat)" in sec and "esc(b.code)" in sec and "esc(p.text)" in sec
+    # bidi() escapes too: engine text with Latin runs (grade labels, caps, posture) is isolated in Arabic (ux-i18n)
+    assert "esc(g.grade" in sec and "esc(sn.caveat)" in sec and "esc(b.code)" in sec and "bidi(p.text)" in sec
 
 
 NODE = shutil.which("node")
@@ -278,7 +279,7 @@ const ic = (name, cls = '') => `<svg class="i ${cls}"><use href="#i-${name}"/></
 const pill = (s) => `<span class="pill sev-${s}">${esc(s)}</span>`;
 const copyBtn = (text) => `<button class="copy" data-copy="${esc(text)}"></button>`;
 const $ = () => null; const $$ = () => [];
-""" + web + """
+""" + JS[JS.index("const bidi = (text) =>"):JS.index("const ARABIC = /")] + web + """
 const [vArg, fArg] = process.argv.slice(-2); const views = JSON.parse(vArg); const f = JSON.parse(fArg); const res = {};
 for (const lg of ['en', 'ar']) { lang = lg; res[lg] = webPanelHTML(views[lg]); res[lg + '_detail'] = webDetailHTML(f); }
 process.stdout.write(JSON.stringify(res));

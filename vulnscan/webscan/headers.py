@@ -1527,6 +1527,10 @@ def _caching(st: _Run, docs) -> None:
             st.emit("WEB315", r, ev, severity="medium", confidence="firm", group_value="cache-hit",
                     notes=[_note("cache_hit", value=hit, cookie=sess[0].name), why_note],
                     params={"cookie": sess[0].name})
+        elif why == ["vary"] and not (r.request_headers.has("cookie") or r.request_headers.has("authorization")):
+            # only the private (browser) cache is left, and the request carried no Cookie/Authorization: the stored copy
+            # is the anonymous variant (Django's SessionMiddleware adds Vary: Cookie to every page that reads the session)
+            continue
         elif "no-store" not in cc and _storable(r, cc):
             st.emit("WEB315", r, ev, severity="low", confidence="firm", group_value="no-store-missing",
                     notes=[_note("cache_no_store", value=cc_shown), why_note])

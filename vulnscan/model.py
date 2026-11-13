@@ -31,6 +31,10 @@ _LEGACY_WEB_SNIPPETS = {
     "WEB-x-content-type-options": "HTTP", "WEB-referrer-policy": "HTTP", "WEB-permissions-policy": "HTTP",
     "WEB040": "script-src 'unsafe-inline'", "WEB041": "script-src 'unsafe-eval'", "WEB042": "script-src *",
     "WEB043": None, "WEB010": None, "WEB011": None,     # None: the snippet itself (the CSP or header value, ≤ 120)
+    # page and probe rules whose 1.0.1 snippet was a constant
+    "WEB052": "<input type=password>", "WEB055": "Index of /", "WEB056": "stack trace",
+    "WEB060": "/.well-known/security.txt",
+    "WEB000": "",                                       # the 1.0.1 snippet was the scanned http:// URL (extra["url"])
 }
 _LEGACY_COOKIE_RULES = frozenset({"WEB020", "WEB021", "WEB022"})   # 1.0.1 snippet: the title (names the cookie)
 
@@ -61,7 +65,8 @@ class Finding:
         * Web findings fingerprint on the title plus a snippet with volatile values removed (cookie values,
           HTTP status codes), so an unchanged site is not reported as new on every run. 1.1.0 web findings that carry
           ``extra["fp_key"]`` fingerprint on it (rule, host, response kind and normalised value: no nonces, dates
-          or counts); the 1.0.1 header, CSP and cookie rules keep their 1.0.1 fingerprints (``extra["fp_title"]``).
+          or counts); the 1.0.1 rules whose 1.0.1 snippet can be rebuilt (headers, CSP, cookies, WEB000, WEB052,
+          WEB055, WEB056, WEB060) keep their 1.0.1 fingerprints (``extra["fp_title"]``).
         A deduplication index (added by assign_fingerprints) distinguishes identical findings in one file."""
         file = self.extra.get("archive_member") or self.file
         snippet = self.snippet or ""
@@ -71,7 +76,10 @@ class Finding:
             if isinstance(fp_title, str) and fp_title and (self.rule_id in _LEGACY_WEB_SNIPPETS
                                                            or self.rule_id in _LEGACY_COOKIE_RULES):
                 title = fp_title                          # the 1.0.1 title: a 1.0.x baseline still matches
-                snippet = _LEGACY_WEB_SNIPPETS.get(self.rule_id) or snippet
+                if self.rule_id == "WEB000":
+                    snippet = str(self.extra.get("url") or snippet)
+                else:
+                    snippet = _LEGACY_WEB_SNIPPETS.get(self.rule_id) or snippet
             elif isinstance(fp_key, str) and fp_key:      # 1.1.0 grouping key: stable across reruns (spec §3.5)
                 raw = f"{self.rule_id}\x00{file.replace(chr(92), '/')}\x00fp:{fp_key}"
                 return hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()[:16]

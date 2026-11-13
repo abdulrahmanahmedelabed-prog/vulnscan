@@ -775,6 +775,10 @@ details summary{cursor:pointer;color:var(--accent-text);font-size:13px}
 .web-table{width:100%;border-collapse:collapse;font-size:12.5px}
 .web-table th,.web-table td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:start;vertical-align:top;overflow-wrap:anywhere}
 .web-table th{color:var(--muted);font-weight:600;background:var(--surface-2)}
+/* overflow-wrap:anywhere lets a cell shrink to one letter: at 360px "فاشل", "missing" and "القيمة" broke into letters.
+   A floor per cell keeps short words whole (long URLs and values still wrap); the state column never wraps. */
+.web-table th,.web-table td{min-width:4.5em}.web-table th{overflow-wrap:normal}
+.cov-table td:nth-child(2){white-space:nowrap}
 .wtabs{margin-top:var(--s2)}.wtabs>.tabs{padding:0}
 .wpane{padding:var(--s3) 0}
 .snip{border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--s3) var(--s4);margin-top:var(--s3)}
