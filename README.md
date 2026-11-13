@@ -34,8 +34,8 @@ from a **local web UI** in English and Arabic.
   context-sensitive (k=2) points-to analysis; context-specific sanitizers (`html.escape` protects HTML only,
   not SQL or a shell); second-order (stored) injection through database tables.
 - **Rules and models** — 153 pattern rules, 48 dataflow and APEX rules and 19 built-in VQL queries (VQL is
-  Kashif's declarative query language over the program database), over 6,352 modelled library APIs
-  (1,044 sources, 4,529 sinks, 779 sanitizers).
+  Kashif's declarative query language over the program database), over 6,354 modelled library APIs
+  (1,044 sources, 4,531 sinks, 779 sanitizers).
 - **Fewer false positives on real code** — test, documentation and example code is recognised by its path: fixture
   noise there is dropped and the rest is lowered to info; vendored bundles are skipped. On the 35 open-source projects
   (of 38) that 0.9 could finish, findings went from 17,228 to 2,607 (critical and high: 4,345 to 783); half of 0.9's
@@ -148,6 +148,13 @@ kept as `<name>.old` until the next start, and any failure rolls back. On macOS,
 Rosetta is offered the native Apple Silicon build. If the binary's folder is not writable (for example
 `/usr/local/bin`), run `sudo kashif update`. pip and source installs are never modified: the UI and
 `kashif update` show the exact command instead (`python -m pip install --upgrade ...` or `git pull`).
+A pip install made before 1.0.2 is the distribution `vulnscan` (from 1.0.2 on it is `kashif`): remove it before
+installing the new version, or the two would own the same files (`vulnscan` on PyPI is an unrelated project):
+
+```bash
+python -m pip uninstall -y vulnscan kashif
+pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan
+```
 The check asks `api.github.com` for the latest release at most every 6 hours and sends nothing about your code;
 turn off **Check for updates automatically** in Settings to disable it.
 
@@ -242,7 +249,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.0.1`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.0.2`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `kashif . --diff-base origin/main` reports only what the branch introduces
@@ -438,7 +445,7 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
   من 17,228 إلى 2,607 (الحرجة والعالية من 4,345 إلى 783)، وكان نصف نتائج 0.9 في كود الاختبارات والتوثيق والأمثلة.
 - **أسرع:** `--jobs N` لتوزيع الفحص على المعالجات، و`--cache DIR` لإعادة فحص مشروع لم يتغير بالنتائج نفسها: Django كاملًا
   (6,973 ملفًا) في 311–411 ثانية أول مرة على 4 معالجات افتراضية (كان 594 ثانية في 0.9)، و3.5 ثوانٍ عند الإعادة.
-- النماذج **6,352** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,529، ومعقّمات 779). التفاصيل في `CHANGELOG.md`.
+- النماذج **6,354** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,531، ومعقّمات 779). التفاصيل في `CHANGELOG.md`.
 
 ### فحص الويب بعمق أكبر
 
@@ -838,6 +845,14 @@ kashif update --yes      # دون سؤال للتأكيد (للسكربتات)
 المصدري فلا يُعدَّل أبدًا: تعرض الواجهة و`kashif update` الأمر المناسب بدلًا من ذلك. يسأل التحقق `api.github.com`
 عن أحدث إصدار مرة كل 6 ساعات على الأكثر ولا يرسل شيئًا عن الكود؛ ويمكن إيقافه من خيار
 **التحقق من التحديثات تلقائيًا** في الإعدادات.
+
+التثبيت عبر pip قبل الإصدار 1.0.2 يحمل اسم التوزيعة `vulnscan` (وصار اسمها `kashif` منذ 1.0.2)، فأزِله قبل تثبيت
+الإصدار الجديد وإلا امتلكت التوزيعتان الملفات نفسها (أما `vulnscan` على PyPI فمشروع آخر لا علاقة له بكاشِف):
+
+```bash
+python -m pip uninstall -y vulnscan kashif
+pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan
+```
 
 ## التشغيل بنقرة واحدة
 

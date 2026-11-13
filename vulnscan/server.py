@@ -21,6 +21,7 @@ from . import __version__, updater
 from .deps import audit_dependencies
 from .external import available, run_external
 from .i18n import to_en
+from .i18n.plural import ar_count
 from .model import SEVERITY_RANK, Finding, assign_fingerprints, sort_findings
 from .report import render_html, render_json, render_markdown, render_sarif, summary_counts
 from .rules import RULES
@@ -180,6 +181,10 @@ class _SurfaceJobs:
                 self.running.pop(scan["id"], None)
 
 
+# "N pages" after a preposition (على), in the form that agrees with N (vulnscan/i18n/plural.py)
+_PAGES_OBL = ("صفحة واحدة", "صفحتين", "{n} صفحات", "{n} صفحةً", "{n} صفحة")
+
+
 def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None:
     """Executes in a worker thread and persists progress."""
     target = scan["target"]
@@ -197,7 +202,8 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
             # raises WebUnreachable -> status "error"
             findings, extra, files = scan_site(target, timeout=timeout, deep=deep, crawl=crawl, delay=delay)
             if crawl:
-                notes.append(f"فحص ويب سلبي مع زحف على {files} صفحة من النطاق نفسه (طلب كل {delay:g} ثانية).")
+                notes.append(f"فحص ويب سلبي مع زحف على {ar_count(files, _PAGES_OBL)} من النطاق نفسه "
+                             f"(طلب كل {delay:g} ثانية).")
             else:
                 notes.append("فحص ويب سلبي أعمق: تحليل الصفحة ومسارات مكشوفة شائعة." if deep else "فحص ويب سلبي: طلب واحد فقط.")
             if extra:
@@ -217,7 +223,10 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
             if settings.get("use_osv", True):
                 dep, err = audit_dependencies(path)
                 findings.extend(dep)
-                notes.append(err or f"OSV.dev: {len(dep)} ثغرة معروفة في الاعتماديات.")
+                if not err:                    # the CLI's note: the count agrees with its noun (i18n/plural.py)
+                    from .cli import _KNOWN_VULNS
+                    err = f"استعلام OSV.dev عن الاعتماديات: {ar_count(len(dep), _KNOWN_VULNS)}."
+                notes.append(err)
             if settings.get("use_external", True):
                 ext, ran = run_external(path)
                 findings.extend(ext)
@@ -885,7 +894,8 @@ def serve(port: int = 8765, open_browser: bool = True, home: pathlib.Path | None
                 raise
             time.sleep(0.25)
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    print(f"Kashif UI: {url}   (Ctrl+C to stop)" if lang == "en" else f"واجهة كاشِف: {url}   (Ctrl+C للإيقاف)")
+    print({"en": f"Kashif UI: {url}   (Ctrl+C to stop)", "ar": f"واجهة كاشِف: {url}   (Ctrl+C للإيقاف)"}.get(
+        lang, f"واجهة كاشِف: {url}   (Ctrl+C للإيقاف)\nKashif UI: {url}   (Ctrl+C to stop)"))   # "both": both lines
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:

@@ -22,6 +22,10 @@ CATALOG: dict[str, str] = {
         "Redirect only to local paths, or check the host against an allowlist before redirecting.",
     "لا تحوّل المدخلات إلى template.HTML/HTMLAttr/CSS/JSStr/Srcset؛ دع html/template يهرّبها تلقائيًا.":
         "Do not convert input to template.HTML/HTMLAttr/CSS/JSStr/Srcset; let html/template escape it automatically.",
+    "لا تقيّم كود JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.":
+        "Do not evaluate JavaScript code or expressions (otto/goja/expr/govaluate) built from input; pass input only as "
+        "variables.",
+    # the wording of Kashif 1.0.1 (الشيفرة), still in older reports
     "لا تقيّم شيفرة JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.":
         "Do not evaluate JavaScript code or expressions (otto/goja/expr/govaluate) built from input; pass input only as "
         "variables.",
@@ -42,6 +46,10 @@ CATALOG: dict[str, str] = {
     "لا تفك تسلسل بيانات غير موثوقة بـ NetDataContractSerializer أو XamlReader أو fastJSON؛ استخدم System.Text.Json بأنواع ثابتة.":
         "Do not deserialize untrusted data with NetDataContractSerializer, XamlReader or fastJSON; use System.Text.Json "
         "with fixed types.",
+    "لا تترجم أو تنفّذ كود C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط.":
+        "Do not compile or run C# or JavaScript code or templates (Razor/Scriban/Handlebars) built from input; pass input "
+        "only as model data.",
+    # the wording of Kashif 1.0.1 (الشيفرة), still in older reports
     "لا تترجم أو تنفّذ شيفرة C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط.":
         "Do not compile or run C# or JavaScript code or templates (Razor/Scriban/Handlebars) built from input; pass input "
         "only as model data.",

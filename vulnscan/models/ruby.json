@@ -708,8 +708,6 @@
     "Net.HTTP.Get.new",
     "Net::HTTP::Post.new",
     "Net.HTTP.Post.new",
-    "URI.parse",
-    "URI",
     "URI.open",
     "open",
     "OpenURI.open_uri",
@@ -756,6 +754,44 @@
    "advice": "قيّد الوجهات وارفض العناوين الداخلية."
   },
   {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound URL (SSRF)",
+   "args": [
+    "self"
+   ],
+   "names": [
+    "URI.parse.read",
+    "URI.parse.open",
+    "URI.read"
+   ],
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات وارفض العناوين الداخلية.",
+   "_comment": "open-uri: URI.parse(x).read / URI(x).read fetch the URL",
+   "receiver": "^URI(?:\\.parse)?$"
+  },
+  {
+   "rule": "DF010",
+   "severity": "high",
+   "cwe": "CWE-918",
+   "label": "outbound URL (SSRF)",
+   "args": [
+    "self"
+   ],
+   "names": [
+    "read",
+    "open"
+   ],
+   "receiver": "^(?:self\\.)?(?:[a-z_]\\w*_)?(?:uri|url)$",
+   "receiver_from": "^URI(?:\\.parse|\\.join)?$",
+   "title": "Tainted URL reaches an outbound request",
+   "title_ar": "عنوان ملوّث يصل إلى طلب صادر (SSRF)",
+   "advice": "قيّد الوجهات وارفض العناوين الداخلية.",
+   "_comment": "open-uri: uri.read / uri.open fetch the URL (URI.parse alone only parses it); receiver_from: any variable bound to URI.parse / URI() / URI.join"
+  },
+  {
    "rule": "DF012",
    "severity": "critical",
    "cwe": "CWE-94",
@@ -769,8 +805,8 @@
     "safe_constantize"
    ],
    "title": "Tainted data reaches code evaluation",
-   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
-   "advice": "لا تنفّذ شيفرة مبنية من المدخلات."
+   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ كود",
+   "advice": "لا تنفّذ كودًا مبنيًا من المدخلات."
   },
   {
    "rule": "DF012",
@@ -820,8 +856,8 @@
     "DRbObject.new_with_uri"
    ],
    "title": "Tainted data reaches code evaluation",
-   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
-   "advice": "لا تنفّذ شيفرة مبنية من المدخلات."
+   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ كود",
+   "advice": "لا تنفّذ كودًا مبنيًا من المدخلات."
   },
   {
    "rule": "DF013",

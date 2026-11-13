@@ -141,10 +141,10 @@ STR = {
         "nearby": "reported nearby instead: {where}",
         "todo": "line {line}: known gap {rule} (expect-todo) - still not reported",
         "todo_fixed": "line {line}: {rule} is now reported - change expect-todo to expect",
-        "expectations": "{n} expectation(s)",
-        "summary": "{files} fixture file(s), {exp} expectation(s): {ok} matched, {missing} missing, {unexpected} unexpected"
+        "expectations": "{n:expectations}",
+        "summary": "{files:fixture_files}, {exp:expectations}: {ok} matched, {missing} missing, {unexpected} unexpected"
                    "{todo}",
-        "summary_todo": ", {n} known gap(s)",
+        "summary_todo": ", {n:known_gaps}",
         "result_ok": "OK - all expectations met", "result_fail": "FAILED", "result_error": "ERROR - the tests could not run",
         "no_fixtures": "fixtures directory not found: {path}",
         "no_fixture_files": "no fixture files in {path}",
@@ -155,17 +155,17 @@ STR = {
         "annot_no_ids": "{file}:{line}: 'kashif: expect' needs at least one rule id or CWE",
         "annot_no_target": "{file}:{line}: annotation is not followed by a line of code",
         "scan_note": "note: {note}",
-        "lint_ok": "{pack}: lint passed ({warnings} warning(s))",
-        "lint_fail": "{pack}: {errors} error(s), {warnings} warning(s)",
+        "lint_ok": "{pack}: lint passed ({warnings:warnings})",
+        "lint_fail": "{pack}: {errors:errors}, {warnings:warnings}",
         "created": "Created rule pack {name} in {path}",
         "next_steps": "Next: edit models/ and queries/, then run:\n  kashif rules test {path}\n"
                       "  kashif rules lint {path}\n  kashif rules pack {path}",
         "packed": "Packed {name} {version}: {path}\n  files: {files}   size: {size} bytes\n  SHA-256: {sha}",
-        "verified": "{name} {version}: archive is well-formed ({files} files)\n  SHA-256: {sha}",
+        "verified": "{name} {version}: archive is well-formed ({files:files})\n  SHA-256: {sha}",
         "installed": "Installed {name} {version} into {path}\n  SHA-256: {sha}\n"
                      "Use it in a scan with:  --models {models} --query {queries}",
         "no_packs": "No rule packs installed in {path}",
-        "pack_row": "{name} {version}  ({rules} rule(s))  {description}",
+        "pack_row": "{name} {version}  ({rules:rules})  {description}",
         "e_exists": "{path} already exists (use force / --force to replace it)",
         "e_not_empty": "{path} exists and is not empty (use force / --force)",
         "e_pack_name": "invalid pack name {name!r}: use lowercase letters, digits, '.', '_' and '-' (max 64 characters)",
@@ -237,9 +237,9 @@ STR = {
         "nearby": "أُبلغ عنه في سطر مجاور: {where}",
         "todo": "السطر {line}: فجوة معروفة {rule} (expect-todo) — ما زالت غير مكتشفة",
         "todo_fixed": "السطر {line}: {rule} يُكتشف الآن — حوّل expect-todo إلى expect",
-        "expectations": "{n} توقّع",
-        "summary": "{files} ملف اختبار، {exp} توقّع: {ok} مطابق، {missing} مفقود، {unexpected} غير متوقع{todo}",
-        "summary_todo": "، {n} فجوة معروفة",
+        "expectations": "{n:expectations}",
+        "summary": "{files:fixture_files}، {exp:expectations}: مطابق {ok}، مفقود {missing}، غير متوقع {unexpected}{todo}",
+        "summary_todo": "، {n:known_gaps}",
         "result_ok": "نجحت كل التوقعات", "result_fail": "فشل", "result_error": "خطأ — تعذّر تشغيل الاختبارات",
         "no_fixtures": "مجلد ملفات الاختبار غير موجود: {path}",
         "no_fixture_files": "لا توجد ملفات اختبار في {path}",
@@ -248,19 +248,19 @@ STR = {
         "bad_model": "{file}: ليس JSON صالحًا ({msg})؛ المحرك سيتجاهل هذا الملف بصمت",
         "bad_query": "{file}: {msg}",
         "annot_no_ids": "{file}:{line}: التعليق 'kashif: expect' يحتاج معرّف قاعدة أو CWE واحدًا على الأقل",
-        "annot_no_target": "{file}:{line}: التعليق لا يتبعه سطر شيفرة",
+        "annot_no_target": "{file}:{line}: التعليق لا يتبعه سطر كود",
         "scan_note": "ملاحظة: {note}",
-        "lint_ok": "{pack}: نجح الفحص ({warnings} تحذير)",
-        "lint_fail": "{pack}: {errors} خطأ، {warnings} تحذير",
+        "lint_ok": "{pack}: نجح الفحص ({warnings:warnings})",
+        "lint_fail": "{pack}: {errors:errors}، {warnings:warnings}",
         "created": "أُنشئت حزمة القواعد {name} في {path}",
         "next_steps": "التالي: عدّل models/ و queries/ ثم شغّل:\n  kashif rules test {path}\n"
                       "  kashif rules lint {path}\n  kashif rules pack {path}",
         "packed": "حُزمت {name} {version}: {path}\n  الملفات: {files}   الحجم: {size} بايت\n  SHA-256: {sha}",
-        "verified": "{name} {version}: الأرشيف سليم البنية ({files} ملف)\n  SHA-256: {sha}",
+        "verified": "{name} {version}: الأرشيف سليم البنية ({files:files})\n  SHA-256: {sha}",
         "installed": "ثُبّتت {name} {version} في {path}\n  SHA-256: {sha}\n"
                      "استخدمها في الفحص بـ:  --models {models} --query {queries}",
         "no_packs": "لا توجد حزم قواعد مثبّتة في {path}",
-        "pack_row": "{name} {version}  ({rules} قاعدة)  {description}",
+        "pack_row": "{name} {version}  ({rules:rules})  {description}",
         "e_exists": "{path} موجود مسبقًا (استخدم force / --force للاستبدال)",
         "e_not_empty": "{path} موجود وغير فارغ (استخدم force / --force)",
         "e_pack_name": "اسم حزمة غير صالح {name!r}: استخدم أحرفًا إنجليزية صغيرة وأرقامًا و '.' و '_' و '-' (64 حرفًا كحد أقصى)",
@@ -333,8 +333,9 @@ def _valid_name(name) -> bool:
 
 
 def _t(lang: str, msg: str, /, **kw) -> str:
+    from .i18n.cliargs import fmt                  # "{n:expectations}": the noun agrees with the number
     table = STR.get(lang) or STR["en"]
-    return (table.get(msg) or STR["en"][msg]).format(**kw)
+    return fmt(table.get(msg) or STR["en"][msg], "ar" if table is STR["ar"] else "en", **kw)
 
 
 class PackError(Exception):
@@ -2023,7 +2024,7 @@ kashif rules list
             "## ملفات الاختبار والتعليقات\n\nضع أمثلة مصابة وآمنة تحت `fixtures/`. علامات التعليق المقبولة: `#` `//` `--` `/*` `<!--`.\n\n" + annotations
             + "\n\n- `expect A, B`: يجب الإبلاغ عن كل معرّف (قاعدة أو `CWE-89`) على السطر.\n- `expect-none`: لا نتيجة إطلاقًا على السطر؛ "
             "`expect-none A`: يُمنع `A` فقط.\n- `expect-todo A`: فجوة معروفة لا تُفشل التشغيل، ويُنبَّه عند إصلاحها.\n"
-            "- تعليق في سطر مستقل يخص أول سطر شيفرة بعده، ويمكن تكديس عدة تعليقات.\n- ما بعد ` -- ` أو بين قوسين تعليق حر.\n"
+            "- تعليق في سطر مستقل يخص أول سطر كود بعده، ويمكن تكديس عدة تعليقات.\n- ما بعد ` -- ` أو بين قوسين تعليق حر.\n"
             "- سطر بلا تعليق يجب ألا تُبلّغ عنه قواعد الحزمة نفسها (النطاق `pack`). مع `--scope all` يجب توسيم كل نتيجة لكل قاعدة.",
             "## مشغّل الاختبارات\n\n`test` يفحص ملفات الاختبار بنماذج واستعلامات الحزمة ويقارن النتائج بالتوقعات. يطبع لكل ملف «نجح/فشل» وفرقًا "
             "لكل سطر: `-` نتيجة متوقعة لم يُبلَّغ عنها (مع الأسطر المجاورة التي ظهرت فيها القاعدة)، و `+` نتيجة غير متوقعة. رموز الخروج: "
@@ -2111,69 +2112,166 @@ def _warn_origin(lang: str, sha: str) -> None:
     _emit(f"{_t(lang, 'warning')}: " + _t(lang, "w_origin", sha=sha), sys.stderr)
 
 
-def _parser() -> argparse.ArgumentParser:
+# --help in English and Arabic ("both": the Arabic line, then the English line; see vulnscan/i18n/cliargs.py)
+_HELP = {
+    "en": {
+        "desc": "Kashif rule-authoring kit: scaffold, test, lint, pack and install rule packs.",
+        "lang": "language of the output: en or ar (default: VULNSCAN_LANG or KASHIF_LANG, else en)",
+        "new": "create a rule pack from a template",
+        "dir": "directory of the new pack",
+        "name": "pack name (default: the directory name)",
+        "language": "language of the example fixtures",
+        "new_force": "write into a non-empty directory",
+        "test": "run the annotated fixtures of a pack",
+        "pack_dir": "rule pack directory (omit to test the built-in rules with --fixtures)",
+        "fixtures": "fixtures directory or file (default: PACK/fixtures)",
+        "scope": "pack: only the pack's rules may be 'unexpected' (default); all: every finding must be annotated",
+        "no_builtin": "do not run the built-in VQL queries",
+        "junit": "also write a JUnit XML report",
+        "json": "print the report as JSON",
+        "verbose": "also list the expectations that were met",
+        "quiet": "print nothing; use the exit code",
+        "lint": "validate a rule pack",
+        "lint_pack": "rule pack directory",
+        "monolingual": "a missing English or Arabic text is a warning, not an error",
+        "pack": "bundle a rule pack into one {ext} file",
+        "pack_output": "output file or directory",
+        "no_lint": "pack even when lint reports errors",
+        "sha_file": "also write FILE.sha256 (sha256sum format)",
+        "verify": "check a {ext} file without installing it",
+        "archive": "the {ext} file",
+        "sha256": "expected SHA-256 of the archive",
+        "install": "safely unpack a {ext} file into the packs directory",
+        "packs_dir": "where packs are installed (default: the Kashif home directory)",
+        "require_sha": "refuse to install without --sha256 (default: on when KASHIF_REQUIRE_PACK_SHA256=1)",
+        "install_force": "replace an installed pack of the same name",
+        "remove": "delete an installed pack",
+        "remove_name": "name of the installed pack",
+        "list": "list the installed packs",
+        "list_json": "print the list as JSON",
+        "docs": "print the rule language reference (Markdown)",
+        "commands": "commands",
+    },
+    "ar": {
+        "desc": "عُدّة كتابة القواعد في كاشِف: إنشاء حزم القواعد واختبارها وفحصها وحزمها وتثبيتها.",
+        "lang": "لغة المخرجات: en أو ar (الافتراضي: VULNSCAN_LANG أو KASHIF_LANG، وإلا en)",
+        "new": "أنشئ حزمة قواعد من قالب",
+        "dir": "مجلد الحزمة الجديدة",
+        "name": "اسم الحزمة (الافتراضي: اسم المجلد)",
+        "language": "لغة ملفات الاختبار النموذجية",
+        "new_force": "اكتب في مجلد غير فارغ",
+        "test": "شغّل ملفات الاختبار الموسومة في حزمة",
+        "pack_dir": "مجلد حزمة القواعد (أغفله لاختبار القواعد المدمجة مع --fixtures)",
+        "fixtures": "مجلد ملفات الاختبار أو ملف واحد (الافتراضي: PACK/fixtures)",
+        "scope": "pack: قواعد الحزمة وحدها يمكن أن تكون «غير متوقعة» (الافتراضي)؛ all: كل نتيجة يجب أن تكون موسومة",
+        "no_builtin": "لا تشغّل استعلامات VQL المدمجة",
+        "junit": "اكتب أيضًا تقرير JUnit XML",
+        "json": "اطبع التقرير بصيغة JSON",
+        "verbose": "اعرض أيضًا التوقعات التي تحققت",
+        "quiet": "لا تطبع شيئًا؛ استخدم رمز الخروج",
+        "lint": "تحقّق من صحة حزمة قواعد",
+        "lint_pack": "مجلد حزمة القواعد",
+        "monolingual": "غياب النص الإنجليزي أو العربي تحذير لا خطأ",
+        "pack": "اجمع حزمة قواعد في ملف {ext} واحد",
+        "pack_output": "ملف الإخراج أو مجلده",
+        "no_lint": "احزم حتى لو وجد الفحص أخطاء",
+        "sha_file": "اكتب أيضًا FILE.sha256 (بصيغة sha256sum)",
+        "verify": "افحص ملف {ext} دون تثبيته",
+        "archive": "ملف {ext}",
+        "sha256": "قيمة SHA-256 المتوقعة للأرشيف",
+        "install": "فُكّ ملف {ext} بأمان في مجلد الحزم",
+        "packs_dir": "مكان تثبيت الحزم (الافتراضي: مجلد كاشِف في مجلد المستخدم)",
+        "require_sha": "ارفض التثبيت دون --sha256 (مفعّل افتراضيًا إذا كان KASHIF_REQUIRE_PACK_SHA256=1)",
+        "install_force": "استبدل حزمة مثبّتة بالاسم نفسه",
+        "remove": "احذف حزمة مثبّتة",
+        "remove_name": "اسم الحزمة المثبّتة",
+        "list": "اعرض الحزم المثبّتة",
+        "list_json": "اطبع القائمة بصيغة JSON",
+        "docs": "اطبع مرجع لغة القواعد (Markdown)",
+        "commands": "الأوامر",
+    },
+}
+
+
+def _parser(lang: str = "en") -> argparse.ArgumentParser:
+    """The ``kashif rules`` parser; ``lang`` (en, ar or both) is the language of its help texts."""
+    from .i18n.cliargs import HelpFormatter, pick
+
+    def h(key: str) -> str:
+        return pick(lang, _HELP["ar"][key].format(ext=PACK_EXT), _HELP["en"][key].format(ext=PACK_EXT))
+
     common = argparse.ArgumentParser(add_help=False)
     # SUPPRESS: the option is accepted before and after the sub-command without one default hiding the other
-    common.add_argument("--lang", choices=("en", "ar"), default=argparse.SUPPRESS, help="language of the output")
-    ap = argparse.ArgumentParser(prog="kashif rules", parents=[common],
-                                 description="Kashif rule-authoring kit: scaffold, test, lint, pack and install rule packs.")
-    sub = ap.add_subparsers(dest="cmd", metavar="COMMAND")
-    p = sub.add_parser("new", parents=[common], help="create a rule pack from a template")
-    p.add_argument("dir")
-    p.add_argument("--name", help="pack name (default: the directory name)")
-    p.add_argument("--language", default="python", choices=SCAFFOLD_LANGUAGES, help="language of the example fixtures")
-    p.add_argument("--force", action="store_true", help="write into a non-empty directory")
-    p = sub.add_parser("test", parents=[common], help="run the annotated fixtures of a pack")
-    p.add_argument("pack", nargs="?", help="rule pack directory (omit to test the built-in rules with --fixtures)")
-    p.add_argument("--fixtures", help="fixtures directory or file (default: PACK/fixtures)")
-    p.add_argument("--scope", choices=("pack", "all"), default="pack",
-                   help="pack: only the pack's rules may be 'unexpected' (default); all: every finding must be annotated")
-    p.add_argument("--no-builtin-queries", action="store_true", help="do not run the built-in VQL queries")
-    p.add_argument("--junit", metavar="FILE", help="also write a JUnit XML report")
-    p.add_argument("--json", action="store_true", help="print the report as JSON")
-    p.add_argument("-v", "--verbose", action="store_true", help="also list the expectations that were met")
-    p.add_argument("-q", "--quiet", action="store_true", help="print nothing; use the exit code")
-    p = sub.add_parser("lint", parents=[common], help="validate a rule pack")
-    p.add_argument("pack")
-    p.add_argument("--allow-monolingual", action="store_true", help="a missing English or Arabic text is a warning, not an error")
-    p.add_argument("--json", action="store_true")
-    p = sub.add_parser("pack", parents=[common], help=f"bundle a rule pack into one {PACK_EXT} file")
-    p.add_argument("pack")
-    p.add_argument("-o", "--output", help="output file or directory")
-    p.add_argument("--no-lint", action="store_true", help="pack even when lint reports errors")
-    p.add_argument("--sha256-file", action="store_true", help="also write FILE.sha256 (sha256sum format)")
-    p = sub.add_parser("verify", parents=[common], help=f"check a {PACK_EXT} file without installing it")
-    p.add_argument("archive")
-    p.add_argument("--sha256", help="expected SHA-256 of the archive")
-    p = sub.add_parser("install", parents=[common], help=f"safely unpack a {PACK_EXT} file into the packs directory")
-    p.add_argument("archive")
-    p.add_argument("--packs-dir", help="where packs are installed (default: the Kashif home directory)")
-    p.add_argument("--sha256", help="expected SHA-256 of the archive")
+    common.add_argument("--lang", choices=("en", "ar", "both"), default=argparse.SUPPRESS, metavar="{en,ar}",
+                        help=h("lang"))
+    ap = argparse.ArgumentParser(prog="kashif rules", parents=[common], description=h("desc"),
+                                 formatter_class=HelpFormatter)
+    title = {"ar": _HELP["ar"]["commands"], "en": _HELP["en"]["commands"]}.get(
+        lang, f'{_HELP["ar"]["commands"]} / {_HELP["en"]["commands"]}')      # a heading: one line, as argparse's
+    sub = ap.add_subparsers(dest="cmd", metavar="COMMAND", title=title)
+
+    def command(name: str, key: str):
+        return sub.add_parser(name, parents=[common], help=h(key), description=h(key), formatter_class=HelpFormatter)
+
+    p = command("new", "new")
+    p.add_argument("dir", help=h("dir"))
+    p.add_argument("--name", help=h("name"))
+    p.add_argument("--language", default="python", choices=SCAFFOLD_LANGUAGES, help=h("language"))
+    p.add_argument("--force", action="store_true", help=h("new_force"))
+    p = command("test", "test")
+    p.add_argument("pack", nargs="?", help=h("pack_dir"))
+    p.add_argument("--fixtures", help=h("fixtures"))
+    p.add_argument("--scope", choices=("pack", "all"), default="pack", help=h("scope"))
+    p.add_argument("--no-builtin-queries", action="store_true", help=h("no_builtin"))
+    p.add_argument("--junit", metavar="FILE", help=h("junit"))
+    p.add_argument("--json", action="store_true", help=h("json"))
+    p.add_argument("-v", "--verbose", action="store_true", help=h("verbose"))
+    p.add_argument("-q", "--quiet", action="store_true", help=h("quiet"))
+    p = command("lint", "lint")
+    p.add_argument("pack", help=h("lint_pack"))
+    p.add_argument("--allow-monolingual", action="store_true", help=h("monolingual"))
+    p.add_argument("--json", action="store_true", help=h("json"))
+    p = command("pack", "pack")
+    p.add_argument("pack", help=h("lint_pack"))
+    p.add_argument("-o", "--output", help=h("pack_output"))
+    p.add_argument("--no-lint", action="store_true", help=h("no_lint"))
+    p.add_argument("--sha256-file", action="store_true", help=h("sha_file"))
+    p = command("verify", "verify")
+    p.add_argument("archive", help=h("archive"))
+    p.add_argument("--sha256", help=h("sha256"))
+    p = command("install", "install")
+    p.add_argument("archive", help=h("archive"))
+    p.add_argument("--packs-dir", help=h("packs_dir"))
+    p.add_argument("--sha256", help=h("sha256"))
     p.add_argument("--require-sha256", action="store_true", default=_env_flag("KASHIF_REQUIRE_PACK_SHA256"),
-                   help="refuse to install without --sha256 (default: on when KASHIF_REQUIRE_PACK_SHA256=1)")
-    p.add_argument("--force", action="store_true", help="replace an installed pack of the same name")
-    p = sub.add_parser("remove", parents=[common], help="delete an installed pack")
-    p.add_argument("name")
-    p.add_argument("--packs-dir")
-    p = sub.add_parser("list", parents=[common], help="list the installed packs")
-    p.add_argument("--packs-dir")
-    p.add_argument("--json", action="store_true")
-    sub.add_parser("docs", parents=[common], help="print the rule language reference (Markdown)")
+                   help=h("require_sha"))
+    p.add_argument("--force", action="store_true", help=h("install_force"))
+    p = command("remove", "remove")
+    p.add_argument("name", help=h("remove_name"))
+    p.add_argument("--packs-dir", help=h("packs_dir"))
+    p = command("list", "list")
+    p.add_argument("--packs-dir", help=h("packs_dir"))
+    p.add_argument("--json", action="store_true", help=h("list_json"))
+    command("docs", "docs")
     return ap
 
 
 def main(argv=None) -> int:
     """Command-line entry point. Returns 0 (ok), 1 (failing tests / lint errors) or 2 (usage, I/O or pack error)."""
-    ap = _parser()
+    from .i18n.cliargs import help_lang, lang_from_env, localized_argparse
+    argv = list(sys.argv[1:] if argv is None else argv)
+    env = lang_from_env() or "en"                  # VULNSCAN_LANG, then KASHIF_LANG
+    hlang = help_lang(argv, default=env)           # --help and usage errors follow --lang (en, ar or both)
     try:
-        args = ap.parse_args(argv)
+        with localized_argparse(hlang):
+            ap = _parser(hlang)
+            args = ap.parse_args(argv)
+            if not args.cmd:
+                ap.print_help()
+                return 2
     except SystemExit as e:
         return int(e.code or 0) if isinstance(e.code, int) else 2
-    if not args.cmd:
-        ap.print_help()
-        return 2
-    env = os.environ.get("KASHIF_LANG")
-    L = getattr(args, "lang", env if env in ("en", "ar") else "en")
+    L = "ar" if getattr(args, "lang", env) == "ar" else "en"    # "both": English messages, as from a "both" scan
     try:
         if args.cmd == "new":
             dest = new_pack(args.dir, args.name, args.language, force=args.force, lang=L)

@@ -205,17 +205,17 @@ STR = {
         "e_expires_status": "an expiry date only applies to accepted_risk",
         "e_expires_format": "expiry must be YYYY-MM-DD or +Nd, got {value!r}",
         "e_expires_past": "expiry {value} is not in the future",
-        "e_expires_max": "expiry {value} is more than {days} days ahead (policy limit)",
+        "e_expires_max": "expiry {value} is more than {days:days} ahead (policy limit)",
         "e_ticket": "ticket must be an http(s) URL, got {value!r}",
         "e_severity": "unknown severity {value!r}; use one of: {choices}",
         "e_reason": "a severity override needs a reason (--reason)",
         "e_fp_unknown": "no triaged finding matches {fp!r}; give the full fingerprint (16 hex digits, ':', index)",
-        "e_fp_ambiguous": "{fp!r} matches {n} fingerprints; give more characters",
+        "e_fp_ambiguous": "{fp!r} matches {n:fingerprints_obl}; give more characters",
         "e_comment": "a comment cannot be empty",
-        "e_expires_required": "an accepted risk needs an expiry (--expires) of at most {days} days (policy limit)",
+        "e_expires_required": "an accepted risk needs an expiry (--expires) of at most {days:days} (policy limit)",
         "e_fp_invalid": "{fp!r} is not a fingerprint (16 hex digits, ':', index)",
         "e_locked": "the triage file is locked by another process ({path}); retry, or delete the lock if it is stale",
-        "h_changes": "{n} decision change(s) to review",
+        "h_changes": "{n:decision_changes} to review",
         "change_row": "{fp} {rule} {file}: {kind} ({old} -> {new}) by {author}",
         "e_malformed": "malformed triage file {path}: {why}",
         "e_too_big": "triage file {path} is larger than {mb} MB",
@@ -228,25 +228,25 @@ STR = {
         "sev_done": "{fp}: severity {old} -> {new}",
         "sev_cleared": "{fp}: severity override removed",
         "none": "(nothing to show)",
-        "h_list": "{n} triaged finding(s)",
+        "h_list": "{n:triaged}",
         "h_stats": "Triage statistics",
         "by_status": "By status",
         "open_by_sev": "Open by severity",
         "age": "Open by age (days)",
         "mttr": "Mean time to remediate (days)",
-        "mttr_row": "{sev}: mean {mean}, median {median} over {n} fixed",
+        "mttr_row": "{sev}: mean {mean}, median {median} over {n:fixed_obl}",
         "sla": "SLA breaches",
-        "sla_row": "{fp} {sev} {rule} {file}: open {age}d, SLA {sla}d, overdue {over}d",
+        "sla_row": "{fp} {sev} {rule} {file}: open for {age:days_obl}, SLA {sla:days}, overdue by {over:days_obl}",
         "noisy": "Noisiest rules (false-positive share)",
         "regressions": "Regressions",
         "expired": "Expired risk acceptances",
-        "expiring": "Risk acceptances expiring within {days} day(s)",
-        "exp_row": "{fp} {rule} {file}: expires {date} ({days}d)",
-        "expired_row": "{fp} {rule} {file}: expired {date} ({days}d ago) - re-opened",
+        "expiring": "Risk acceptances expiring within {days:days_obl}",
+        "exp_row": "{fp} {rule} {file}: expires {date} (in {days:days_obl})",
+        "expired_row": "{fp} {rule} {file}: expired {date} ({days:days} ago) - re-opened",
         "sync_done": "new {new}, fixed {fixed}, regressions {reg}, expired {exp}, stale decisions {stale}",
         "import_done": "baseline: {added} imported, {skipped} already tracked",
-        "inline": "{n} inline suppression comment(s) (informational, not imported)",
-        "merge_done": "merged: {n} finding(s), {c} conflicting edit(s) resolved",
+        "inline": "{n:suppress_comments} (informational, not imported)",
+        "merge_done": "merged: {n:findings}, {c:conflicts} resolved",
         "conflict_row": "conflict {fp} [{field}]: kept {chosen}",
         "conflict_markers": "git conflict markers found and resolved by merging both sides",
     },
@@ -260,17 +260,17 @@ STR = {
         "e_expires_status": "تاريخ الانتهاء يخص حالة accepted_risk فقط",
         "e_expires_format": "صيغة تاريخ الانتهاء YYYY-MM-DD أو +Nd، والمُدخل {value!r}",
         "e_expires_past": "تاريخ الانتهاء {value} ليس في المستقبل",
-        "e_expires_max": "تاريخ الانتهاء {value} يتجاوز الحد المسموح ({days} يومًا)",
+        "e_expires_max": "تاريخ الانتهاء {value} يتجاوز الحد المسموح ({days:days})",
         "e_ticket": "رابط التذكرة يجب أن يكون http(s)، والمُدخل {value!r}",
         "e_severity": "خطورة غير معروفة {value!r}؛ المتاح: {choices}",
         "e_reason": "تعديل الخطورة يتطلب سببًا (--reason)",
         "e_fp_unknown": "لا توجد نتيجة مفروزة تطابق {fp!r}؛ أدخل البصمة كاملة (16 خانة ست عشرية ثم ':' ثم الفهرس)",
-        "e_fp_ambiguous": "{fp!r} تطابق {n} بصمات؛ أدخل خانات أكثر",
+        "e_fp_ambiguous": "{fp!r} تطابق {n:fingerprints_obl}؛ أدخل خانات أكثر",
         "e_comment": "التعليق لا يكون فارغًا",
-        "e_expires_required": "قبول الخطر يتطلب تاريخ انتهاء (--expires) لا يتجاوز {days} يومًا (حد السياسة)",
+        "e_expires_required": "قبول الخطر يتطلب تاريخ انتهاء (--expires) لا يتجاوز {days:days_obl} (حد السياسة)",
         "e_fp_invalid": "{fp!r} ليست بصمة (16 خانة ست عشرية ثم ':' ثم الفهرس)",
         "e_locked": "ملف الفرز مقفل من عملية أخرى ({path})؛ أعد المحاولة أو احذف القفل إن كان متروكًا",
-        "h_changes": "{n} تغيير في القرارات يحتاج مراجعة",
+        "h_changes": "تغييرات القرارات التي تحتاج مراجعة: {n}",
         "change_row": "{fp} {rule} {file}: {kind} ({old} ← {new}) بواسطة {author}",
         "e_malformed": "ملف الفرز {path} تالف: {why}",
         "e_too_big": "ملف الفرز {path} أكبر من {mb} ميغابايت",
@@ -283,25 +283,25 @@ STR = {
         "sev_done": "{fp}: الخطورة {old} ← {new}",
         "sev_cleared": "{fp}: أُزيل تعديل الخطورة",
         "none": "(لا شيء للعرض)",
-        "h_list": "{n} نتيجة مفروزة",
+        "h_list": "{n:triaged}",
         "h_stats": "إحصاءات الفرز",
         "by_status": "حسب الحالة",
         "open_by_sev": "المفتوحة حسب الخطورة",
         "age": "المفتوحة حسب العمر (بالأيام)",
         "mttr": "متوسط زمن الإصلاح (بالأيام)",
-        "mttr_row": "{sev}: المتوسط {mean}، الوسيط {median} من {n} مُصلَحة",
+        "mttr_row": "{sev}: المتوسط {mean}، الوسيط {median} من {n:fixed_obl}",
         "sla": "تجاوزات مهلة الإصلاح",
-        "sla_row": "{fp} {sev} {rule} {file}: مفتوحة منذ {age} يومًا، المهلة {sla} يومًا، التأخير {over} يومًا",
+        "sla_row": "{fp} {sev} {rule} {file}: مفتوحة منذ {age:days_obl}، المهلة {sla:days}، التأخير {over:days}",
         "noisy": "أكثر القواعد ضجيجًا (نسبة الإنذارات الكاذبة)",
         "regressions": "الارتدادات",
         "expired": "قبول خطر منتهٍ",
-        "expiring": "قبول خطر ينتهي خلال {days} يومًا",
-        "exp_row": "{fp} {rule} {file}: ينتهي {date} (بعد {days} يومًا)",
-        "expired_row": "{fp} {rule} {file}: انتهى {date} (منذ {days} يومًا) - أُعيد فتحها",
+        "expiring": "قبول خطر ينتهي خلال {days:days_obl}",
+        "exp_row": "{fp} {rule} {file}: ينتهي {date} (بعد {days:days_obl})",
+        "expired_row": "{fp} {rule} {file}: انتهى {date} (منذ {days:days_obl}) - أُعيد فتحها",
         "sync_done": "جديدة {new}، أُصلحت {fixed}، ارتدادات {reg}، منتهية {exp}، قرارات بلا نتيجة {stale}",
         "import_done": "خط الأساس: استُورد {added}، و{skipped} متتبَّعة سابقًا",
-        "inline": "{n} تعليق كتم داخل الكود (للعلم فقط، لم تُستورد)",
-        "merge_done": "دُمج: {n} نتيجة، وحُلّ {c} تعارض",
+        "inline": "{n:suppress_comments} داخل الكود (للعلم فقط، دون استيراد)",
+        "merge_done": "دُمج ملفا الفرز: {n:findings}، وحُلّ {c:conflicts}",
         "conflict_row": "تعارض {fp} [{field}]: اعتُمد {chosen}",
         "conflict_markers": "وُجدت علامات تعارض git وحُلّت بدمج الطرفين",
     },
@@ -309,9 +309,11 @@ STR = {
 
 
 def _t(lang: str, key: str, **kw) -> str:
+    """The message ``key`` in ``lang``; a field written ``{n:noun}`` agrees with its number (i18n/cliargs.py)."""
+    from .i18n.cliargs import fmt
     table = STR.get(lang) or STR["en"]
     text = table.get(key) or STR["en"][key]
-    return text.format(**kw) if kw else text
+    return fmt(text, "ar" if table is STR["ar"] else "en", **kw) if kw else text
 
 
 def severity_label(severity: str, lang: str = "en") -> str:
@@ -1521,7 +1523,7 @@ _HELP = {
         "file": "triage file (default: <root>/.kashif/triage.json)",
         "root": "project root (default: current directory)",
         "author": "who makes the change (default: $KASHIF_AUTHOR, then the OS user)",
-        "lang": "message language: en or ar",
+        "lang": "message language: en or ar (default: VULNSCAN_LANG or KASHIF_LANG, else en)",
         "json": "machine-readable output",
         "set": "record a decision for a finding",
         "fingerprint": "fingerprint of the finding (from the report; a unique prefix is enough)",
@@ -1572,7 +1574,7 @@ _HELP = {
         "file": "ملف الفرز (الافتراضي: ‎<root>/.kashif/triage.json)",
         "root": "جذر المشروع (الافتراضي: المجلد الحالي)",
         "author": "صاحب التغيير (الافتراضي: ‎$KASHIF_AUTHOR، ثم مستخدم النظام)",
-        "lang": "لغة الرسائل: en أو ar",
+        "lang": "لغة الرسائل: en أو ar (الافتراضي: VULNSCAN_LANG أو KASHIF_LANG، وإلا en)",
         "json": "مخرجات آلية بصيغة JSON",
         "set": "سجّل قرارًا لنتيجة",
         "fingerprint": "بصمة النتيجة (من التقرير؛ تكفي بداية فريدة منها)",
@@ -1596,7 +1598,7 @@ _HELP = {
         "sla": "مهلة الإصلاح بالأيام لكل خطورة، مثل critical=7,high=30,medium=90,low=180",
         "fail_breach": "أعد رمز خروج 1 إذا تجاوزت نتيجة مهلة إصلاحها",
         "expire": "قبول الخطر المنتهي (رمز خروج 1 إن وُجد)",
-        "within": "اعرض أيضًا ما ينتهي قبوله خلال N يومًا (الافتراضي 14)",
+        "within": "اعرض أيضًا ما ينتهي قبوله خلال N من الأيام (الافتراضي 14 يومًا)",
         "apply": "أعد فتح المنتهية في ملف الفرز",
         "sync": "طابِق مع فحص: أول ظهور، والإصلاح التلقائي، والارتداد",
         "sync_report": "تقرير JSON من كاشِف (kashif PATH --format json)",
@@ -1709,10 +1711,11 @@ def main(argv: list[str] | None = None) -> int:
                 stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError, OSError):
             pass
-    from .i18n.cliargs import help_lang, localized_argparse
+    from .i18n.cliargs import help_lang, lang_from_env, localized_argparse
     argv = list(sys.argv[1:] if argv is None else argv)
-    env = "ar" if os.environ.get("KASHIF_LANG", "").lower().startswith("ar") else "en"
-    hlang = help_lang(argv, default=env)          # --help and usage errors follow --lang (en, ar or both)
+    env_value = lang_from_env()                   # VULNSCAN_LANG, then KASHIF_LANG
+    env = "ar" if env_value == "ar" else "en"
+    hlang = help_lang(argv, default=env_value or "en")   # --help and usage errors follow --lang (en, ar or both)
     with localized_argparse(hlang):
         args = _parser(hlang).parse_args(argv)
     lang = getattr(args, "lang", None) or env

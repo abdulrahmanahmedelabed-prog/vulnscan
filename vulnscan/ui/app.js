@@ -316,6 +316,21 @@ const bidi = (text) => {
   return out + esc(str.slice(last));
 };
 const ARABIC = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
+/* Explicit direction of a short text (a control title, a finding title) from its first strong letter after leading
+   identifiers, numbers and acronyms, never the browser's first-letter guess of dir="auto": "A01:2021 تحكم وصول معطوب"
+   and "ISO/IEC 27001:2022 الملحق أ" are right-to-left, "OWASP Top 10:2021" left-to-right (same rule as the auditor
+   report, vulnscan/compliance.py _direction). */
+const dirOf = (text) => {
+  const str = String(text ?? '');
+  for (const tok of str.split(/\s+/)) {
+    if (!tok || /^[^؀-ۿ]*\d[^؀-ۿ]*$/.test(tok) || /^[\W_]*[A-Z][A-Z0-9/&._-]+[\W_]*$/.test(tok) || /^[\W\d_]*$/.test(tok)) continue;
+    for (const ch of tok) {
+      if (ARABIC.test(ch)) return 'rtl';
+      if (/[A-Za-zÀ-ɏ]/.test(ch)) return 'ltr';
+    }
+  }
+  return ARABIC.test(str) ? 'rtl' : 'ltr';
+};
 
 /* Localized engine text: the English field (from vulnscan.i18n) in English, the Arabic original in Arabic. */
 const loc = (obj, key) => (lang === 'en' ? (obj[key + '_en'] ?? obj[key]) : obj[key]) ?? '';
@@ -1301,7 +1316,7 @@ function renderFramework() {
   const head = `<thead><tr><th>${esc(t('comp.control'))}</th><th>${esc(t('comp.ctitle'))}</th><th>${esc(t('rules.sev'))}</th><th class="num">${esc(t('comp.total'))}</th><th>${esc(t('comp.status'))}</th></tr></thead>`;
   const body = list.map((r, k) => `<tr class="ctl-row">
       <td class="ctl"><button class="ctl-btn" type="button" data-ctl="${k}" aria-expanded="false" aria-controls="ctl-${k}"${r.total ? '' : ' disabled'} aria-label="${esc(t('comp.showFindings', {c: r.control}))}">${ic('chevron', 'sm chev')}<code dir="ltr">${esc(r.control)}</code></button></td>
-      <td class="ctl-title" dir="auto">${esc(r.title)}</td>
+      <td class="ctl-title" dir="${dirOf(r.title)}">${bidi(r.title)}</td>
       <td>${r.total ? `<span class="sevcs">${sevCounts(r.counts || {})}</span>` : '<span class="muted">—</span>'}</td>
       <td class="num"><b>${Number(r.total) || 0}</b></td>
       <td>${stBadge(r.status)}</td></tr>
@@ -1317,7 +1332,7 @@ $('#fw-table').addEventListener('click', (e) => {
   if (open && !tr.dataset.ready) {
     const fs = (r.findings || []).map((x) => comp.byId.get(x)).filter(Boolean);
     const sid = encodeURIComponent(comp.scan.id);
-    setHTML(tr.firstElementChild, `<ul class="rank ctl-list">${fs.slice(0, 50).map((f) => `<li class="sev-${esc(f.severity)}"><span class="main">${pill(f.severity)}<a class="title" dir="auto" href="#findings/${sid}?fp=${encodeURIComponent(f.fingerprint || '')}">${esc(f.title)}</a></span>${fpath(f.file, f.line)}</li>`).join('')}${fs.length > 50 ? `<li class="empty-li">${esc(tn('proj.more', fs.length - 50))}</li>` : ''}</ul>`);
+    setHTML(tr.firstElementChild, `<ul class="rank ctl-list">${fs.slice(0, 50).map((f) => `<li class="sev-${esc(f.severity)}"><span class="main">${pill(f.severity)}<a class="title" dir="${dirOf(f.title)}" href="#findings/${sid}?fp=${encodeURIComponent(f.fingerprint || '')}">${esc(f.title)}</a></span>${fpath(f.file, f.line)}</li>`).join('')}${fs.length > 50 ? `<li class="empty-li">${esc(tn('proj.more', fs.length - 50))}</li>` : ''}</ul>`);
     tr.dataset.ready = '1';
   }
   b.setAttribute('aria-expanded', String(open)); tr.hidden = !open; b.closest('tr').classList.toggle('open', open);

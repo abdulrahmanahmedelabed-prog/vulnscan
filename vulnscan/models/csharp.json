@@ -752,7 +752,7 @@
       ],
       "title": "Tainted data reaches a template or expression evaluator",
       "title_ar": "بيانات غير موثوقة تصل إلى قالب أو مقيّم تعبيرات",
-      "advice": "لا تترجم أو تنفّذ شيفرة C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط."
+      "advice": "لا تترجم أو تنفّذ كود C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط."
     },
     {
       "rule": "DF007",
@@ -769,7 +769,7 @@
       ],
       "title": "Tainted data reaches a template or expression evaluator",
       "title_ar": "بيانات غير موثوقة تصل إلى قالب أو مقيّم تعبيرات",
-      "advice": "لا تترجم أو تنفّذ شيفرة C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط."
+      "advice": "لا تترجم أو تنفّذ كود C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط."
     },
     {
       "rule": "DF007",
@@ -786,7 +786,7 @@
       ],
       "title": "Tainted data reaches a template or expression evaluator",
       "title_ar": "بيانات غير موثوقة تصل إلى قالب أو مقيّم تعبيرات",
-      "advice": "لا تترجم أو تنفّذ شيفرة C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط.",
+      "advice": "لا تترجم أو تنفّذ كود C# أو JavaScript أو قوالب (Razor/Scriban/Handlebars) مبنية من المدخلات؛ مرّر المدخلات كبيانات للنموذج فقط.",
       "receiver": "(?i)(^|\\.)_?(js|jint|v8|script)?engine$"
     },
     {

@@ -257,12 +257,14 @@ def render_html(findings: list[Finding], target: str, files: int, notes: list[st
         else:
             title_html = f"<b>{e(f.title_ar)}</b><br><small>{e(f.title)}</small>"
         steps = _steps(f)
+        # engine text (snippets, trail steps) mixes code and Arabic: each piece takes the direction of its first
+        # letter, isolated from the cell around it
         rows.append(f"<tr class='{f.severity}'><td><span class='b {f.severity}'>{e(L.sev(f.severity))}</span></td>"
                     f"<td><code>{e(f.rule_id)}</code><br><small>{e(f.cwe)}</small></td>"
                     f"<td>{title_html}</td>"
-                    f"<td><code>{e(loc)}</code><br><small>{e(L.text(f.snippet)[:140])}</small>"
+                    f"<td><code>{e(loc)}</code><br><small dir='auto'>{e(L.text(f.snippet)[:140])}</small>"
                     + ("<ol class='flow'>" + "".join(f"<li><code>{e(str(st.get('file', '')))}:{st.get('line', '')}</code> "
-                                                     f"{e(L.text(st.get('text', '')))}</li>" for st in steps) + "</ol>"
+                                                     f"<bdi>{e(L.text(st.get('text', '')))}</bdi></li>" for st in steps) + "</ol>"
                        if steps else "")
                     + f"</td><td>{e(L.text(f.advice))}{_fix_html(f, L)}</td></tr>")
     summary = "".join(f"<div class='tile {s}'><div class='n'>{counts[s]}</div><div>{e(L.sev(s))}"
@@ -272,29 +274,35 @@ def render_html(findings: list[Finding], target: str, files: int, notes: list[st
     empty = f"<tr><td colspan=5>{e(L('no_results'))}</td></tr>"
     html_lang, html_dir, align = ("en", "ltr", "left") if L.en else ("ar", "rtl", "right")
     return f"""<!doctype html><html lang="{html_lang}" dir="{html_dir}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kashif — {e(target)}</title>
 <style>
 body{{font-family:system-ui,Segoe UI,Tahoma,sans-serif;margin:2rem;background:#fafafa;color:#222}}
 .tiles{{display:flex;gap:.75rem;flex-wrap:wrap;margin:1rem 0}}
 .tile{{padding:.75rem 1.25rem;border-radius:.5rem;color:#fff;min-width:7rem;text-align:center}}
 .tile .n{{font-size:2rem;font-weight:700}}
-.critical{{background:#7f1d1d}}.high{{background:#c2410c}}.medium{{background:#a16207}}.low{{background:#0e7490}}.info{{background:#52525b}}
+.tile.critical,.b.critical{{background:#7f1d1d}}.tile.high,.b.high{{background:#c2410c}}.tile.medium,.b.medium{{background:#a16207}}
+.tile.low,.b.low{{background:#0e7490}}.tile.info,.b.info{{background:#52525b}}
 table{{border-collapse:collapse;width:100%;background:#fff}}
 th,td{{border:1px solid #ddd;padding:.5rem;vertical-align:top;text-align:{align}}}
 tr.critical td:first-child,tr.high td:first-child{{font-weight:700}}
 .b{{padding:.15rem .5rem;border-radius:.25rem;color:#fff;white-space:nowrap}}
-code{{direction:ltr;unicode-bidi:embed;font-size:.85em}}
+code{{direction:ltr;unicode-bidi:isolate;font-size:.85em;overflow-wrap:anywhere}}
+h1{{overflow-wrap:anywhere}}
+.tw{{max-width:100%;overflow-x:auto}}
+td{{min-width:5rem}}td:nth-child(3),td:nth-child(4),td:nth-child(5){{min-width:12rem}}
+@media (max-width:640px){{body{{margin:1rem}}h1{{font-size:1.4rem}}.tile{{min-width:5rem;padding:.5rem .8rem}}}}
 .fix{{margin-top:.5rem}}.fix summary{{cursor:pointer;font-weight:600;color:#166534}}
 .diff{{direction:ltr;text-align:left;background:#f6f8fa;padding:.5rem;overflow:auto;font-size:.8em;margin:.3rem 0 0}}
 .diff span{{display:block}}.diff .add{{background:#dcfce7}}.diff .del{{background:#fee2e2}}\n.flow{{margin:.4rem 0 0;padding-inline-start:1.2rem;font-size:.8em;color:#555}}
 </style></head><body>
-<h1>{e(L('md_title'))} — <code>{e(target)}</code></h1>
-<p>{e(L('files'))}: {files} · {e(L('findings'))}: {len(findings)} · {e(_meta(target, files, notes)['generated_at'])}</p>
+<h1>{e(L('md_title'))} — <code dir="ltr">{e(target)}</code></h1>
+<p>{e(L('files'))}: {files} · {e(L('findings'))}: {len(findings)} · <bdi dir="ltr">{e(_meta(target, files, notes)['generated_at'])}</bdi></p>
 <ul>{notes_html}</ul>
 <div class="tiles">{summary}</div>
 <h2>{e(L('html_by_sev'))}</h2>
-<table><thead><tr><th>{e(L('sev_col'))}</th><th>{e(L('col_rule'))}</th><th>{e(L('col_vuln'))}</th><th>{e(L('location'))}</th><th>{e(L('fix'))}</th></tr></thead>
-<tbody>{''.join(rows) or empty}</tbody></table>
+<div class="tw"><table><thead><tr><th>{e(L('sev_col'))}</th><th>{e(L('col_rule'))}</th><th>{e(L('col_vuln'))}</th><th>{e(L('location'))}</th><th>{e(L('fix'))}</th></tr></thead>
+<tbody>{''.join(rows) or empty}</tbody></table></div>
 </body></html>"""
 
 

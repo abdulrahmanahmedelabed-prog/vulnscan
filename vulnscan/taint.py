@@ -40,6 +40,7 @@ import time
 
 from . import flow as _flow
 from . import php_include as _php_include
+from .i18n.cat_dynamic import sink_label_ar as _sink_label_ar
 from .model import Finding
 
 MAX_PASSES = 16
@@ -118,7 +119,8 @@ def load_models(extra_dirs=(), base=None, language="python") -> dict:
                                frozenset(x.lower() for x in k.get("kwargs", [])),
                                re.compile(k["receiver"]) if k.get("receiver") else None,
                                {kw: frozenset(v) for kw, v in (k.get("safe_kwargs") or {}).items()} or None,
-                               re.compile(k["receiver_not"]) if k.get("receiver_not") else None))
+                               re.compile(k["receiver_not"]) if k.get("receiver_not") else None,
+                               re.compile(k["receiver_from"]) if k.get("receiver_from") else None))
         for st in data.get("store_sinks", []):
             # `session[key] = value`: writing untrusted data into a trusted store (trust boundary violation)
             m["store_sinks"].append(((st["rule"], st.get("severity", "medium"), st.get("title", st["rule"]),
@@ -734,7 +736,8 @@ class Project:
                     self.classes[cq] = {"node": child, "mod": mod, "name": child.name, "path": path,
                                         "base_names": [_dotted(b) for b in child.bases], "bases": [],
                                         "methods": {}, "subclasses": set(), "field_types": {},
-                                        "tainted_fields": {}, "ctor_param_fields": {}, "method_param_fields": {}}
+                                        "tainted_fields": {}, "ctor_param_fields": {}, "method_param_fields": {},
+                                        "tainted_by_method": {}}
                     file["classes"][child.name] = cq
                     self.simple_classes.setdefault(child.name, []).append(cq)
                     self._by_mod.setdefault((id(self.simple_classes), child.name, mod), []).append(cq)
@@ -968,9 +971,105 @@ class Project:
 
     def _class_fields(self, cq: str, key: str) -> dict:
         merged: dict = {}
+        excluded = self._erb_excluded(cq) if key == "tainted_fields" and self.m.get("language") == "ruby" else None
         for c in reversed(self._mro(cq)):
+            if excluded and c in excluded:
+                own: dict = {}
+                for meth, flds in self.classes[c]["tainted_by_method"].items():
+                    if meth not in excluded[c]:
+                        for k, v in flds.items():
+                            own.setdefault(k, v)
+                merged.update(own)
+                continue
             merged.update(self.classes[c][key])
         return merged
+
+    def _erb_excluded(self, cq: str):
+        """A Rails ERB view (erb_frontend) sees the instance variables of the controller action that renders it:
+        {controller class: the methods whose instance variables it does NOT see}, or None (no restriction: not a
+        view, a partial / layout, or no action of the controller is known to render it -- then any action may)."""
+        cache = self.__dict__.setdefault("_erb_excluded_cache", {})
+        if cq in cache:
+            return cache[cq]
+        res = None
+        c = self.classes.get(cq)
+        from .erb_frontend import VIEW_CLASS
+        if c is not None and c["name"] == VIEW_CLASS and c["path"].lower().endswith(".erb") and c["bases"]:
+            try:
+                res = self._erb_excluded_uncached(c)
+            except Exception:  # noqa: BLE001 - a precision refinement; never block the analysis
+                res = None
+        cache[cq] = res
+        return res
+
+    def _erb_excluded_uncached(self, c: dict):
+        rel = c["path"].replace("\\", "/")
+        vdir, base = rel.rsplit("/", 1) if "/" in rel else ("", rel)
+        stem = base.split(".")[0]
+        if not stem or stem.startswith("_"):
+            return None                                  # a partial: rendered from other views
+        ctrl = c["bases"][0]
+        cnode = self.classes[ctrl]["node"]
+        methods = {n.name: n for n in cnode.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        filters: dict = {}                               # before_action :load, only: [:show]
+        for st in cnode.body:
+            if isinstance(st, ast.Expr) and isinstance(st.value, ast.Call) and isinstance(st.value.func, ast.Name) \
+                    and st.value.func.id in ("before_action", "prepend_before_action", "append_before_action",
+                                             "before_filter", "around_action", "after_action"):
+                kw = {k.arg: k.value for k in st.value.keywords if k.arg}
+
+                def names(v):
+                    if v is None:
+                        return None
+                    elts = v.elts if isinstance(v, (ast.List, ast.Tuple, ast.Set)) else [v]
+                    if not all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in elts):
+                        return None                  # `only: ACTIONS`: unknown, so the filter may run
+                    return {e.value for e in elts}
+                for a in st.value.args:
+                    if isinstance(a, ast.Constant) and isinstance(a.value, str):
+                        filters[a.value] = (names(kw.get("only")), names(kw.get("except")))
+
+        def renders_this(fn) -> bool:
+            for n in ast.walk(fn):
+                if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "render"):
+                    continue
+                kw = {k.arg: k.value for k in n.keywords if k.arg}
+                cands = [kw.get("action"), kw.get("template")] + list(n.args[:1])
+                for v in cands:
+                    if isinstance(v, ast.Constant) and isinstance(v.value, str) and v.value:
+                        t = v.value.strip("/").split(".")[0]
+                        tdir, _, tstem = t.rpartition("/")
+                        if tstem == stem and (not tdir or vdir == tdir or vdir.endswith("/" + tdir)):
+                            return True
+            return False
+        def closure(start) -> set:
+            """The controller's methods `start` runs: itself and the helpers it calls (`load_user` / `self.x`)."""
+            seen, todo = set(start), list(start)
+            while todo:
+                fn = methods.get(todo.pop())
+                for n in ast.walk(fn) if fn is not None else ():
+                    nm = None
+                    if isinstance(n, ast.Name):              # Ruby `load_user` without parentheses
+                        nm = n.id
+                    elif isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self":
+                        nm = n.attr
+                    if nm is not None and nm in methods and nm not in seen:
+                        seen.add(nm)
+                        todo.append(nm)
+            return seen
+        actions = {m for m, fn in methods.items() if m != "__init__" and m not in filters
+                   and not getattr(fn, "vulnscan_private", False)}
+        # an action renders the view by its name, or by `render :x` in its body or in a helper it calls
+        rendering = {m for m in actions if m == stem or any(renders_this(methods[h]) for h in closure({m}))}
+        if not rendering:
+            return None                                  # unknown which action renders it: controller-wide
+        # helpers the rendering actions call (`def show; load_user; end`) set variables for this view too
+        allowed = closure(rendering)
+        excluded = actions - allowed
+        for f, (only, exc) in filters.items():
+            if (only is not None and not only & rendering) or (exc is not None and rendering <= exc):
+                excluded.add(f)                          # a filter that does not run for these actions
+        return {ctrl: excluded}
 
     def _lookup_method(self, cq: str, name: str) -> list[str]:
         cache = self.__dict__.setdefault("_hier_cache", {})
@@ -1379,7 +1478,9 @@ class Project:
             for entry in cands:
                 if True:
                     rx = entry[11] if len(entry) > 11 else None
-                    if rx is not None and not (isinstance(call.func, ast.Attribute) and rx.search(_receiver_text(call.func.value))):
+                    if rx is not None and not (isinstance(call.func, ast.Attribute) and (
+                            rx.search(_receiver_text(call.func.value))
+                            or self._receiver_bound(mod, call.func.value, entry[14] if len(entry) > 14 else None))):
                         continue                        # e.g. `search` is LDAP only on a connection-like receiver
                     rxn = entry[13] if len(entry) > 13 else None
                     if rxn is not None and isinstance(call.func, ast.Attribute) and rxn.search(_receiver_text(call.func.value)):
@@ -1392,6 +1493,34 @@ class Project:
                     break
         self._sink_cache[key] = (call, res)
         return res
+
+    def _receiver_bound(self, mod: str, recv, rx) -> bool:
+        """A receiver-pattern sink's `receiver_from`: is the receiver a variable (or `self.x` field) that every
+        assignment of it in this file binds to the result of a call whose name matches `rx`
+        (`link = URI.parse(x)` ... `link.read`)?"""
+        if rx is None or not isinstance(recv, (ast.Name, ast.Attribute)):
+            return False
+        key = _dotted(recv)
+        if not key or (isinstance(recv, ast.Attribute) and not key.startswith("self.")):
+            return False
+        cache = self.__dict__.setdefault("_bound_values", {})
+        binds = cache.get(mod)
+        if binds is None:
+            binds = {}
+            tree = self.files.get(mod, {}).get("tree")
+            for n in ast.walk(tree) if tree is not None else ():
+                if isinstance(n, ast.Assign):
+                    for t in n.targets:
+                        d = _dotted(t) if isinstance(t, (ast.Name, ast.Attribute)) else ""
+                        if d:
+                            binds.setdefault(d, []).append(n.value)
+                elif isinstance(n, (ast.AugAssign, ast.AnnAssign)) and isinstance(n.target, (ast.Name, ast.Attribute)):
+                    d = _dotted(n.target)
+                    if d:
+                        binds.setdefault(d, []).append(n.value if isinstance(n, ast.AnnAssign) else n)
+            cache[mod] = binds
+        vals = binds.get(key)
+        return bool(vals) and all(isinstance(v, ast.Call) and rx.search(_dotted(v.func)) for v in vals)
 
     def _subprocess_elem_only(self, mod, cls, call, env) -> bool:
         kw = {k.arg: k.value for k in call.keywords}
@@ -2116,7 +2245,10 @@ class Project:
                 and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, str)
                 and _dotted(f.value).split(".")[-1] in self._JS_VIEW_RECEIVERS):
             return []
-        unsafe = _js_template_unsafe_vars(call.args[0].value, self._js_autoescape_off())
+        off = self._js_autoescape_off()
+        view = _js_view_file(call.args[0].value) if off else None
+        unsafe = _js_template_unsafe_vars(call.args[0].value, bool(
+            view and ("*" in off or "." + view.rsplit(".", 1)[-1].lower() in off)))
         if not unsafe:
             return []
         ctx = call.args[1]
@@ -2146,17 +2278,20 @@ class Project:
                         if isinstance(fk, ast.Constant) and fk.value in fields]
         return out
 
-    def _js_autoescape_off(self) -> bool:
-        """Does the project turn HTML escaping off for its Swig / Nunjucks views
-        (`swig.setDefaults({autoescape: false})`, `nunjucks.configure(dir, {autoescape: false})`)?"""
+    def _js_autoescape_off(self) -> frozenset:
+        """View-file extensions whose engine has HTML escaping turned off ("*": every view): a Swig / Nunjucks
+        environment created or configured with `autoescape: false` counts only when it is the one that renders the
+        views (`app.engine('.html', cons.swig)` / `swig.renderFile`, `nunjucks.configure(dir, {express: app})`,
+        `env.express(app)`); a text environment for e-mails or SQL does not turn escaping off for the HTML views."""
         hit = self.__dict__.get("_js_noescape")
         if hit is None:
-            hit = False
+            texts = []
             for f in self.files.values():
                 lines = f.get("lines") or ()
-                if any(_JS_AE_OFF.search(ln) for ln in lines) and any(_JS_AE_ENGINE.search(ln) for ln in lines):
-                    hit = True
-                    break
+                if any("autoescape" in ln or ".engine" in ln or ".express" in ln or "swig" in ln or "nunjucks" in ln
+                       for ln in lines):
+                    texts.append("\n".join(lines))
+            hit = _js_noescape_exts(texts)
             self.__dict__["_js_noescape"] = hit
         return hit
 
@@ -3056,6 +3191,12 @@ class Project:
                         if o and o[0] in {"source", "retsource"} and tgt.attr not in c["tainted_fields"]:
                             c["tainted_fields"][tgt.attr] = _with_step(o, _step(path, node.lineno, f"self.{tgt.attr} = …"))
                             cls_chg = True
+                        if o and o[0] in {"source", "retsource"} and self.m.get("language") == "ruby":
+                            # which action set it: a Rails view sees the instance variables of the action rendering it
+                            bym = c["tainted_by_method"].setdefault(info["name"], {})
+                            if tgt.attr not in bym:
+                                bym[tgt.attr] = _with_step(o, _step(path, node.lineno, f"self.{tgt.attr} = …"))
+                                cls_chg = True
                         if o and o[0] == "param" and info["name"] == "__init__" and c["ctor_param_fields"].get(o[1]) != tgt.attr:
                             c["ctor_param_fields"][o[1]] = tgt.attr
                             cls_chg = True
@@ -3383,15 +3524,16 @@ class Project:
                 return
             callee = callee or "include"
         rule, sev, title, title_ar, advice, cwe, label = si[:7]
+        label_ar = _sink_label_ar(label)       # Arabic text gets the Arabic sink label; to_en() restores the English
         source_label = self._label(origin)
         steps = list(_trail(origin))
-        steps.append(_step(path, line, f"استدعاء {callee}()" if callee else f"نقطة الخطر: {label}"))
+        steps.append(_step(path, line, f"استدعاء {callee}()" if callee else f"نقطة الخطر: {label_ar}"))
         if deep and (deep[1], deep[2]) != (path, line):
-            steps.append(_step(deep[1], deep[2], f"نقطة الخطر: {label}"))
+            steps.append(_step(deep[1], deep[2], f"نقطة الخطر: {label_ar}"))
         extra = {"analysis": "dataflow", "taint_source": source_label, "path": steps}
         if callee:
             title = f"Tainted data flows through {callee}() into {label}"
-            title_ar = f"بيانات غير موثوقة تمرّ عبر {callee}() وتصل إلى {label}"
+            title_ar = f"بيانات غير موثوقة تمرّ عبر {callee}() وتصل إلى {label_ar}"
             snippet = f"المصدر: {source_label} ← {callee}()"
             extra.update(interprocedural=True, callee=callee)
         else:
@@ -3551,7 +3693,8 @@ def _analyze_groups(files, models_dirs, config, trees=None):
             if tree is None:
                 tree = cfamily_frontend.parse_cfamily(_view_code(rel, text), rel, lang)
             if mybatis and lang in ("java", "kotlin"):
-                cfamily_frontend.apply_mybatis_xml(tree, cfamily_frontend.module_name(rel), mybatis)
+                cfamily_frontend.apply_mybatis_xml(tree, cfamily_frontend.module_name(rel), mybatis,
+                                                   package=cfamily_frontend.jvm_package(text))
             entries.append(_Entry(cfamily_frontend.module_name(rel), rel, text, tree))
             diag = getattr(tree, "vulnscan_diagnostics", None)
             if diag:
@@ -3666,9 +3809,136 @@ JS_TEMPLATE_UNESCAPED = ("DF013", "medium", "Tainted data rendered unescaped by 
                          "CWE-79", "unescaped view output", [0], False)
 _JS_AE_OFF = re.compile(r"\bautoescape\s*:\s*false\b")
 _JS_AE_ENGINE = re.compile(r"\b(swig|nunjucks)\b")
+_JS_REQUIRE_ENGINE = re.compile(r"\brequire\s*\(\s*['\"`](swig|nunjucks)['\"`]\s*\)")
+_JS_REGEX_PREV = frozenset("(,=:[!&|?{};+-*%<>~^")
+_JS_LEX = re.compile(r"'(?:\\.|[^'\\\n])*'?|\"(?:\\.|[^\"\\\n])*\"?|`(?:\\.|[^`\\])*`?|//[^\n]*|/\*.*?(?:\*/|\Z)|/", re.S)
+_JS_WORD_BEFORE = re.compile(r"[\w$]+\Z")
+_JS_REGEX_KEYWORDS = frozenset({"return", "typeof", "case", "do", "else", "in", "of", "void", "yield", "await", "delete",
+                                "instanceof", "new", "throw"})
+_JS_REGEX_LIT = re.compile(r"/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n\[])+/")
+
+
+def _js_strip_comments(text: str) -> str:
+    """JavaScript source without its comments. Strings, template literals and regular-expression literals are
+    kept as they are (`app.use('/api/*', …)` or `/^\\/x\\/*/` do not start a comment)."""
+    if "//" not in text and "/*" not in text:
+        return text
+    out, pos, start = [], 0, 0
+    while True:
+        m = _JS_LEX.search(text, pos)
+        if m is None:
+            break
+        tok = m.group(0)
+        if tok.startswith(("//", "/*")):
+            out.append(text[start:m.start()])
+            out.append(" ")
+            start = pos = m.end()
+        elif tok == "/":
+            k = m.start() - 1                            # a regular expression after an operator, else division
+            while k >= 0 and text[k] in " \t\r\n":
+                k -= 1
+            w = _JS_WORD_BEFORE.search(text, 0, k + 1) if k >= 0 and (text[k].isalpha() or text[k] in "_$") else None
+            r = _JS_REGEX_LIT.match(text, m.start()) \
+                if k < 0 or text[k] in _JS_REGEX_PREV or (w is not None and w.group(0) in _JS_REGEX_KEYWORDS) else None
+            pos = r.end() if r else m.end()
+        else:
+            pos = m.end()                                # a string / template literal
+    out.append(text[start:])
+    return "".join(out)
+
+
+# the call an `autoescape: false` option belongs to: Nunjucks `configure` / `new Environment`, Swig `setDefaults` /
+# `new Swig`; group 1 = the variable it is assigned to, group 2 = its receiver / namespace
+_JS_AE_CALL = re.compile(r"(?:(?:\b(?:const|let|var)\s+)?([\w$.]+)\s*=\s*)?(?:new\s+)?(?:([\w$.]+)\.)?"
+                         r"(configure|Environment|setDefaults|Swig)\s*\(")
+_JS_ENGINE_REG = re.compile(r"\.engine\s*\(\s*['\"`]\.?([\w-]+)['\"`]\s*,\s*([^;\n]*)")
+_JS_VIEWS_MAP = re.compile(r"['\"]?([\w-]+)['\"]?\s*:\s*['\"](swig|nunjucks)['\"]")
+
+
+def _js_call_args(text: str, open_paren: int) -> str:
+    """The argument text of a call whose `(` is at `open_paren` (up to its matching `)`, strings skipped)."""
+    depth, i, n, quote = 0, open_paren, len(text), None
+    while i < n:
+        c = text[i]
+        if quote:
+            if c == "\\":
+                i += 1
+            elif c == quote:
+                quote = None
+        elif c in "'\"`":
+            quote = c
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                return text[open_paren + 1:i]
+        i += 1
+    return text[open_paren + 1:]
+
+
+def _js_noescape_exts(texts: list) -> frozenset:
+    """See Project._js_autoescape_off: `texts` are the project's JavaScript sources."""
+    # comments do not count; `require('swig').setDefaults(…)` is the module's default environment
+    texts = [_JS_REQUIRE_ENGINE.sub(r"\1", _js_strip_comments(t)) for t in texts]
+    envs = []                       # (kind "swig"/"nunjucks", renderer names, bound to express)
+    for text in texts:
+        if not _JS_AE_OFF.search(text) or not _JS_AE_ENGINE.search(text):
+            continue
+        # `const opts = {autoescape: false}; nunjucks.configure('views', opts)`: the call that takes the object
+        holders = {}
+        for m in re.finditer(r"([\w$]+)\s*=\s*\{", text):
+            body = _js_call_args(text, m.end() - 1)                      # (the object literal's body)
+            if _JS_AE_OFF.search(body):
+                holders[m.group(1)] = body
+        for m in _JS_AE_CALL.finditer(text):
+            args = _js_call_args(text, m.end() - 1)
+            held = [b for h, b in holders.items() if re.search(r"(?<![\w$.])" + re.escape(h) + r"\b", args)]
+            if not _JS_AE_OFF.search(args) and not held:
+                continue
+            args = "\n".join([args, *held])                             # `{express: app}` may be in the object
+            var, ns, fn = m.group(1), m.group(2) or "", m.group(3)
+            kind = "swig" if fn in ("setDefaults", "Swig") or "swig" in ns.lower() else "nunjucks"
+            if fn == "configure" and "swig" in ns.lower():
+                kind = "swig"
+            names = set()
+            if fn in ("configure", "setDefaults") and ns:
+                names.add(ns)                           # the module's default environment
+                names.add("\0default")
+            if var:
+                names.add(var)
+            express = kind == "nunjucks" and re.search(r"\bexpress\s*:", args) is not None
+            envs.append((kind, names, express))
+    if not envs:
+        return frozenset()
+    out = set()
+    joined = "\n".join(texts)
+    for kind, names, express in envs:
+        plain = {n for n in names if n != "\0default"}
+        if express or any(re.search(r"(?<![\w$.])" + re.escape(n) + r"\.express\s*\(", joined) for n in plain):
+            out.add("*")                                 # nunjucks' express integration renders every view
+            continue
+        for m in _JS_ENGINE_REG.finditer(joined):
+            ext, renderer = m.group(1).lower(), m.group(2)
+            own = any(re.search(r"(?<![\w$.])" + re.escape(n) + r"\.(?:renderFile|render)\b", renderer) for n in plain)
+            # consolidate (`cons.swig`, `require('consolidate').nunjucks`) renders with the module's defaults
+            cons = "\0default" in names and re.search(r"\.\s*" + kind + r"\b", renderer) is not None
+            if own or cons:
+                out.add("." + ext)
+        if "\0default" in names:
+            for m in _JS_VIEWS_MAP.finditer(joined):    # koa-views `map: {html: 'swig'}`
+                if m.group(2) == kind:
+                    out.add("." + m.group(1).lower())
+    return frozenset(out)
 _EJS_RAW = re.compile(r"<%-(.*?)[-_]?%>", re.S)
 _HBS_RAW = re.compile(r"\{\{\{\s*([^}]*?)\s*\}\}\}|\{\{&\s*([^}]*?)\s*\}\}")
-_HBS_EACH = re.compile(r"\{\{#(?:each|with)\s+([A-Za-z_$][\w$]*)")
+# Handlebars block tags: `{{#each posts as |p|}}`, `{{^if x}}`, `{{/each}}`, `{{else}}` (whitespace control `~` allowed)
+_HBS_BLOCK = re.compile(r"\{\{~?\s*(?:([#^/])\s*([\w-]+)([^}]*?)|(else)\b[^}]*?)\s*~?\}\}")
+_HBS_PARAMS = re.compile(r"\bas\s*\|\s*([^|]*)\|")
+_HBS_COMMENT = re.compile(r"\{\{!--.*?--\}\}|\{\{![^}]*\}\}", re.S)
+_HBS_TOKEN = re.compile(r"\(|\)|[^\s()]+")
+_HBS_BUILTIN_BLOCKS = frozenset({"if", "unless", "each", "with", "else", "raw", "lookup", "log", "let", "embed",
+                                 "block", "content", "partial", "extend", "contentFor", "section"})
 _PUG_RAW = re.compile(r"!\{([^}]*)\}|^[ \t]*(?:[\w.#:-]+(?:\([^)\n]*\))?)?!=[ \t]*(\S.*)$", re.M)
 _JS_LOOP = re.compile(r"([A-Za-z_$][\w$]*)(?:\.[\w$]+)*\s*\.\s*(?:forEach|map|filter|some|every)\s*\(\s*(?:async\s+)?"
                       r"(?:function\s*[\w$]*\s*)?\(?\s*([A-Za-z_$][\w$]*)"
@@ -3743,6 +4013,147 @@ def _js_view_file(name: str) -> str | None:
     return cands[0]
 
 
+def _hbs_resolve(path: str, ctxs: list, params: dict):
+    """Root variable and printed field of a Handlebars path seen inside the context chain `ctxs` (outermost first;
+    each entry the root variable an enclosing {{#each}} / {{#with}} iterates, None when unknown). An empty chain is
+    the template's own context. Returns None when the path is not a context variable (`@index`, a literal)."""
+    if path.startswith("@root."):
+        path, ctxs = path[len("@root."):], []
+    elif path.startswith("@"):
+        return None                                     # @index, @key, @first: loop metadata
+    ups = 0
+    while path.startswith("../"):
+        ups, path = ups + 1, path[3:]
+    if ups:
+        ctxs = ctxs[:max(len(ctxs) - ups, 0)]
+    if path in ("this", ".", "./", ""):
+        path = ""
+    elif path.startswith(("this.", "this/", "./")):
+        path = path.split(".", 1)[1] if path.startswith("this.") else path.split("/", 1)[1]
+    parts = [x for x in re.split(r"[./]", path) if x]
+    if parts and not re.match(r"^[A-Za-z_$][\w$-]*$", parts[0]):
+        return None                                     # a number / literal argument
+    if parts and parts[0] in params and not ups and (not ctxs or ctxs[-1] is not None):
+        return params[parts[0]], None                    # {{#each posts as |p|}} … p.body: the items of posts
+    if ctxs:
+        return (ctxs[-1], None) if ctxs[-1] is not None else None          # relative to the iterated item
+    if not parts:
+        return None
+    return parts[0], (parts[1] if len(parts) > 1 else None)
+
+
+def _hbs_scopes(text: str) -> list:
+    """Context blocks of a Handlebars template: [(start, end, context chain, block params)] for the body of every
+    {{#each x}} / {{#with x}} (its {{else}} part runs in the outer context), innermost resolvable by position."""
+    spans, stack = [], []          # [name, ctx-root, body start or None, is_ctx, chain, params, section?]
+
+    def chain_of():
+        return [e[1] for e in stack if e[3]]
+
+    def params_of():
+        out = {}
+        for e in stack:
+            out.update(e[5])
+        return out
+    # comments (`{{!-- {{#each old}} --}}`) open no block: blanked, positions kept
+    text = _HBS_COMMENT.sub(lambda c: " " * len(c.group(0)), text)
+    for m in _HBS_BLOCK.finditer(text):
+        if m.group(4):                                   # {{else}}: the rest of the block is the outer context
+            if stack and stack[-1][3] and stack[-1][2] is not None:
+                top = stack[-1]
+                spans.append((top[2], m.start(), top[4], top[5], top[6]))
+                top[2] = None
+            continue
+        sig, name, rest = m.group(1), m.group(2), m.group(3) or ""
+        if sig in "#^":
+            # {{#each x}} / {{#with x}}, and a Mustache-style section {{#posts}} … {{/posts}} (no arguments, not a
+            # built-in helper): iterates / enters `posts`
+            section = sig == "#" and not rest.strip() and name not in _HBS_BUILTIN_BLOCKS
+            is_ctx = sig == "#" and (name in ("each", "with") or section)
+            root, params, chain = None, {}, []
+            if is_ctx:
+                arg = [name] if section else _HBS_PARAMS.sub("", rest).split()
+                if arg and arg[0].startswith("("):       # {{#each (sort posts)}}: the sub-expression's path argument
+                    toks = _HBS_TOKEN.findall(_HBS_PARAMS.sub("", rest))
+                    inner = toks[1:toks.index(")")] if ")" in toks else toks[1:]
+                    arg = [a for a in _hbs_group_paths([a for a in inner if a != "("]) if not a.startswith('"')][:1]
+                outer = chain_of()
+                hit = _hbs_resolve(arg[0], outer, params_of()) if arg else None
+                root = hit[0] if hit else None
+                pm = _HBS_PARAMS.search(rest)
+                if pm and root is not None:
+                    params = {n: root for n in pm.group(1).split()}
+                chain = outer + [root]
+                params = {**params_of(), **params}
+            stack.append([name, root, m.end() if is_ctx else None, is_ctx, chain, params, section])
+        else:                                            # {{/name}} closes the innermost open block of that name
+            for i in range(len(stack) - 1, -1, -1):
+                if stack[i][0] == name:
+                    for e in stack[i:]:
+                        if e[3] and e[2] is not None:
+                            spans.append((e[2], m.start(), e[4], e[5], e[6]))
+                    del stack[i:]
+                    break
+    for e in stack:                                      # unclosed at end of file
+        if e[3] and e[2] is not None:
+            spans.append((e[2], len(text), e[4], e[5], e[6]))
+    return spans
+
+
+def _hbs_scope_at(scopes: list, pos: int) -> tuple:
+    """(context chain, block params, section?) at a position: the innermost enclosing context block, or the
+    template's own. A Mustache-style section may as well be a block helper without arguments ({{#markdown}}):
+    its paths are read both ways."""
+    best = None
+    for start, end, chain, params, soft in scopes:
+        if start <= pos < end and (best is None or start >= best[0]):
+            best = (start, chain, params, soft)
+    return (best[1], best[2], best[3]) if best else ([], {}, False)
+
+
+def _hbs_path_roots(expr: str, scope: tuple) -> list:
+    """Context variables a Handlebars raw expression prints: its path arguments (the first token of a call with
+    arguments is the helper's name, `key=value` hash arguments contribute their value)."""
+    ctxs, params, soft = scope
+    if soft and ctxs:
+        return _hbs_path_roots(expr, (ctxs, params, False)) + _hbs_path_roots(expr, (ctxs[:-1], params, False))
+    toks = _HBS_TOKEN.findall(expr)
+    out, groups = [], [[]]
+    for t in toks:
+        if t == "(":
+            groups.append([])
+        elif t == ")":
+            if len(groups) > 1:
+                out += _hbs_group_paths(groups.pop())
+                groups[-1].append("\0")                # the sub-expression is an argument of the outer call
+        else:
+            groups[-1].append(t)
+    for g in groups:
+        out += _hbs_group_paths(g)
+    res = []
+    for path in out:
+        hit = _hbs_resolve(path, ctxs, params)
+        if hit is not None and hit[0] not in _JS_NOT_VARS and hit[1] not in _JS_NON_TEXT_FIELDS:
+            res.append(hit)
+    if not toks and ctxs and ctxs[-1] is not None:
+        res.append((ctxs[-1], None))
+    return res
+
+
+def _hbs_group_paths(group: list) -> list:
+    if not group:
+        return []
+    if len(group) > 1 and _JS_SAFE_CALL.match(group[0]):
+        return []                                       # `(sanitize body)`: an escaping helper's result
+    args = group[1:] if len(group) > 1 else group       # `{{{helper a b}}}`: a and b; `{{{a}}}`: a
+    out = []
+    for a in args:
+        a = a.split("=", 1)[1] if "=" in a else a
+        if a and a not in ('""', "\0", "true", "false", "null", "undefined"):
+            out.append(a)
+    return out
+
+
 def _js_template_unsafe_vars(name: str, autoescape_off: bool = False) -> dict:
     """Variables a JavaScript view prints without HTML escaping: roots of the expressions in EJS `<%- … %>`,
     Handlebars / Mustache `{{{ … }}}` / `{{& … }}`, Pug `!{…}` / `tag!= …`, Jinja-style `{{ x|safe }}` (Nunjucks,
@@ -3771,15 +4182,17 @@ def _js_template_unsafe_vars(name: str, autoescape_off: bool = False) -> dict:
         exprs = [e.strip() for e in _EJS_RAW.findall(text)]
         exprs = [e for e in exprs if not e.startswith("include")]
         exprs = [_js_printed_expr(e) for e in exprs]
-        each = [m.group(1) for m in _HBS_EACH.finditer(text)]
+        scopes = None
         for m in _HBS_RAW.finditer(text):
             e = _js_printed_expr((m.group(1) or m.group(2) or "").strip(), helper_syntax=True)
             if not e.strip() and (m.group(1) or m.group(2) or "").strip():
                 continue                    # {{{sanitize body}}}: a sanitizing helper prints it
-            if e.startswith(("this", ".")) or not e:
-                for v in each:              # {{{this.body}}} inside {{#each posts}}: the collection's items
-                    add(v, None)
-            exprs.append(e)
+            if scopes is None:
+                scopes = _hbs_scopes(text)
+            # paths resolve against the enclosing {{#each}} / {{#with}} block only ({{{this.body}}} inside
+            # {{#each posts}} prints the items of `posts`, not of every collection the file iterates)
+            for root, fld in _hbs_path_roots(e, _hbs_scope_at(scopes, m.start())):
+                add(root, fld)
         if rel.lower().endswith((".pug", ".jade")):
             exprs += [_js_printed_expr((m.group(1) or m.group(2) or "").strip()) for m in _PUG_RAW.finditer(text)]
         for e in exprs:

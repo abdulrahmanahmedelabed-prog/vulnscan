@@ -558,7 +558,7 @@ def test_install_info(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "_package_root", lambda: tmp_path)
     monkeypatch.setattr(metadata, "distribution", lambda name: _Dist(None))
     info = updater.install_info()
-    assert info["kind"] == "pip" and info["command"].endswith("-m pip install --upgrade vulnscan")
+    assert info["kind"] == "pip" and info["command"].endswith("-m pip install --upgrade kashif")   # never PyPI's "vulnscan"
     assert sys.executable in info["command"] or os.name == "nt"
     monkeypatch.setattr(metadata, "distribution", lambda name: _Dist(
         {"url": "https://github.com/abdulrahmanahmedelabed-prog/vulnscan", "vcs_info": {"vcs": "git"}}))

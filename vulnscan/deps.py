@@ -27,6 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import sca
 from .i18n import to_en
+from .i18n.plural import ar_count
 from .model import SEVERITIES, Finding
 
 OSV_BATCH = "https://api.osv.dev/v1/querybatch"
@@ -40,10 +41,17 @@ CACHE_TTL = 24 * 3600
 _LABELS = ("critical", "high", "medium", "moderate", "low")
 _NET_ERRORS = (urllib.error.URLError, OSError, ValueError)
 
-NOTE_NOT_IMPORTED = "لم يُعثر على استيراد لهذه الحزمة في الشيفرة المفحوصة؛ خُفِّضت الخطورة درجة واحدة."
-NOTE_IMPORTED = "الحزمة مستوردة في الشيفرة المفحوصة."
+# Counts in the notes agree with their noun (vulnscan/i18n/plural.py): one, two, few, many, other. "_GEN" forms
+# follow a noun or a preposition (تفاصيل ثغرتين، لفحص اعتماديتين), "_NOM" forms are a subject (بقيت اعتماديتان).
+_DEPS_GEN = ("اعتمادية واحدة", "اعتماديتين", "{n} اعتماديات", "{n} اعتماديةً", "{n} اعتمادية")
+_DEPS_NOM = ("اعتمادية واحدة", "اعتماديتان", "{n} اعتماديات", "{n} اعتماديةً", "{n} اعتمادية")
+_VULNS_GEN = ("ثغرة واحدة", "ثغرتين", "{n} ثغرات", "{n} ثغرةً", "{n} ثغرة")
+_KNOWN_VULNS_NOM = ("ثغرة معروفة واحدة", "ثغرتان معروفتان", "{n} ثغرات معروفة", "{n} ثغرةً معروفةً", "{n} ثغرة معروفة")
+
+NOTE_NOT_IMPORTED = "لم يُعثر على استيراد لهذه الحزمة في الكود المفحوص؛ خُفِّضت الخطورة درجة واحدة."
+NOTE_IMPORTED = "الحزمة مستوردة في الكود المفحوص."
 NOTE_NOT_CALLED = "الحزمة مستوردة، لكن لم يُعثر على استدعاء للدوال المصابة المذكورة في التقرير."
-NOTE_UNKNOWN = "تعذّر تحديد ما إذا كانت الشيفرة تستخدم هذه الحزمة."
+NOTE_UNKNOWN = "تعذّر تحديد ما إذا كان الكود يستخدم هذه الحزمة."
 NOTE_TRANSITIVE = "هذه اعتمادية غير مباشرة؛ حدّث الحزمة التي تجلبها أو ثبّت الإصدار المُصحَّح."
 
 
@@ -468,15 +476,17 @@ def audit_dependencies(root: pathlib.Path, timeout: float = 20.0, *, fetcher=Non
     if error is None:
         lacking = sum(1 for v in wanted if not details.get(v))
         if lacking:                                  # ids are known, details (severity, fix) are not
-            return findings, (f"تعذّر جلب تفاصيل {lacking} ثغرة من OSV.dev؛ أُبلغ عنها بخطورة متوسطة ودون الإصدار "
+            return findings, (f"تعذّر جلب تفاصيل {ar_count(lacking, _VULNS_GEN)} من OSV.dev؛ أُبلغ عنها بخطورة متوسطة ودون الإصدار "
                               "المُصحَّح. أعد الفحص لاحقًا للحصول على التفاصيل.")
         return findings, None
     checked = len(pkgs) - unchecked
     if not checked:
-        return findings, (f"تعذّر الاتصال بـ OSV.dev لفحص {len(pkgs)} اعتمادية ({_reason(error)}). لم تُفحص ثغرات الاعتماديات؛ "
+        return findings, (f"تعذّر الاتصال بـ OSV.dev لفحص {ar_count(len(pkgs), _DEPS_GEN)} ({_reason(error)}). "
+                          "لم تُفحص ثغرات الاعتماديات؛ "
                           "أعد المحاولة عند توفّر الإنترنت، أو استخدم --no-deps لتعطيل هذا الفحص.")
-    return findings, (f"تعذّر الاتصال بـ OSV.dev ({_reason(error)}): فُحصت {checked} اعتمادية من النتائج المخزَّنة مؤقتًا "
-                      f"({len(findings)} ثغرة معروفة) وبقيت {unchecked} اعتمادية بلا فحص.")
+    return findings, (f"تعذّر الاتصال بـ OSV.dev ({_reason(error)}): فُحصت {ar_count(checked, _DEPS_NOM)} من النتائج "
+                      f"المخزَّنة مؤقتًا ({ar_count(len(findings), _KNOWN_VULNS_NOM)}) وبقيت "
+                      f"{ar_count(unchecked, _DEPS_NOM)} بلا فحص.")
 
 
 def _details(fetch, cache: _Cache, vuln_ids: list[str], timeout: float, offline: bool = False) -> dict[str, dict]:
@@ -550,7 +560,7 @@ def _finding(pkg: sca.Package, vid: str, detail: dict, index: sca.ImportIndex | 
             extra["vulnerable_functions"] = [f"{p}.{s}" if p else s for p, s in symbols][:50]
         if status == sca.CALLED:
             extra["called_functions"] = called[:50]
-            note = f"الشيفرة تستدعي دوال مصابة في هذه الحزمة: {', '.join(called[:5])}."
+            note = f"الكود يستدعي دوال مصابة في هذه الحزمة: {', '.join(called[:5])}."
         elif status == sca.NOT_IMPORTED:
             lowered = _lower(severity)
             if lowered != severity:

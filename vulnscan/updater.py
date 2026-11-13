@@ -207,30 +207,88 @@ def _q(arg: str) -> str:
     return shlex.quote(arg)
 
 
+# The pip distribution is "kashif" from 1.0.2 on (the import package stays `vulnscan`). Up to 1.0.1 it was "vulnscan",
+# installed from git: "vulnscan" on PyPI is an unrelated project, so no command may ever name it as something to install.
+DIST = "kashif"
+LEGACY_DIST = "vulnscan"
+
+
+def _distribution(name: str):
+    try:
+        from importlib import metadata
+        return metadata.distribution(name)
+    except Exception:  # noqa: BLE001 - PackageNotFoundError and broken metadata alike
+        return None
+
+
+def _direct_url(dist) -> dict:
+    try:
+        direct = json.loads(dist.read_text("direct_url.json") or "{}")
+    except (ValueError, OSError, AttributeError):
+        return {}
+    return direct if isinstance(direct, dict) else {}
+
+
+def _from_index(dist) -> bool:
+    """Whether pip installed ``dist`` from a package index: PEP 610 writes direct_url.json for every other source
+    (a VCS URL, a local or remote archive, a directory). Unreadable metadata counts as not from an index."""
+    try:
+        return dist.read_text("direct_url.json") is None
+    except Exception:  # noqa: BLE001 - OSError, a mock or broken metadata
+        return False
+
+
+def _is_this_project(dist) -> bool:
+    """Whether a distribution named "vulnscan" is this project (a pre-1.0.2 install), not the unrelated PyPI one."""
+    try:
+        md = dist.metadata
+        urls = list(md.get_all("Project-URL") or []) + [md.get("Home-page") or ""]
+        if any(REPO in str(u) for u in urls):
+            return True
+    except Exception:  # noqa: BLE001 - a mock or broken metadata
+        pass
+    try:                                       # 0.x had no project URLs: its RECORD lists this very module
+        return any(str(f).replace("\\", "/") == "vulnscan/updater.py" for f in (dist.files or ()))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def install_info() -> dict:
-    """{kind: binary|pip|source, command: manual update command or None}."""
+    """{kind: binary|pip|source, command: manual update command or None}.
+
+    A pip install from before 1.0.2 is the distribution "vulnscan"; installing "kashif" over it leaves two
+    distributions owning the same files (uninstalling either later deletes the other's), so the command for it
+    removes the old one first."""
     if getattr(sys, "frozen", False):
         return {"kind": "binary", "command": None}
     root = _package_root()
     if (root / ".git").exists():
         return {"kind": "source", "command": f"git -C {_q(str(root))} pull"}
-    try:
-        from importlib import metadata
-        dist = metadata.distribution("vulnscan")
-    except Exception:  # noqa: BLE001 - PackageNotFoundError and broken metadata alike
+    dist = _distribution(DIST)
+    legacy = _distribution(LEGACY_DIST)
+    if legacy is not None and not _is_this_project(legacy):
+        legacy = None                                      # someone else's "vulnscan": not ours to remove
+    if dist is None and legacy is None:
         return {"kind": "source", "command": None}
-    direct = {}
-    try:
-        direct = json.loads(dist.read_text("direct_url.json") or "{}")
-    except (ValueError, OSError):
-        direct = {}
-    if direct.get("dir_info", {}).get("editable"):
+    directs = [_direct_url(d) for d in (dist, legacy) if d is not None]
+    dir_info = directs[0].get("dir_info")
+    if isinstance(dir_info, dict) and dir_info.get("editable"):
         return {"kind": "source", "command": None}
     py = _q(sys.executable or "python3")
-    url = direct.get("url", "")
-    if direct.get("vcs_info") and url.startswith("https://"):
-        return {"kind": "pip", "command": f"{py} -m pip install --upgrade {_q('git+' + url)}"}
-    return {"kind": "pip", "command": f"{py} -m pip install --upgrade vulnscan"}
+    # "kashif" is named as something to install only when the installed "kashif" itself came from a package index
+    # (no direct_url.json): before the owner publishes it, that name on PyPI is unclaimed and anyone could upload
+    # under it, so a local wheel, an archive, a directory or a pre-1.0.2 "vulnscan" install gets the git URL
+    # (the documented install), never the bare name.
+    target = DIST if dist is not None and _from_index(dist) else _q(f"git+https://github.com/{REPO}")
+    for direct in directs:                                 # an install from git keeps coming from git
+        url = direct.get("url", "")
+        if direct.get("vcs_info") and isinstance(url, str) and url.startswith("https://"):
+            target = _q("git+" + url)
+            break
+    if legacy is None:
+        return {"kind": "pip", "command": f"{py} -m pip install --upgrade {target}"}
+    names = f"{LEGACY_DIST} {DIST}" if dist is not None else LEGACY_DIST
+    return {"kind": "pip", "command": f"{py} -m pip uninstall -y {names} && {py} -m pip install {target}"}
 
 
 def _home(home: pathlib.Path | None = None) -> pathlib.Path:
@@ -751,18 +809,22 @@ CLI_TEXT = {
 
 def cli_main(argv: list[str]) -> int:
     """`vulnscan update [--check] [--yes]`. Exit: 0 up to date or updated, 1 failure, 10 update available (--check)."""
-    from .cli import LANG_CHOICES, _lang_from_argv, resolve_lang
+    from .cli import LANG_CHOICES, _bi, _HelpFormatter, _lang_from_argv, resolve_lang
     lang = _lang_from_argv(argv)
 
-    def m(text: str) -> str:
-        return localize(text, lang)
+    def h(text: str) -> str:                         # --help: Arabic, English, or both under "both"
+        return _bi(text, lang)
 
-    p = argparse.ArgumentParser(prog="kashif update", description=m(CLI_TEXT["desc"]))
-    p.add_argument("--check", action="store_true", help=m(CLI_TEXT["check"]))
-    p.add_argument("-y", "--yes", action="store_true", help=m(CLI_TEXT["yes"]))
+    p = argparse.ArgumentParser(prog="kashif update", description=h(CLI_TEXT["desc"]), formatter_class=_HelpFormatter)
+    p.add_argument("--check", action="store_true", help=h(CLI_TEXT["check"]))
+    p.add_argument("-y", "--yes", action="store_true", help=h(CLI_TEXT["yes"]))
     p.add_argument("--lang", choices=LANG_CHOICES, default="auto", help=argparse.SUPPRESS)
     a = p.parse_args(argv)
     lang = resolve_lang(a.lang)
+    lang = "en" if lang == "both" else lang          # messages: English under "both", as the other sub-commands
+
+    def m(text: str) -> str:
+        return localize(text, lang)
     cleanup_stale()
 
     def fail(e: UpdateError) -> int:

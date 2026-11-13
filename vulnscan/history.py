@@ -117,7 +117,7 @@ STR = {
         "file": "file",
         "commit": "introduced in",
         "secret": "secret",
-        "chars": "chars",
+        "chars": "{n:chars}",
         "status": "status",
         "present": "STILL PRESENT at HEAD",
         "removed": "removed in",
@@ -145,12 +145,12 @@ STR = {
         "e_branch": "invalid branch or revision name: {name}",
         "e_fail": "git failed: {msg}",
         "n_shallow": "shallow clone: only part of the history is available (run `git fetch --unshallow`).",
-        "n_timeout": "stopped after {sec} s (time limit); results are partial.",
+        "n_timeout": "stopped after {sec:seconds_obl} (time limit); results are partial.",
         "n_cap": "finding limit reached ({n}); further secrets were not recorded.",
         "n_entropy": "entropy detector unavailable in this build; only pattern rules were applied.",
         "n_fsck": "git fsck failed; unreachable objects were not examined.",
         "n_window": "history window limited by --since/--until/--max-commits: older secrets are not reported.",
-        "n_long": "{n} changed lines longer than {limit} characters were not examined.",
+        "n_long": "not examined (longer than {limit:characters_obl}): {n:changed_lines}.",
         "n_paths": "some secrets appear in too many files to track them all; 'still at HEAD' may be incomplete.",
         "e_write": "cannot write {path}: {msg}",
         "h_desc": "Find secrets in the git history of a repository (every commit, every branch).",
@@ -166,7 +166,7 @@ STR = {
         "h_only": "show only secrets still present at HEAD, or only those removed from it",
         "h_format": "output format",
         "h_output": "write the report to this file instead of standard output",
-        "h_lang": "language of the report",
+        "h_lang": "language of the report: en or ar (default: VULNSCAN_LANG or KASHIF_LANG, else en)",
         "h_exit": "always exit with 0, even when secrets are found",
         "h_timeout": "stop after this many seconds and report partial results",
     },
@@ -185,7 +185,7 @@ STR = {
         "file": "الملف",
         "commit": "أُدخل في",
         "secret": "السرّ",
-        "chars": "حرفًا",
+        "chars": "{n:chars}",
         "status": "الحالة",
         "present": "ما زال موجودًا في HEAD",
         "removed": "أُزيل في",
@@ -210,19 +210,19 @@ STR = {
         "e_branch": "اسم فرع أو مراجعة غير صالح: {name}",
         "e_fail": "فشل git: {msg}",
         "n_shallow": "نسخة سطحية: جزء من السجل فقط متاح (نفّذ `git fetch --unshallow`).",
-        "n_timeout": "توقّف الفحص بعد {sec} ثانية (حدّ الزمن)؛ النتائج جزئية.",
+        "n_timeout": "توقّف الفحص بعد {sec:seconds_obl} (حدّ الزمن)؛ النتائج جزئية.",
         "n_cap": "بلغ عدد النتائج الحدّ الأقصى ({n})؛ لم تُسجَّل أسرار أخرى.",
         "n_entropy": "كاشف العشوائية غير متاح في هذه النسخة؛ طُبّقت قواعد الأنماط فقط.",
         "n_fsck": "فشل git fsck؛ لم تُفحص الكائنات غير المرتبطة.",
         "n_window": "نافذة السجل محدودة بـ --since/--until/--max-commits: الأسرار الأقدم لا تظهر.",
-        "n_long": "لم يُفحص {n} سطرًا متغيّرًا أطول من {limit} حرفًا.",
+        "n_long": "لم يُفحص {n:changed_lines} أطول من {limit:chars_obl}.",
         "n_paths": "بعض الأسرار يظهر في ملفات كثيرة جدًا يتعذّر تتبّعها كلها؛ قد يكون فحص «ما زال في HEAD» ناقصًا.",
         "e_write": "تعذّرت الكتابة في {path}: {msg}",
         "h_desc": "ابحث عن الأسرار في سجل git لمستودع (كل إيداع وكل فرع).",
         "h_repo": "مسار مستودع git (الافتراضي: المجلد الحالي)",
         "h_since": "الإيداعات الأحدث من هذا التاريخ فقط (بصيغة git، مثل 2024-01-01)",
         "h_until": "الإيداعات الأقدم من هذا التاريخ فقط",
-        "h_max": "افحص N إيداعًا على الأكثر (الأحدث)",
+        "h_max": "افحص N من الإيداعات على الأكثر (الأحدث)",
         "h_branch": "فرع أو وسم أو مراجعة تُفحص بدل كل المراجع (يمكن تكراره)",
         "h_unreach": "افحص أيضًا reflog والإيداعات والملفات غير المرتبطة؛ بطيء",
         "h_exclude": "تجاهل الملفات المطابقة لهذا النمط (يمكن تكراره)",
@@ -231,7 +231,7 @@ STR = {
         "h_only": "اعرض الأسرار الموجودة في HEAD فقط، أو المُزالة منه فقط",
         "h_format": "صيغة المخرجات",
         "h_output": "اكتب التقرير في هذا الملف بدل المخرج القياسي",
-        "h_lang": "لغة التقرير",
+        "h_lang": "لغة التقرير: en أو ar (الافتراضي: VULNSCAN_LANG أو KASHIF_LANG، وإلا en)",
         "h_exit": "اخرج دائمًا بالرمز 0 حتى عند وجود أسرار",
         "h_timeout": "توقّف بعد هذا العدد من الثواني وأعطِ نتائج جزئية",
     },
@@ -239,8 +239,9 @@ STR = {
 
 
 def _t(lang: str, key: str, **kw) -> str:
+    from .i18n.cliargs import fmt                  # "{n:changed_lines}": the noun agrees with the number
     text = STR.get(lang, STR["en"]).get(key) or STR["en"][key]
-    return text.format(**kw) if kw else text
+    return fmt(text, lang if lang in STR else "en", **kw) if kw else text
 
 
 def remediation(lang: str = "en") -> list[str]:
@@ -1144,7 +1145,7 @@ def render_console(result: HistoryResult, lang: str = "en") -> str:
         else:
             out.append(f"  {L('commit')}: {L('unreachable')}")
         if x.get("secret_redacted"):
-            out.append(f"  {L('secret')}: {x['secret_redacted']} ({x['secret_length']} {L('chars')})")
+            out.append(f"  {L('secret')}: {x['secret_redacted']} ({L('chars', n=x['secret_length'])})")
         out.append(f"    {_clean(f.snippet)}")
         if x["status"] == "present":
             status = f"{L('present')} ({_clean(x['head_file'])}:{x['head_line']})"
@@ -1172,14 +1173,17 @@ def render_console(result: HistoryResult, lang: str = "en") -> str:
 
 # ------------------------------------------------------------------------------------------------ command line
 def _default_lang() -> str:
-    env = (os.environ.get("KASHIF_LANG") or os.environ.get("VULNSCAN_LANG") or "").lower()
-    return "ar" if env.startswith("ar") else "en"
+    """The language of VULNSCAN_LANG, then KASHIF_LANG: "ar", "en" or "both" (--help in both languages)."""
+    from .i18n.cliargs import lang_from_env
+    return lang_from_env() or "en"
 
 
 def build_parser(lang: str = "en") -> argparse.ArgumentParser:
-    """The argument parser of the ``history`` command (reusable by cli.py)."""
-    H = lambda k: _t(lang, k)                  # noqa: E731
-    p = argparse.ArgumentParser(prog="kashif history", description=H("h_desc"))
+    """The argument parser of the ``history`` command (reusable by cli.py). ``lang``: en, ar or both (each help
+    text in Arabic, then in English)."""
+    from .i18n.cliargs import HelpFormatter, pick
+    H = lambda k: pick(lang, _t("ar", k), _t("en", k)) if lang == "both" else _t(lang, k)   # noqa: E731
+    p = argparse.ArgumentParser(prog="kashif history", description=H("h_desc"), formatter_class=HelpFormatter)
     p.add_argument("repo", nargs="?", default=".", help=H("h_repo"))
     p.add_argument("--since", help=H("h_since"))
     p.add_argument("--until", help=H("h_until"))
@@ -1192,7 +1196,7 @@ def build_parser(lang: str = "en") -> argparse.ArgumentParser:
     p.add_argument("--only", choices=("present", "removed"), help=H("h_only"))
     p.add_argument("-f", "--format", choices=("console", "json"), default="console", help=H("h_format"))
     p.add_argument("-o", "--output", metavar="FILE", help=H("h_output"))
-    p.add_argument("--lang", choices=("en", "ar"), default=lang, help=H("h_lang"))
+    p.add_argument("--lang", choices=("en", "ar", "both"), default=lang, metavar="{en,ar}", help=H("h_lang"))
     p.add_argument("--timeout", type=float, metavar="SEC", help=H("h_timeout"))
     p.add_argument("--exit-zero", action="store_true", help=H("h_exit"))
     return p
@@ -1200,22 +1204,20 @@ def build_parser(lang: str = "en") -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point. Returns 0 (clean), 1 (secrets found) or 2 (error)."""
+    from .i18n.cliargs import help_lang, localized_argparse
     argv = list(sys.argv[1:] if argv is None else argv)
-    lang = _default_lang()
-    for i, a in enumerate(argv):                       # the help text follows --lang, so look for it first
-        if a == "--lang" and i + 1 < len(argv) and argv[i + 1] in STR:
-            lang = argv[i + 1]
-        elif a.startswith("--lang=") and a[7:] in STR:
-            lang = a[7:]
+    lang = help_lang(argv, default=_default_lang())    # the help text follows --lang, so look for it first
     for stream in (sys.stdout, sys.stderr):            # a legacy console code page must not crash the report
         try:
             stream.reconfigure(errors="replace")
         except (AttributeError, ValueError, OSError):
             pass
     try:
-        args = build_parser(lang).parse_args(argv)
+        with localized_argparse(lang):                 # argparse's headings and errors in that language
+            args = build_parser(lang).parse_args(argv)
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 2)
+    args.lang = "ar" if args.lang == "ar" else "en"    # "both": an English report, as from a "both" scan
     try:
         # by design: the operator's own command line chooses the repository and revisions; git runs as an
         # argv list (no shell), options are fixed `--x=value` forms and revisions go through --stdin

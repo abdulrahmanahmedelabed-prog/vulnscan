@@ -558,10 +558,15 @@ def test_csv_neutralises_spreadsheet_formulas():
 
 
 def test_strings_are_complete_in_both_languages():
+    import string
+
+    def fields(text):                      # "{n:untrusted_params}" is the field n with a count phrase
+        return {f for _, f, _, _ in string.Formatter().parse(text) if f}
     assert set(S.STR["en"]) == set(S.STR["ar"])
     for key, text in S.STR["en"].items():
-        assert set(re.findall(r"\{(\w+)\}", text)) == set(re.findall(r"\{(\w+)\}", S.STR["ar"][key])), key
-    assert all(re.search(r"[؀-ۿ]", v) or k in ("col_rank", "none", "kind_http") for k, v in S.STR["ar"].items())
+        assert fields(text) == fields(S.STR["ar"][key]), key
+    rendered = {k: S._t("ar", k, **{f: 3 for f in fields(v)}) for k, v in S.STR["ar"].items()}
+    assert all(re.search(r"[؀-ۿ]", v) or k in ("col_rank", "none", "kind_http") for k, v in rendered.items())
 
 
 def test_test_files_are_skipped_unless_asked():

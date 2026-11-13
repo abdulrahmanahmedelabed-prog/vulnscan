@@ -6,9 +6,16 @@ CATALOG: dict[str, str] = {
         "Do not build shell commands (local or remote over SSH) from input; quote every argument with shlex.quote "
         "and validate it against an allowlist.",
     # MongoDB server-side JavaScript (bson Code, mongoengine where / exec_js)
+    "لا تبنِ كود JavaScript لـ MongoDB ($where / Code / where()) من المدخلات؛ استخدم مشغّلات الاستعلام ومرّر القيم عبر scope.":
+        "Do not build MongoDB JavaScript ($where / Code / where()) from input; use query operators and pass "
+        "values through the scope.",
+    # the wording of Kashif 1.0.1 (الشيفرة), still in older reports
     "لا تبنِ شيفرة JavaScript لـ MongoDB ($where / Code / where()) من المدخلات؛ استخدم مشغّلات الاستعلام ومرّر القيم عبر scope.":
         "Do not build MongoDB JavaScript ($where / Code / where()) from input; use query operators and pass "
         "values through the scope.",
+    "بيانات غير موثوقة تصل إلى كود JavaScript تنفّذه MongoDB":
+        "Tainted data reaches a MongoDB server-side JavaScript query",
+    # the wording of Kashif 1.0.1 (الشيفرة), still in older reports
     "بيانات غير موثوقة تصل إلى شيفرة JavaScript تنفّذها MongoDB":
         "Tainted data reaches a MongoDB server-side JavaScript query",
     # Django mark_safe / SafeString, markupsafe Markup, format_html

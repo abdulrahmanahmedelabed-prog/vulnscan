@@ -250,12 +250,12 @@ STR = {
         "e_bad_path": "The path is not a valid local path.",
         "e_args": "Invalid arguments: {detail}",
         "e_unknown_tool": "Unknown tool: {name}",
-        "e_timeout": "The scan did not finish within {sec} seconds and was stopped.",
+        "e_timeout": "The scan did not finish within {sec:seconds_obl} and was stopped.",
         "h_timeout": "Scan a sub-directory or a single file, or restart the server with a larger --timeout.",
         "e_cancelled": "The request was cancelled.",
-        "e_too_large": "The target has more than {n} files.",
+        "e_too_large": "The target has more than {n:files_obl}.",
         "h_too_large": "Scan a sub-directory instead.",
-        "e_archive_large": "The archive would expand to more than {mb} MB or {n} entries; it was not extracted.",
+        "e_archive_large": "The archive would expand to more than {mb} MB or {n:entries_obl}; it was not extracted.",
         "h_archive_large": "Extract the part you need yourself and scan that directory.",
         "e_diff_unsafe": "diff_base was refused: this repository's own git configuration defines commands that "
                          "git would run ({keys}).",
@@ -274,19 +274,19 @@ STR = {
         "e_diff": "Could not compute the diff: {detail}",
         "e_busy": "Too many tool calls are running; retry shortly.",
         "e_cursor": "The cursor is not valid.",
-        "n_truncated": "Only the {n} most severe findings were kept.",
+        "n_truncated": "Only the most severe findings were kept: {n}.",
         "n_stale": "The code changed since the previous page; findings may have shifted.",
-        "n_symlinks": "{n} file(s) reached through a symlink or junction that leaves the allowed roots were skipped.",
-        "n_more": "{n} more finding(s) were not shown; raise min_severity to focus on the most severe.",
+        "n_symlinks": "Skipped {n:files} reached through a symlink or junction that leaves the allowed roots.",
+        "n_more": "{n:more_findings} not shown; raise min_severity to focus on the most severe.",
         "n_offline": "Offline scan: no dependency (OSV) lookup, no external tools, no bytecode decompilation.",
-        "n_diff_dropped": "{n} finding(s) outside the change were not shown.",
+        "n_diff_dropped": "Findings outside the change not shown: {n}.",
         "fix_none": "No automatic fix is available for this finding; apply the remediation manually.",
         "fix_no_module": "The autofix module is not part of this Kashif build; apply the remediation manually.",
         "why_generic": "Weaknesses of this class can let an attacker compromise the confidentiality, integrity "
                        "or availability of the application or its data.",
         "fix_generic": "See {url} for remediation guidance.",
         "suppress": "Only if this is a verified false positive: add a `vulnscan: ignore` comment on the line.",
-        "elided": "... {n} intermediate step(s) omitted; call get_finding for the full path ...",
+        "elided": "... {n:mid_steps} omitted; call get_finding for the full path ...",
         "cfg_note": "Client configuration for the Kashif MCP server",
     },
     "ar": {
@@ -345,12 +345,12 @@ STR = {
         "e_bad_path": "المسار ليس مسارًا محليًا صالحًا.",
         "e_args": "وسائط غير صالحة: {detail}",
         "e_unknown_tool": "أداة غير معروفة: {name}",
-        "e_timeout": "لم ينتهِ الفحص خلال {sec} ثانية فأُوقف.",
+        "e_timeout": "لم ينتهِ الفحص خلال {sec:seconds_obl} فأُوقف.",
         "h_timeout": "افحص مجلدًا فرعيًا أو ملفًا واحدًا، أو أعد تشغيل الخادم بقيمة ‎--timeout أكبر.",
         "e_cancelled": "أُلغي الطلب.",
-        "e_too_large": "الهدف يحتوي أكثر من {n} ملف.",
+        "e_too_large": "الهدف يحتوي أكثر من {n:files_obl}.",
         "h_too_large": "افحص مجلدًا فرعيًا بدلًا منه.",
-        "e_archive_large": "الأرشيف سيتمدّد إلى أكثر من {mb} ميغابايت أو {n} عنصر؛ لم يُفكّ.",
+        "e_archive_large": "الأرشيف سيتمدّد إلى أكثر من {mb} ميغابايت أو {n:entries_obl}؛ لم يُفكّ.",
         "h_archive_large": "فُكّ الجزء الذي تحتاجه بنفسك وافحص ذلك المجلد.",
         "e_diff_unsafe": "رُفض diff_base: إعدادات git الخاصة بهذا المستودع تعرّف أوامر سينفّذها git ‏({keys}).",
         "h_diff_unsafe": "افحص دون diff_base، أو احذف تلك الإعدادات من ‎.git/config إن كنت تثق بها "
@@ -368,10 +368,10 @@ STR = {
         "e_diff": "تعذّر حساب الفروقات: {detail}",
         "e_busy": "عدد كبير من الاستدعاءات قيد التنفيذ؛ أعد المحاولة بعد قليل.",
         "e_cursor": "المؤشّر غير صالح.",
-        "n_truncated": "احتُفظ بأخطر {n} نتيجة فقط.",
+        "n_truncated": "احتُفظ بأخطر {n:findings_obl} فقط.",
         "n_stale": "تغيّر الكود منذ الصفحة السابقة؛ قد يكون ترتيب النتائج قد تغيّر.",
-        "n_symlinks": "تُجوهل {n} ملف يُوصَل إليه عبر رابط رمزي أو وصلة تخرج عن الجذور المسموحة.",
-        "n_more": "لم تُعرض {n} نتيجة إضافية؛ ارفع min_severity للتركيز على الأخطر.",
+        "n_symlinks": "تُجوهل {n:files} عبر رابط رمزي أو وصلة تخرج عن الجذور المسموحة.",
+        "n_more": "لم تُعرض {n:more_findings}؛ ارفع min_severity للتركيز على الأخطر.",
         "n_offline": "فحص دون إنترنت: بلا استعلام اعتماديات (OSV) ولا أدوات خارجية ولا فكّ تجميع.",
         "n_diff_dropped": "نتائج خارج التغييرات لم تُعرض: {n}.",
         "fix_none": "لا يوجد إصلاح آلي لهذه النتيجة؛ طبّق المعالجة يدويًا.",
@@ -379,15 +379,16 @@ STR = {
         "why_generic": "ثغرات هذا الصنف قد تمكّن المهاجم من المساس بسرّية التطبيق أو بياناته أو سلامتها أو توافرها.",
         "fix_generic": "راجع {url} لإرشادات المعالجة.",
         "suppress": "فقط إن تأكّدت أنها إنذار كاذب: أضف تعليق `vulnscan: ignore` على السطر.",
-        "elided": "... حُذفت {n} خطوة وسيطة؛ استدعِ get_finding للمسار الكامل ...",
+        "elided": "... حُذفت {n:mid_steps}؛ استدعِ get_finding للمسار الكامل ...",
         "cfg_note": "إعداد العملاء لخادم كاشِف MCP",
     },
 }
 
 
 def _t(lang: str, key: str, **kw) -> str:
+    from .i18n.cliargs import fmt                  # "{n:findings}": the noun agrees with the number
     text = STR.get(lang, STR["en"]).get(key) or STR["en"][key]
-    return text.format(**kw) if kw else text
+    return fmt(text, lang if lang in STR else "en", **kw) if kw else text
 
 
 def _norm_lang(value, default: str = "en") -> str:
@@ -2202,7 +2203,7 @@ _HELP = {
         "root": "allow scanning inside DIR (repeatable); the working directory and the client's roots are allowed too",
         "no_cwd": "do not allow the working directory implicitly",
         "no_client": "ignore the roots the client advertises",
-        "lang": "language of descriptions and results: en or ar (default: VULNSCAN_LANG if en/ar, else en)",
+        "lang": "language of descriptions and results: en or ar (default: VULNSCAN_LANG or KASHIF_LANG if en/ar, else en)",
         "timeout": "hard limit for one scan in seconds (default {timeout})",
         "max_output": "size cap of one tool result in bytes (default {size})",
         "in_process": "scan inside the server process (no worker; timeouts become soft)",
@@ -2215,7 +2216,7 @@ _HELP = {
         "root": "اسمح بالفحص داخل DIR (يمكن تكراره)؛ ويُسمح أيضًا بمجلد العمل وبالجذور التي يعلنها العميل",
         "no_cwd": "لا تسمح بمجلد العمل ضمنيًا",
         "no_client": "تجاهل الجذور التي يعلنها العميل",
-        "lang": "لغة الأوصاف والنتائج: en أو ar (الافتراضي: VULNSCAN_LANG إن كانت en أو ar، وإلا en)",
+        "lang": "لغة الأوصاف والنتائج: en أو ar (الافتراضي: VULNSCAN_LANG أو KASHIF_LANG إن كانت en أو ar، وإلا en)",
         "timeout": "الحد الأقصى لمدة الفحص الواحد بالثواني (الافتراضي {timeout})",
         "max_output": "الحد الأقصى لحجم نتيجة الأداة الواحدة بالبايت (الافتراضي {size})",
         "in_process": "افحص داخل عملية الخادم نفسها (دون عملية مساعدة؛ وتصبح المهلة غير صارمة)",
@@ -2252,14 +2253,15 @@ def build_parser(lang: str = "en") -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """``kashif mcp`` / ``python3 -m vulnscan.mcp``: run the MCP server on stdin/stdout."""
-    from .i18n.cliargs import help_lang, localized_argparse
+    from .i18n.cliargs import help_lang, lang_from_env, localized_argparse
     argv = list(sys.argv[1:] if argv is None else argv)
-    hlang = help_lang(argv, default=_norm_lang((os.environ.get("VULNSCAN_LANG") or "").strip().lower()))
+    env = _norm_lang(lang_from_env())                # VULNSCAN_LANG, then KASHIF_LANG
+    hlang = help_lang(argv, default=env)
     with localized_argparse(hlang):                # --help and usage errors follow --lang (en, ar or both)
         args = build_parser(hlang).parse_args(argv)
     if args.scan_worker:
         return _worker_main()
-    lang = _norm_lang(args.lang) if args.lang else _norm_lang((os.environ.get("VULNSCAN_LANG") or "").strip().lower())
+    lang = _norm_lang(args.lang) if args.lang else env
     if args.print_config:
         try:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")

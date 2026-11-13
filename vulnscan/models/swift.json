@@ -702,8 +702,8 @@
     "sel_registerName"
    ],
    "title": "Tainted data reaches code evaluation",
-   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
-   "advice": "لا تنفّذ شيفرة مبنية من المدخلات."
+   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ كود",
+   "advice": "لا تنفّذ كودًا مبنيًا من المدخلات."
   },
   {
    "rule": "DF013",

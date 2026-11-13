@@ -402,7 +402,7 @@ def test_review_payload_paths_lines_sides(tmp_path, fake, capsys):
     assert len(fake.issue_comments) == 1
     summary = fake.issue_comments[0]["body"]
     assert summary.startswith(github_pr.SUMMARY_MARKER)
-    assert "5 new finding(s)" in summary and "src/app.py:90" in summary and "the check fails" in summary
+    assert "5 new findings" in summary and "src/app.py:90" in summary and "the check fails" in summary
     assert "https://github.com/o/r/blob/abc123/src/app.py#L90" in summary
     assert pathlib.Path(env["GITHUB_STEP_SUMMARY"]).read_text(encoding="utf-8").count(github_pr.SUMMARY_MARKER) == 1
     assert "findings=5" in pathlib.Path(env["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
@@ -442,7 +442,7 @@ def test_rerun_is_idempotent(tmp_path, fake):
     findings.append(_finding(3, 5, sev="critical"))                # a new push adds one finding
     _run(tmp_path, env, findings)
     assert len(fake.reviews) == 2 and len(fake.reviews[1]["comments"]) == 1
-    assert "3 new finding(s)" in fake.issue_comments[0]["body"]
+    assert "3 new findings" in fake.issue_comments[0]["body"]
 
 
 def test_markers_from_humans_are_ignored(tmp_path, fake):
@@ -718,7 +718,7 @@ def test_review_422_falls_back_to_summary(tmp_path, fake):
     assert _run(tmp_path, env, [_finding(1, 2, sev="critical")], "--fail-on", "high") == 1
     assert fake.reviews == []
     summary = fake.issue_comments[0]["body"]
-    assert "1 new finding(s)" in summary and "💬" not in summary
+    assert "1 new finding in" in summary and "💬" not in summary
     assert "inline-comments=0" in pathlib.Path(env["GITHUB_OUTPUT"]).read_text(encoding="utf-8")
 
 
