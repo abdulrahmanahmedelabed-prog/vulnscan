@@ -81,7 +81,7 @@ footer{color:var(--muted);font-size:14px;margin-top:48px;padding-top:18px;paddin
       <tr><td>Links of the same origin (<code>&lt;a href&gt;</code>), breadth-first</td><td>only when the operator enables crawling</td><td>20 pages by default, depth 2</td></tr>
       <tr><td>A fixed list of files that are often exposed by accident (for example <code>/.git/HEAD</code>, <code>/.env</code>, backups), and random paths named <code>/kashif-404-&lt;16 hex digits&gt;</code> to learn what your “not found” page looks like</td><td>deep only (opt-in)</td><td>≤ 70 paths; ≤ 5 random paths per host, ≤ 10 in total</td></tr>
       <tr><td>TLS handshakes to the site's HTTPS port: one verified, one unverified and short version/cipher probes that read the server's reply and close</td><td>HTTPS sites</td><td>≈ 14 per address (deep ≈ 60), ≤ 5 per second</td></tr>
-      <tr><td>Normal DNS lookups of the site and of the hosts its scripts, styles, frames and forms reference</td><td>always (referenced hosts: standard and deep)</td><td>no packet goes to your servers</td></tr>
+      <tr><td>Normal DNS lookups of the site and of the hosts its scripts, styles, frames and forms reference</td><td>always (referenced hosts: standard and deep)</td><td>none sent to your web servers (your DNS servers see ordinary lookups)</td></tr>
     </tbody>
   </table></div>
 
@@ -163,7 +163,7 @@ if ($http_user_agent ~ "^Kashif/") { return 403; }
       <tr><td>روابط المصدر نفسه (<code>&lt;a href&gt;</code>) بالعرض أولًا</td><td>فقط إذا فعّل المشغّل الزحف</td><td>20 صفحةً افتراضيًا، بعمق 2</td></tr>
       <tr><td>قائمة ثابتة من الملفات التي تُكشف كثيرًا بالخطأ (مثل <code>/.git/HEAD</code> و<code>/.env</code> والنسخ الاحتياطية)، ومسارات عشوائية باسم <code>/kashif-404-&lt;16 رقمًا ست عشريًا&gt;</code> لمعرفة شكل صفحة «غير موجود» لديك</td><td>نمط deep فقط (باختيار المشغّل)</td><td>70 مسارًا على الأكثر؛ و5 مسارات عشوائية لكل مضيف و10 في المجموع على الأكثر</td></tr>
       <tr><td>مصافحات TLS مع منفذ HTTPS للموقع: واحدة مع التحقق من الشهادة، وواحدة دونه، وفحوص قصيرة للإصدارات ومجموعات التشفير تقرأ رد الخادم ثم تغلق الاتصال</td><td>مواقع HTTPS</td><td>نحو 14 لكل عنوان (ونحو 60 في deep)، و5 في الثانية على الأكثر</td></tr>
-      <tr><td>استعلامات DNS عادية عن الموقع وعن المضيفين الذين تشير إليهم سكربتاته وأنماطه وإطاراته ونماذجه</td><td>دائمًا (المضيفون المشار إليهم: standard وdeep)</td><td>لا يصل أي طلب إلى خوادمك</td></tr>
+      <tr><td>استعلامات DNS عادية عن الموقع وعن المضيفين الذين تشير إليهم سكربتاته وأنماطه وإطاراته ونماذجه</td><td>دائمًا (المضيفون المشار إليهم: standard وdeep)</td><td>لا يُرسل أي طلب إلى خوادم الويب لديك (وترى خوادم DNS استعلامات عادية فقط)</td></tr>
     </tbody>
   </table></div>
 

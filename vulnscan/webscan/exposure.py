@@ -48,6 +48,8 @@ TAKEOVER_FILE = "takeover.json"
 TECH_FILE = "tech.json"
 MAX_PROBES = 70                       # §0.1: fixed deep list incl. platform paths
 OK_STATUS = (200, 206)
+REF_CAP = 256_000                     # bytes of a reference (baseline, entry document) matched against a signature: the
+                                      # probe cap, so a 2 MB entry page never costs more than a probe does
 SHOW_PLATFORM_AT = 50                 # tech.py confidence from which a platform's deep paths are probed (paranoid: any)
 SECTXT_PATH = sectxt.WELL_KNOWN_PATH
 SECTXT_LEGACY = sectxt.LEGACY_PATH
@@ -114,6 +116,8 @@ STR: dict[str, tuple[str, str]] = {
                           "أعاد {url} ملفًا لا يحوي أي حقل من حقول security.txt."),
     "sectxt_denied": ("{url} answered {status}, so researchers cannot read a security.txt there.",
                       "أجاب {url} بالرمز {status}، لذا لا يستطيع الباحثون قراءة ملف security.txt هناك."),
+    "takeover_root": ("the takeover fingerprints are only judged on the site root (/), which was not fetched",
+                      "لا تُطابَق بصمات الاستيلاء إلا على جذر الموقع (/)، ولم يُجلب"),
     "takeover_mitigated": ("{host} points to {provider} ({cname}), whose unclaimed-name page was seen, but {provider} no "
                            "longer allows claiming a name this way; not reported.",
                            "يشير {host} إلى {provider} ‏({cname})، وظهرت صفحة الاسم غير المُطالَب به، لكن {provider} لم "
@@ -489,15 +493,18 @@ def judge(r: Response, spec: DeepPath, index: classify.Soft404Index, refs: dict[
             return Verdict("clean", "identical to the soft-404 baseline")
         br = refs.get(b.signature.url)
         if br is not None and br.status is not None and 200 <= br.status < 300 and br.body \
-                and match_signature(spec.signature, br.body, _text(br)):
+                and match_signature(spec.signature, br.body[:REF_CAP]):
             return Verdict("clean", "the soft-404 baseline matches the signature too")
     if spec.strength == "weak":
         if index.match(r) is not None:
             return Verdict("clean", "similar to the soft-404 baseline")
-        # SPA shells: without a baseline proving real 404s here, a page like the entry document is the shell
-        real_404_here = bool(candidates) and candidates[0].real_404
-        if not real_404_here and entry is not None and entry is not r and entry.is_2xx and entry.body:
-            if match_signature(spec.signature, entry.body, _text(entry)):
+        # SPA shells: with no baseline for this path at all (budget, failed fetch), a page like the entry document, or
+        # an entry document that carries the marker itself, may be the shell. A baseline that answered (404, a
+        # redirect, or a 2xx page the probe does not resemble) already shows unknown paths do not get this page: the
+        # entry check would then only hide real login pages on sites that link to them from every page (Moodle, a
+        # WordPress "Log in" link)
+        if not candidates and entry is not None and entry is not r and entry.is_2xx and entry.body:
+            if match_signature(spec.signature, entry.body[:REF_CAP]):
                 return Verdict("clean", "the entry document matches the signature too")
             if classify.similar(classify.signature(r), classify.signature(entry)):
                 return Verdict("clean", "similar to the entry document")
@@ -569,10 +576,12 @@ def _resp_path(r: Response) -> str:
 
 # ----------------------------------------------------------------------------------------------- security.txt
 
-def _presence(r: Response | None, index: classify.Soft404Index,
-              looks_like: Any = sectxt.looks_like_sectxt) -> tuple[str, str, str]:
+def _presence(r: Response | None, index: classify.Soft404Index, looks_like: Any = sectxt.looks_like_sectxt,
+              refs: dict[str, Response] | None = None) -> tuple[str, str, str]:
     """(present | absent | unknown, reason code, detail key) for a well-known response. ``looks_like(text)`` says
-    whether a 2xx body is that file at all (an HTML page or a bare "OK" from a catch-all is not)."""
+    whether a 2xx body is that file at all (an HTML page or a bare "OK" from a catch-all is not); ``refs`` maps a
+    deep baseline's URL to its response, so a real file that merely resembles a baseline in length is kept."""
+    refs = refs or {}
     if r is None:
         return "unknown", "not_run", ""
     if r.error or r.status is None:
@@ -588,16 +597,29 @@ def _presence(r: Response | None, index: classify.Soft404Index,
         return "absent", "", "sectxt_denied"
     if not r.is_2xx:
         return "unknown", "network", ""
-    if r.kind == "soft404" or "soft404" in r.flags or index.match(r) is not None:
-        return "absent", "", "sectxt_catch_all"
-    if "opaque-coding" in r.flags:
+    opaque = "opaque-coding" in r.flags
+    text = "" if opaque else _text(r)
+    html = not opaque and looks_html(r.body, text)     # an HTML page (a homepage, a 404 page) is never the text file
+    is_file = not opaque and not html and looks_like(text)
+    m = index.match(r)
+    if m is not None or r.kind == "soft404" or "soft404" in r.flags:
+        # like a strong deep-probe signature (§2.10 gate (c)): a body that is the file is not dismissed because a
+        # short catch-all answer (200 text/plain "OK") has a similar length, unless that baseline is the file too
+        base = refs.get(m.baseline.signature.url) if m is not None and not m.baseline.natural else None
+        if not is_file or base is None or m is None or m.reason == "sha256" \
+                or base.body_sha256() == r.body_sha256() or looks_like(_text(base)):
+            return "absent", "", "sectxt_catch_all"
+    if opaque:
         return "unknown", "unsupported_coding", ""
-    text = _text(r)
-    if not looks_like(text):
-        if r.essence in classify.HTML_TYPES or looks_html(r.body, text):
+    if not is_file:
+        if html or r.essence in classify.HTML_TYPES:
             return "absent", "", "sectxt_html"
         return "absent", "", "sectxt_not_sectxt"
     return "present", "", ""
+
+
+def _baseline_refs(ctx: ScanContext) -> dict[str, Response]:
+    return {r.url: r for r in ctx.baselines if r is not None}
 
 
 def _security_txt(st: _Run, index: classify.Soft404Index) -> None:
@@ -608,8 +630,9 @@ def _security_txt(st: _Run, index: classify.Soft404Index) -> None:
         return
     wk = ctx.wellknown.get(SECTXT_PATH)
     legacy = ctx.wellknown.get(SECTXT_LEGACY)
-    p_wk = _presence(wk, index)
-    p_lg = _presence(legacy, index) if legacy is not None else None
+    refs = _baseline_refs(ctx)
+    p_wk = _presence(wk, index, refs=refs)
+    p_lg = _presence(legacy, index, refs=refs) if legacy is not None else None
     chosen: Response | None = None
     is_legacy = False
     if p_wk[0] == "present":
@@ -671,7 +694,7 @@ def robots_paths(text: str) -> dict[str, list[str]]:
         if not sep:
             continue
         k = key.strip().lower()
-        v = value.strip()
+        v = strip_controls(value).strip()          # untrusted: no ANSI/C0 in params, inventory or the terminal (§0.6)
         if not v:
             continue
         if k == "disallow" and v not in out["disallow"]:
@@ -707,7 +730,7 @@ def _robots(st: _Run, index: classify.Soft404Index) -> None:
         st.state("WEB061", "not_tested", "profile")
         return
     r = ctx.wellknown.get(ROBOTS_PATH)
-    state, reason, _detail = _presence_text(r, index)
+    state, reason, _detail = _presence_text(r, index, _baseline_refs(ctx))
     if state == "unknown":
         st.state("WEB061", "inconclusive" if reason in ("waf", "rate_limited") else "not_tested", reason)
         return
@@ -746,9 +769,10 @@ def looks_like_robots(text: str) -> bool:
     return bool(_ROBOTS_LINE.search(text[:65536])) and not _HTML_START.match(text[:2048])
 
 
-def _presence_text(r: Response | None, index: classify.Soft404Index) -> tuple[str, str, str]:
+def _presence_text(r: Response | None, index: classify.Soft404Index,
+                   refs: dict[str, Response] | None = None) -> tuple[str, str, str]:
     """Like :func:`_presence` for robots.txt: an HTML page or a body without any record line is not the file."""
-    return _presence(r, index, looks_like_robots)
+    return _presence(r, index, looks_like_robots, refs)
 
 
 # ----------------------------------------------------------------------------------------------- deep probe
@@ -774,7 +798,7 @@ def _site_links_to(ctx: ScanContext, path: str) -> bool:
 def _actuator_links(r: Response) -> list[str]:
     try:
         doc = json.loads(_text(r))
-    except ValueError:
+    except (ValueError, RecursionError):        # hostile nesting ("[" * 200000) must not abort the deep checks
         return []
     links = doc.get("_links") if isinstance(doc, dict) else None
     if not isinstance(links, dict):
@@ -873,6 +897,10 @@ def _deep(st: _Run, index: classify.Soft404Index) -> None:
                 st.state(c, "not_tested", "not_run")
 
 
+_WILDCARD_POLICY = re.compile(r"<allow-access-from\b[^>]*\bdomain\s*=\s*[\"']\*[\"'][^>]*>"
+                              r"|<domain\s+uri\s*=\s*[\"']\*[\"'][^>]*>")
+
+
 def _emit_probe(st: _Run, spec: DeepPath, r: Response, v: Verdict) -> None:
     ctx = st.ctx
     notes: list[tuple[str, str]] = []
@@ -892,7 +920,7 @@ def _emit_probe(st: _Run, spec: DeepPath, r: Response, v: Verdict) -> None:
     if spec.asvs5:
         params["asvs5"] = spec.asvs5
     if spec.rule == "WEB903":
-        m = re.search(r"<(?:allow-access-from|domain)\b[^>]*>", _text(r))
+        m = _WILDCARD_POLICY.search(_text(r))         # the wildcard element itself, not the first one of the file
         shown = _short(m.group(0), 160) if m else value
         notes.insert(0, _note("crossdomain", path=spec.path, value=shown))
         if m and re.search(r"\bsecure\s*=\s*[\"']false[\"']", m.group(0), re.I):
@@ -918,6 +946,7 @@ class Provider:
     status: int | None
     vulnerable: bool
     nxdomain: bool = False
+    fingerprints_all: tuple[str, ...] = ()     # optional: words that must all appear as well (nuclei condition: and)
 
     def suffix_of(self, name: str) -> str | None:
         n = normalise_host(name)
@@ -937,7 +966,8 @@ def providers(dm: Any = None) -> list[Provider]:
         if not isinstance(p, dict) or not p.get("cname") or not p.get("fingerprints"):
             continue
         out.append(Provider(str(p.get("name", "")), tuple(p["cname"]), tuple(p["fingerprints"]), p.get("status"),
-                            bool(p.get("vulnerable")), bool(p.get("nxdomain"))))
+                            bool(p.get("vulnerable")), bool(p.get("nxdomain")),
+                            tuple(str(w) for w in p.get("fingerprints_all") or ())))
     return out
 
 
@@ -1007,12 +1037,18 @@ def _takeover(st: _Run) -> None:
         entry = {"host": h, "cname": cname, "provider": prov.name, "vulnerable": prov.vulnerable,
                  "fingerprint": False}
         inv.append(entry)
-        for r in (x for x in responses if x.host == h):
+        # only the site root is judged: several fingerprints are the provider's ordinary 404 page ("Oops! We couldn't
+        # find that page."), which a claimed, live site also shows for a missing deep URL the user happened to scan
+        roots = [x for x in responses if x.host == h and (x.parsed_url.path or "/") == "/"]
+        if not roots and prov.vulnerable:
+            st.state("WEB901", "not_tested", "not_run", host=h, **dict(zip(("detail_en", "detail_ar"), STR["takeover_root"])))
+            continue
+        for r in roots:
             if prov.status is not None and r.status != prov.status:
                 continue
             text = _text(r)
             fp = next((f for f in prov.fingerprints if f in text), None)
-            if fp is None:
+            if fp is None or not all(w in text for w in prov.fingerprints_all):
                 continue
             entry["fingerprint"] = True
             if not prov.vulnerable:

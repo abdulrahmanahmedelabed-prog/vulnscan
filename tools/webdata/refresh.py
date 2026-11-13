@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import http.client
 import importlib.util
 import io
 import json
@@ -277,8 +278,9 @@ def http_get(url: str, timeout: float = TIMEOUT) -> bytes | None:
         if e.code == 404:
             return None
         raise RefreshError(f"{url}: HTTP {e.code}") from e
-    except (urllib.error.URLError, OSError) as e:
-        raise RefreshError(f"{url}: {getattr(e, 'reason', e)}") from e
+    except (urllib.error.URLError, OSError, http.client.HTTPException, ValueError) as e:
+        # HTTPException: IncompleteRead / BadStatusLine (a dropped connection), so the next mirror is tried
+        raise RefreshError(f"{url}: {getattr(e, 'reason', e) or type(e).__name__}") from e
     if len(body) > MAX_DOWNLOAD:
         raise RefreshError(f"{url}: larger than {MAX_DOWNLOAD} bytes")
     return body
@@ -401,7 +403,7 @@ def build(steps, mirror: Path | None, staging: Path, base: Path, day: str, *, ke
                 raise RefreshError(f"{step.name}: {e.code}\n{err.getvalue()}".rstrip()) from None
         except RefreshError as e:
             raise RefreshError(f"{step.name}: {e}\n{err.getvalue()}".rstrip()) from None
-        except (OSError, ValueError, KeyError, TypeError) as e:
+        except Exception as e:      # any generator bug: report it as this step's failure (nothing is installed)
             raise RefreshError(f"{step.name}: {type(e).__name__}: {e}\n{err.getvalue()}".rstrip()) from None
         missing = [o for o in step.outputs if not (staging / o).is_file()]
         if missing:

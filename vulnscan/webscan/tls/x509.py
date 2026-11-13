@@ -62,18 +62,31 @@ def _children(b: bytes, start: int, end: int, limit: int = 4096) -> list[tuple[i
     return out
 
 
+# Real OIDs are a few dozen bytes. A hostile certificate can carry a 200 KB "OID" whose arc decoding is quadratic
+# (seconds per parse, and certificates are parsed several times per IP), so longer encodings are rejected (§0.6).
+MAX_OID_BYTES = 128
+MAX_ARC_BYTES = 16
+
+
 def oid_str(raw: bytes) -> str:
     if not raw:
         raise X509Error("empty OID")
+    if len(raw) > MAX_OID_BYTES:
+        raise X509Error("OID too long")
     first = raw[0]
     top = min(first // 40, 2)
     parts = [str(top), str(first - 40 * top)]
     v = 0
+    arc_len = 0
     for c in raw[1:]:
         v = (v << 7) | (c & 0x7F)
+        arc_len += 1
+        if arc_len > MAX_ARC_BYTES:
+            raise X509Error("OID arc too long")
         if not c & 0x80:
             parts.append(str(v))
             v = 0
+            arc_len = 0
     return ".".join(parts)
 
 
@@ -163,6 +176,7 @@ class Certificate:
     aki: bytes | None = None
     ct_poison: bool = False
     version: int = 3
+    spki_sha256: str = ""                  # SHA-256 of the SubjectPublicKeyInfo (same key ⇔ same CA across reissues)
 
     @property
     def self_issued(self) -> bool:
@@ -212,7 +226,7 @@ class Certificate:
         return {"subject": self.subject, "issuer": self.issuer, "not_before": _iso(self.not_before),
                 "not_after": _iso(self.not_after), "lifetime_days": round(self.lifetime, 2), "san": self.san_names()[:50],
                 "san_count": len(self.san_dns) + len(self.san_ip), "key": self.key_text(), "sigalg": self.sig_alg,
-                "sha256": self.sha256, "serial": self.serial_hex, "validation": self.validation,
+                "sha256": self.sha256, "serial": self.serial_hex[:64], "validation": self.validation,
                 "must_staple": self.must_staple, "ocsp": self.ocsp_urls[:3], "scts": len(self.scts), "is_ca": self.is_ca,
                 "self_issued": self.self_issued}
 
@@ -251,15 +265,26 @@ def _time(b: bytes, t: int, s: int, e: int) -> datetime:
         raise X509Error(f"bad time {txt!r}") from None
 
 
+# C0/C1 control characters (ANSI escapes start with ESC): names and SANs come from the scanned server and end up in
+# notes and evidence shown on the operator's terminal (§0.6). They are dropped at the source.
+_CONTROLS = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def clean_text(text: str) -> str:
+    return _CONTROLS.sub("", text)
+
+
 def _string(b: bytes, t: int, s: int, e: int) -> str:
     raw = b[s:e]
     if t == 0x1E:                                    # BMPString
-        return raw.decode("utf-16-be", "replace")
-    if t == 0x1C:                                    # UniversalString
-        return raw.decode("utf-32-be", "replace")
-    if t in (0x0C,):
-        return raw.decode("utf-8", "replace")
-    return raw.decode("latin-1", "replace")
+        txt = raw.decode("utf-16-be", "replace")
+    elif t == 0x1C:                                  # UniversalString
+        txt = raw.decode("utf-32-be", "replace")
+    elif t in (0x0C,):
+        txt = raw.decode("utf-8", "replace")
+    else:
+        txt = raw.decode("latin-1", "replace")
+    return clean_text(txt)
 
 
 def _name(b: bytes, s: int, e: int) -> tuple[str, str | None]:
@@ -288,7 +313,7 @@ def _uris(d: bytes, s: int, e: int, depth: int = 0) -> list[str]:
         return out
     for t, cs, ce in _children(d, s, e):
         if t == 0x86:
-            out.append(d[cs:ce].decode("ascii", "replace"))
+            out.append(clean_text(d[cs:ce].decode("ascii", "replace")))
         elif t & 0x20:
             out.extend(_uris(d, cs, ce, depth + 1))
     return out
@@ -380,6 +405,7 @@ def _parse_spki(der: bytes, spki: tuple[int, int, int], cert: Certificate) -> No
     alg = _children(der, algseq[1], algseq[2])
     ko = oid_str(der[alg[0][1]:alg[0][2]])
     cert.key_type = KEY_OIDS.get(ko, ko)
+    cert.spki_sha256 = hashlib.sha256(der[spki[1]:spki[2]]).hexdigest()
     key = der[bitstr[1] + 1:bitstr[2]]              # skip the unused-bits byte
     if cert.key_type in ("RSA", "RSA-PSS"):
         _, ks, ke = _tlv(key, 0)
@@ -409,7 +435,7 @@ def _decode_ext(name: str, d: bytes, cert: Certificate) -> None:
         cert.has_san = True
         for t, cs, ce in _children(d, s, e):
             if t == 0x82:
-                cert.san_dns.append(d[cs:ce].decode("ascii", "replace"))
+                cert.san_dns.append(clean_text(d[cs:ce].decode("ascii", "replace")))
             elif t == 0x87:
                 try:
                     cert.san_ip.append(str(ipaddress.ip_address(d[cs:ce])))
@@ -434,7 +460,7 @@ def _decode_ext(name: str, d: bytes, cert: Certificate) -> None:
             method = oid_str(d[kids[0][1]:kids[0][2]])
             lt, ls, le = kids[1]
             if lt == 0x86:
-                url = d[ls:le].decode("ascii", "replace")
+                url = clean_text(d[ls:le].decode("ascii", "replace"))
                 if method == OCSP_OID:
                     cert.ocsp_urls.append(url)
                 elif method == CA_ISSUERS_OID:
@@ -514,6 +540,7 @@ class OcspResponse:
     this_update: datetime | None = None
     next_update: datetime | None = None
     has_scts: bool = False
+    scts: list[Sct] = field(default_factory=list)   # RFC 6962 §3.3: singleExtension (also accepted as responseExtension)
 
     def to_dict(self) -> dict:
         return {"status": self.status, "cert_status": self.cert_status, "produced_at": _iso(self.produced_at),
@@ -558,10 +585,29 @@ def _parse_ocsp(resp: bytes) -> OcspResponse:
     for t, cs, ce in sk[3:]:
         if t == 0xA0:
             out.next_update = _time(basic, *_tlv(basic, cs, ce))
+        elif t == 0xA1:                                          # singleExtensions: where RFC 6962 puts the SCTs
+            _ocsp_scts(basic, cs, ce, out)
     for t, cs, ce in f[i + 3:]:
-        if t == 0xA1 and OCSP_SCT_OID in basic[cs:ce]:
-            out.has_scts = True
+        if t == 0xA1:                                           # responseExtensions (some responders put them here)
+            _ocsp_scts(basic, cs, ce, out)
     return out
+
+
+def _ocsp_scts(b: bytes, s: int, e: int, out: OcspResponse) -> None:
+    """The SCT list extension (1.3.6.1.4.1.11129.2.4.5) inside an ``[1] EXPLICIT Extensions``; malformed → ignored."""
+    try:
+        _, xs, xe = _tlv(b, s, e)
+        for _, es, ee in _children(b, xs, xe):
+            parts = _children(b, es, ee)
+            if len(parts) < 2 or parts[0][0] != 0x06 or b[parts[0][1]:parts[0][2]] != OCSP_SCT_OID:
+                continue
+            out.has_scts = True
+            _, vs, ve = parts[-1]
+            inner = b[vs:ve]
+            _, ls, le = _tlv(inner, 0)
+            out.scts.extend(parse_sct_list(inner[ls:le], source="ocsp"))
+    except (X509Error, IndexError, struct.error):
+        return
 
 
 # ----------------------------------------------------------------------------------------------- host names
@@ -608,9 +654,15 @@ _ROCA_PRIMES = (3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61,
 _ROCA_PRINTS = tuple(sum(1 << x for x in {pow(65537, k, p) for k in range(p)}) for p in _ROCA_PRIMES)
 
 
+# OpenSSL refuses RSA moduli above 16384 bits (OPENSSL_RSA_MAX_MODULUS_BITS); a hostile server can still send a
+# certificate with a 1.6-million-bit "modulus", on which 100 Fermat rounds take 15 s per call. The weak-key tests stop
+# there (such a key is reported as an unusual size instead).
+MAX_TESTED_MODULUS_BITS = 16384
+
+
 def roca_vulnerable(n: int | None) -> bool:
     """True when the RSA modulus has the ROCA fingerprint (Infineon RSALib, CVE-2017-15361)."""
-    if not n or n < 3:
+    if not n or n < 3 or n.bit_length() > MAX_TESTED_MODULUS_BITS:
         return False
     return all((_ROCA_PRINTS[i] >> (n % p)) & 1 for i, p in enumerate(_ROCA_PRIMES))
 
@@ -618,7 +670,7 @@ def roca_vulnerable(n: int | None) -> bool:
 def fermat_factorable(n: int | None, rounds: int = 100) -> bool:
     """True when ``n`` factors by Fermat's method within ``rounds`` steps (primes too close: CVE-2022-26320).
     Only the yes/no answer leaves this function; the factors are discarded."""
-    if not n or n < 9 or n % 2 == 0:
+    if not n or n < 9 or n % 2 == 0 or n.bit_length() > MAX_TESTED_MODULUS_BITS:
         return False
     a = math.isqrt(n)
     if a * a < n:
@@ -634,4 +686,4 @@ def fermat_factorable(n: int | None, rounds: int = 100) -> bool:
 
 __all__ = ["X509Error", "Certificate", "Sct", "OcspResponse", "parse_certificate", "try_parse", "parse_sct_list",
            "parse_ocsp_response", "pem_to_der_list", "der_to_pem", "host_matches", "roca_vulnerable",
-           "fermat_factorable", "oid_str", "SIG_OIDS", "KEY_OIDS", "CURVE_OIDS", "POLICY"]
+           "fermat_factorable", "oid_str", "clean_text", "MAX_TESTED_MODULUS_BITS", "SIG_OIDS", "KEY_OIDS", "CURVE_OIDS", "POLICY"]

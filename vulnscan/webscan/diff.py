@@ -23,6 +23,7 @@ Pure functions over plain JSON data; no network, no file system.
 from __future__ import annotations
 
 import hashlib
+import math
 import urllib.parse
 from datetime import datetime, timezone
 from typing import Any, Iterable, Sequence
@@ -140,7 +141,7 @@ def normalise_target(url: str) -> str:
 
 
 def comparable(previous: dict | None, current: dict) -> bool:
-    return bool(previous) and previous.get("target") == current.get("target")
+    return bool(previous) and bool(current.get("target")) and previous.get("target") == current.get("target")
 
 
 # ----------------------------------------------------------------------------------------------- snapshot
@@ -556,7 +557,7 @@ def _sectxt_changes(p: dict, c: dict, now: datetime | None) -> list[dict]:
         if left < 0:
             items.append(_item("regression", "security_txt", "sectxt_expired", date=c["expires"]))
         elif left <= SECTXT_SOON_DAYS:
-            n = int(left)
+            n = max(1, math.ceil(left))          # "expires in 0 days" reads as already expired
             items.append(_item("regression", "security_txt", "sectxt_soon", days=(_days(n, "en"), _days(n, "ar"))))
     return items
 
@@ -587,11 +588,87 @@ def _check_changes(p: dict, c: dict) -> list[dict]:
 _ORDER = {"regression": 0, "change": 1, "improvement": 2}
 
 
+# ----------------------------------------------------------------------------------------------- input hygiene
+# A previous snapshot comes from disk (store.py, or a file the user names with --compare): an older Kashif, a hand
+# edit or a wrong file must never crash the scan. Every snapshot is coerced to the shape snapshot() writes; anything
+# of the wrong type is dropped.
+
+def _s(v: Any) -> str:
+    return v if isinstance(v, str) else ""
+
+
+def _num(v: Any) -> int | float | None:
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _d(v: Any) -> dict:
+    return v if isinstance(v, dict) else {}
+
+
+def _strs(v: Any) -> list[str]:
+    return [x for x in v if isinstance(x, str)][:MAX_ITEMS * 5] if isinstance(v, (list, tuple)) else []
+
+
+_ROW_FIELDS = ("key", "fingerprint", "rule", "severity", "confidence", "host", "title_en", "title_ar")
+
+
+def sanitise(snap: Any) -> dict | None:
+    """``snap`` coerced to the snapshot shape (None when it is not a snapshot at all)."""
+    if not isinstance(snap, dict):
+        return None
+    inv = _d(snap.get("inventory"))
+    grades = {alg: {"grade": _s(_d(g).get("grade")) or None, "score": _num(_d(g).get("score"))}
+              for alg, g in _d(snap.get("grades")).items() if isinstance(alg, str)}
+    rows = [{f: _s(r.get(f)) for f in _ROW_FIELDS} for r in snap.get("findings") or [] if isinstance(r, dict)] \
+        if isinstance(snap.get("findings"), list) else []
+    chain = [[h[0], _num(h[1])] for h in inv.get("chain") or [] if isinstance(h, (list, tuple)) and len(h) == 2
+             and isinstance(h[0], str)] if isinstance(inv.get("chain"), list) else []
+    csp = [{"origin": _s(p.get("origin")),
+            "directives": {k: _strs(v) for k, v in _d(p.get("directives")).items() if isinstance(k, str)}}
+           for p in inv.get("csp") or [] if isinstance(p, dict)] if isinstance(inv.get("csp"), list) else []
+    cookies = {}
+    for name, c in _d(inv.get("cookies")).items():
+        if isinstance(name, str) and isinstance(c, dict):
+            cookies[name] = {"class": _s(c.get("class")), "samesite": _s(c.get("samesite")), "domain": _s(c.get("domain")),
+                             "path": _s(c.get("path")), "host": _s(c.get("host")),
+                             **{f: c.get(f) is True for f in _COOKIE_FLAGS}}
+    tls = {}
+    for key, rep in _d(inv.get("tls")).items():
+        if isinstance(key, str) and isinstance(rep, dict):
+            scts = _num(rep.get("scts"))
+            tls[key] = {"protocols": _strs(rep.get("protocols")), "suites": _strs(rep.get("suites")),
+                        "cert_sha256": _s(rep.get("cert_sha256")), "issuer": _s(rep.get("issuer")),
+                        "not_after": _s(rep.get("not_after")), "key": _s(rep.get("key")), "scts": int(scts or 0)}
+    sectxt = _d(inv.get("security_txt"))
+    return {
+        "schema": _num(snap.get("schema")), "kashif": _s(snap.get("kashif")), "scan_id": _s(snap.get("scan_id")),
+        "target": _s(snap.get("target")), "profile": _s(snap.get("profile")), "crawl": snap.get("crawl") is True,
+        "sensitivity": _s(snap.get("sensitivity")), "scanned_at": _s(snap.get("scanned_at")), "grades": grades,
+        "checks": {k: v for k, v in _d(snap.get("checks")).items() if isinstance(k, str) and isinstance(v, str)},
+        "findings": rows,
+        "inventory": {
+            "final_url": _s(inv.get("final_url")), "chain": chain,
+            "headers": {k: v for k, v in _d(inv.get("headers")).items() if isinstance(k, str) and isinstance(v, str)},
+            "csp": csp, "cookies": cookies,
+            "third_party": {k: _strs(v) for k, v in _d(inv.get("third_party")).items() if isinstance(k, str)},
+            "libraries": {k: v for k, v in _d(inv.get("libraries")).items() if isinstance(k, str) and isinstance(v, str)},
+            "technologies": {k: v for k, v in _d(inv.get("technologies")).items()
+                             if isinstance(k, str) and isinstance(v, str)},
+            "tls": tls,
+            "security_txt": {"present": sectxt.get("present") is True, "expires": _s(sectxt.get("expires"))},
+            "robots_disallow": _strs(inv.get("robots_disallow")), "deep_hits": _strs(inv.get("deep_hits")),
+        },
+    }
+
+
 def diff(previous: dict | None, current: dict, *, now: datetime | None = None) -> dict:
-    """``web.diff``: new / resolved / unchanged findings, grade changes and posture changes (regressions first)."""
+    """``web.diff``: new / resolved / unchanged findings, grade changes and posture changes (regressions first).
+    Both snapshots go through :func:`sanitise` first, so a malformed or foreign previous file is never a crash."""
     out: dict[str, Any] = {"schema": SCHEMA, "comparable": False, "previous": None, "notes": [],
                            "findings": {"new": [], "resolved": [], "unchanged": []}, "grades": {}, "posture": [],
                            "counts": {}}
+    previous = sanitise(previous) if previous else None
+    current = sanitise(current) or sanitise({})
     if not previous:
         out["notes"].append({"en": t("no_previous"), "ar": t("no_previous", "ar")})
         return out

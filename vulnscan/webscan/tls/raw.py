@@ -340,6 +340,8 @@ def sslv2_client_hello(challenge: bytes | None = None) -> bytes:
 
 MAX_RECORD = 18432                     # 2^14 + 2048 (RFC 5246 §6.2.3)
 MAX_FLIGHT = 256 * 1024
+# detail of a reply cut by the deadline (a server dripping bytes): counts as a timeout for the back-off (§2.8 step 4)
+PARTIAL_TIMEOUT = "partial reply, then silence"
 
 
 @dataclass
@@ -575,7 +577,7 @@ def exchange(sock: socket.socket, hello: bytes, timeout: float, *, max_bytes: in
             fl.done, fl.detail = True, "timed out after ServerHello"
             return fl, data
         if data:
-            fl.result, fl.detail = "not_tls", "partial reply, then silence"
+            fl.result, fl.detail = "not_tls", PARTIAL_TIMEOUT
         else:
             fl.result = "timeout"
         fl.done = True
@@ -614,6 +616,6 @@ __all__ = [
     "Suite", "SUITES", "TLS13_SUITES", "TLS13_ALL_SUITES", "LEGACY_SUITES", "SSL3_SUITES", "MOZILLA_INTERMEDIATE",
     "CATEGORY_PROBES", "FS_SUITES", "DHE_SUITES", "ECDHE_SUITES", "SCSV_RENEGOTIATION", "SCSV_FALLBACK", "suite_name",
     "suite_category", "client_hello", "sslv3_client_hello", "sslv2_client_hello", "Flight", "parse_flight", "exchange",
-    "parse_ske", "ext", "is_ip", "EXT_STATUS_REQUEST", "EXT_SCT", "EXT_RENEG", "EXT_KEY_SHARE", "EXT_SUPPORTED_VERSIONS",
+    "parse_ske", "ext", "is_ip", "PARTIAL_TIMEOUT", "EXT_STATUS_REQUEST", "EXT_SCT", "EXT_RENEG", "EXT_KEY_SHARE", "EXT_SUPPORTED_VERSIONS",
     "EXT_ALPN",
 ]

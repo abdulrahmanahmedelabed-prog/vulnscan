@@ -16,6 +16,11 @@ Detection is a port of retire.js (``node/lib/retire.js``, Apache-2.0) over the b
 ``isAtOrAbove``. ``func`` and ``ast`` extractors need a JavaScript runtime and are skipped. URLs that match the
 ``dont check`` entry are skipped as retire does. Only script URLs and script bodies are read, never page prose (D15).
 
+Hostile input (§0.6): JavaScript's ``(?:.|\\r|\\n)`` becomes ``[\\s\\S]``, unbounded quantifiers get generous upper
+bounds (:func:`bound_quantifiers`), bodies are matched in chunks under a per-body and per-scan time budget, and a body
+that runs out of time leaves WEB054/WEB803 ``inconclusive`` ("time budget") instead of "passed". Results on 1,995 real
+JavaScript files are identical to the unguarded matcher.
+
 retire.js marks end-of-life branches with CWE-1104 pseudo-vulnerabilities ("jQuery 1.x and 2.x are End-of-Life");
 those feed WEB803, not WEB054. WEB803 also uses ``eol.json`` (endoflife.date) for the front-end products it lists and
 a small built-in table when the snapshot lacks one.
@@ -25,6 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import date
@@ -40,6 +46,16 @@ REPO_FILE = "retire-jsrepository.json.gz"
 EOL_FILE = "eol.json"
 VERSION_RX = r"[0-9][0-9.a-z_\-]+"
 CONTENT_CAP = 2 * 1024 * 1024
+# Hostile-input guards (§0.6). retire.js patterns are written for a backtracking engine and several are quadratic
+# (``@class easyXDM(?:.|\r|\n)+@version``, ``/\*[\s*!]+(?:@license)?[\s*]+…``): 80 KB of crafted text took 47 s.
+# Unbounded quantifiers are therefore capped (generously: real matches span far less), each body is matched in
+# chunks with a time budget checked between chunks, and an unfinished body leaves WEB054/WEB803 inconclusive.
+REPEAT_ANY = 20_000            # cap for "+"/"*" on ".", [\s\S], negated classes and groups
+REPEAT_CLASS = 2_000           # cap for "+"/"*" on specific classes (\s, [a-z], [\s*!] …)
+CHUNK = 16_384                 # match starts examined between two budget checks
+BODY_BUDGET = 3.0              # seconds of retire matching per script body
+RUN_BUDGET = 20.0              # seconds of retire matching per scan
+MAX_URL = 4096                 # script URLs longer than this are cut before the uri/filename extractors
 MAX_NOTES = 12
 MAX_VERSION_LEN = 64                      # a longer run of [0-9.a-z_-] is not a version (hostile bodies)
 
@@ -66,7 +82,7 @@ BUILTIN_EOL: dict[str, list[tuple[int, str]]] = {
 STR: dict[str, tuple[str, str]] = {
     "vuln": ("{ids}: {summary} (fixed in {below})", "{ids}: {summary} (مُصحَّح في {below})"),
     "vuln_nofix": ("{ids}: {summary} (no fixed version listed)", "{ids}: {summary} (لا يوجد إصدار مُصحَّح معروف)"),
-    "more": ("…and {count} more known vulnerabilities.", "…و{count} من الثغرات المعروفة الأخرى."),
+    "more": ("…and {count}.", "…و{count}."),
     "detected_by": ("Detected from {how}: {where}", "اكتُشفت من {how}: {where}"),
     "how_uri": ("the script URL", "رابط السكربت"),
     "how_filename": ("the script file name", "اسم ملف السكربت"),
@@ -80,6 +96,15 @@ STR: dict[str, tuple[str, str]] = {
     "eol_retire": ("retire.js: {summary}", "retire.js: {summary}"),
 }
 _PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+# Arabic count phrases (one, two, few, many, other) for vulnscan.i18n.plural.ar_count
+_MORE_VULNS = ("{n} more known vulnerability", "{n} more known vulnerabilities",
+              ("ثغرة معروفة أخرى", "ثغرتان معروفتان أخريان", "{n} ثغرات معروفة أخرى", "{n} ثغرةً معروفةً أخرى", "{n} ثغرة معروفة أخرى"))
+
+
+def _count(n: int, forms: tuple) -> tuple[str, str]:
+    from ..i18n.plural import ar_count   # lazy: vulnscan.i18n imports webscan modules through cat_web2
+    en = (forms[0] if n == 1 else forms[1]).replace("{n}", str(n))
+    return en, ar_count(n, forms[2])
 
 
 def _note(key: str, **values: Any) -> tuple[str, str]:
@@ -135,11 +160,24 @@ def vulnerability_matches(version: str, vuln: dict) -> bool:
 
 # ----------------------------------------------------------------------------------------------- repository
 
+# JavaScript's "any character" idiom (?:.|\r|\n) in any order, escaped or with the raw characters JSON decoded:
+# the same set as [\s\S] in Python, which backtracks per run instead of per character
+_ANY_ALT = r"(?:\.|\\r|\\n|\r|\n)"
+_ANY_GROUP = re.compile(r"\((\?:)?(" + _ANY_ALT + r"(?:\|" + _ANY_ALT + r"){2})\)")
+
+
+def _any_group(m: re.Match) -> str:
+    alts = {a.replace("\\", "").replace("\r", "r").replace("\n", "n") for a in m.group(2).split("|")}
+    if alts != {".", "r", "n"}:
+        return m.group(0)
+    return "[\\s\\S]" if m.group(1) else "([\\s\\S])"
+
+
 def compile_js_regex(pattern: str, *, anchor: bool = False) -> tuple[re.Pattern | None, tuple[re.Pattern, ...]]:
     """Compile a retire.js (JavaScript) regex for Python. Variable-width look-behinds, which Python rejects, are
     removed and returned as post-checks on the captured version (they always follow the version group in retire's
     data). ``(None, ())`` when the pattern cannot be used."""
-    src = pattern.replace("§§version§§", VERSION_RX)
+    src = bound_quantifiers(_ANY_GROUP.sub(_any_group, pattern).replace("§§version§§", VERSION_RX))
     if anchor:
         src = f"^(?:{src})$"
     try:
@@ -185,6 +223,55 @@ def compile_js_regex(pattern: str, *, anchor: bool = False) -> tuple[re.Pattern 
 
 
 _META_CHARS = set(".^$*+?{}[]\\|()")
+
+
+def bound_quantifiers(src: str) -> str:
+    """``src`` with every unbounded quantifier (``*``, ``+``, ``{n,}``, lazy forms included) given an upper bound:
+    :data:`REPEAT_ANY` after ``.``, ``[\\s\\S]``-like and negated classes and groups, :data:`REPEAT_CLASS` after
+    anything else. Bounded repetition keeps the cost of one match attempt bounded on hostile input."""
+    out: list[str] = []
+    i, n = 0, len(src)
+    last_any = False                  # does the previous atom match (almost) anything?
+    while i < n:
+        c = src[i]
+        if c == "\\" and i + 1 < n:
+            out.append(src[i:i + 2])
+            last_any = src[i + 1] in "SWD"
+            i += 2
+            continue
+        if c == "[":
+            j = i + 1
+            if j < n and src[j] == "^":
+                j += 1
+            k = j + 1 if j < n and src[j] == "]" else j
+            while k < n and src[k] != "]":
+                k += 2 if src[k] == "\\" else 1
+            cls = src[i:k + 1]
+            out.append(cls)
+            last_any = cls.startswith("[^") or any(p in cls for p in ("\\s\\S", "\\S\\s", "\\w\\W", "\\d\\D"))
+            i = k + 1
+            continue
+        if c in "*+" and out:
+            low = "0" if c == "*" else "1"
+            out.append("{%s,%d}" % (low, REPEAT_ANY if last_any else REPEAT_CLASS))
+            i += 1
+            continue
+        if c == "{":
+            m = re.match(r"\{(\d+),\}", src[i:])
+            if m:
+                out.append("{%s,%d}" % (m.group(1), max(int(m.group(1)), REPEAT_ANY if last_any else REPEAT_CLASS)))
+                i += m.end()
+                continue
+        if c == "(" and src.startswith("(?", i):
+            # "(?:", "(?=", "(?<=", "(?P<name>" …: the "?" is not a quantifier
+            m = re.match(r"\(\?(?:P<[^>]*>|<[=!]|[:=!]|[a-zA-Z]+[:)])?", src[i:])
+            out.append(m.group(0) if m else "(")
+            i += len(m.group(0)) if m else 1
+            continue
+        out.append(c)
+        last_any = c in ".)"
+        i += 1
+    return "".join(out)
 
 
 def required_literal(src: str) -> str:
@@ -336,6 +423,24 @@ def max_match_length(src: str) -> int | None:
     return len(src) * (1 + total_bounds)
 
 
+def pattern_width(rx: re.Pattern) -> int | None:
+    """The maximum length of a match of ``rx`` (``None`` when unbounded or unknown). Uses the stdlib regex parser's
+    own width computation (``re._parser`` on 3.11+, ``sre_parse`` on 3.10); falls back to :func:`max_match_length`."""
+    try:
+        try:
+            from re import _parser as sre   # type: ignore[attr-defined]
+        except ImportError:                  # Python 3.10
+            import sre_parse as sre          # type: ignore[no-redef]
+        hi = sre.parse(rx.pattern, rx.flags & ~re.UNICODE).getwidth()[1]
+        return None if hi >= sre.MAXREPEAT else int(hi)
+    except Exception:                        # noqa: BLE001 - private API: any change falls back to the estimate
+        return max_match_length(rx.pattern)
+
+
+class BudgetExceeded(Exception):
+    """Raised inside a match loop when the matching budget of a body is used up."""
+
+
 @dataclass
 class _Extractor:
     rx: re.Pattern
@@ -343,12 +448,12 @@ class _Extractor:
     literal: str = ""
     replace: str | None = None        # filecontentreplace: Python replacement template
     need: str = ""                    # token_requirement(literal), checked on the token index first
-    bound: int | None = None          # max_match_length: search only windows around the literal
+    bound: int | None = None          # maximum match length: search only windows around the literal
 
     def __post_init__(self) -> None:
+        self.bound = pattern_width(self.rx)
         if self.literal:
             self.need = token_requirement(self.literal)
-            self.bound = max_match_length(self.rx.pattern)
 
     def candidate(self, text: str, index: str | None) -> bool:
         if not self.literal:
@@ -357,23 +462,44 @@ class _Extractor:
             return False
         return self.literal in text
 
-    def finditer(self, text: str) -> Iterable[re.Match]:
-        """All matches, searching only windows around the literal's occurrences when the match length is bounded."""
+    def _intervals(self, text: str) -> list[tuple[int, int]]:
+        """Where matches can be: the whole text, or (bounded pattern with a literal) the union of the windows
+        ``[occurrence - bound, occurrence + len(literal) + bound]``, merged."""
         if not self.literal or self.bound is None:
-            yield from self.rx.finditer(text)
-            return
-        seen: set[int] = set()
-        size = len(self.literal)
+            return [(0, len(text))]
+        out: list[list[int]] = []
+        size, bound = len(self.literal), self.bound
         pos = text.find(self.literal)
+        seen = 0
         while pos >= 0:
-            # every match that contains this occurrence lies inside [pos - bound, pos + size + bound]
-            end = min(len(text), pos + size + self.bound)
-            for m in self.rx.finditer(text, max(0, pos - self.bound), end):
-                if m.start() not in seen:
-                    seen.add(m.start())
+            seen += 1
+            if seen > 1000:                  # a literal repeated this often (hostile filler): scan everything in chunks
+                return [(0, len(text))]
+            lo, hi = max(0, pos - bound), min(len(text), pos + size + bound)
+            if out and lo <= out[-1][1]:
+                out[-1][1] = max(out[-1][1], hi)
+            else:
+                out.append([lo, hi])
+            pos = text.find(self.literal, pos + 1)
+        return [(a, b) for a, b in out]
+
+    def finditer(self, text: str, deadline: float | None = None) -> Iterable[re.Match]:
+        """retire's global match (leftmost, non-overlapping) restricted to the literal's windows, examined in chunks
+        of :data:`CHUNK` match starts; :class:`BudgetExceeded` when ``deadline`` (``time.monotonic``) passes."""
+        reach = self.bound if self.bound is not None else len(text)
+        for lo, hi in self._intervals(text):
+            start = lo
+            while start < hi:
+                if deadline is not None and time.monotonic() > deadline:
+                    raise BudgetExceeded
+                stop = min(hi, start + CHUNK)
+                nxt = stop
+                for m in self.rx.finditer(text, start, min(hi, stop + reach) if stop < hi else hi):
+                    if m.start() >= stop:
+                        break
                     yield m
-            # occurrences up to end - bound - size are covered by this window too
-            pos = text.find(self.literal, max(pos + 1, end - self.bound - size + 1))
+                    nxt = max(stop, m.end()) if m.end() > stop else nxt
+                start = nxt
 
 
 @dataclass
@@ -482,13 +608,14 @@ def _plausible(v: str) -> bool:
     return 0 < len(v) <= MAX_VERSION_LEN and not _HASHLIKE.match(v)
 
 
-def _matches(ex: _Extractor, text: str, *, anchored: bool = False) -> Iterable[tuple[str, str, int]]:
+def _matches(ex: _Extractor, text: str, *, anchored: bool = False,
+             deadline: float | None = None) -> Iterable[tuple[str, str, int]]:
     """(version, matched text, offset) for every match of an extractor (retire's global ``simpleMatch``)."""
     if anchored:
         m = ex.rx.match(text)
         found: Iterable[re.Match] = [m] if m else []
     else:
-        found = ex.finditer(text)
+        found = ex.finditer(text, deadline)
     for m in found:
         if m.lastindex is None or m.group(1) is None:
             continue
@@ -514,24 +641,25 @@ def skipped_by_repo(url: str, repo: Repository) -> bool:
 
 
 def scan_uri(uri: str, repo: Repository) -> list[Detection]:
+    uri = uri[:MAX_URL]
     out = []
     for lib in repo.libraries.values():
         for ex in lib.uri:
             for ver, text, off in _matches(ex, uri):
                 ver = _clean_version(ver)
-                if not _HASHLIKE.match(ver):
+                if _plausible(ver):
                     out.append(Detection(lib.component, ver, "uri", text, off))
     return _dedupe(out)
 
 
 def scan_filename(name: str, repo: Repository) -> list[Detection]:
-    base = re.split(r"[/\\]", name)[-1]
+    base = re.split(r"[/\\]", name[:MAX_URL])[-1]
     out = []
     for lib in repo.libraries.values():
         for ex in lib.filename:
             for ver, text, off in _matches(ex, base, anchored=True):
                 ver = _clean_version(ver)
-                if not _HASHLIKE.match(ver):
+                if _plausible(ver):
                     out.append(Detection(lib.component, ver, "filename", text, off))
     return _dedupe(out)
 
@@ -542,25 +670,35 @@ def normalise_newlines(text: str) -> str:
 
 def scan_content(text: str, repo: Repository) -> list[Detection]:
     """``filecontent`` extractors, then ``filecontentreplace`` when nothing matched (retire's order)."""
+    return scan_content_checked(text, repo)[0]
+
+
+def scan_content_checked(text: str, repo: Repository, deadline: float | None = None) -> tuple[list[Detection], bool]:
+    """:func:`scan_content` with a ``time.monotonic()`` deadline: ``(detections found so far, complete)``."""
     text = normalise_newlines(text[:CONTENT_CAP])
     tokens = token_index(text) if len(text) > 4096 else None
-    out = []
-    for lib in repo.libraries.values():
-        for ex in lib.filecontent:
-            if not ex.candidate(text, tokens):
-                continue
-            for ver, mtext, off in _matches(ex, text):
-                out.append(Detection(lib.component, _clean_version(ver), "filecontent", mtext, off))
-    if not out:
+    out: list[Detection] = []
+    try:
         for lib in repo.libraries.values():
-            for ex in lib.filecontentreplace:
+            for ex in lib.filecontent:
                 if not ex.candidate(text, tokens):
                     continue
-                for m in ex.finditer(text):
-                    ver = ex.rx.sub(ex.replace or "", m.group(0), count=1)
-                    out.append(Detection(lib.component, _clean_version(ver), "filecontentreplace", m.group(0),
-                                         m.start()))
-    return _dedupe(out)
+                for ver, mtext, off in _matches(ex, text, deadline=deadline):
+                    ver = _clean_version(ver)
+                    if 0 < len(ver) <= MAX_VERSION_LEN:
+                        out.append(Detection(lib.component, ver, "filecontent", mtext, off))
+        if not out:
+            for lib in repo.libraries.values():
+                for ex in lib.filecontentreplace:
+                    if not ex.candidate(text, tokens):
+                        continue
+                    for m in ex.finditer(text, deadline):
+                        ver = _clean_version(ex.rx.sub(ex.replace or "", m.group(0), count=1))
+                        if 0 < len(ver) <= MAX_VERSION_LEN:
+                            out.append(Detection(lib.component, ver, "filecontentreplace", m.group(0), m.start()))
+    except BudgetExceeded:
+        return _dedupe(out), False
+    return _dedupe(out), True
 
 
 def body_sha1(body: bytes) -> str:
@@ -655,13 +793,21 @@ class _Hit:
 def _is_script_response(r: Response) -> bool:
     if r.status is None or r.error or not (200 <= r.status < 300):
         return False
-    if r.kind:
-        return r.kind == "script"
+    if r.kind == "script":
+        return True
     ess = essence(r.content_type)
     if ess in _JS_ESSENCES:
         return True
+    if r.kind and r.kind not in ("text", "other", "download"):
+        return False                 # an HTML catch-all page, an image, a stylesheet …: no script runs
+    # A browser runs a <script src> served as text/plain or application/octet-stream (a common S3 default) unless
+    # nosniff is set or the type is one it always blocks (Fetch "should response to request be blocked due to MIME").
+    if ess.startswith(("audio/", "image/", "video/")) or ess == "text/csv":
+        return False
+    if (r.headers.first("x-content-type-options") or "").strip().lower().startswith("nosniff"):
+        return False
     head = r.body[:256].lstrip().lower()
-    return not head.startswith((b"<!doctype", b"<html", b"<head", b"<body"))
+    return not head.startswith((b"<!doctype", b"<html", b"<head", b"<body", b"<?xml", b"{", b"["))
 
 
 def _script_srcs(page: Page) -> list[str]:
@@ -692,6 +838,19 @@ class _Run:
         self.repo = repo
         self.hits: dict[tuple[str, str], list[_Hit]] = {}
         self.order: list[tuple[str, str]] = []
+        self.run_deadline = time.monotonic() + RUN_BUDGET
+        self.incomplete: list[str] = []      # bodies whose matching ran out of time (§0.6 hostile input)
+
+    def content(self, text: str, where: str) -> list[Detection]:
+        """retire content extractors on one body, within the per-body and per-scan time budgets."""
+        now = time.monotonic()
+        if now >= self.run_deadline:
+            self.incomplete.append(where)
+            return []
+        found, complete = scan_content_checked(text, self.repo, min(now + BODY_BUDGET, self.run_deadline))
+        if not complete:
+            self.incomplete.append(where)
+        return found
 
     def add(self, hit: _Hit) -> None:
         key = (hit.detection.component, hit.detection.version)
@@ -717,7 +876,7 @@ class _Run:
                     if not s.live or not s.is_javascript or not s.text.strip():
                         continue
                     units += 1
-                    for d in scan_content(s.text, repo):
+                    for d in self.content(s.text, page.response.url):
                         d.offset = (s.offset + d.offset) if d.offset is not None else s.offset
                         self.add(_Hit(d, page, page.response, page.response.url, inline_page=page.response.url))
         # URL-based detection on every referenced script, content/hash on the fetched ones
@@ -756,7 +915,7 @@ class _Run:
             text = resp.text()
         except (LookupError, ValueError):
             text = resp.body.decode("utf-8", "replace")
-        found = scan_content(text, self.repo)
+        found = self.content(text, resp.url)
         if not found and not resp.truncated:
             found = scan_hash(resp.body, self.repo)
         for d in found:
@@ -872,7 +1031,7 @@ def run(ctx: ScanContext) -> list[Issue]:
                 else:
                     notes.append(_note("vuln_nofix", ids=_ids(v), summary=summary))
             if len(ordered) > MAX_NOTES:
-                notes.append(_note("more", count=len(ordered) - MAX_NOTES))
+                notes.append(_note("more", count=_count(len(ordered) - MAX_NOTES, _MORE_VULNS)))
             conf = "certain" if best.detection.method == "hash" else "firm"
             params = {"library": lib.name, "version": version, "fixed": fixed or "latest",
                       "cves": [i for v in ordered for i in ((v.get("identifiers") or {}).get("CVE") or [])][:50],
@@ -897,7 +1056,15 @@ def run(ctx: ScanContext) -> list[Issue]:
     ctx.inventory.setdefault("libraries", []).extend(inventory)
     if cov is not None:
         for c in CHECKS:
-            (cov.failed if c in failed else cov.passed)(c, host)
+            if c in failed:
+                cov.failed(c, host)
+            elif st.incomplete:
+                # a body could not be matched completely in time: "no vulnerable library" would be a guess
+                shown = ", ".join(strip_controls(u)[:120] for u in st.incomplete[:3])
+                cov.inconclusive(c, "time_budget", host=host, detail_en=f"library matching stopped on {shown}",
+                                 detail_ar=f"توقّفت مطابقة المكتبات عند {shown}")
+            else:
+                cov.passed(c, host)
     return issues
 
 

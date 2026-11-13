@@ -18,7 +18,10 @@ later code proves every earlier step passed, and the facts after the failing ste
 from __future__ import annotations
 
 import base64
+import binascii
+import functools
 import hashlib
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -82,6 +85,16 @@ STR: dict[str, tuple[str, str]] = {
     "tls13_scts": ("SCTs in the TLS extension are encrypted in TLS 1.3 and could not be seen",
                    "تكون SCTs المرسلة في امتداد TLS مشفّرة في TLS 1.3 فتعذّر رؤيتها"),
     "not_public": ("the certificate is not publicly trusted", "الشهادة غير موثوقة عامة"),
+    "private_policy": ("the certificate has no CA/Browser Forum policy identifier, which every publicly trusted certificate "
+                       "has carried since 2023: it is trusted only through a locally installed (private) root",
+                       "لا تحمل الشهادة معرّف سياسة منتدى CA/Browser الذي تحمله كل شهادة موثوقة عامة منذ 2023: فهي موثوقة "
+                       "فقط عبر جذر مثبّت محليًا (جهة إصدار خاصة)"),
+    "chain_expired": ("a certificate of the chain expired: {name} ({date})", "انتهت صلاحية شهادة في السلسلة: {name} ({date})"),
+    "chain_not_yet": ("a certificate of the chain is not yet valid: {name} ({date})",
+                      "شهادة في السلسلة لم تصبح صالحة بعد: {name} ({date})"),
+    "chain_store_cert": ("a certificate supplied by the local trust store", "شهادة جاء بها مخزن الثقة المحلي"),
+    "key_huge": ("unusually large RSA key ({bits} bits): browsers and OpenSSL refuse keys above 16384 bits",
+                 "مفتاح RSA كبير على نحو غير معتاد ({bits} بت): ترفض المتصفحات وOpenSSL المفاتيح الأكبر من 16384 بت"),
     "ct_not_required": ("the test CA is marked as not needing CT", "جهة الإصدار التجريبية معلَّمة بأنها لا تحتاج CT"),
     "chain_unknown": ("the chain could not be checked because verification failed earlier",
                       "تعذّر فحص السلسلة لأن التحقق فشل في خطوة سابقة"),
@@ -108,14 +121,14 @@ STR: dict[str, tuple[str, str]] = {
     "odd_size": ("unusual key size: {bits} bits", "طول مفتاح غير معتاد: {bits} بت"),
     "sig_leaf": ("the certificate is signed with {alg}", "الشهادة موقّعة بـ {alg}"),
     "sig_int": ("intermediate {name} is signed with {alg}", "الشهادة الوسيطة {name} موقّعة بـ {alg}"),
-    "lifetime": ("lifetime {days} days; the limit for a certificate issued on {issued} is {limit} days",
-                 "مدة الصلاحية {days} يومًا؛ والحد لشهادة صادرة في {issued} هو {limit} يومًا"),
+    "lifetime": ("lifetime {days}; the limit for a certificate issued on {issued} is {limit}",
+                 "مدة الصلاحية {days}؛ والحد لشهادة صادرة في {issued} هو {limit}"),
     "dh": ("{bits}-bit Diffie-Hellman group", "مجموعة Diffie-Hellman بطول {bits} بت"),
     "dh_common": ("well-known shared prime ({name}): precomputation attacks (Logjam) apply",
                   "عدد أولي مشترك معروف ({name}): تنطبق عليه هجمات الحساب المسبق (Logjam)"),
     "no_scts": ("publicly trusted certificate without any SCT", "شهادة موثوقة عامة بلا أي SCT"),
-    "few_scts": ("{n} SCT(s) from {ops} operator(s); Chrome requires {need} SCTs from 2 operators",
-                 "عدد SCT هو {n} من {ops} مشغّل؛ ويطلب Chrome عدد {need} من مشغّلَين مختلفين"),
+    "few_scts": ("{n} from {ops}; Chrome requires {need} from 2 operators",
+                 "{n} من {ops}؛ ويطلب Chrome {need} من مشغّلَين مختلفين"),
     "unknown_logs": ("some SCTs come from logs missing from the bundled list (as of {date})",
                      "بعض SCTs من سجلات غير موجودة في القائمة المضمّنة (بتاريخ {date})"),
     "ct_stale": ("the bundled CT log list is older than 120 days", "قائمة سجلات CT المضمّنة أقدم من 120 يومًا"),
@@ -127,7 +140,7 @@ STR: dict[str, tuple[str, str]] = {
     "higher": ("offered {offered}, the server answered {answered}", "عُرض {offered} فأجاب الخادم بـ {answered}"),
     "cn_only": ("no subjectAltName: browsers ignore the common name", "لا يوجد subjectAltName: تتجاهل المتصفحات الاسم الشائع"),
     "wildcard": ("wildcard {name} covers every host of {domain}", "الشهادة العامة {name} تغطي كل مضيفي {domain}"),
-    "many_sans": ("{n} names in one certificate", "{n} اسمًا في شهادة واحدة"),
+    "many_sans": ("{n} in one certificate", "{n} في شهادة واحدة"),
     "differs": ("{what} differs between {ips}", "{what} يختلف بين {ips}"),
     "ips_differ_hint": ("the weaker node's own findings list the addresses they apply to",
                         "نتائج العقدة الأضعف تذكر العناوين التي تنطبق عليها"),
@@ -142,7 +155,7 @@ STR: dict[str, tuple[str, str]] = {
     "dev_rsa": ("RSA key of {bits} bits", "مفتاح RSA بطول {bits} بت"),
     "dev_curve": ("certificate curve {what}", "منحنى الشهادة {what}"),
     "dev_sig": ("signature {what}", "التوقيع {what}"),
-    "dev_life": ("lifetime {days} days (maximum {max})", "مدة الصلاحية {days} يومًا (الحد الأقصى {max})"),
+    "dev_life": ("lifetime {days} (maximum {max})", "مدة الصلاحية {days} (الحد الأقصى {max})"),
     "dev_staple": ("no OCSP staple", "لا يوجد تدبيس OCSP"),
     "applies_only": ("applies to {ips} only", "ينطبق على {ips} فقط"),
     "modern_ok": ("conforms to the Mozilla modern profile", "مطابق لملف Mozilla الحديث"),
@@ -159,13 +172,41 @@ DIFF_WHAT = {"protocols": ("protocol versions", "إصدارات البروتوك
              "options": ("compression or renegotiation support", "دعم الضغط أو إعادة التفاوض")}
 
 
+# count phrases: (English singular, English plural, Arabic one/two/few/many/other with {n}) for vulnscan.i18n.plural
+COUNT_FORMS: dict[str, tuple[str, str, tuple[str, str, str, str, str]]] = {
+    "days": ("{n} day", "{n} days", ("يوم واحد", "يومان", "{n} أيام", "{n} يومًا", "{n} يوم")),
+    "names": ("{n} name", "{n} names", ("اسم واحد", "اسمان", "{n} أسماء", "{n} اسمًا", "{n} اسم")),
+    "scts": ("{n} SCT", "{n} SCTs", ("طابع SCT واحد", "طابعا SCT", "{n} طوابع SCT", "{n} طابعًا SCT", "{n} طابع SCT")),
+    "operators": ("{n} operator", "{n} operators", ("مشغّل واحد", "مشغّلان", "{n} مشغّلين", "{n} مشغّلًا", "{n} مشغّل")),
+}
+
+
+def _count(n: int, which: str) -> tuple[str, str]:
+    """``(en, ar)`` phrase of ``n`` with the noun that agrees with it (Arabic: five forms, §6 rules)."""
+    from ...i18n.plural import ar_count   # lazy: vulnscan.i18n imports webscan modules through cat_web2
+    one, many, forms = COUNT_FORMS[which]
+    return (one if n == 1 else many).replace("{n}", str(n)), ar_count(n, forms)
+
+
 def _t(_name: str, **kw: Any) -> tuple[str, str]:
+    """``(en, ar)`` of ``STR[_name]``; a value may be an ``(en, ar)`` pair (count phrases)."""
     en, ar = STR[_name]
-    return en.format(**kw), ar.format(**kw)
+    ken = {k: (v[0] if isinstance(v, tuple) else v) for k, v in kw.items()}
+    kar = {k: (v[1] if isinstance(v, tuple) else v) for k, v in kw.items()}
+    return en.format(**ken), ar.format(**kar)
 
 
 def _b64d(s: str) -> bytes:
     return base64.b64decode(s.encode("ascii"))
+
+
+@functools.lru_cache(maxsize=512)
+def _cert(b64: str) -> x509.Certificate | None:
+    """Parse a base64 DER certificate once (reports parse the same chain for every rule, grade and evidence)."""
+    try:
+        return x509.try_parse(_b64d(b64))
+    except (ValueError, binascii.Error):
+        return None
 
 
 # ----------------------------------------------------------------------------------------------- per-IP evaluation
@@ -214,7 +255,7 @@ def _trust(iprep: dict) -> dict:
 def _chain(iprep: dict) -> list[x509.Certificate]:
     out = []
     for c in iprep.get("chain") or []:
-        cert = x509.try_parse(_b64d(c))
+        cert = _cert(c) if isinstance(c, str) else None
         if cert is not None:
             out.append(cert)
     return out
@@ -264,13 +305,19 @@ def evaluate_ip(ctx: Any, host_rep: dict, iprep: dict, profiles: dict, ct_logs: 
             out.state(c, "not_tested", "network", _t("no_cert"))
     anchored = ok is True or (ok is False and code is not None and code not in NOT_ANCHORED)
     public = anchored and (test_ca is None or bool(test_ca.get("publicly_trusted")))
+    if public and test_ca is None and leaf is not None and leaf.validation is None:
+        # anchored by a root installed locally (enterprise/private CA): Chrome's CT policy and the CA/B lifetime limits
+        # do not apply, and every publicly trusted leaf carries a CA/B Forum reserved policy OID (BR 7.1.2.7.9)
+        public = False
+        out.cands.setdefault(("_note", "private"), {"rule": "_note", "notes": [STR["private_policy"]]})
     if leaf is not None:
-        _dates(out, leaf, now)
+        _dates(out, leaf, now, code=code, chain=chain)
         _key(out, leaf)
         _signatures(out, chain)
         _lifetime(out, leaf, public, anchored, ok is not None)
         _names(out, leaf, host, code, ok)
-        _trust_rules(out, iprep, trust, chain, host, public, anchored, seclevel_note, proxied)
+        _trust_rules(out, iprep, trust, chain, host, public, anchored, seclevel_note, proxied,
+                     private_hint=test_ca is None and leaf.validation is None)
         _order(out, iprep, chain, proxied)
         _ct(out, iprep, leaf, public, test_ca, ct_logs, ct_date, now, proxied, ok is not None)
         _ocsp(out, iprep, leaf, now)
@@ -284,15 +331,29 @@ def evaluate_ip(ctx: Any, host_rep: dict, iprep: dict, profiles: dict, ct_logs: 
     return out
 
 
-def _dates(out: _Ip, leaf: x509.Certificate, now) -> None:
+def _dates(out: _Ip, leaf: x509.Certificate, now, *, code: int | None = None,
+           chain: list[x509.Certificate] | tuple = ()) -> None:
     expired = leaf.not_after < now
     notyet = leaf.not_before > now + CLOCK_SKEW
     if expired:
         out.fail("WEB070", "high", group="expired", name="notAfter", value=x509._iso(leaf.not_after) or "")
+    elif code == CODE_EXPIRED:
+        # OpenSSL's code 10 with a valid leaf: an intermediate (sent, or from the store) expired; browsers fail too
+        bad = next((c for c in chain[1:] if c.not_after < now), None)
+        name = (bad.subject_cn or bad.subject) if bad is not None else _t("chain_store_cert")
+        date = x509._iso(bad.not_after) if bad is not None else "?"
+        out.fail("WEB070", "high", group="chain_expired", name="notAfter", value=f"{_pick(name, 0)} {date}",
+                 notes=[_t("chain_expired", name=name, date=date)])
     else:
         out.state("WEB070", "pass")
     if notyet:
         out.fail("WEB720", "high", group="not_yet_valid", name="notBefore", value=x509._iso(leaf.not_before) or "")
+    elif code == CODE_NOT_YET and leaf.not_before <= now:     # else the leaf itself, inside the clock-skew allowance
+        bad = next((c for c in chain[1:] if c.not_before > now + CLOCK_SKEW), None)
+        name = (bad.subject_cn or bad.subject) if bad is not None else _t("chain_store_cert")
+        date = x509._iso(bad.not_before) if bad is not None else "?"
+        out.fail("WEB720", "high", group="chain_not_yet_valid", name="notBefore", value=f"{_pick(name, 0)} {date}",
+                 notes=[_t("chain_not_yet", name=name, date=date)])
     else:
         out.state("WEB720", "pass")
     if expired or notyet:
@@ -311,6 +372,10 @@ def _dates(out: _Ip, leaf: x509.Certificate, now) -> None:
         out.state("WEB071", "pass")
 
 
+def _pick(v: Any, i: int) -> Any:
+    return v[i] if isinstance(v, tuple) else v
+
+
 def _key(out: _Ip, leaf: x509.Certificate) -> None:
     probs: list[tuple[str, str, tuple[str, str]]] = []     # (severity, group, note)
     kt, bits = leaf.key_type, leaf.key_bits
@@ -326,7 +391,9 @@ def _key(out: _Ip, leaf: x509.Certificate) -> None:
             probs.append(("critical", "roca", STR["roca"]))
         if x509.fermat_factorable(n):
             probs.append(("critical", "fermat", STR["fermat"]))
-        if bits % 8 and bits >= 1024 and not probs:
+        if bits > x509.MAX_TESTED_MODULUS_BITS and not probs:
+            probs.append(("info", "odd_size", _t("key_huge", bits=bits)))
+        elif bits % 8 and bits >= 1024 and not probs:
             probs.append(("info", "odd_size", _t("odd_size", bits=bits)))
     elif kt == "EC":
         if bits is None:
@@ -385,7 +452,8 @@ def _lifetime(out: _Ip, leaf: x509.Certificate, public: bool, anchored: bool, ve
     days = leaf.lifetime
     if days > limit:
         out.fail("WEB709", "low", group=f"limit{limit}", name="validity", value=f"{days:.0f} days",
-                 notes=[_t("lifetime", days=f"{days:.0f}", issued=leaf.not_before.date().isoformat(), limit=limit)])
+                 notes=[_t("lifetime", days=_count(round(days), "days"), issued=leaf.not_before.date().isoformat(),
+                           limit=_count(limit, "days"))])
     else:
         out.state("WEB709", "pass")
 
@@ -403,7 +471,7 @@ def _names(out: _Ip, leaf: x509.Certificate, host: str, code: int | None, ok: bo
         notes.append(STR["cn_only"])
         group = "cn_only"
     if len(leaf.san_dns) > 100:
-        notes.append(_t("many_sans", n=len(leaf.san_dns)))
+        notes.append(_t("many_sans", n=_count(len(leaf.san_dns), "names")))
         group = group or "many_sans"
     for name in leaf.san_dns:
         if name.startswith("*.") and len(name) > 2:
@@ -423,7 +491,9 @@ def _names(out: _Ip, leaf: x509.Certificate, host: str, code: int | None, ok: bo
 
 
 def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificate], host: str, public: bool,
-                 anchored: bool, seclevel_note: list, proxied: bool) -> None:
+                 anchored: bool, seclevel_note: list, proxied: bool, private_hint: bool = False) -> None:
+    """``private_hint``: the leaf has no CA/B Forum policy OID, so an unknown issuer more likely means a private CA
+    than a missing intermediate (every publicly trusted leaf carries one, BR 7.1.2.7.9)."""
     ok, code = trust.get("ok"), trust.get("verify_code")
     leaf = chain[0]
     tentative = "tentative" if proxied else None
@@ -457,6 +527,9 @@ def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificat
         top = sent_ca[-1]
         out.fail("WEB701", "high", confidence="tentative", group="unknown_issuer", name="issuer", value=top.issuer,
                  notes=[_t("incomplete_or_private", issuer=top.issuer)] + seclevel_note)
+    elif code in CODE_NO_ISSUER and private_hint and not leaf.self_issued:
+        out.fail("WEB701", "high", confidence="tentative", group="unknown_issuer", name="issuer", value=leaf.issuer,
+                 notes=[_t("incomplete_or_private", issuer=leaf.issuer), STR["private_policy"]] + seclevel_note)
     elif code in CODE_NO_ISSUER:
         out.state("WEB701", "not_tested", "network", _t("chain_unknown"))
     elif anchored:
@@ -465,7 +538,7 @@ def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificat
         out.state("WEB701", "not_tested", "network", _t("chain_unknown"))
     # WEB702: incomplete chain
     conf702 = "tentative" if proxied else "firm"
-    if code in CODE_NO_ISSUER and not sent_ca and not leaf.self_issued:
+    if code in CODE_NO_ISSUER and not sent_ca and not leaf.self_issued and not private_hint:
         out.fail("WEB702", "medium", confidence=conf702, group="leaf_only", name="chain", value=f"{len(chain)} certificate(s)",
                  notes=[STR["leaf_only"]])
     elif ok is True:
@@ -475,9 +548,12 @@ def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificat
             out.state("WEB702", "not_tested", "error", STR["leaf_only_api"])
         else:
             sent = {c.sha256 for c in chain}
-            vchain = [x509.try_parse(_b64d(c)) for c in (trust.get("verified_chain") or [])]
+            # the same CA certificate reissued (other serial or dates, same name and key: Windows' "CA" store,
+            # cross-signed variants) is the same intermediate for path building
+            sent_keys = {(c.subject_raw, c.spki_sha256) for c in chain}
+            vchain = [_cert(c) for c in (trust.get("verified_chain") or [])]
             middle = [c for c in vchain[1:-1] if c is not None]
-            missing = [c for c in middle if c.sha256 not in sent]
+            missing = [c for c in middle if c.sha256 not in sent and (c.subject_raw, c.spki_sha256) not in sent_keys]
             if trust.get("verified_chain") is None:
                 out.state("WEB702", "not_tested", "error", STR["leaf_only_api"])
             elif missing:
@@ -490,6 +566,19 @@ def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificat
         out.state("WEB702", "not_tested", "network", _t("chain_unknown"))
     else:
         out.state("WEB702", "not_tested", "network", _t("chain_unknown"))
+
+
+_WS = re.compile(r"\s+")
+
+
+def _name_key(text: str) -> str:
+    """OpenSSL compares names in a canonical form (case and inner whitespace folded, string types ignored)."""
+    return _WS.sub(" ", text).strip().casefold()
+
+
+def _issued_by(child: x509.Certificate, parent: x509.Certificate) -> bool:
+    return parent.subject_raw == child.issuer_raw or (
+        bool(parent.subject) and _name_key(parent.subject) == _name_key(child.issuer))
 
 
 def _order(out: _Ip, iprep: dict, chain: list[x509.Certificate], proxied: bool) -> None:
@@ -508,16 +597,16 @@ def _order(out: _Ip, iprep: dict, chain: list[x509.Certificate], proxied: bool) 
     used = {0}
     while True:
         cur = chain[path[-1]]
-        if cur.self_issued:
+        if cur.self_issued or _issued_by(cur, cur):
             break
-        nxt = next((i for i, c in enumerate(chain) if i not in used and c.subject_raw == cur.issuer_raw), None)
+        nxt = next((i for i, c in enumerate(chain) if i not in used and _issued_by(cur, c)), None)
         if nxt is None:
             break
         path.append(nxt)
         used.add(nxt)
     if path != list(range(len(path))):
         probs.append(("low", "order", STR["order"]))
-    if any(chain[i].self_issued for i in path[1:]):
+    if any(chain[i].self_issued or _issued_by(chain[i], chain[i]) for i in path[1:]):
         probs.append(("info", "anchor", STR["anchor"]))
     extras = [chain[i] for i in range(len(chain)) if i not in used and chain[i].sha256 != chain[0].sha256]
     extras = [c for c in extras if not any(c.sha256 == chain[j].sha256 for j in used)]
@@ -547,11 +636,13 @@ def _ct(out: _Ip, iprep: dict, leaf: x509.Certificate, public: bool, test_ca: di
     for s in iprep.get("tls_scts") or []:
         tls_scts.extend(x509.parse_sct_list(_b64d(s), source="tls"))
     ocsp_has = False
+    ocsp_scts: list[x509.Sct] = []
     o = iprep.get("ocsp") or {}
     if o.get("state") == "stapled" and o.get("der"):
         try:
-            ocsp_has = x509.parse_ocsp_response(_b64d(o["der"])).has_scts
-        except x509.X509Error:
+            resp = x509.parse_ocsp_response(_b64d(o["der"]))
+            ocsp_has, ocsp_scts = resp.has_scts, list(resp.scts)
+        except (x509.X509Error, ValueError):
             ocsp_has = False
     stale = ct_date is not None and (now.date() - ct_date).days > CT_STALE_DAYS
     base_conf = "tentative" if (stale or proxied) else "firm"
@@ -589,15 +680,17 @@ def _ct(out: _Ip, iprep: dict, leaf: x509.Certificate, public: bool, test_ca: di
     need = 2 if leaf.lifetime <= 180 else 3
     emb_ok, emb_unknown, n_logs, n_ops = judge(embedded, need)
     tls_ok, tls_unknown, _tl, _to = judge(tls_scts, 2)
-    if emb_ok or tls_ok:
+    ocsp_ok = judge(ocsp_scts, 2)[0] or judge(tls_scts + ocsp_scts, 2)[0]
+    if emb_ok or tls_ok or ocsp_ok:
         out.state("WEB713", "pass")
         return
-    any_unknown = any(s.log_id_b64 not in ct_logs for s in embedded + tls_scts)
+    any_unknown = any(s.log_id_b64 not in ct_logs for s in embedded + tls_scts + ocsp_scts)
     conf = "tentative" if (any_unknown or base_conf == "tentative") else "firm"
     if any_unknown:
         notes.append(_t("unknown_logs", date=str(ct_date or "?")))
     out.fail("WEB713", "low", confidence=conf, group="few", name="scts", value=str(len(embedded) + len(tls_scts)),
-             notes=[_t("few_scts", n=len(embedded), ops=n_ops, need=need)] + notes)
+             notes=[_t("few_scts", n=_count(len(embedded), "scts"), ops=_count(n_ops, "operators"),
+                       need=_count(need, "scts"))] + notes)
 
 
 def _ocsp(out: _Ip, iprep: dict, leaf: x509.Certificate, now) -> None:
@@ -606,8 +699,8 @@ def _ocsp(out: _Ip, iprep: dict, leaf: x509.Certificate, now) -> None:
     if state == "stapled" and o.get("der"):
         try:
             resp = x509.parse_ocsp_response(_b64d(o["der"]))
-        except x509.X509Error:
-            out.state("WEB714", "pass")
+        except (x509.X509Error, ValueError):
+            out.state("WEB714", "not_tested", "error")      # an unreadable staple proves nothing either way
             return
         if resp.status == 0 and resp.cert_status == "revoked":
             out.fail("WEB714", "high", group="revoked", notes=[STR["revoked"]], name="ocsp", value="revoked")
@@ -829,15 +922,20 @@ def mozilla_deviations(iprep: dict, leaf: x509.Certificate | None, profile: dict
             devs.append(item)
 
     allowed = {VERSION_LABEL.get(v, v) for v in profile.get("tls_versions", [])}
+    disabled: list[tuple[str, str]] = []
     for name in raw.PROBE_VERSIONS:
         st = _version_state(iprep, name)
         label = VERSION_LABEL[name]
         if st == "yes" and label not in allowed:
             add(_t("dev_enabled", what=label))
         elif st == "no" and label in allowed:
-            add(_t("dev_disabled", what=label))
+            disabled.append(_t("dev_disabled", what=label))
         elif st not in ("yes", "no"):
             complete = False
+    # a stricter server (TLS 1.3 only against the intermediate profile) is not a deviation; no allowed version is
+    if disabled and not any(_version_state(iprep, n) == "yes" and VERSION_LABEL[n] in allowed for n in raw.PROBE_VERSIONS):
+        for d in disabled:
+            add(d)
     ciphers = profile.get("ciphers") or {}
     iana = set(ciphers.get("iana") or []) if isinstance(ciphers, dict) else set(ciphers)
     for name, res in (iprep.get("categories") or {}).items():
@@ -875,7 +973,7 @@ def mozilla_deviations(iprep: dict, leaf: x509.Certificate | None, profile: dict
             add(_t("dev_sig", what=leaf.sig_alg))
         life = int(profile.get("maximum_certificate_lifespan") or 0)
         if life and leaf.lifetime > life:
-            add(_t("dev_life", days=f"{leaf.lifetime:.0f}", max=life))
+            add(_t("dev_life", days=_count(round(leaf.lifetime), "days"), max=_count(life, "days")))
         if profile.get("ocsp_staple") and leaf.ocsp_urls and (iprep.get("ocsp") or {}).get("state") == "absent":
             add(STR["dev_staple"])
     else:
@@ -1068,15 +1166,30 @@ def ssllabs_grade(ctx: Any) -> dict | None:
 # ----------------------------------------------------------------------------------------------- host level
 
 def _ip_signature(iprep: dict, chain: list[x509.Certificate]) -> dict:
+    """Decided facts of one IP, as ``{aspect: {item: value}}``. Undecided items (inconclusive probe, chain not
+    readable) are left out, so an IP whose probe timed out is never reported as configured differently."""
+    leaf_only = iprep.get("chain_source") == "ssl_leaf"
     return {
-        "protocols": tuple(sorted((k, v.get("state")) for k, v in (iprep.get("versions") or {}).items()
-                                  if v.get("state") in ("yes", "no"))),
-        "suites": tuple(sorted((k, v.get("state")) for k, v in (iprep.get("categories") or {}).items()
-                               if v.get("state") in ("yes", "no"))),
-        "cert": chain[0].sha256 if chain else None,
-        "chain": tuple(c.sha256 for c in chain),
-        "options": (iprep.get("compression"), iprep.get("renegotiation_info")),
+        "protocols": {k: v.get("state") for k, v in (iprep.get("versions") or {}).items()
+                      if v.get("state") in ("yes", "no")},
+        "suites": {k: v.get("state") for k, v in (iprep.get("categories") or {}).items()
+                   if v.get("state") in ("yes", "no")},
+        "cert": {"leaf": chain[0].sha256} if chain else {},
+        "chain": {"chain": tuple(c.sha256 for c in chain)} if chain and not leaf_only else {},
+        "options": {k: v for k, v in (("compression", iprep.get("compression")),
+                                      ("renegotiation_info", iprep.get("renegotiation_info"))) if v is not None},
     }
+
+
+def _differs(sigs: dict[str, dict], what: str) -> bool:
+    """True when two IPs decided some item of ``what`` differently (items decided on one IP only are ignored)."""
+    seen: dict[str, Any] = {}
+    for s in sigs.values():
+        for item, value in s[what].items():
+            if item in seen and seen[item] != value:
+                return True
+            seen.setdefault(item, value)
+    return False
 
 
 def _evidence(ctx: Any, host_rep: dict, cand: dict, ip: str | None, iprep: dict) -> Evidence:
@@ -1177,10 +1290,8 @@ def assess_host(ctx: Any, host_rep: dict, profiles: dict, ct_logs: dict, ct_date
         sigs = {k: _ip_signature(r, _chain(r)) for k, r, _e in reached}
         diffs = []
         for what in ("protocols", "suites", "cert", "chain", "options"):
-            vals = {k: s[what] for k, s in sigs.items()}
-            if len(set(vals.values())) > 1:
-                diffs.append(_t("differs", what=DIFF_WHAT[what][0], ips=", ".join(vals)))
-                diffs[-1] = (diffs[-1][0], STR["differs"][1].format(what=DIFF_WHAT[what][1], ips=", ".join(vals)))
+            if _differs(sigs, what):
+                diffs.append(_t("differs", what=DIFF_WHAT[what], ips=", ".join(sigs)))
         if diffs:
             first = reached[0]
             cand = {"rule": "WEB715", "name": "nodes", "value": "; ".join(d[0] for d in diffs)[:300], "flag": ""}
@@ -1266,19 +1377,40 @@ def run(ctx: Any) -> list[Issue]:
     return issues
 
 
+_PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
+
+
 def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
-    """Arabic → English for the fixed strings of tls/ (notes, reasons), for ``vulnscan/i18n/cat_web2.py``: exact strings,
-    and (Arabic format string, English format string) pairs for the parametrised ones."""
+    """``(CATALOG, PATTERNS)`` for ``vulnscan/i18n/cat_web2.py``: fixed Arabic strings of tls/ (notes, reasons) →
+    English, and ``(regular expression, English replacement)`` pairs for the parametrised ones and the count
+    phrases (``vulnscan.i18n.to_en`` translates the captured groups again, so a count phrase inside a note works)."""
     from .probe import STR as PROBE_STR
     exact: dict[str, str] = {}
     patterns: list[tuple[str, str]] = []
     pairs = list(STR.values()) + list(PROBE_STR.values()) + list(DIFF_WHAT.values()) + \
         [(e, a) for _s, e, a in CATEGORY_RULE.values()]
     for en, ar in pairs:
-        if "{" in ar:
-            patterns.append((ar, en))
-        else:
+        if "{" not in ar:
             exact[ar] = en
+            continue
+        names: list[str] = []
+        out, pos = [], 0
+        for m in _PLACEHOLDER.finditer(ar):
+            out.append(re.escape(ar[pos:m.start()]))
+            if m.group(1) in names:
+                out.append(f"(?P={m.group(1)})")
+            else:
+                out.append(f"(?P<{m.group(1)}>.+?)")
+                names.append(m.group(1))
+            pos = m.end()
+        out.append(re.escape(ar[pos:]))
+        patterns.append(("^" + "".join(out) + "$", _PLACEHOLDER.sub(lambda m: f"\\g<{m.group(1)}>", en)))
+    for en_one, en_many, forms in COUNT_FORMS.values():
+        exact[forms[0]] = en_one.replace("{n}", "1")
+        exact[forms[1]] = en_many.replace("{n}", "2")
+        for form in forms[2:]:
+            rx = "^" + re.escape(form).replace(re.escape("{n}"), r"(?P<n>\d+)") + "$"
+            patterns.append((rx, en_many.replace("{n}", r"\g<n>")))
     return exact, patterns
 
 

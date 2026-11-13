@@ -68,7 +68,7 @@ def test_core_snippets_cover_every_spec_platform(sid):
 def test_code_fences_and_placeholders_are_well_formed():
     for sid, sn in R.SNIPPETS.items():
         for b in sn.blocks:
-            tokens = set(re.findall(r"\{(host|domain|names|expires)\}", b.code))
+            tokens = set(re.findall(r"\{(host|domain|domain_re|names|expires)\}", b.code))
             assert tokens <= set(R.TOKENS), sid
             assert "example.com" not in b.code or sid == "S-SRI", (sid, b.platform)   # use the {host}/{domain} tokens
             md = R.to_markdown(sid)
@@ -543,7 +543,8 @@ def test_notice_names_every_third_party_data_file():
     for f in sorted(data_dir.iterdir()):
         meta = None
         if f.name.endswith(".meta.json"):
-            meta = json.loads(f.read_text(encoding="utf-8"))
+            blob = json.loads(f.read_text(encoding="utf-8"))
+            meta = blob.get("meta", blob) if isinstance(blob, dict) else None      # {"meta": {...}, "file": ...}
             name = f.name.replace(".meta.json", "")
         elif f.suffix == ".json" and f.name != "MANIFEST.json":
             blob = json.loads(f.read_text(encoding="utf-8"))
@@ -560,4 +561,133 @@ def test_notice_names_every_third_party_data_file():
         if third_party.search(lic):
             checked += 1
             assert name in notice, (name, lic)
-    assert checked >= 8
+    assert checked >= 9                    # psl.dat (.meta.json) included
+
+
+
+# ----------------------------------------------------------------------------------------------- adversarial review
+
+def test_apache_cors_allowlist_regex_escapes_the_domain():
+    """``app\\.{domain}`` with the dots of a multi-label domain left bare let ``https://app.site-co.uk`` (registrable by
+    anyone) through the copy-paste allowlist of ``site.co.uk``."""
+    d = R.render("S-CORS", host="https://shop.site.co.uk/")
+    code = next(b["code"] for b in d["detected"] + d["other"] if b["platform"] == "apache")
+    rx = re.search(r'SetEnvIf Origin "([^"]+)"', code).group(1)
+    assert re.fullmatch(rx, "https://app.site.co.uk")
+    for evil in ("https://app.site-co.uk", "https://appXsite.co.uk", "https://app.site.coXuk", "https://app.site.co.uk.evil.net"):
+        assert not re.fullmatch(rx, evil), evil
+    plain = R.render("S-CORS")
+    assert 'SetEnvIf Origin "^(https://app\\.example\\.com)$"' in next(
+        b["code"] for b in plain["other"] if b["platform"] == "apache")
+    # every other block names the origin literally (nginx map strings are exact matches, not regexes)
+    for b in d["detected"] + d["other"]:
+        if b["platform"] != "apache" and b["code"]:
+            assert "https://app.site.co.uk" in b["code"], b["platform"]
+
+
+@pytest.mark.parametrize("host", ["http://[::1", "http://a]b/", "https://[", "http://user@", "\x00", "",
+                                  "http://evil..com/", "http://" + "a" * 64 + ".com/", "a" * 300, b"example.org", 5,
+                                  "http://-x.com", "http://x-.com", "http://%2e%2e/", "http://exa mple.com"])
+def test_malformed_hosts_fall_back_without_raising(host):
+    vals = R.placeholders(host, NOW)
+    assert vals["host"] == "example.com" and vals["names"] == "example.com www.example.com"
+    out = R.render("S-REDIR", "ar", host=host, now=NOW)
+    assert "example.com" in "".join(b["code"] for b in out["other"])
+
+
+def test_host_with_port_and_bare_ipv6():
+    assert R.placeholders("example.org:8080")["host"] == "example.org"
+    assert R.placeholders("www.example.org:443")["names"] == "example.org www.example.org"
+    assert R.placeholders("2001:db8::1")["host"] == "[2001:db8::1]"
+    assert R.placeholders("2001:db8::1")["domain_re"] == re.escape("[2001:db8::1]")
+
+
+def test_fuzzed_hosts_only_ever_yield_host_name_characters():
+    import random
+    rnd = random.Random(1110)
+    alphabet = "abc.-_:/[]@%?#{}$'\";\\ \n\t\x00\x1bé١" + "0123456789"
+    for _ in range(400):
+        host = "".join(rnd.choice(alphabet) for _ in range(rnd.randint(0, 40)))
+        for sch in ("", "http://", "https://"):
+            vals = R.placeholders(sch + host, NOW)
+            for k in ("host", "domain", "names"):
+                assert re.fullmatch(r"[a-z0-9._ \[\]:-]+", vals[k]), (host, k, vals[k])
+            assert re.fullmatch(r"[a-z0-9_\\.\[\]:-]+", vals["domain_re"]), (host, vals["domain_re"])
+
+
+def test_detect_platforms_tolerates_malformed_input():
+    assert R.detect_platforms(headers=[("Server",), ("Server", None), (b"Server", b"nginx"), "junk", None]) == ()
+    assert R.detect_platforms(headers="Server: nginx") == ()
+    assert R.detect_platforms(technologies=[None, 5, {"id": None}, {}]) == ()
+    assert R.detect_platforms(technologies="nginx") == ("nginx",)          # one id, not its characters
+    assert R.detect_platforms(headers={"Server": "x" * 70000}) == ()
+    assert R.detect_platforms(headers={"Server": "Tengine/2.3"}) == ("nginx",)
+
+
+def test_weak_or_generic_detections_are_not_shown_as_detected():
+    assert R.detect_platforms([{"id": "nginx", "confidence": 20}]) == ()          # below exposure.py's bar
+    assert R.detect_platforms([{"id": "nginx", "confidence": 50}]) == ("nginx",)
+    assert "spring" not in R.detect_platforms(["java", "confluence"])            # Java alone is not Spring
+    assert R.detect_platforms(["codeigniter"]) == ("php",)
+
+
+def test_arabic_menu_paths_read_in_the_right_direction():
+    """A menu path written with "←" between Latin names is laid out left to right by the bidi algorithm (the arrow is
+    neutral between two strong LTR runs), so it read backwards; Arabic notes use "→" inside the Latin path."""
+    for en, ar in R.texts():
+        assert "←" not in ar, ar
+        if "→" in ar:
+            for m in re.finditer(r"→", ar):
+                before, after = ar[:m.start()].rstrip(), ar[m.end():].lstrip()
+                assert before and after and not ARABIC.match(after[0]) and not ARABIC.search(before[-1]), ar
+
+
+def test_english_lookup_of_hostile_text_is_bounded():
+    """A page's own Arabic text can reach to_en through a finding parameter: "x: x: x: …" recursed once per separator
+    through the generic "{kind}: {value}" template (minutes for 6 kB, then RecursionError)."""
+    import time
+    from vulnscan.i18n import cat_web2, to_en
+    cat_web2.ensure_loaded()
+    cases = ["ب: " * 2000, "ب: " * 120, "ظهر في " * 280 + ": x", "…و" * 995 + ".", "ب: x (y). " * 199,
+             "ب (" * 666, "الترويسة " * 220, "ب" * 50000]
+    t0 = time.monotonic()
+    for text in cases:
+        out = to_en(text)
+        assert isinstance(out, str)
+    assert time.monotonic() - t0 < 5
+    assert to_en("ب: ب") == "ب: ب"                         # untranslatable parts: returned, no endless re-match
+    assert to_en("تعذّر إجراء بعض الفحوص") == "Some checks could not be performed"
+
+
+def test_composed_web_sentences_still_translate_through_the_bounded_lookup():
+    from vulnscan.i18n import cat_web2, to_en
+    cat_web2.ensure_loaded()
+    rx, en = next((rx, en) for rx, en in cat_web2.PATTERNS if rx.startswith("(?P<kind>.+?):"))
+    known = next(ar for ar, e in cat_web2.CATALOG.items() if len(ar) < 60 and ":" not in ar)
+    assert to_en(f"{known}: {known}") == f"{cat_web2.CATALOG[known]}: {cat_web2.CATALOG[known]}", (rx, en)
+
+
+def test_copy_paste_blocks_are_syntactically_valid():
+    """Apache and Java .properties have no trailing comments (``FileETag MTime Size # …`` is a FileETag error, and a
+    property value would swallow the comment); Apache containers cannot sit on one line; IIS XML parses; nginx
+    statements end with ``;`` and braces balance."""
+    import xml.etree.ElementTree as ET
+    for sid, sn in R.SNIPPETS.items():
+        for b in sn.blocks:
+            code = R.fill(b.code)
+            if b.lang in ("apache", "properties", "ini"):
+                for line in code.splitlines():
+                    st = line.strip()
+                    assert st.startswith(("#", ";")) or not re.search(r"\s[#;]", st), (sid, b.platform, line)
+            if b.lang == "apache":
+                assert not re.search(r"^\s*<\w+[^>\n]*>\S", code, re.M), (sid, code)
+                opens = sorted(re.findall(r"^\s*<(\w+)", code, re.M))
+                assert opens == sorted(re.findall(r"^\s*</(\w+)>", code, re.M)), (sid, code)
+            if b.lang == "xml":
+                ET.fromstring("<r>" + code + "</r>")
+            if b.lang in ("nginx", "caddy"):
+                assert code.count("{") == code.count("}"), (sid, b.platform)
+            if b.lang == "nginx":
+                for line in code.splitlines():
+                    st = re.sub(r"\s+#.*$", "", line).strip()
+                    assert not st or st.startswith("#") or st.endswith((";", "{", "}")), (sid, line)

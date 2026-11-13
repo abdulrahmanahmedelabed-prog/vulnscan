@@ -11,8 +11,9 @@ What is analysed
 * **Same-site script files** (same registrable domain, PSL) among ``ctx.subresources``: at most 15 per scan
   (:data:`MAX_FILES`), each at most 1.5 MB (:data:`MAX_FILE_BYTES`), written as ``src/<host>/<path>``.
 * Skipped: files identified as a known library (the libs.py inventory when it already ran, retire.js component
-  names in the file name or in a version banner, UMD builds with a licence banner, ``vendor``/``lib`` directories):
-  library code is not the site's code. Bundles over 1.5 MB, truncated bodies, bodies in an unsupported content-coding
+  names in the file name or at the start of a version banner, UMD builds with a licence banner, ``vendor`` /
+  ``node_modules`` directories): library code is not the site's code. Names that are also ordinary file names
+  (``core.js``, ``chart.js``) need a version or build suffix, so the site's own code is not skipped as a library. Bundles over 1.5 MB, truncated bodies, bodies in an unsupported content-coding
   and anything past the time budget are skipped and recorded as ``not_tested`` with the reason (never half-analysed,
   never shown as passed). Third-party scripts are not the site's code and are not analysed.
 
@@ -30,9 +31,15 @@ How
    server-side sources (``req.body``, ``process.env``, …) are dropped. DF013/DF001/DF012 map to WEB520, DF008 to
    WEB521. A flow that crosses into another script file of the page is ``tentative`` (it depends on load order and on
    an unresolved global call); a flow inside one file is ``firm``; storage and cookie sources are ``tentative``.
+   The sink context the model does not see is read from the syntax tree: a navigation whose destination keeps a
+   fixed origin (``"/search?q=" + q``, ``"https://www.example.com/" + x``, ``location.href.replace("http:",
+   "https:")``) or a link's ``a.href`` is not an open redirect; ``$(selector)`` whose argument starts as a selector
+   is ``tentative`` (jQuery 1.9+ never parses it as HTML) unless an older jQuery is known on the site.
 4. WEB522 is a syntactic check on the same trees: ``addEventListener("message", h)`` / ``onmessage = h`` on the window
    (not on workers, ports, sockets or event sources) where ``h``'s body (and the functions it hands the event to)
    never reads ``.origin``. ``firm`` when the message data reaches an HTML, script or navigation sink in the handler.
+   Handlers and the functions they hand the event to are resolved in the registering scope (minified code reuses
+   short names in every closure); a name that cannot be resolved is unknown and gives no finding.
 5. The temporary directory is removed (also on errors). File and line in evidence are the served URL and line.
 """
 
@@ -99,6 +106,10 @@ STR: dict[str, tuple[str, str]] = {
     "message_handler": ("The \"message\" handler registered at {where} never reads event.origin.",
                         "معالج الحدث \"message\" المسجّل في {where} لا يقرأ event.origin إطلاقًا."),
     "message_sink": ("The message data reaches {sink} (line {line}).", "تصل بيانات الرسالة إلى {sink} (السطر {line})."),
+    "jq_selector": ("The value starts as a selector, which jQuery 1.9 and later never parse as HTML: exploitable only "
+                    "with an older jQuery.",
+                    "تبدأ القيمة كمحدِّد (selector)، ولا تفسّره jQuery 1.9 وما بعدها على أنه HTML: لا يُستغل إلا مع إصدار أقدم "
+                    "من jQuery."),
     "static": ("Found by static analysis of the served code; Kashif does not run JavaScript.",
                "اكتُشف بتحليل ثابت للشيفرة المقدَّمة؛ لا يشغّل كاشف شيفرة JavaScript."),
     # coverage details
@@ -110,6 +121,7 @@ STR: dict[str, tuple[str, str]] = {
     "skip_limit": ("{url}: more than 15 script files", "{url}: أكثر من 15 ملف سكربت"),
     "skip_time": ("{url}: time budget of the DOM analysis reached", "{url}: بلغ تحليل DOM حدّه الزمني"),
     "skip_total": ("{url}: total JavaScript size limit reached", "{url}: بلغ الحجم الكلي لشيفرة JavaScript حدّه"),
+    "skip_parse": ("{url} could not be parsed as JavaScript", "تعذّر تحليل {url} بوصفه شيفرة JavaScript"),
     "engine_error": ("the JavaScript analyser failed: {error}", "فشل محلل JavaScript: {error}"),
 }
 
@@ -359,9 +371,21 @@ _LIB_NAMES = ("jquery", "jquery-ui", "jquery-migrate", "jquery-mobile", "bootstr
               "jquery.min", "jquery.slim", "preact", "mithril", "riot", "lit", "stimulus", "turbo", "turbolinks")
 _LIB_SUFFIX = (r"(?:[.\-_@]v?\d[\w.\-]*|\.min|\.slim|\.umd|\.production|\.development|\.prod|\.dev|\.bundle|\.esm|"
                r"\.global|\.runtime|\.full|\.core|\.all|\.pack|\.packed|\.compressed|\.js)*")
-_VENDOR_DIRS = frozenset({"vendor", "vendors", "lib", "libs", "third-party", "thirdparty", "3rdparty", "bower_components",
-                          "node_modules", "web_modules", "jspm_packages", "external", "externals", "plugins"})
+# Directories that only hold other people's packages. ``lib``/``libs``/``plugins``/``external`` are not listed: sites keep
+# their own code there too (``/js/lib/app.js``), and skipping site code would hide its flows behind a "library" skip.
+_VENDOR_DIRS = frozenset({"vendor", "vendors", "third-party", "thirdparty", "3rdparty", "bower_components", "node_modules",
+                          "web_modules", "jspm_packages"})
+# Library names that are also ordinary words for a site's own file or build banner (``core.js``, ``chart.js``,
+# ``/*! Shop core v1.2 */``): they count only with a version or build suffix in the file name, and in a banner only as
+# ``<name>.js <version>`` (``Chart.js v4.4.0``, ``Video.js 8.0``).
+_GENERIC_LIBS = frozenset({"core", "day", "next", "ext", "scheduler", "video", "chart", "pdf", "three", "lit", "ace",
+                           "turbo", "riot", "polyfill", "require", "highlight", "foundation", "semantic", "clipboard",
+                           "protobuf", "regenerator", "webfont", "marked", "isotope", "masonry", "lightbox", "prototype",
+                           "slick", "hammer", "purify", "sizzle", "stimulus", "quill", "swiper", "ember",
+                           "knockout", "backbone", "mustache", "alpine", "preact", "uikit", "mithril", "c3", "d3",
+                           "toastr", "luxon", "leaflet", "pendo", "zrender", "dropzone", "webfontloader", "react-is"})
 _BANNER = re.compile(r"^\s*(?:[\"']use strict[\"'];?\s*)?(/\*[!*@][\s\S]{0,600}?\*/|(?://[!@][^\n]*\n\s*){1,6})")
+_BANNER_NOISE = re.compile(r"/\*+!?|//[!@]?|\*|@(?:license|preserve|module|name)\b|\blicen[sc]e\b|[\s!:@-]", re.I)
 _BANNER_VERSION = re.compile(r"\bv?\d+\.\d+(?:\.\d+)?\b")
 _BANNER_LICENSE = re.compile(r"licen[sc]e|\(c\)|copyright|@preserve", re.I)
 _UMD = re.compile(r"typeof\s+exports\s*={2,3}\s*[\"']object[\"']\s*&&\s*typeof\s+module|define\.amd|"
@@ -372,10 +396,10 @@ def _norm_lib(name: str) -> str:
     n = name.lower().strip()
     if "/" in n:
         n = n.rsplit("/", 1)[-1]
-    for suf in (".js", "js"):
-        if n.endswith(suf) and len(n) > len(suf) + 1:
-            n = n[: -len(suf)].rstrip(".-")
-            break
+    if n.endswith(".js") and len(n) > 4:
+        n = n[:-3]
+    elif n.endswith("js") and not n.endswith("-js") and len(n) > 4:
+        n = n[:-2]                     # "dompurifyjs" → "dompurify"; "core-js" stays "core-js"
     return n
 
 
@@ -406,30 +430,61 @@ def library_names(ctx: ScanContext | None = None) -> frozenset[str]:
     return frozenset(names)
 
 
+_LIB_SUFFIX_ONE = _LIB_SUFFIX[:-1] + "+"     # at least one version/build suffix
+_RX_CACHE: dict[frozenset[str], tuple[re.Pattern, re.Pattern | None, re.Pattern | None, re.Pattern | None]] = {}
+
+
+def _alts(names: Iterable[str]) -> str:
+    return "|".join(sorted((re.escape(n) for n in names), key=len, reverse=True))
+
+
+def _name_rxs(names: frozenset[str]):
+    """``(file name, generic file name, banner, generic banner)`` patterns for a name set (cached)."""
+    got = _RX_CACHE.get(names)
+    if got is None:
+        plain = [n for n in names if n not in _GENERIC_LIBS]
+        generic = [n for n in names if n in _GENERIC_LIBS]
+        file_rx = re.compile(rf"(?i)^(?:{_alts(plain) or '(?!)'}){_LIB_SUFFIX}\.(?:m|c)?js$")
+        gen_file = re.compile(rf"(?i)^(?:{_alts(generic)}){_LIB_SUFFIX_ONE}\.(?:m|c)?js$") if generic else None
+        # banner: the library name, then its version within a few characters ("jQuery v3.7.1", "Bootstrap v5.3.0",
+        # "moment.js\n//! version : 2.29.4", "@popperjs/core v2.11.8"); a name merely mentioned does not count
+        ver = r"[^\w]{0,8}(?:(?:js|version)\b[\s:./-]{0,6})?(?:[a-z ]{0,10}\s)?v?\d+\.\d+"
+        spaced = (_alts(plain) or "(?!)").replace("\\-", "[-\\s]")      # "jQuery UI - v1.13.2" names jquery-ui
+        banner = re.compile(rf"(?<![\w-])(?:{spaced})(?:\.js|js)?(?![\w-]){ver}", re.I)
+        gen_banner = re.compile(rf"(?<![\w-])(?:{_alts(generic)})\.js\b{ver}", re.I) if generic else None
+        got = (file_rx, gen_file, banner, gen_banner)
+        if len(_RX_CACHE) > 8:
+            _RX_CACHE.clear()
+        _RX_CACHE[names] = got
+    return got
+
+
 def _name_rx(names: Iterable[str]) -> re.Pattern:
-    alts = "|".join(sorted((re.escape(n) for n in names), key=len, reverse=True))
-    return re.compile(rf"(?i)^(?:{alts}){_LIB_SUFFIX}\.(?:m|c)?js$")
+    return _name_rxs(frozenset(names))[0]
 
 
 def library_name(url: str, text: str, names: frozenset[str], known_urls: Iterable[str] = ()) -> str | None:
     """The library a script is, or ``None`` when it looks like the site's own code."""
     if url and url in set(known_urls):
         return "retire"
+    names = frozenset(names)
+    file_rx, gen_file, banner_rx, gen_banner = _name_rxs(names)
     path = urllib.parse.urlsplit(url).path if url else ""
     segs = [urllib.parse.unquote(s) for s in path.split("/") if s]
     if segs:
         if any(s.lower() in _VENDOR_DIRS for s in segs[:-1]):
             return segs[-1]
-        if _name_rx(names).match(segs[-1]):
+        if file_rx.match(segs[-1]) or (gen_file is not None and gen_file.match(segs[-1])):
             return segs[-1]
     m = _BANNER.match(text[:4000])
     if m:
         banner = m.group(1)
         if _BANNER_VERSION.search(banner):
-            low = banner.lower()
-            for n in names:
-                if len(n) >= 3 and re.search(rf"(?<![\w-]){re.escape(n)}(?![\w-])", low):
-                    return n
+            hit = banner_rx.search(banner) or (gen_banner.search(banner) if gen_banner is not None else None)
+            # the banner must start with the library ("/*! jQuery v3.7.1"), not mention it ("/*! Shop v2 - needs
+            # jQuery 3.5+")
+            if hit and not _BANNER_NOISE.sub("", banner[:hit.start()]):
+                return _norm_lib(re.split(r"[^\w.@-]", hit.group(0).lstrip("@"), maxsplit=1)[0])
             if _BANNER_LICENSE.search(banner) and _UMD.search(text[:20000]):
                 return "umd"
     return None
@@ -499,17 +554,33 @@ def _slug(value: str, limit: int = 60) -> str:
     return (s or "root")[:limit]
 
 
+# Windows device names: "con.js" or a directory "nul" opens the device instead of a file (any extension)
+_WIN_RESERVED = re.compile(r"(?i)^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)(?:\.|$)")
+
+
+def _safe_seg(seg: str, limit: int) -> str:
+    s = _slug(seg, limit)
+    return "_" + s if _WIN_RESERVED.match(s) else s
+
+
 def _rel_for_url(url: str, used: set[str]) -> str:
+    """Temp-dir path for a served script: ``src/<host>/<path>``, reduced to safe, short names (no ``..``, no Windows
+    device names, at most 4 directories and about 150 characters, so a deep or hostile URL cannot exceed the Windows
+    path limit of 260). Unique case-insensitively (macOS and Windows file systems). Evidence keeps the served URL."""
     parts = urllib.parse.urlsplit(url)
-    host = _slug(normalise_host(parts.hostname or "") or "host", 80)
-    segs = [_slug(urllib.parse.unquote(s), 80) for s in parts.path.split("/") if s and s not in (".", "..")]
+    host = _safe_seg(normalise_host(parts.hostname or "") or "host", 48)
+    segs = [_safe_seg(urllib.parse.unquote(s), 32) for s in parts.path.split("/") if s and s not in (".", "..")]
     segs = [s for s in segs if s not in (".", "..")] or ["index"]
     name = segs[-1]
     if not name.lower().endswith(".js") or name.lower().endswith(".min.js"):
         name += ".js"                  # the engine ignores *.min.js and needs a JavaScript extension
-    rel = "/".join(["src", host, *segs[:-1][:8], name])
+    dirs = segs[:-1]
+    if len(dirs) > 4:
+        dirs = dirs[:2] + dirs[-2:]
+    rel = "/".join(["src", host, *dirs, name])
+    seen = {u.lower() for u in used}
     base, k = rel, 1
-    while rel in used:
+    while rel.lower() in seen:
         k += 1
         rel = base[:-3] + f"-{k}.js"
     used.add(rel)
@@ -562,6 +633,33 @@ def _is_script_response(r: Response) -> bool:
     if ess in _JS_ESSENCES:
         return True
     return not ess.startswith(("text/css", "text/html", "image/", "font/")) and bool(_JS_PATH.search(r.parsed_url.path))
+
+
+def _executes_anyway(r: Response) -> bool:
+    """A ``<script src>`` served with a wrong text type (``text/plain``, ``application/octet-stream``) still runs
+    unless ``X-Content-Type-Options: nosniff`` blocks it."""
+    if r.kind not in ("text", "other", ""):
+        return False
+    if r.essence.startswith(("text/html", "text/css", "image/", "font/", "audio/", "video/")):
+        return False
+    xcto = (r.headers.first("x-content-type-options") or "").split(",")[0].strip().lower()
+    return xcto != "nosniff"
+
+
+_LONE_CR = re.compile(r"\r(?!\n)")
+
+
+def _norm_cr(text: str) -> str:
+    """Old Mac line ends (a lone CR) end a line in JavaScript and in the browser's view of the source: make them LF
+    (same length, so offsets do not move) so that lines are counted the way the browser counts them."""
+    return _LONE_CR.sub("\n", text) if "\r" in text else text
+
+
+_COMMENTS = re.compile(r"/\*[\s\S]*?(?:\*/|$)|//[^\n]*")
+
+
+def _has_code(text: str) -> bool:
+    return bool(_COMMENTS.sub("", text).strip())
 
 
 # ----------------------------------------------------------------------------------------------- AST adjustments
@@ -627,18 +725,7 @@ class MessageHandler:
     func: ast.FunctionDef
     sink: str = ""            # sink reached by the message data ("" = none seen)
     sink_line: int = 0
-
-
-def _func_index(trees: dict[str, ast.Module]) -> dict[str, list[tuple[str, ast.FunctionDef]]]:
-    idx: dict[str, list[tuple[str, ast.FunctionDef]]] = {}
-    for rel, tree in trees.items():
-        try:
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    idx.setdefault(node.name, []).append((rel, node))
-        except RecursionError:
-            continue
-    return idx
+    sink_rel: str = ""        # unit of the handler's body (may differ from the registering unit)
 
 
 def _windowish(node: ast.AST | None) -> bool:
@@ -675,46 +762,126 @@ def _handler_name(node: ast.AST) -> str | None:
     return None
 
 
-def _resolve(name: str | None, rel: str, group: set[str],
-             idx: dict[str, list[tuple[str, ast.FunctionDef]]]) -> tuple[str, ast.FunctionDef] | None:
-    if not name:
+_FUNCS = (ast.FunctionDef, ast.AsyncFunctionDef)
+_NOT_DELEGATION = frozenset({"log", "warn", "error", "info", "debug", "stringify", "push", "preventDefault",
+                             "stopPropagation", "stopImmediatePropagation"})
+
+
+def _params(func: ast.AST) -> list[str]:
+    """Parameters of a lowered function, without the ``self`` the frontend adds to class methods."""
+    if not isinstance(func, _FUNCS):
+        return []
+    return [a.arg for a in func.args.args if a.arg != "self"]
+
+
+class _Scopes:
+    """Lexical lookup of functions in the units' trees. Minified code reuses short names in every closure
+    (``function n(e){…}`` dozens of times per file), so a handler is resolved in the scope that registers it, never
+    by its name alone; an ambiguous name is unknown (no finding)."""
+
+    def __init__(self, trees: dict[str, ast.Module]):
+        self.trees = trees
+        self.parent: dict[int, ast.AST] = {}
+        self.rel_of: dict[int, str] = {}
+        for rel, tree in trees.items():
+            try:
+                for node in ast.walk(tree):
+                    if isinstance(node, _FUNCS):
+                        self.rel_of[id(node)] = rel
+                    for ch in ast.iter_child_nodes(node):
+                        self.parent[id(ch)] = node
+            except RecursionError:
+                continue
+
+    def chain(self, node: ast.AST) -> list[ast.AST]:
+        """Enclosing functions, classes and the module, innermost first."""
+        out, cur, n = [], self.parent.get(id(node)), 0
+        while cur is not None and n < 10_000:
+            if isinstance(cur, (*_FUNCS, ast.ClassDef, ast.Module)):
+                out.append(cur)
+            cur, n = self.parent.get(id(cur)), n + 1
+        return out
+
+    @staticmethod
+    def declared(scope: ast.AST, name: str) -> list[ast.AST]:
+        """Function declarations named ``name`` directly in ``scope`` (blocks included, nested functions not)."""
+        found: list[ast.AST] = []
+        stack = list(getattr(scope, "body", []))
+        while stack:
+            n = stack.pop()
+            if isinstance(n, _FUNCS):
+                if n.name == name:
+                    found.append(n)
+                continue
+            if isinstance(n, ast.ClassDef) or not isinstance(n, ast.stmt):
+                continue
+            stack.extend(c for c in ast.iter_child_nodes(n) if isinstance(c, ast.stmt))
+        found.sort(key=lambda f: (getattr(f, "lineno", 0), getattr(f, "col_offset", 0)))
+        return found
+
+    def _name(self, name: str, at: ast.AST, rel: str, group: set[str]) -> ast.AST | None:
+        for scope in self.chain(at):
+            if isinstance(scope, ast.ClassDef):
+                continue                  # a class body is not a lexical scope for plain names
+            got = self.declared(scope, name)
+            if got:
+                return got[-1]            # the last declaration wins (hoisting)
+        others = [f for r in sorted(group) if r != rel and r in self.trees for f in self.declared(self.trees[r], name)]
+        return others[0] if len(others) == 1 else None
+
+    def resolve(self, expr: ast.AST, at: ast.AST, rel: str, group: set[str]) -> ast.AST | None:
+        """The function ``expr`` (a handler or a callee) names when used at ``at``; None when unknown."""
+        if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "bind":
+            expr = expr.func.value
+        if isinstance(expr, ast.Name):
+            return self._name(expr.id, at, rel, group)
+        if not isinstance(expr, ast.Attribute):
+            return None
+        recv = expr.value
+        if isinstance(recv, ast.Name) and recv.id == "self":      # this.onMessage inside a class
+            for scope in self.chain(at):
+                if isinstance(scope, ast.ClassDef):
+                    meths = [m for m in scope.body if isinstance(m, _FUNCS) and m.name == expr.attr]
+                    return meths[-1] if meths else None
+            return None
+        if isinstance(recv, ast.Name) and rel in self.trees:     # handlers.onMessage with handlers = {onMessage: …}
+            hits = []
+            try:
+                for node in ast.walk(self.trees[rel]):
+                    if isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict) \
+                            and any(isinstance(t, ast.Name) and t.id == recv.id for t in node.targets):
+                        for k, v in zip(node.value.keys, node.value.values):
+                            if isinstance(k, ast.Constant) and k.value == expr.attr and isinstance(v, ast.Name):
+                                hits.append((node, v))
+            except RecursionError:
+                return None
+            if len(hits) == 1:
+                return self._name(hits[0][1].id, hits[0][0], rel, group)
         return None
-    cands = idx.get(name) or []
-    same = [c for c in cands if c[0] == rel]
-    if len(same) >= 1:
-        return same[-1]
-    other = [c for c in cands if c[0] in group]
-    return other[-1] if len(other) == 1 else None
 
 
-def _reads_origin(func: ast.AST, group: set[str], idx, depth: int = 0, seen: set[int] | None = None) -> bool | None:
+def _reads_origin(func: ast.AST, rel: str, group: set[str], scopes: _Scopes, depth: int = 0,
+                  seen: set[int] | None = None) -> bool | None:
     """True when the handler (or a function it hands the event to) reads ``.origin``; None when it hands the event
     to a function that cannot be resolved (unknown: no finding)."""
     seen = seen if seen is not None else set()
     if id(func) in seen:
         return False
     seen.add(id(func))
-    params = {a.arg for a in func.args.args} if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)) else set()
+    params = set(_params(func))
     unknown = False
     for node in ast.walk(func):
         if isinstance(node, ast.Attribute) and node.attr == "origin":
             return True
         if isinstance(node, ast.Call) and any(isinstance(a, ast.Name) and a.id in params for a in node.args):
-            callee = node.func
-            name = _handler_name(callee)
-            if name in ("log", "warn", "error", "info", "debug", "stringify", "push", "preventDefault",
-                        "stopPropagation"):
+            if _handler_name(node.func) in _NOT_DELEGATION:
                 continue
-            target = None
-            for rel_, fn in idx.get(name or "", []):
-                if rel_ in group:
-                    target = fn
-                    break
+            target = scopes.resolve(node.func, node, rel, group)
             if target is None:
                 unknown = True
                 continue
             if depth < 3:
-                r = _reads_origin(target, group, idx, depth + 1, seen)
+                r = _reads_origin(target, rel, group, scopes, depth + 1, seen)
                 if r:
                     return True
                 if r is None:
@@ -724,7 +891,7 @@ def _reads_origin(func: ast.AST, group: set[str], idx, depth: int = 0, seen: set
 
 def _message_sink(func: ast.FunctionDef) -> tuple[str, int]:
     """First sink in the handler that the message data (``param.data`` or names assigned from it) reaches."""
-    params = [a.arg for a in func.args.args]
+    params = _params(func)
     if not params:
         return "", 0
     ev = params[0]
@@ -793,11 +960,11 @@ def _sink_receiver_ok(name: str, func: ast.AST) -> bool:
 
 def message_handlers(trees: dict[str, ast.Module], groups: dict[str, set[str]]) -> list[MessageHandler]:
     """Window ``message`` handlers that never read ``event.origin`` (WEB522)."""
-    idx = _func_index(trees)
+    scopes = _Scopes(trees)
     found: list[MessageHandler] = []
     for rel, tree in trees.items():
         group = groups.get(rel, {rel})
-        regs: list[tuple[int, ast.AST]] = []
+        regs: list[tuple[int, ast.AST, ast.AST]] = []      # (line, handler expression, registering node)
         try:
             in_class: set[int] = set()    # inside a class, `this` (lowered to self) is not the window
             for node in ast.walk(tree):
@@ -817,35 +984,37 @@ def message_handlers(trees: dict[str, ast.Module], groups: dict[str, set[str]]) 
                     else:
                         continue
                     if isinstance(evt, ast.Constant) and evt.value == "message":
-                        regs.append((node.lineno, handler))
+                        regs.append((node.lineno, handler, node))
                 elif isinstance(node, ast.Assign):
                     for t in node.targets:
                         if isinstance(t, ast.Attribute) and t.attr == "onmessage" and _windowish(t.value):
-                            regs.append((node.lineno, node.value))
+                            regs.append((node.lineno, node.value, node))
             for node in tree.body:
-                if isinstance(node, ast.FunctionDef) and node.name == "onmessage":   # onmessage = function (e) {…}
-                    regs.append((node.lineno, ast.Name(id="onmessage", ctx=ast.Load())))
+                if isinstance(node, _FUNCS) and node.name == "onmessage":   # onmessage = function (e) {…}
+                    regs.append((node.lineno, ast.Name(id="onmessage", ctx=ast.Load()), node))
         except RecursionError:
             continue
         done: set[int] = set()
-        for line, handler in regs:
-            res = _resolve(_handler_name(handler), rel, group, idx)
-            if res is None:
+        for line, handler, at in regs:
+            try:
+                func = scopes.resolve(handler, at, rel, group) if at is not None else None
+            except RecursionError:
                 continue
-            _hrel, func = res
+            if func is None or not isinstance(func, _FUNCS):
+                continue
             if id(func) in done:
                 continue
             done.add(id(func))
-            if not func.args.args and not any(isinstance(n, ast.Name) and n.id == "event" for n in ast.walk(func)):
+            if not _params(func) and not any(isinstance(n, ast.Name) and n.id == "event" for n in ast.walk(func)):
                 continue                  # the handler never looks at the message
             try:
-                reads = _reads_origin(func, group, idx)
+                reads = _reads_origin(func, rel, group, scopes)
             except RecursionError:
                 continue
             if reads is not False:
                 continue                  # checks the origin, or delegates to code we cannot see
             sink, sink_line = _message_sink(func)
-            found.append(MessageHandler(rel, line, func, sink, sink_line))
+            found.append(MessageHandler(rel, line, func, sink, sink_line, scopes.rel_of.get(id(func), rel)))
     return found
 
 
@@ -874,6 +1043,18 @@ class _Run:
                                and e.get("detection") in ("hash", "filecontent", "filecontentreplace", "filename")}
         self.file_pages: dict[str, list[str]] = {}
         self.tmpdir = ""
+        self._trees: dict[str, TreeIndex] = {}
+
+    def tree(self, rel: str) -> "TreeIndex":
+        """A fresh (unlowered) tree of an analysed unit, indexed by line, for reading sink context after the engine
+        ran (the engine takes ownership of the trees it was given)."""
+        got = self._trees.get(rel)
+        if got is None:
+            from .. import js_frontend
+            u = self.units.get(rel)
+            got = TreeIndex(js_frontend.parse_js(u.text, rel) if u is not None else ast.Module(body=[], type_ignores=[]))
+            self._trees[rel] = got
+        return got
 
     def _over_time(self) -> bool:
         return time.monotonic() - self.t0 > TIME_BUDGET
@@ -913,12 +1094,20 @@ class _Run:
             if not scripts:
                 continue
             body, segs, start = [], [], 1
+            ptext = p.response.text()
+            lone_cr = "\r" in ptext and bool(_LONE_CR.search(ptext))
+            if lone_cr:
+                ptext = _norm_cr(ptext)
             for s in scripts:
-                code = _clean_inline(s.text)
+                code = _clean_inline(_norm_cr(s.text))
                 if not code.endswith("\n"):
                     code += "\n"
                 nlines = code.count("\n")
-                segs.append(Segment(start, nlines, p.response.url, p.response, s.line, s.col, p.response.url))
+                b_line, b_col = s.line, s.col
+                if lone_cr and 0 <= s.offset <= len(ptext):      # html.parser counts LF only
+                    b_line = ptext.count("\n", 0, s.offset) + 1
+                    b_col = s.offset - (ptext.rfind("\n", 0, s.offset) + 1)
+                segs.append(Segment(start, nlines, p.response.url, p.response, b_line, b_col, p.response.url))
                 body.append(code + ";\n")
                 start += nlines + 1
             text = "".join(body)
@@ -941,7 +1130,9 @@ class _Run:
         candidates: list[Response] = []
         for r in ctx.subresources:
             url = urllib.parse.urldefrag(r.url)[0]
-            if url in seen or not r.is_2xx or r.error or not _is_script_response(r):
+            if url in seen or not r.is_2xx or r.error:
+                continue
+            if not (_is_script_response(r) or (js_typed.get(url) and _executes_anyway(r))):
                 continue
             if not any(psl.same_site(r.host, h) for h in site_hosts):
                 continue                  # third-party code is not the site's own code
@@ -962,7 +1153,7 @@ class _Run:
             if len(r.body) > MAX_FILE_BYTES:
                 self.skips.append(_Skip(url, "truncated", "skip_size", {"url": url}))
                 continue
-            text = r.text()
+            text = _norm_cr(r.text())
             lib = library_name(url, text, self.names, self.known_lib_urls)
             if lib:
                 self.skips.append(_Skip(url, "", "", {"library": lib}, limitation=False))
@@ -998,13 +1189,18 @@ class _Run:
             self.total += len(text)
             path = os.path.join(tmp, *rel.split("/"))
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            with open(path, "w", encoding="utf-8", errors="replace", newline="\n") as fh:
                 fh.write(text)
-            with open(path, encoding="utf-8", newline="") as fh:
+            with open(path, encoding="utf-8", errors="replace", newline="") as fh:
                 on_disk = fh.read()
             u.text, u.reflow_map = on_disk, rmap
             u.lines = on_disk.split("\n")
             u.tree = js_frontend.parse_js(on_disk, rel)
+            if not u.tree.body and _has_code(on_disk):         # the frontend gave up: nothing was analysed
+                where = u.url or (u.pages[0] if u.pages else rel)
+                self.skips.append(_Skip(where, "error", "skip_parse", {"url": where}))
+                del self.units[rel]
+                continue
             files[rel] = on_disk
         return files
 
@@ -1026,7 +1222,7 @@ class _Run:
 def _offset(response: Response | None, line: int, col: int) -> int | None:
     if response is None:
         return None
-    text = response.text()
+    text = _norm_cr(response.text())
     pos = 0
     for _ in range(max(0, line - 1)):
         nxt = text.find("\n", pos)
@@ -1041,7 +1237,7 @@ def _excerpt(response: Response | None, line: int, col: int, analysed: str) -> s
         return _short(analysed.strip(), 200)
     if response is None:
         return ""
-    lines = response.text().split("\n")
+    lines = _norm_cr(response.text()).split("\n")
     if 1 <= line <= len(lines):
         ln = lines[line - 1]
         return _short(ln[max(0, col - 60): col + 140], 200)
@@ -1052,6 +1248,188 @@ def _host_of(url: str, ctx: ScanContext) -> str:
     return normalise_host(urllib.parse.urlsplit(url).hostname or "") or ctx.target_host
 
 
+# ----------------------------------------------------------------------------------------------- sink context
+# The engine models "tainted data reaches a navigation / jQuery sink". Whether that is exploitable depends on where
+# the data lands in the value, which these helpers read from the syntax tree of the analysed line.
+
+_LOC_FIXED = {"origin": "https://h.invalid", "host": "h.invalid", "hostname": "h.invalid", "protocol": "https:"}
+_LOC_LEAD = {"pathname": "/", "search": "?", "hash": "#"}     # the first character those parts always have
+_SAFE_ABS = re.compile(r"^[a-z][a-z0-9+.-]*://[^/?#\\]+[/?#\\]", re.I)   # scheme://fixed-host/…
+_SAFE_REL = re.compile(r"^(?:[?#]|/[^/\\]|\.{1,2}/|[^:/?#\\]+[/?#])")      # ?…  #…  /path  ./x  page.html?…
+_URL_FROM_LOCATION = re.compile(r"\bnew\s+URL\s*\(\s*(?:(?:window|self|top|parent|globalThis|document)\s*\.\s*)*"
+                                r"(?:location|URL|documentURI)\b")
+_SEARCH_PARAMS_LABEL = re.compile(r"^(?:[\w$]+\.)*searchParams\.get(?:All)?\(\)$")
+_JQUERY_HTML_SELECTOR = (1, 9)                     # jQuery 1.9+ parses a string as HTML only when it starts with "<"
+
+
+def _is_location(node: ast.AST) -> bool:
+    """``location``, ``window.location``, ``document.location``, ``top.location`` …"""
+    if isinstance(node, ast.Name):
+        return node.id == "location"
+    return isinstance(node, ast.Attribute) and node.attr == "location"
+
+
+def _is_current_url(node: ast.AST) -> bool:
+    if _is_location(node):
+        return True
+    if isinstance(node, ast.Attribute):
+        if node.attr == "href" and _is_location(node.value):
+            return True
+        if node.attr in ("URL", "documentURI") and isinstance(node.value, ast.Name) and node.value.id == "document":
+            return True
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "toString" \
+            and not node.args:
+        return _is_current_url(node.func.value)
+    return False
+
+
+def _parts(expr: ast.AST, depth: int = 0) -> list[ast.AST]:
+    """Operands of a string concatenation in order (``a + b``, template literal)."""
+    if depth < 200 and isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add):
+        return _parts(expr.left, depth + 1) + _parts(expr.right, depth + 1)
+    if isinstance(expr, ast.JoinedStr):
+        return [v.value if isinstance(v, ast.FormattedValue) else v for v in expr.values]
+    return [expr]
+
+
+def _url_prefix(expr: ast.AST) -> str:
+    """The fixed start of a URL value: constants and the page's own origin, host and protocol. The first part an
+    attacker can choose ends it (adding the character that part always starts with: pathname "/", search "?")."""
+    out = ""
+    for p in _parts(expr):
+        if isinstance(p, ast.Constant) and isinstance(p.value, (str, int, float)) and not isinstance(p.value, bool):
+            out += str(p.value)
+            continue
+        if isinstance(p, ast.Attribute) and _is_location(p.value):
+            if p.attr in _LOC_FIXED:
+                out += _LOC_FIXED[p.attr]
+                continue
+            out += _LOC_LEAD.get(p.attr, "")
+        break
+    return out
+
+
+def _constant_arg(node: ast.AST) -> bool:
+    if isinstance(node, ast.Constant):
+        return True
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "compile" \
+        and isinstance(node.func.value, ast.Name) and node.func.value.id == "re" \
+        and all(isinstance(a, ast.Constant) for a in node.args)          # a regular-expression literal
+
+
+def _fixed_destination(expr: ast.AST, scope: ast.AST | None = None, depth: int = 0) -> bool:
+    """True when a navigation value cannot leave the site: a same-origin relative URL, a URL with a fixed host, or
+    the current URL itself (``location.href.replace("http:", "https:")``)."""
+    if isinstance(expr, ast.Name) and scope is not None and depth < 3:
+        values = [n.value for n in ast.walk(scope) if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Name) and t.id == expr.id for t in n.targets)]
+        return bool(values) and all(_fixed_destination(v, scope, depth + 1) for v in values)
+    prefix = _url_prefix(expr).lstrip(" \t\r\n\f")
+    if _SAFE_ABS.match(prefix) or _SAFE_REL.match(prefix):
+        return True
+    if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr in ("replace", "replaceAll") \
+            and _is_current_url(expr.func.value) and all(_constant_arg(a) for a in expr.args):
+        return True
+    return _is_current_url(expr)                     # location.href = location.href (a reload)
+
+
+def _enclosing_scope(scopes: "_Scopes", node: ast.AST) -> ast.AST | None:
+    for sc in scopes.chain(node):
+        if isinstance(sc, (*_FUNCS, ast.Module)):
+            return sc
+    return None
+
+
+class TreeIndex:
+    """Nodes of one tree by line, plus its scopes (built once per unit, reused for every finding in it)."""
+
+    def __init__(self, tree: ast.Module):
+        self.scopes = _Scopes({"": tree})
+        self.by_line: dict[int, list[ast.AST]] = {}
+        try:
+            for n in ast.walk(tree):
+                ln = getattr(n, "lineno", None)
+                if ln is not None:
+                    self.by_line.setdefault(ln, []).append(n)
+        except RecursionError:
+            self.by_line = {}
+
+    def at(self, line: int) -> list[ast.AST]:
+        return self.by_line.get(line, [])
+
+
+def _index(tree: "ast.Module | TreeIndex") -> TreeIndex:
+    return tree if isinstance(tree, TreeIndex) else TreeIndex(tree)
+
+
+def redirect_is_fixed(tree: "ast.Module | TreeIndex", line: int) -> bool:
+    """WEB521 precision: True when every navigation on ``line`` has a destination the attacker cannot choose, or the
+    "sink" is a link's ``href`` (``a.href = …`` is not a navigation, spec §2.6 lists location and window.open)."""
+    idx = _index(tree)
+    scopes = idx.scopes
+    unsafe = settled = 0
+    for node in idx.at(line):
+        values: list[ast.AST] = []
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Attribute) and t.attr == "href" and not _is_location(t.value):
+                    settled += 1          # an element's href: a link, not a redirect
+                elif _is_location(t) or (isinstance(t, ast.Attribute) and t.attr == "href"):
+                    values.append(node.value)
+        elif isinstance(node, ast.Call) and node.args:
+            f = node.func
+            name = _handler_name(f)
+            if name in ("assign", "replace") and isinstance(f, ast.Attribute) and _is_location(f.value):
+                values.append(node.args[0])
+            elif name == "open" and (not isinstance(f, ast.Attribute) or _windowish(f.value)):
+                values.append(node.args[0])
+        for v in values:
+            try:
+                fixed = _fixed_destination(v, _enclosing_scope(scopes, node))
+            except RecursionError:
+                fixed = False
+            if fixed:
+                settled += 1
+            else:
+                unsafe += 1
+    return unsafe == 0 and settled > 0
+
+
+def jquery_selector_only(tree: "ast.Module | TreeIndex", line: int) -> bool:
+    """True when every ``$(…)``/``jQuery(…)`` call on ``line`` starts its argument as a selector (a constant that
+    does not start with "<", or ``location.hash``, which starts with "#"): jQuery 1.9+ never parses that as HTML."""
+    calls = 0
+    nodes = [n for n in _index(tree).at(line) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+             and n.func.id in ("$", "jQuery") and n.args]
+    for node in nodes:
+        first = _parts(node.args[0])[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str) and first.value.strip() \
+                and not first.value.lstrip().startswith("<"):
+            calls += 1
+        elif isinstance(first, ast.Attribute) and first.attr == "hash" and _is_location(first.value):
+            calls += 1
+        else:
+            return False
+    return calls > 0
+
+
+def _old_jquery(ctx: ScanContext) -> bool:
+    """A jQuery older than 1.9 is known on the site (libs.py inventory, when it already ran)."""
+    libs = ctx.inventory.get("libraries") if isinstance(ctx.inventory, dict) else None
+    for e in libs or ():
+        if not isinstance(e, dict) or str(e.get("component") or e.get("name") or "").lower() not in ("jquery", "jquery.js"):
+            continue
+        nums = re.findall(r"\d+", str(e.get("version") or ""))[:2]
+        if len(nums) == 2 and (int(nums[0]), int(nums[1])) < _JQUERY_HTML_SELECTOR:
+            return True
+    return False
+
+
+def url_source(label: str, text: str) -> bool:
+    """``u.searchParams.get()`` is a browser source when the script builds ``u`` from the page URL."""
+    return bool(_SEARCH_PARAMS_LABEL.match(label or "")) and bool(_URL_FROM_LOCATION.search(text or ""))
+
+
 def _flow_issues(run: _Run, findings: list, groups: dict[str, set[str]]) -> list[Issue]:
     ctx = run.ctx
     issues: list[Issue] = []
@@ -1060,12 +1438,13 @@ def _flow_issues(run: _Run, findings: list, groups: dict[str, set[str]]) -> list
         rule = RULE_MAP.get(getattr(f, "rule_id", ""))
         extra = getattr(f, "extra", None) or {}
         label = str(extra.get("taint_source") or "")
-        if rule is None or not is_dom_source(label):
-            continue
         unit = run.units.get(f.file)
-        if unit is None:
+        if rule is None or unit is None:
             continue
         steps = [s for s in (extra.get("path") or []) if isinstance(s, dict)]
+        first_unit = run.units.get(steps[0].get("file", f.file), unit) if steps else unit
+        if not (is_dom_source(label) or url_source(label, first_unit.text)):
+            continue
         files = [s.get("file") for s in steps if s.get("file")] or [f.file]
         files.append(f.file)
         if any(x not in run.units for x in files):
@@ -1081,14 +1460,19 @@ def _flow_issues(run: _Run, findings: list, groups: dict[str, set[str]]) -> list
             sink_text = sink_unit.line_text(int(last.get("line") or 0)) or line_text
         if rule == "WEB521" and _NOT_REDIRECT.search(sink_text):
             continue                      # history.pushState / router.push: same-origin navigation, not a redirect
+        sink_rel, sink_line = (steps[-1].get("file", f.file), int(steps[-1].get("line") or 0)) if steps else (f.file, f.line)
+        if rule == "WEB521" and redirect_is_fixed(run.tree(sink_rel), sink_line):
+            continue                      # the destination's origin is fixed, or the "sink" is a link's href
         sink = sink_name(rule, sink_text)
+        selector = rule == "WEB520" and sink[0] == "jQuery $()" and jquery_selector_only(run.tree(sink_rel), sink_line) \
+            and not _old_jquery(ctx)
         src_file = steps[0].get("file", f.file) if steps else f.file
         src_line = int(steps[0].get("line") or f.line) if steps else f.line
         src_unit = run.units.get(src_file, unit)
         conf = "firm"
         if len(uniq_files) > 1:
             conf = "tentative"
-        if label in _STORED_SOURCES:
+        if label in _STORED_SOURCES or selector:
             conf = "tentative"
         source = source_name(label)
         page_count = len(unit.page_segments) if unit.kind == "inline" else 1
@@ -1118,6 +1502,8 @@ def _flow_issues(run: _Run, findings: list, groups: dict[str, set[str]]) -> list
                                                                 if x in run.units])))
             if label in _STORED_SOURCES:
                 nts.append(_note("stored_source"))
+            if selector:
+                nts.append(_note("jq_selector"))
             if unit.reflow_map:
                 nts.append(_note("reflowed"))
             nts.append(_note("static"))
@@ -1145,8 +1531,9 @@ def _message_issues(run: _Run, handlers: list[MessageHandler]) -> list[Issue]:
             notes = [_note("message_handler", where=f"{url}:{line}")]
             conf = "tentative"
             if h.sink:
-                _u, _r, s_line, _c, _p = unit.served(h.sink_line, pi)
-                notes.append(_note("message_sink", sink=h.sink, line=s_line))
+                s_unit = run.units.get(h.sink_rel) or unit
+                s_url, _r, s_line, _c, _p = s_unit.served(h.sink_line, pi if s_unit is unit else 0)
+                notes.append(_note("message_sink", sink=h.sink, line=s_line if s_url == url else f"{s_url}:{s_line}"))
                 conf = "firm"
             if unit.kind == "inline":
                 notes.append(_note("inline", page=page))
@@ -1284,4 +1671,4 @@ def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
 
 __all__ = ["CHECKS", "run", "analyse", "reflow", "library_name", "library_names", "is_dom_source", "source_name",
            "sink_name", "message_handlers", "STR", "RULE_MAP", "MAX_FILES", "MAX_FILE_BYTES", "TIME_BUDGET",
-           "i18n_catalog"]
+           "i18n_catalog", "redirect_is_fixed", "jquery_selector_only", "url_source", "TreeIndex"]

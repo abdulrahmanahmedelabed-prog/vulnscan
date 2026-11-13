@@ -16,6 +16,11 @@ aliases from ``gethostbyname_ex``) ends in one of ``cname`` **and** the response
 (case-sensitive, like nuclei's word matcher; for nuclei templates that require several words the most specific one is
 kept) **and** the status equals ``status`` when it is not null. Nuclei templates that match only headers or a bare IP
 (Ghost, Gemfury, GoDaddy parking, Worksites, UptimeRobot's one-line body, SurveyGizmo's generic marker) are not used.
+Neither are templates whose words are only decisive together, when every single word also appears on live pages
+(Campaign Monitor: ``css.createsend1.com`` is the stylesheet host of every live page; Pagewiz: "Start Your New Landing
+Page Now!" is its promotional text): the file format has no "all of these words" field, and one word alone would report
+live sites. GitHub Pages keeps only "There isn't a GitHub Pages site here.": the template's other words are from the
+page GitHub shows for a missing file on a site that *is* configured (claimed), which is not a takeover.
 
 No network access is needed; ``--nuclei`` reads a local checkout. The output is deterministic (sorted, fixed layout).
 """
@@ -48,7 +53,6 @@ PROVIDERS: list[tuple[str, str, tuple[str, ...], tuple[str, ...], int | None, bo
     ("Big Cartel", "bigcartel-takeover", ("bigcartel.com",), ("<h1>Oops! We couldn&#8217;t find that page.</h1>",), None,
      True, False),
     ("Bitbucket", "bitbucket-takeover", ("bitbucket.io",), ("Repository not found",), 404, True, False),
-    ("Campaign Monitor", "campaignmonitor-takeover", ("createsend.com",), ("css.createsend1.com",), None, True, False),
     ("Canny", "canny-takeover", ("canny.io",), ("There is no such company. Did you enter the right URL?",), None, True,
      False),
     ("Cargo", "cargo-takeover", ("cargocollective.com",),
@@ -65,10 +69,7 @@ PROVIDERS: list[tuple[str, str, tuple[str, ...], tuple[str, ...], int | None, bo
     ("GitBook", "gitbook-takeover", ("gitbook.io", "gitbook.com"), ("If you need specifics, here's the error",), None,
      True, False),
     ("GitHub Pages", "github-takeover", ("github.io",),
-     ("There isn't a GitHub Pages site here.",
-      "For root URLs (like http://example.com/) you must provide an index.html file",
-      "The site configured at this address does not contain the requested file.",
-      "For root URLs (like <code>http://example.com/</code>)"), 404, True, False),
+     ("There isn't a GitHub Pages site here.",), 404, True, False),
     ("GoHire", "gohire-takeover", ("gohire.io",),
      ("You may have followed an invalid link or the job you are looking for has been archived",), 404, True, False),
     ("GreatPages", "greatpages-takeover", ("greatpages.com.br",), ("Página não encontrada (Erro 404)",), None, True,
@@ -100,7 +101,6 @@ PROVIDERS: list[tuple[str, str, tuple[str, ...], tuple[str, ...], int | None, bo
     ("Meteor", "meteor-takeover", ("meteor.com", "meteorapp.com"),
      ("404 Not Found: No applications registered for host '",), None, True, False),
     ("ngrok", "ngrok-takeover", ("ngrok.io", "ngrok.app", "ngrok-free.app"), ("ngrok.io not found",), None, True, False),
-    ("Pagewiz", "pagewiz-takeover", ("pagewiz.com",), ("Start Your New Landing Page Now!",), None, True, False),
     ("Pantheon", "pantheon-takeover", ("pantheonsite.io",),
      ("The gods are wise, but do not know of the site which you seek.",), 404, True, False),
     ("Pingdom", "pingdom-takeover", ("pingdom.com",),

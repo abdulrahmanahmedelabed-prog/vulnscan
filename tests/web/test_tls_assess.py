@@ -550,7 +550,7 @@ def test_mozilla_modern_conformance():
     devs, complete = assess.mozilla_deviations(rep, short, prof["modern"], deep=False)
     assert devs == [] and complete
     devs, _ = assess.mozilla_deviations(rep, short, prof["intermediate"], deep=False)
-    assert ("TLS 1.2 disabled", "TLS 1.2 معطّل") in devs
+    assert ("TLS 1.2 disabled", "TLS 1.2 معطّل") not in devs     # stricter than intermediate is not a deviation (review)
 
 
 # ----------------------------------------------------------------------------------------------- several IPs, proxy

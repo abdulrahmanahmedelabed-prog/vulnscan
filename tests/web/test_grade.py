@@ -394,11 +394,12 @@ def mk(rule, url="https://site.test/", *, severity=None, confidence=None, value=
 
 
 def ctx_for(entry_url="https://site.test/", *, kind="document", roles=frozenset({"app"}), sensitivity="default",
-            hsts=None, csp=None, tls=None, cookies=(), headers=()):
+            hsts=None, csp=None, tls=None, cookies=(), headers=(), body=None):
     entry = Response(url=entry_url, status=200, headers=HeaderList.of(("Content-Type", HTML), *headers), kind=kind,
-                     roles=frozenset(roles), body=b"<html></html>")
+                     roles=frozenset(roles), body=(body or "<html></html>").encode("utf-8"))
+    doc = htmlparse.parse_response(entry) if body is not None else None
     ctx = ScanContext(options=ScanOptions(sensitivity=sensitivity), target=entry_url, entry=entry,
-                      pages=[Page(entry, None, 0)] if kind == "document" else [], now=NOW)
+                      pages=[Page(entry, doc, 0)] if kind == "document" else [], now=NOW)
     if hsts is not None:
         ctx.hsts = {entry.host: hsts}
     if csp is not None:
@@ -625,26 +626,130 @@ def _weak_issues(control, roles):
     return out
 
 
-def _missing_issue(control, roles):
+def _missing_issue(control, roles, ctx=None):
     missing, _weak = CONTROLS[control]
-    sev = grade.missing_severity(control, [frozenset(roles)])
+    probe = mk(missing, roles=roles)
+    sev = (grade.would_be_severity(control, "site.test", [probe], ctx) if ctx is not None
+           else grade.missing_severity(control, [frozenset(roles)]))
     if not RULES[missing].allows(sev):
         sev = RULES[missing].severity
     return mk(missing, severity=sev, roles=roles)
+
+
+# a document per role, as classify.py would see it (the missing rules' severity depends on the document itself)
+_ROLE_BODIES = {
+    "app": "<html><body><div id=root></div><script src=/app.js></script></body></html>",
+    "static": "<html><body><h1>About</h1><p>Plain text.</p></body></html>",
+    "login": "<html><body><form method=post action=/login><input name=u><input type=password name=p></form></body></html>",
+}
 
 
 @pytest.mark.parametrize("control", list(CONTROLS))
 @pytest.mark.parametrize("roles", [("app",), ("static",), ("login",)])
 def test_sum_cap_weak_never_grades_below_missing(control, roles):
     """§3.4 step 2: for every control, the worst combination of weakness findings grades ≥ the missing header."""
-    ctx = ctx_for(roles=frozenset(roles))
+    ctx = ctx_for(roles=frozenset(roles), body=_ROLE_BODIES[roles[0]])
     weak = kg(_weak_issues(control, roles), ctx)
-    missing = kg([_missing_issue(control, roles)], ctx)
+    missing = kg([_missing_issue(control, roles, ctx)], ctx)
     assert weak["score"] >= missing["score"], (weak["families"], missing["families"])
     assert rank(weak["letter"]) <= rank(missing["letter"]), (weak["caps"], missing["caps"])
     # deleting the weak header (weak findings → missing finding) never raises the grade, also when both appear
-    both = kg(_weak_issues(control, roles) + [_missing_issue(control, roles)], ctx)
+    both = kg(_weak_issues(control, roles) + [_missing_issue(control, roles, ctx)], ctx)
     assert both["score"] == missing["score"] and rank(both["letter"]) == rank(missing["letter"])
+
+
+# --- end to end: the real family modules emit the findings, so the ceiling must mirror *their* severity modulation
+# (review of WP13: a page with scripts but no form gets a LOW missing-XFO from headers.py, yet WEB300 is medium; a
+# preloaded host (.dev) gets an INFO missing-HSTS from transport.py, yet WEB110/111/112 are medium)
+
+_E2E_BODIES = {
+    "static": "<!doctype html><html><head><title>x</title></head><body><h1>About</h1><p>Plain words.</p></body></html>",
+    "script": "<!doctype html><html><head><title>x</title></head><body><h1>Blog</h1><p>Plain words.</p>"
+              "<script src='/a.js'></script></body></html>",
+    "form": "<!doctype html><html><head><title>x</title></head><body><h1>Search</h1><form action='/s'><input name=q>"
+            "</form></body></html>",
+    "login": "<!doctype html><html><head><title>Sign in</title></head><body><form method=post action='/login'>"
+             "<input name=u><input type=password name=p></form></body></html>",
+    "listing": "<html><head><title>Index of /files</title></head><body><h1>Index of /files</h1><pre>"
+               "<a href='a.txt'>a.txt</a></pre></body></html>",
+}
+_E2E_GOOD = [("Strict-Transport-Security", "max-age=63072000; includeSubDomains"), ("X-Content-Type-Options", "nosniff"),
+             ("X-Frame-Options", "DENY"), ("Referrer-Policy", "no-referrer"), ("Permissions-Policy", "camera=()"),
+             ("Content-Security-Policy", "default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"),
+             ("Cross-Origin-Opener-Policy", "same-origin")]
+_E2E_WEAK = {
+    "Strict-Transport-Security": ("max-age=0", "max-age=86400", 'max-age="0"', "max-age=abc", "max-age=20000000",
+                                  "max-age=31536000, max-age=31536000"),
+    "X-Frame-Options": ("ALLOW-FROM https://a.test/", "ALLOWALL", "DENY, SAMEORIGIN", "junk"),
+    "Content-Security-Policy": ("default-src * 'unsafe-inline' 'unsafe-eval'", "frame-ancestors 'none'",
+                                "script-src 'strict-dynamic'", "upgrade-insecure-requests"),
+    "X-Content-Type-Options": ("nosnif",),
+    "Referrer-Policy": ("unsafe-url", "no-referrer-when-downgrade"),
+    "Permissions-Policy": ("camera 'none'", "camera=*", "camra=()"),
+    "Cross-Origin-Opener-Policy": ("bogus", "same-origin, same-origin"),
+}
+
+
+def _e2e_grade(url, hdrs, body):
+    from vulnscan.webscan import classify, content, cookies, csp, headers, transport
+    r = Response(url=url, status=200, headers=HeaderList.of(("Content-Type", HTML), *hdrs), body=body.encode("utf-8"),
+                 source="entry")
+    doc = htmlparse.parse_response(r)
+    classify.classify(r, doc)
+    ctx = ScanContext(options=ScanOptions(), target=url, entry=r, pages=[Page(r, doc, 0)], now=NOW)
+    ctx.csp = csp.parse_all(ctx)
+    ctx.hsts = transport.hsts_facts(ctx)
+    ctx.cookies = cookies.parse_and_classify(ctx)
+    issues = []
+    for mod in (transport, csp, headers, cookies, content):
+        issues += mod.run(ctx)
+    return grade.kashif_grade(ctx, group.process(issues, ctx).all_groups())
+
+
+# HSTS depends on the host (.dev is a preloaded TLD), the other controls on the document
+_E2E_CASES = ([("Strict-Transport-Security", b, u) for u in ("https://site.test/", "https://site.dev/")
+               for b in ("static", "login")]
+              + [(h, b, "https://site.test/") for h in _E2E_WEAK if h != "Strict-Transport-Security" for b in _E2E_BODIES])
+
+
+@pytest.mark.parametrize("header,body,url", _E2E_CASES)
+def test_sum_cap_end_to_end_weak_header_never_grades_below_no_header(header, body, url):
+    rest = [h for h in _E2E_GOOD if h[0] != header]
+    missing = _e2e_grade(url, rest, _E2E_BODIES[body])
+    for value in _E2E_WEAK[header]:
+        weak = _e2e_grade(url, rest + [(header, value)], _E2E_BODIES[body])
+        assert weak["score"] >= missing["score"], (value, weak["families"], missing["families"])
+        assert rank(weak["letter"]) <= rank(missing["letter"]), (value, weak["caps"], missing["caps"])
+
+
+def test_frame_ancestors_star_overriding_xfo_costs_points_but_never_the_letter():
+    """``frame-ancestors *`` makes browsers ignore X-Frame-Options: DENY, so that CSP really is worse than none for
+    framing (WEB206, framing control) — the per-control cap allows the points; the letter still never improves."""
+    rest = [h for h in _E2E_GOOD if h[0] != "Content-Security-Policy"]
+    missing = _e2e_grade("https://site.test/", rest, _E2E_BODIES["login"])
+    weak = _e2e_grade("https://site.test/", rest + [("Content-Security-Policy", "default-src 'self'; frame-ancestors *")],
+                      _E2E_BODIES["login"])
+    assert rank(weak["letter"]) <= rank(missing["letter"])
+
+
+def test_would_be_severity_mirrors_the_modules():
+    hsts_pre = HstsVerdict(host="site.dev", preloaded=True, effective=True)
+    ctx = ctx_for("https://site.dev/", hsts=hsts_pre, body=_E2E_BODIES["script"])
+    assert grade.would_be_severity("hsts", "site.dev", [mk("WEB111", "https://site.dev/")], ctx) == "info"
+    assert grade.would_be_severity("hsts", "other.test", [mk("WEB111", "https://other.test/")], ctx) == "medium"
+    # framing: scripts but no form → low (headers.py); a live form or an interactive role → medium
+    assert grade.would_be_severity("framing", "site.dev", [mk("WEB300", "https://site.dev/")], ctx) == "low"
+    ctx_form = ctx_for(body=_E2E_BODIES["form"])
+    assert grade.would_be_severity("framing", "site.test", [mk("WEB300")], ctx_form) == "medium"
+    assert grade.would_be_severity("framing", "site.test", [mk("WEB300", roles=("admin",))], ctx) == "medium"
+    # csp: csp.py's static document (no script/form/iframe/object/embed/on*) → low, whatever the page role
+    ctx_list = ctx_for(roles=frozenset({"listing"}), body=_E2E_BODIES["listing"])
+    assert grade.would_be_severity("csp", "site.test", [mk("WEB040", roles=("listing",))], ctx_list) == "low"
+    assert grade.would_be_severity("csp", "site.dev", [mk("WEB040", "https://site.dev/")], ctx) == "medium"
+    # a URL that is not a fetched page falls back to the role rule
+    assert grade.would_be_severity("csp", "site.test", [mk("WEB040", "https://site.test/x", roles=("static",))],
+                                   ctx_list) == "low"
+    assert grade.would_be_severity("csp", "site.test", [mk("WEB040", roles=("static",))]) == "low"
 
 
 def test_frame_ancestors_only_csp_grades_at_least_no_csp():

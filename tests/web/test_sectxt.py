@@ -338,3 +338,53 @@ def test_hostile_huge_file_is_fast():
     t = time.perf_counter()
     check(body)
     assert time.perf_counter() - t < 1.0
+
+
+# ----------------------------------------------------------------------------------------------- adversarial review
+
+def test_a_tab_after_the_colon_is_wsp_and_valid():
+    # RFC 9116 §4: field-name ":" WSP value, and WSP is a space or a horizontal tab
+    assert codes(check(f"Contact:\tmailto:security@example.test\nExpires:\t{FUTURE}\n")) == []
+
+
+@pytest.mark.parametrize("value, problem", [("0001-01-01T00:00:00+01:00", "expired"),
+                                            ("9999-12-31T23:59:59-23:59", "long_expiry")])
+def test_expires_at_the_edge_of_the_calendar_never_crashes(value, problem):
+    st = check(f"Contact: mailto:security@example.test\nExpires: {value}\n")
+    assert problem in codes(st) and "invalid_expires" not in codes(st)
+    for p in st.problems:
+        assert p.text("en") and p.text("ar")
+    assert sectxt.parse_rfc3339(value) is not None
+
+
+def test_many_fraction_digits_are_truncated_not_rounded_into_an_error():
+    dt = sectxt.parse_rfc3339("2027-05-13T00:00:00.99999999999999999999Z")
+    assert dt is not None and dt.microsecond == 999999
+    assert codes(check("Contact: mailto:security@example.test\nExpires: 2027-05-13T00:00:00.99999999999999999999Z\n")) \
+        == []
+
+
+def test_mailto_with_several_addresses_is_one_valid_contact():
+    assert sectxt.uri_kind("mailto:security@example.test,cert@example.test") == "mailto"
+    assert sectxt.uri_kind("mailto:security@example.test,not-an-address") == "invalid"
+    assert codes(check(f"Contact: mailto:a@example.test,b@example.test\nExpires: {FUTURE}\n")) == []
+
+
+def test_expired_date_is_an_iso_date_even_for_year_one():
+    st = check("Contact: mailto:security@example.test\nExpires: 0001-01-01T00:00:00Z\n")
+    (p,) = [p for p in st.problems if p.code == "expired"]
+    assert "0001-01-01" in p.text("en") and "0001-01-01" in p.text("ar")
+
+
+@pytest.mark.parametrize("body", [bytes(range(256)) * 50, "Contact: mailto:a@b.test\n".encode("utf-16"), b"\r" * 5000,
+                                  b"-----BEGIN PGP SIGNED MESSAGE-----\n" * 3, b":" * 100_000, b"\x1b[31m" * 1000,
+                                  ("Contact: " + "a" * 100_000 + "\n").encode() * 10])
+def test_hostile_bodies_never_crash_and_stay_fast(body):
+    import time
+    t = time.perf_counter()
+    st = check(body)
+    assert time.perf_counter() - t < 2
+    assert st.severity in ("low", "info")
+    for p in st.problems:
+        assert p.text("en") and p.text("ar")
+        assert "\x1b" not in p.text("en")

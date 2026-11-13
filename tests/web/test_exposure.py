@@ -965,3 +965,173 @@ def test_corpus_covers_every_wp11_rule_with_positive_and_trap_cases():
     for rule in OWN:
         labels = [c.labels[rule] for c in CORPUS_CASES if rule in c.labels]
         assert True in labels, rule
+
+
+# =============================================================================================== adversarial review
+
+SHORT_SECTXT = "Contact: mailto:s@example.test\nExpires: 2027-05-13T00:00:00Z\n"
+OK_BASELINE = "/kashif-404-0123456789abcdef"
+
+
+def test_short_real_security_txt_is_not_dismissed_by_a_short_catch_all_baseline():
+    # deep mode, every unknown path answers 200 text/plain "OK": a 60-byte security.txt is within 64 bytes of it
+    base = resp(OK_BASELINE, 200, PLAIN, "OK\n", source="baseline")
+    wk = resp("/.well-known/security.txt", 200, PLAIN, SHORT_SECTXT, source="wellknown")
+    assert classify.Soft404Index.match(_index(base), wk) is not None          # the §3.2 test alone says "similar"
+    ctx = ctx_for(wellknown={"/.well-known/security.txt": wk}, baselines=[base])
+    classify.classify_context(ctx)
+    issues = rules_of(run(ctx))
+    assert "WEB060" not in issues and state(ctx, "WEB060") == "pass" and state(ctx, "WEB900") == "pass"
+
+
+def test_catch_all_that_serves_the_same_security_txt_everywhere_is_still_absent():
+    base = resp(OK_BASELINE, 200, PLAIN, SHORT_SECTXT, source="baseline")
+    wk = resp("/.well-known/security.txt", 200, PLAIN, SHORT_SECTXT, source="wellknown")
+    ctx = ctx_for(wellknown={"/.well-known/security.txt": wk}, baselines=[base])
+    classify.classify_context(ctx)
+    assert "WEB060" in rules_of(run(ctx))
+
+
+def test_short_robots_txt_next_to_a_short_catch_all_is_still_judged():
+    base = resp(OK_BASELINE, 200, PLAIN, "OK\n", source="baseline")
+    rb = resp("/robots.txt", 200, PLAIN, "User-agent: *\nDisallow: /admin/\n", source="wellknown")
+    ctx = ctx_for(wellknown={"/robots.txt": rb}, baselines=[base])
+    classify.classify_context(ctx)
+    assert "WEB061" in rules_of(run(ctx))
+
+
+def test_html_page_with_a_contact_line_is_not_a_security_txt():
+    body = ("<!doctype html>\n<html><head><title>Not found</title></head><body>\nContact: support@example.test\n"
+            "</body></html>\n")
+    wk = resp("/.well-known/security.txt", 200, HTML, body, source="wellknown")
+    ctx = ctx_for(profile="standard", wellknown={"/.well-known/security.txt": wk})
+    issues = rules_of(run(ctx))
+    assert "WEB900" not in issues and "WEB060" in issues
+
+
+def test_real_security_txt_served_as_text_html_is_present_and_invalid():
+    wk = resp("/.well-known/security.txt", 200, "text/html", SHORT_SECTXT, source="wellknown")
+    ctx = ctx_for(profile="standard", wellknown={"/.well-known/security.txt": wk})
+    (i,) = rules_of(run(ctx))["WEB900"]
+    assert "content_type" in i.params["problems"]
+
+
+_MOODLE_ENTRY = page("My University", "<a href='/login/index.php'>Log in</a>" + "<p>Moodle courses for everyone</p>" * 20)
+_MOODLE_LOGIN = page("My University: Log in to the site", '<form action="/login/index.php" method="post">'
+                     '<input name="username"><input type="password" name="password"></form><p>moodle</p>')
+
+
+@pytest.mark.parametrize("path, entry_body, body, base_path", [
+    ("/login/index.php", _MOODLE_ENTRY, _MOODLE_LOGIN, "/login/kashif-404-0123456789abcdef.php"),
+    ("/wp-login.php", page("Blog", "<p>Post</p>" * 30 + "<a href='/wp-login.php'>Log in</a>"),
+     page("Log In", '<form id="loginform" action="/wp-login.php"><input name="log"><input type="password" name="pwd">'
+                    '<input type="submit" name="wp-submit"></form>'), "/kashif-404-0123456789abcdef.php"),
+])
+def test_login_page_is_found_when_the_homepage_links_to_it_and_unknown_paths_redirect(path, entry_body, body,
+                                                                                    base_path):
+    # a "404 to homepage" redirect is a baseline that answered: unknown paths do not get the login page, so the entry
+    # document carrying the marker (Moodle's name, WordPress's "Log in" link) says nothing about this probe
+    entry = resp("/", 200, HTML, entry_body, source="entry")
+    base = resp(base_path, 301, HTML, "", source="baseline", headers=(("Location", BASE + "/"),))
+    v = exposure.judge(resp(path, 200, HTML, body), _spec(path), _index(base), {}, entry)
+    assert v.state == "exposed"
+    # without any baseline the entry check stays (it may be the shell of an SPA)
+    v = exposure.judge(resp(path, 200, HTML, body), _spec(path), classify.Soft404Index(), {}, entry)
+    assert v.state == "clean"
+
+
+def test_phpinfo_signature_is_bounded_on_a_hostile_body():
+    import time
+    body = ("<html><body>" + "PHP Version " * 25_000)[:256_000].encode()
+    t = time.perf_counter()
+    assert exposure.match_signature(_spec("/phpinfo.php").signature, body) is None
+    assert time.perf_counter() - t < 1.0
+
+
+GH_CLAIMED_404 = page("Page not found", "<h1>404</h1><p><strong>File not found</strong></p><p>The site configured at "
+                      "this address does not contain the requested file.</p><p>For root URLs (like "
+                      "<code>http://example.com/</code>) you must provide an index.html file.</p>")
+
+
+def test_github_pages_missing_file_on_a_claimed_site_is_not_a_takeover():
+    rec = DnsRecord(HOST, "ok", ("127.0.0.1",), canonical="owner.github.io", aliases=(HOST,))
+    ctx = _takeover_ctx(rec, body=GH_CLAIMED_404)
+    assert not run(ctx) and state(ctx, "WEB901") == "pass"
+
+
+def test_takeover_is_judged_on_the_site_root_only():
+    # Big Cartel's fingerprint is its ordinary 404 page: a live shop shows it for a missing deep URL too
+    rec = DnsRecord(HOST, "ok", ("127.0.0.1",), canonical="shop.bigcartel.com", aliases=(HOST,))
+    oops = page("Oops", "<h1>Oops! We couldn&#8217;t find that page.</h1>")
+    deep = resp(f"https://{HOST}/products/old-item", 404, HTML, oops, source="entry", base=f"https://{HOST}")
+    ctx = ScanContext(options=ScanOptions(profile="standard"), target=deep.url, entry=deep)
+    ctx.dns[HOST] = rec
+    ctx.coverage = coverage.Coverage()
+    assert not run(ctx)
+    st = ctx.coverage.state("WEB901")
+    assert st.state == "not_tested" and "root" in st.reasons[0][1]
+    assert "WEB901" in rules_of(run(_takeover_ctx(rec, body=oops)))           # at "/" it is the unclaimed page
+
+
+def test_campaign_monitor_live_page_is_not_a_takeover():
+    rec = DnsRecord(HOST, "ok", ("127.0.0.1",), canonical="example.createsend.com", aliases=(HOST,))
+    live = page("Subscribe", '<link rel="stylesheet" href="https://css.createsend1.com/css/social.min.css">')
+    assert not run(_takeover_ctx(rec, status=200, body=live))
+    names = {p.name for p in exposure.providers()}
+    assert "GitHub Pages" in names and "Campaign Monitor" not in names
+
+
+def test_optional_all_words_of_a_provider_must_all_appear():
+    class Stub:
+        def load_json(self, name):
+            if name == "takeover.json":
+                return {"providers": [{"name": "Two Words", "cname": ["twowords.test"], "fingerprints": ["first"],
+                                       "fingerprints_all": ["second"], "status": None, "vulnerable": True}]}
+            return data.load_json(name)
+    rec = DnsRecord(HOST, "ok", ("127.0.0.1",), canonical="x.twowords.test", aliases=(HOST,))
+    assert not run(_takeover_ctx(rec, body=page("x", "first"), data=Stub()))
+    assert "WEB901" in rules_of(run(_takeover_ctx(rec, body=page("x", "first and second"), data=Stub())))
+
+
+def test_robots_paths_with_control_characters_are_cleaned_in_params():
+    rb = resp("/robots.txt", 200, PLAIN, "User-agent: *\nDisallow: /admin/\x1b[2J\n", source="wellknown")
+    ctx = ctx_for(profile="standard", wellknown={"/robots.txt": rb})
+    (i,) = rules_of(run(ctx))["WEB061"]
+    assert all("\x1b" not in p for p in i.params["paths"])
+    assert all("\x1b" not in p for p in ctx.inventory["robots"]["disallow"])
+
+
+def test_crossdomain_evidence_shows_the_wildcard_element_not_the_first_one():
+    body = ('<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*.example.test"/>'
+            '<allow-access-from domain="*" secure="false"/></cross-domain-policy>')
+    (i,) = rules_of(run(ctx_for(probes=[resp("/crossdomain.xml", 200, "text/xml", body)])))["WEB903"]
+    assert 'domain="*"' in i.evidence.match["value"] and any('secure="false"' in en for en, _ in i.notes)
+    safe = body.replace(' secure="false"', "").replace('*.example.test"/>', '*.example.test" secure="false"/>')
+    (j,) = rules_of(run(ctx_for(probes=[resp("/crossdomain.xml", 200, "text/xml", safe)])))["WEB903"]
+    assert not any('secure="false"' in en for en, _ in j.notes)
+
+
+def test_hostile_deeply_nested_actuator_index_does_not_abort_the_deep_checks():
+    body = '{"_links": {"self": {"href": "https://example.test/actuator"}}, "x": ' + "[" * 200_000
+    probes = [resp("/actuator", 200, "application/json", body),
+              resp("/.git/HEAD", 200, PLAIN, "ref: refs/heads/main\n")]
+    base = resp("/kashif-404-0123456789abcdef", 404, HTML, page("Not found"), source="baseline")
+    ctx = ctx_for(probes=probes, baselines=[base])
+    issues = rules_of(run(ctx))
+    assert {i.params["path"] for i in issues["WEB062"]} == {"/actuator", "/.git/HEAD"}
+
+
+_HOSTILE_FRAGMENTS = ("\n", "\n ", " \n", "\t", "PHP Version ", "<access-policy><allow-from>", "<allow-from>", "$a[x]",
+                      "[", "services:\n", '"host":', "<input ")
+
+
+@pytest.mark.parametrize("fragment", _HOSTILE_FRAGMENTS)
+def test_every_exposed_path_signature_is_linear_on_a_hostile_probe_body(fragment):
+    # a probe body is capped at 256 KB (http.CAPS["probe"]); "^\s*" under re.M made /.htaccess take ~40 min on
+    # 256 KB of newlines (quadratic backtracking), which a hostile server could use to stall the scan
+    import time
+    body = (fragment * (256_000 // len(fragment) + 1))[:256_000].encode()
+    for spec in exposure.exposed_paths() + list(exposure.POLICY_FILES.values()):
+        t = time.perf_counter()
+        exposure.match_signature(spec.signature, body)
+        assert time.perf_counter() - t < 1.5, (spec.path, fragment)

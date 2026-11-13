@@ -305,3 +305,50 @@ def test_strings_are_bilingual():
     catalog, patterns = diff.i18n_catalog()
     for rx, _r in patterns:
         re.compile(rx)
+
+
+# ----------------------------------------------------------------------------------------------- hostile input (review)
+
+def _paths(o, p=()):
+    yield p
+    if isinstance(o, dict):
+        for k, v in o.items():
+            yield from _paths(v, p + (k,))
+    elif isinstance(o, list):
+        for i, v in enumerate(o):
+            yield from _paths(v, p + (i,))
+
+
+def test_malformed_previous_snapshot_never_crashes():
+    """A previous snapshot is read from disk (store or --compare file): any field of the wrong type is dropped."""
+    base = snap(make_ctx(), [mk("WEB062", SITE + ".env", "/.env")], grades_of())
+    junk = [None, 1, "x", [], {}, [1, "a", None], {"a": 1}, 1.5, True]
+    for path in _paths(base):
+        if not path:
+            continue
+        for j in junk:
+            bad = copy.deepcopy(base)
+            o = bad
+            for k in path[:-1]:
+                o = o[k]
+            o[path[-1]] = j
+            for a, b in ((bad, base), (base, bad)):
+                d = diff.diff(a, b)
+                json.dumps(d, ensure_ascii=False)
+    for top in (1, "x", [1], 1.5, True, {}, {"target": 5}):
+        d = diff.diff(top, base)
+        assert d["comparable"] is False
+
+
+def test_sanitised_snapshot_is_unchanged_for_a_well_formed_one():
+    s = snap(make_ctx(), [mk("WEB062", SITE + ".env", "/.env")], grades_of())
+    clean = diff.sanitise(json.loads(json.dumps(s)))
+    assert clean["inventory"] == json.loads(json.dumps(s["inventory"]))
+    assert clean["findings"] == s["findings"] and clean["target"] == s["target"]
+
+
+def test_security_txt_expiring_within_a_day_is_not_zero_days():
+    soon = (NOW + timedelta(hours=5)).isoformat().replace("+00:00", "Z")
+    cur = make_ctx(inventory=_inv(security_txt={"present": True, "expires": soon}))
+    [exp] = _find(_posture(make_ctx(), cur), "sectxt_soon")
+    assert exp["en"] == "security.txt expires in 1 day" and "يوم واحد" in exp["ar"]

@@ -9,6 +9,7 @@ import importlib
 import json
 import pathlib
 import sys
+import time
 
 import pytest
 
@@ -504,3 +505,112 @@ def test_json_roundtrip_of_inventory(make_ctx):
     ctx = _banner_ctx(make_ctx, ("Server", "nginx/1.18.0 (Ubuntu)"))
     run(ctx)
     json.dumps(ctx.inventory)
+
+
+# ----------------------------------------------------------------------------------------------- review: false positives and hostile input
+
+def test_excludes_do_not_crash_and_drop_the_weaker(make_ctx):
+    obj = {"meta": data.load_json("tech.json")["meta"], "technologies": [
+        {"id": "a-cms", "name": "A", "categories": ["cms"], "excludes": ["b-cms"],
+         "signals": [{"source": "cookie", "pattern": "^a_sess$", "confidence": 90}]},
+        {"id": "b-cms", "name": "B", "categories": ["cms"], "excludes": ["a-cms"],
+         "signals": [{"source": "cookie", "pattern": "^b_sess$", "confidence": 40}]},
+    ]}
+    db = tech.build_db(obj)
+    ctx = ctx_for(make_ctx, "<p>x</p>", (("Set-Cookie", "a_sess=1"), ("Set-Cookie", "b_sess=1")))
+    assert sorted(tech.detect(ctx, db)) == ["a-cms"]
+
+
+@pytest.mark.parametrize("header", [("Server", "nginx/1." + "9" * 5000), ("X-Powered-By", "PHP/8." + "1" * 5000),
+                                    ("Server", "Apache/2.4.1 " + "(x) " * 15000), ("Server", "a" * 60000 + "/1.2")])
+def test_hostile_banners_do_not_crash_or_hang(header, make_ctx):
+    ctx = ctx_for(make_ctx, "<p>x</p>", (header,), sensitivity="paranoid")
+    start = time.monotonic()
+    run(ctx)
+    assert time.monotonic() - start < 2.0
+
+
+def test_huge_generator_version_is_not_a_version(make_ctx):
+    ctx = ctx_for(make_ctx, '<html><head><meta name="generator" content="WordPress 4.' + "9" * 5000 + '"></head></html>')
+    issues = run(ctx)
+    assert [i.params["version"] for i in issues if i.rule == "WEB080"] == [""]
+    assert [i for i in issues if i.rule == "WEB081"] == []
+
+
+def test_many_banner_tokens_are_bounded(make_ctx):
+    value = " ".join(f"PHP/7.{i}.1" for i in range(3000))
+    ctx = ctx_for(make_ctx, "<p>x</p>", (("X-Powered-By", value),), sensitivity="paranoid")
+    issues = run(ctx)
+    assert len({i.params["version"] for i in issues if i.rule == "WEB800"}) <= tech.MAX_VERSIONS_PER_PRODUCT
+    assert len(ctx.inventory["server_software"]) <= tech.MAX_VERSIONS_PER_PRODUCT
+
+
+def test_major_only_banner_lists_no_cves(make_ctx):
+    ctx = ctx_for(make_ctx, "<p>x</p>", (("Server", "Apache/2"),), sensitivity="paranoid")
+    assert [i for i in run(ctx) if i.rule == "WEB800"] == []
+
+
+@pytest.mark.parametrize("html", [
+    '<form id="login_form" action="/login"><input name="user"></form>',                  # any login page
+    '<link rel="stylesheet" href="/themes/bootstrap/css/bootstrap.min.css">',             # any Bootstrap theme
+    '<script src="/static/frontend/js/vendor/app.js"></script>',                          # not Magento's layout
+])
+def test_generic_markup_is_not_a_platform(html, make_ctx):
+    ctx = ctx_for(make_ctx, f"<!doctype html><html><head>{html}</head><body></body></html>")
+    assert [i.params["id"] for i in reported(ctx, run(ctx)) if i.rule == "WEB080"] == []
+
+
+def test_third_party_platform_paths_do_not_make_the_site_that_platform(make_ctx):
+    html = '<script src="https://widgets.otherblog.example/wp-content/plugins/w/w.js"></script>'
+    ctx = ctx_for(make_ctx, html)
+    issues = run(ctx)
+    assert [i for i in reported(ctx, issues) if i.rule == "WEB080"] == []
+    assert techs(ctx)["wordpress"]["confidence"] == 30          # still in the inventory, at half weight
+    # the same path on the site itself, or on its own CDN host, is the site's platform
+    for src in ("/wp-content/plugins/w/w.js", "https://cdn.site.example.test/wp-content/plugins/w/w.js"):
+        ctx = ctx_for(make_ctx, f'<script src="{src}"></script>')
+        assert [i.params["id"] for i in reported(ctx, run(ctx)) if i.rule == "WEB080"] == ["wordpress"]
+
+
+def test_host_specific_platform_signals_keep_full_weight(make_ctx):
+    ctx = ctx_for(make_ctx, '<script src="https://cdn.shopify.com/s/files/1/x.js"></script>')
+    run(ctx)
+    assert techs(ctx)["shopify"]["confidence"] == 70
+
+
+def test_confine_html():
+    assert tech.confine_html(r"<link\b[^>]+rel=[\"']x") == r"<link\b[^<>]+rel=[\"']x"
+    assert tech.confine_html(r"<style>[\s\S]*\.a > \.b") == r"<style>[^<]*\.a > \.b"
+    assert tech.confine_html(r"<script[^<>]*>[^]{0,128}?src") == r"<script[^<>]*>[^<]{0,128}?src"
+    assert tech.confine_html(r"<a .+x\S+") == r"<a [^<\n]+x[^\s<]+"
+    assert tech.cap_segments("a<" + "b" * 10 + "<c", cap=4) == "a<bbbb<c"
+
+
+@pytest.mark.parametrize("body", ["<link a" * 30_000, "<" * 200_000, "<script x" * 25_000, "<a href='?" * 20_000,
+                                  "<link" + " href=x" * 30_000, "<style>" * 30_000 + "x"])
+def test_hostile_markup_is_linear(body, make_ctx):
+    ctx = ctx_for(make_ctx, "<html><body>" + body)
+    start = time.monotonic()
+    run(ctx)
+    assert time.monotonic() - start < 3.0
+
+
+def test_cve_more_note_agrees_in_arabic(make_ctx):
+    from vulnscan.i18n.plural import ar_count
+    ctx = _banner_ctx(make_ctx, ("Server", "Apache/2.4.1"))
+    w = [i for i in run(ctx) if i.rule == "WEB800"]
+    en, ar = next(n for n in w[0].notes if n[0].startswith("…and "))
+    count = int(en.split()[1])
+    assert count > 10 and ar == "…و" + ar_count(count, tech._MORE_CVES[2]) + "."
+
+
+def test_php_of_a_distribution_web_server_is_a_distro_build(make_ctx):
+    ctx = _banner_ctx(make_ctx, ("Server", "Apache/2.4.62 (Debian)"), ("X-Powered-By", "PHP/7.4.33"),
+                      sensitivity="paranoid")
+    issues = run(ctx)
+    php = [i for i in issues if i.params.get("product") == "PHP"]
+    assert all(i.rule == "WEB800" and i.confidence == "tentative" for i in php)
+    # the same PHP behind a server that names no distribution stays firm
+    ctx = _banner_ctx(make_ctx, ("Server", "Apache/2.4.62 (Unix)"), ("X-Powered-By", "PHP/7.4.33"))
+    php = [i for i in run(ctx) if i.params.get("product") == "PHP"]
+    assert any(i.rule == "WEB801" and i.confidence == "firm" for i in php)

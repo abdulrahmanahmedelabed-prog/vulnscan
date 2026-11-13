@@ -223,7 +223,8 @@ def control_of(g: Any) -> str | None:
 
 
 def missing_severity(control: str, roles: Iterable[frozenset[str]]) -> str:
-    """The severity the control's "missing" rule would have on these documents (§3.1 modulation)."""
+    """The severity the control's "missing" rule would have on these documents (§3.1 modulation), from page roles
+    alone (the fallback when the documents themselves are not at hand; :func:`would_be_severity` is exact)."""
     roles = list(roles)
     if control in _STATIC_LOW:
         return "low" if roles and all("static" in r for r in roles) else "medium"
@@ -232,17 +233,81 @@ def missing_severity(control: str, roles: Iterable[frozenset[str]]) -> str:
     return RULES[CONTROLS[control][0]].severity
 
 
+# the roles that make a missing clickjacking defence medium (headers.py, WEB-x-frame-options)
+_INTERACTIVE_ROLES = frozenset({"login", "signup", "authenticated", "admin"})
+_UNKNOWN = object()
+
+
+def _page_docs(ctx: Any) -> dict[str, Any] | None:
+    """URL → parsed document (None when the page was not parsed) of every fetched page; None without a context."""
+    pages = getattr(ctx, "pages", None) if ctx is not None else None
+    if pages is None:
+        return None
+    out: dict[str, Any] = {}
+    for p in pages:
+        r = getattr(p, "response", None)
+        if r is not None and getattr(r, "url", None):
+            out.setdefault(r.url, getattr(p, "doc", None))
+    return out
+
+
+def _csp_static_doc(doc: Any) -> bool:
+    """csp.py's rule for a missing CSP at low severity (no script, form, iframe, object, embed or on* attribute)."""
+    try:
+        from .csp import _static_doc
+    except ImportError:   # pragma: no cover - csp.py renamed it: the role fallback still holds
+        return False
+    return _static_doc(doc)
+
+
+def _would_be_medium(control: str, issue: Any, doc: Any) -> bool:
+    """True when the control's missing rule would be medium (not low) on this issue's document."""
+    roles = _roles(issue)
+    if doc is _UNKNOWN:
+        return missing_severity(control, [roles]) == "medium"
+    if control == "csp":
+        return not _csp_static_doc(doc)
+    # framing: headers.py — medium on interactive documents (a role above, a live form or a password field)
+    return bool(roles & _INTERACTIVE_ROLES) or (doc is not None and (any(getattr(f, "live", True) for f in doc.forms)
+                                                                      or doc.has_password_field))
+
+
+def would_be_severity(control: str, host: str, issues: Sequence[Any], ctx: Any = None,
+                      docs: dict[str, Any] | None = None) -> str:
+    """The severity the control's "missing" rule would have on the documents these findings were seen on, mirroring
+    the emitting modules exactly when the context is at hand: CSP low on csp.py's static documents, clickjacking
+    medium only on interactive documents (headers.py), HSTS info on a preloaded host (transport.py), COOP low only on
+    login/authenticated pages. This is the per-control ceiling of §3.4 step 2."""
+    if control == "hsts" and ctx is not None and hasattr(ctx, "hsts_for"):
+        try:
+            v = ctx.hsts_for(host)
+        except (ValueError, AttributeError):
+            v = None
+        if v is not None and getattr(v, "preloaded", False):
+            return "info"
+    if control not in _STATIC_LOW:
+        return missing_severity(control, [_roles(i) for i in issues])
+    if docs is None:
+        docs = _page_docs(ctx)
+    if docs is None or not issues:
+        return missing_severity(control, [_roles(i) for i in issues])
+    medium = any(_would_be_medium(control, i, docs.get(getattr(i, "url", ""), _UNKNOWN)) for i in issues)
+    return "medium" if medium else "low"
+
+
 # ----------------------------------------------------------------------------------------------- families
 
-def family_penalties(groups: Sequence[Any], paranoid: bool = False) -> tuple[dict[str, float], dict[str, list[dict]],
-                                                                               dict[int, str]]:
+def family_penalties(groups: Sequence[Any], paranoid: bool = False, ctx: Any = None
+                     ) -> tuple[dict[str, float], dict[str, list[dict]], dict[int, str]]:
     """Per-family penalty with the per-control sum cap. Returns ``(penalty by family, contributions by family,
     ceilings)``; ``ceilings`` maps id(group) of every control *weakness* finding to the severity of the control's
-    missing rule on those documents: the most such a finding may contribute to the bonus gate and the caps."""
+    missing rule on those documents (:func:`would_be_severity`, exact when ``ctx`` is given): the most such a finding
+    may contribute to the bonus gate and the caps."""
     weights = confidence_weights(paranoid)
+    docs = _page_docs(ctx)
     plain: dict[tuple[str, str], float] = {}            # (rule, host) → worst penalty
     ctrl: dict[tuple[str, str], dict[str, float]] = {}  # (control, host) → rule → worst penalty
-    ctrl_roles: dict[tuple[str, str], list[frozenset[str]]] = {}
+    ctrl_issues: dict[tuple[str, str], list[Any]] = {}
     missing_pen: dict[tuple[str, str], float] = {}
     members: list[tuple[Any, tuple[str, str]]] = []
     for g in groups:
@@ -259,12 +324,12 @@ def family_penalties(groups: Sequence[Any], paranoid: bool = False) -> tuple[dic
         members.append((g, key))
         rules = ctrl.setdefault(key, {})
         rules[rule] = max(rules.get(rule, 0.0), p)
-        ctrl_roles.setdefault(key, []).extend(_roles(i) for i in _issues(g))
+        ctrl_issues.setdefault(key, []).extend(_issues(g))
         if _is_missing_rule(rule, c):
             missing_pen[key] = max(missing_pen.get(key, 0.0), p)
     caps: dict[tuple[str, str], tuple[float, str]] = {}
     for key in ctrl:
-        would = missing_severity(key[0], ctrl_roles.get(key, []))
+        would = would_be_severity(key[0], key[1], ctrl_issues.get(key, []), ctx, docs)
         caps[key] = (max(PENALTY[would], missing_pen.get(key, 0.0)), would)
     ceilings = {id(g): caps[key][1] for g, key in members if not _is_missing_rule(_rule(g), key[0])}
     by_family: dict[str, float] = {f: 0.0 for f in FAMILY_ORDER}
@@ -481,7 +546,7 @@ def kashif_grade(ctx: Any, groups: Sequence[Any], coverage: Any = None, *, sensi
         out["notes"].append(pair("inconclusive"))
         out["inconclusive"] = True
         return out
-    penalties, detail, ceilings = family_penalties(groups, paranoid)
+    penalties, detail, ceilings = family_penalties(groups, paranoid, ctx)
     fstates = family_states(coverage, groups)
     num = den = 0.0
     untested: list[str] = []
@@ -836,5 +901,5 @@ def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
 
 __all__ = ["ALGORITHM", "PENALTY", "LETTERS", "CHART", "STR", "kashif_grade", "observatory_score", "observatory",
            "observatory_quirks", "observatory_auto", "ssllabs", "grades", "summary", "letter_for", "control_of",
-           "missing_severity", "family_penalties", "family_states", "tls_modern_only", "confidence_weights",
+           "missing_severity", "would_be_severity", "family_penalties", "family_states", "tls_modern_only", "confidence_weights",
            "i18n_catalog"]

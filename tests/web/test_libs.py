@@ -424,3 +424,110 @@ def test_corpus_c_lib(case_id, make_ctx):
         if rule not in ("WEB054", "WEB803"):
             continue
         assert (rule in fired) is must, (case_id, rule, must, [(i.rule, i.params) for i in issues])
+
+
+# ----------------------------------------------------------------------------------------------- review: hostile input (§0.6)
+
+@pytest.mark.parametrize("v1, v2, expected", [
+    ("1.12.4-", "1.12.4", True), ("1.12.4", "1.12.4-", True),       # retire: an empty part is 0
+    ("1.0.0", "1.0.0-beta", True), ("1.0.0-beta", "1.0.0", False),
+    ("1." + "9" * 5000, "1.2", True),                                # no int() overflow on 3.11+ (4300-digit limit)
+])
+def test_is_at_or_above_edge_cases(v1, v2, expected):
+    assert libs.is_at_or_above(v1, v2) is expected
+
+
+def test_absurd_versions_are_ignored_and_do_not_crash(make_ctx, make_page):
+    html = ('<script src="/js/jquery-1.' + "2" * 5000 + '.js"></script>'
+            '<script>/*! jQuery v1.' + "2" * 5000 + " */</script>")
+    ctx = _ctx(make_ctx, make_page, html)
+    assert [i for i in libs.run(ctx) if i.rule == "WEB054"] == []
+    assert libs.scan_uri("https://x.test/" + "a/" * 100_000 + "jquery-1.2.3.js", libs.load_repository()) == []
+
+
+def test_bound_quantifiers():
+    assert libs.bound_quantifiers(r"a.+b[\s*]*c\d+?") == r"a.{1,20000}b[\s*]{0,2000}c\d{1,2000}?"
+    assert libs.bound_quantifiers(r"(?:x|y)+(?=z)(?<=q)x{3,}") == r"(?:x|y){1,20000}(?=z)(?<=q)x{3,2000}"
+    assert libs.bound_quantifiers(r"[^\n]*\*+") == r"[^\n]{0,20000}\*{1,2000}"
+
+
+@pytest.mark.parametrize("pattern", ["@class easyXDM(?:.|\r|\n)+@version (§§version§§)",
+                                     r"@class easyXDM(?:.|\r|\n)+@version (§§version§§)",
+                                     "@class easyXDM(?:\r|\n|.)+@version (§§version§§)"])
+def test_javascript_any_character_idiom(pattern):
+    rx, _checks = libs.compile_js_regex(pattern)
+    assert r"[\s\S]{1,20000}" in rx.pattern
+    m = rx.search("/**\n * @class easyXDM\r\n * the lib\n * @version 2.4.19\n */")
+    assert m and m.group(1) == "2.4.19"
+
+
+@pytest.mark.parametrize("body", [
+    "/*" + " " * 200_000,                                     # lodash "/\*[\s*!]+(?:@license)?[\s*]+…": was quadratic
+    "@class easyXDM\n" * 15_000,                              # "(?:.|\r|\n)+@version" from every occurrence
+    '="1.2.3"' * 25_000,
+    ".isMoment(" * 20_000,
+])
+def test_hostile_script_bodies_are_bounded(body, make_ctx, make_page, monkeypatch):
+    monkeypatch.setattr(libs, "BODY_BUDGET", 1.0)
+    ctx = _ctx(make_ctx, make_page, '<script src="/app.js"></script>', {"https://shop.example.test/app.js": body})
+    start = time.monotonic()
+    libs.run(ctx)
+    assert time.monotonic() - start < 6.0
+    assert ctx.coverage.state("WEB054").state in ("pass", "inconclusive")
+
+
+def test_body_out_of_time_is_inconclusive_not_pass(make_ctx, make_page, monkeypatch):
+    monkeypatch.setattr(libs, "BODY_BUDGET", 0.0)
+    js = "/*! jQuery v3.7.1 */\n" + "@class easyXDM\n" * 2000
+    ctx = _ctx(make_ctx, make_page, '<script src="/app.js"></script>', {"https://shop.example.test/app.js": js})
+    assert libs.run(ctx) == []
+    st = ctx.coverage.state("WEB054")
+    assert st.state == "inconclusive" and st.reasons[0][0] == "time_budget"
+    assert "app.js" in st.reasons[0][1] and "app.js" in st.reasons[0][2]
+
+
+def test_run_budget_stops_after_many_bodies(make_ctx, make_page, monkeypatch):
+    monkeypatch.setattr(libs, "RUN_BUDGET", 0.0)
+    html = "".join(f"<script>/*! jQuery v1.8.{i} */</script>" for i in range(50))
+    ctx = _ctx(make_ctx, make_page, html)
+    libs.run(ctx)
+    assert ctx.coverage.state("WEB054").state == "inconclusive"
+
+
+def test_chunked_matching_finds_every_match_across_chunks(monkeypatch):
+    monkeypatch.setattr(libs, "CHUNK", 64)
+    repo = libs.build_repository({"lib": {"vulnerabilities": [], "extractors": {
+        "filecontent": [r"/\*! Lib v(§§version§§) \*/"]}}})
+    text = "".join(f"{'x' * (37 * i)}/*! Lib v1.{i}.0 */" for i in range(12))
+    assert [d.version for d in libs.scan_content(text, repo)] == [f"1.{i}.0" for i in range(12)]
+
+
+def test_more_vulnerabilities_note_agrees_in_arabic(make_ctx, make_page):
+    from vulnscan.i18n.plural import ar_count
+    ctx = _ctx(make_ctx, make_page, '<script src="https://cdn.example.net/tinymce/1.2.0/tinymce.min.js"></script>')
+    v = [i for i in libs.run(ctx) if i.rule == "WEB054"]
+    assert v, "TinyMCE 1.2.0 has many advisories"
+    extra = [n for n in v[0].notes if n[0].startswith("…and ")]
+    assert extra
+    en, ar = extra[0]
+    n = int(en.split()[1])
+    assert ar == "…و" + ar_count(n, libs._MORE_VULNS[2]) + "."
+    assert ("vulnerabilities" if n > 1 else "vulnerability") in en
+
+
+@pytest.mark.parametrize("ctype, extra, detected", [
+    ("application/octet-stream", (), True),             # S3 default: the browser still runs it
+    ("text/plain", (), True),
+    ("text/plain", (("X-Content-Type-Options", "nosniff"),), False),    # blocked by the browser
+    ("text/html", (), False),                            # catch-all page
+])
+def test_script_served_with_a_generic_type(ctype, extra, detected, make_ctx, make_page):
+    from vulnscan.webscan import classify
+    js = b"/*! jQuery v1.8.1 | (c) jQuery Foundation */\n!function(a){}(window);\n"
+    body = b"<!doctype html><p>home</p>" if ctype == "text/html" else js
+    r = Response(url="https://shop.example.test/static/v.js", status=200,
+                 headers=HeaderList.of(("Content-Type", ctype), *extra), body=body, source="subresource")
+    r.kind = classify.kind_for_essence(ctype, body) or ""
+    page = make_page('<script src="/static/v.js"></script>', url="https://shop.example.test/")
+    ctx = make_ctx(target="https://shop.example.test/", entry=page, subresources=[r], coverage=Coverage())
+    assert any(i.rule == "WEB054" for i in libs.run(ctx)) is detected

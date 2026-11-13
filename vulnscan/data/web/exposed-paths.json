@@ -496,7 +496,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "^\\s*aws_access_key_id\\s*=",
+      "pattern": "^[ \\t]*aws_access_key_id[ \\t]*=",
       "flags": "im"
      }
     ],
@@ -523,7 +523,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "^\\s*(?:RewriteRule|RewriteEngine|RewriteCond|AuthType|AuthUserFile|Require|Order\\s+(?:allow|deny)|Deny\\s+from|<IfModule)\\b",
+      "pattern": "^[ \\t]*(?:RewriteRule|RewriteEngine|RewriteCond|AuthType|AuthUserFile|Require|Order\\s+(?:allow|deny)|Deny\\s+from|<IfModule)\\b",
       "flags": "im"
      }
     ],
@@ -704,7 +704,7 @@
      },
      {
       "type": "regex",
-      "pattern": "^\\s+image:\\s*\\S",
+      "pattern": "^[ \\t]+image:[ \\t]*\\S",
       "flags": "m"
      }
     ],
@@ -760,7 +760,8 @@
      },
      {
       "type": "regex",
-      "pattern": "PHP Version[\\s\\S]{0,4000}?<td class=\\\"e\\\">[\\s\\S]{0,400}?<td class=\\\"v\\\">"
+      "pattern": "PHP Version[\\s\\S]{0,4000}?<td class=\\\"e\\\">[\\s\\S]{0,400}?<td class=\\\"v\\\">",
+      "within": 32768
      }
     ]
    },
@@ -788,7 +789,8 @@
      },
      {
       "type": "regex",
-      "pattern": "PHP Version[\\s\\S]{0,4000}?<td class=\\\"e\\\">[\\s\\S]{0,400}?<td class=\\\"v\\\">"
+      "pattern": "PHP Version[\\s\\S]{0,4000}?<td class=\\\"e\\\">[\\s\\S]{0,400}?<td class=\\\"v\\\">",
+      "within": 32768
      }
     ]
    },

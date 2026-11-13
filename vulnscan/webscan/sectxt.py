@@ -5,7 +5,7 @@ Re-implemented from RFC 9116 itself (the ``sectxt`` package is EUPL and is not c
 * :func:`parse` reads the body: byte order mark, UTF-8, the final newline, the OpenPGP cleartext-signature *structure*
   (``-----BEGIN PGP SIGNED MESSAGE-----`` … ``-----BEGIN PGP SIGNATURE-----`` … ``-----END PGP SIGNATURE-----``; the
   signature is never verified), dash-escaped lines, comments and ``Name: value`` fields (RFC 9116 §4 ABNF: the field name,
-  a colon and exactly one space).
+  a colon and exactly one space or tab).
 * :func:`validate` adds the field and transport rules: at least one ``Contact`` (``mailto:``, ``tel:`` or an ``https://``
   web URI; ``http://`` → info), exactly one ``Expires`` in RFC 3339 that lies in the future (expired → low, more than a
   year ahead → info), at most one ``Preferred-Languages`` with valid language tags, ``Canonical`` listing the URL the file
@@ -73,10 +73,10 @@ STR: dict[str, tuple[str, str]] = {
     "unknown_field": ("Unknown field \"{field}\" (not in the IANA security.txt field registry).",
                       "حقل غير معروف «{field}» (ليس في سجل IANA لحقول security.txt)."),
     "empty_value": ("{field} on line {line} has no value.", "الحقل {field} في السطر {line} بلا قيمة."),
-    "bad_line": ("Line {line} is not a field (\"Name: value\" with one space after the colon), a comment or an empty "
-                 "line: {value}",
-                 "السطر {line} ليس حقلًا (بالصيغة «Name: value» مع مسافة واحدة بعد النقطتين) ولا تعليقًا ولا سطرًا فارغًا: "
-                 "{value}"),
+    "bad_line": ("Line {line} is not a field (\"Name: value\" with one space or tab after the colon), a comment or an "
+                 "empty line: {value}",
+                 "السطر {line} ليس حقلًا (بالصيغة «Name: value» مع مسافة واحدة أو علامة جدولة بعد النقطتين) ولا تعليقًا "
+                 "ولا سطرًا فارغًا: {value}"),
     "bom": ("The file starts with a byte order mark (BOM).", "يبدأ الملف بعلامة ترتيب البايتات (BOM)."),
     "not_utf8": ("The file is not valid UTF-8.", "الملف ليس نصًّا صالحًا بترميز UTF-8."),
     "no_final_newline": ("The last line does not end with a line break.", "السطر الأخير لا ينتهي بفاصل أسطر."),
@@ -106,7 +106,7 @@ STR: dict[str, tuple[str, str]] = {
 }
 
 _PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
-_FIELD = re.compile(r"^([!-9;-~]+): (.*)$")                 # field-name = printable ASCII without ":" (RFC 9116 §4)
+_FIELD = re.compile(r"^([!-9;-~]+):[ \t](.*)$")            # field-name ":" WSP value (RFC 9116 §4; WSP = SP / HTAB)
 _FIELD_LOOSE = re.compile(r"^\s*([!-9;-~]+)\s*:\s*(.*)$")    # what a lenient reader would still take as a field
 _RFC3339 = re.compile(r"^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$")
 _LANG = re.compile(r"^(?:[A-Za-z]{2,3}(?:-[A-Za-z]{3}){0,3}|[A-Za-z]{4,8}|[xXiI](?:-[A-Za-z0-9]{1,8})+)"
@@ -289,15 +289,18 @@ def parse_rfc3339(value: str) -> datetime | None:
     y, mo, d, h, mi, s, frac, off = m.groups()
     try:
         dt = datetime(int(y), int(mo), int(d), int(h), int(mi), min(int(s), 59),
-                      int(float(frac) * 1_000_000) if frac else 0, tzinfo=timezone.utc)
+                      int((frac[1:] + "000000")[:6]) if frac else 0, tzinfo=timezone.utc)   # truncate, never round up
+        if off not in ("Z", "z"):
+            sign = 1 if off[0] == "+" else -1
+            hh, mm = int(off[1:3]), int(off[4:6])
+            if hh > 23 or mm > 59:
+                return None
+            try:
+                dt -= sign * timedelta(hours=hh, minutes=mm)
+            except OverflowError:                # 0001-01-01T00:00:00+01:00, 9999-12-31T23:59:59-01:00: valid, clamped
+                dt = (datetime.min if sign > 0 else datetime.max).replace(tzinfo=timezone.utc)
     except ValueError:
         return None
-    if off not in ("Z", "z"):
-        sign = 1 if off[0] == "+" else -1
-        hh, mm = int(off[1:3]), int(off[4:6])
-        if hh > 23 or mm > 59:
-            return None
-        dt -= sign * timedelta(hours=hh, minutes=mm)
     return dt
 
 
@@ -309,8 +312,8 @@ def uri_kind(value: str) -> str:
         return "invalid"
     scheme, rest = m.group(1).lower(), m.group(2)
     if scheme == "mailto":
-        addr = urllib.parse.unquote(rest.split("?", 1)[0])
-        return "mailto" if _EMAIL.match(addr) else "invalid"
+        addrs = urllib.parse.unquote(rest.split("?", 1)[0]).split(",")     # RFC 6068: one or more addresses
+        return "mailto" if all(_EMAIL.match(a.strip()) for a in addrs) else "invalid"
     if scheme == "tel":
         return "tel" if _TEL.match(urllib.parse.unquote(rest).split(";", 1)[0]) else "invalid"
     if scheme in ("http", "https"):
@@ -379,7 +382,7 @@ def validate(body: bytes | str, *, url: str = "", requested_url: str | None = No
             st.expires = dt
             if dt <= now:
                 days = max(0, (now - dt).days)
-                st._add("expired", expires[0].line, date=dt.strftime("%Y-%m-%d"), days=_count(days, _DAYS))
+                st._add("expired", expires[0].line, date=dt.date().isoformat(), days=_count(days, _DAYS))
             elif dt - now > timedelta(days=LONG_EXPIRY_DAYS):
                 st._add("long_expiry", expires[0].line, days=_count((dt - now).days, _DAYS))
     # Preferred-Languages (≤ 1, language tags)

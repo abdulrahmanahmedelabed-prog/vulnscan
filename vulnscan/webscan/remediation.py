@@ -59,7 +59,7 @@ PLATFORMS: dict[str, tuple[str, str]] = {
 
 # technology ids of data/web/tech.json (WP9) → platform keys whose snippets apply
 TECH_PLATFORMS: dict[str, tuple[str, ...]] = {
-    "nginx": ("nginx",), "openresty": ("nginx",),
+    "nginx": ("nginx",), "openresty": ("nginx",), "tengine": ("nginx",),
     "apache-http-server": ("apache",), "litespeed": ("apache",),          # LiteSpeed reads Apache directives (.htaccess)
     "iis": ("iis",), "sharepoint": ("iis", "aspnet"), "outlook-web-app": ("iis", "aspnet"),
     "aspnet": ("aspnet", "iis"), "aspnet-mvc": ("aspnet", "iis"), "microsoft-asp.net": ("aspnet", "iis"),
@@ -68,9 +68,10 @@ TECH_PLATFORMS: dict[str, tuple[str, ...]] = {
     "express": ("express", "node"), "nodejs": ("node", "express"), "nextjs": ("node", "express"),
     "next.js": ("node", "express"), "nuxt": ("node",), "ghost": ("node", "express"),
     "django": ("django",), "werkzeug": ("flask",),
-    "spring-boot": ("spring",), "java": ("spring",), "tomcat": ("tomcat", "spring"), "jetty": ("spring",),
+    "spring-boot": ("spring",), "tomcat": ("tomcat", "spring"), "jetty": ("spring",),   # Java alone says nothing
     "cloudflare": ("cloudflare",),
-    "php": ("php",), "laravel": ("laravel", "php"), "symfony": ("symfony", "php"),
+    "php": ("php",), "laravel": ("laravel", "php"), "symfony": ("symfony", "php"), "codeigniter": ("php",),
+    "yii": ("php",), "nette-framework": ("php",),
     "ruby-on-rails": ("rails",),
     "f5-big-ip": ("bigip",),
 }
@@ -78,7 +79,7 @@ TECH_PLATFORMS: dict[str, tuple[str, ...]] = {
 # (header name, regular expression on its value, platform keys); first matches are the strongest evidence
 HEADER_PLATFORMS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("server", r"apache-coyote|tomcat", ("tomcat", "spring")),
-    ("server", r"\bnginx\b|openresty", ("nginx",)),
+    ("server", r"\bnginx\b|openresty|\btengine\b", ("nginx",)),
     ("server", r"microsoft-iis", ("iis",)),
     ("server", r"\bkestrel\b", ("aspnetcore",)),
     ("server", r"\bcaddy\b", ("caddy",)),
@@ -112,9 +113,10 @@ STR: dict[str, tuple[str, str]] = {
                     "يرمز example.com إلى موقعك؛ استبدله باسم مضيفك."),
 }
 
-TOKENS = ("host", "domain", "names", "expires")
-_TOKEN_RX = re.compile(r"\{(host|domain|names|expires)\}")
-_HOST_OK = re.compile(r"[a-z0-9](?:[a-z0-9._-]{0,252})|[0-9a-f:.]{2,45}")
+TOKENS = ("host", "domain", "domain_re", "names", "expires")
+_TOKEN_RX = re.compile(r"\{(host|domain|domain_re|names|expires)\}")
+_LABEL = r"[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?"
+_HOST_OK = re.compile(rf"(?=.{{1,253}}$){_LABEL}(?:\.{_LABEL})*|[0-9a-f:.]{{2,45}}")
 _ARABIC = re.compile(r"[؀-ۿ]")
 
 
@@ -211,14 +213,14 @@ def header_blocks(name: str, value: str, *, skip: Iterable[str] = ()) -> list[Bl
                         f"    ctx.Response.Headers[\"{name}\"] = {_cs_string(value)};\n"
                         "    await next(); });", "csharp"),
         _b("cloudflare", note=(f"Rules → Transform Rules → Modify Response Header → Set static: {name} = {value}",
-                              f"في لوحة Cloudflare: ‏Rules ← Transform Rules ← Modify Response Header ← Set static، ثم اضبط ‏{name} = {value}")),
+                              f"في لوحة Cloudflare: ‏Rules → Transform Rules → Modify Response Header → Set static، ثم اضبط ‏{name} = {value}")),
     ]
     skip = set(skip)
     return [b for b in out if b.platform not in skip]
 
 
 _CF_STATIC = ("Rules → Transform Rules → Modify Response Header → Set static header.",
-              "Rules ← Transform Rules ← Modify Response Header ← Set static (ترويسة ثابتة).")
+              "Rules → Transform Rules → Modify Response Header → Set static (ترويسة ثابتة).")
 
 # =============================================================================================== snippets (§2.13)
 
@@ -266,7 +268,7 @@ app.UseHsts();""", "csharp"),
        _b("cloudflare", note=(
            "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable, Max Age 12 months or more, "
            "Apply HSTS policy to subdomains. Add preload only after reading hstspreload.org (removal takes months).",
-           "SSL/TLS ← Edge Certificates ← HTTP Strict Transport Security (HSTS) ← Enable، واختر Max Age مدة 12 شهرًا "
+           "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable، واختر Max Age مدة 12 شهرًا "
            "أو أكثر، وفعّل Apply HSTS policy to subdomains. لا تضف preload إلا بعد قراءة hstspreload.org (الحذف "
            "يستغرق أشهرًا).")),
    ],
@@ -315,7 +317,7 @@ http.redirectToHttps(Customizer.withDefaults());   // Spring Security 6.5+
 builder.Services.AddHttpsRedirection(o => o.RedirectStatusCode = 308);
 app.UseHttpsRedirection();""", "csharp"),
        _b("cloudflare", note=("SSL/TLS → Edge Certificates → Always Use HTTPS = On.",
-                             "في لوحة Cloudflare: ‏SSL/TLS ← Edge Certificates ← Always Use HTTPS = On.")),
+                             "في لوحة Cloudflare: ‏SSL/TLS → Edge Certificates → Always Use HTTPS = On.")),
        _b("any", note=("APIs (ASVS 5.0 4.1.2): do not redirect; close port 80 or return 403.",
                       "واجهات API (ASVS 5.0 4.1.2): لا توجّه، بل أغلق المنفذ 80 أو أعد 403.")),
    ])
@@ -385,7 +387,7 @@ app.Use(async (ctx, next) => {
 const r = new Response(res.body, res); r.headers.set("Content-Security-Policy", policy); return r;""", "js",
          ("Rules → Transform Rules → Modify Response Header → Set static Content-Security-Policy (static policies "
           "only). For a nonce use a Worker (code above) and HTMLRewriter to add nonce attributes.",
-          "Rules ← Transform Rules ← Modify Response Header ← Set static للترويسة Content-Security-Policy (للسياسات "
+          "Rules → Transform Rules → Modify Response Header → Set static للترويسة Content-Security-Policy (للسياسات "
           "الثابتة فقط). ولاستخدام nonce استعمل Worker (الشيفرة أعلاه) مع HTMLRewriter لإضافة سمات nonce.")),
    ],
    [Header("Content-Security-Policy", _STRICT_CSP), Header("Reporting-Endpoints", 'csp="https://{host}/csp-report"'),
@@ -532,7 +534,8 @@ _s("S-COOKIE",
                    'CSRF_COOKIE_SECURE = True', "python"),
        _b("spring", "server.servlet.session.cookie.secure=true\nserver.servlet.session.cookie.http-only=true\n"
                    "server.servlet.session.cookie.same-site=lax\n"
-                   "server.servlet.session.tracking-modes=cookie   # stops ;jsessionid= URLs", "properties",
+                   "# stops ;jsessionid= URLs\n"
+                   "server.servlet.session.tracking-modes=cookie", "properties",
          ("Spring Boot application.properties.", "ملف application.properties في Spring Boot.")),
        _b("aspnetcore", 'builder.Services.ConfigureApplicationCookie(o => { o.Cookie.Name = "__Host-auth"; '
                        "o.Cookie.SecurePolicy = CookieSecurePolicy.Always; o.Cookie.HttpOnly = true; "
@@ -559,7 +562,7 @@ map $http_origin $cors_origin { default ""; "https://app.{domain}" $http_origin;
 add_header Access-Control-Allow-Origin $cors_origin always;     # nginx sends nothing when the value is empty
 add_header Vary Origin always;""", "nginx"),
        _b("apache", r"""
-SetEnvIf Origin "^(https://app\.{domain})$" CORS_OK=$1
+SetEnvIf Origin "^(https://app\.{domain_re})$" CORS_OK=$1
 Header always set Access-Control-Allow-Origin "%{CORS_OK}e" env=CORS_OK
 Header always merge Vary Origin""", "apache"),
        _b("express", 'app.use(require("cors")({ origin: ["https://app.{domain}"], credentials: true }));', "js",
@@ -588,7 +591,7 @@ _s("S-BANNER",
    [
        _b("nginx", "server_tokens off;\nproxy_hide_header X-Powered-By;\nfastcgi_hide_header X-Powered-By;", "nginx"),
        _b("apache", "ServerTokens Prod\nServerSignature Off\nHeader always unset X-Powered-By\n"
-                   "FileETag MTime Size   # WEB604: no inode in ETag", "apache"),
+                   "# WEB604: no inode in ETag\nFileETag MTime Size", "apache"),
        _b("php", "expose_php = Off", "ini", ("php.ini", "ملف php.ini")),
        _b("iis", """
 <security><requestFiltering removeServerHeader="true" /></security>
@@ -602,7 +605,7 @@ _s("S-BANNER",
          ("Empty value (Tomcat/Jetty).", "قيمة فارغة (Tomcat وJetty).")),
        _b("aspnetcore", "builder.WebHost.ConfigureKestrel(k => k.AddServerHeader = false);", "csharp"),
        _b("cloudflare", note=("Rules → Transform Rules → Managed Transforms → \"Remove X-Powered-By headers\".",
-                             "في لوحة Cloudflare: ‏Rules ← Transform Rules ← Managed Transforms ← فعّل \"Remove X-Powered-By headers\".")),
+                             "في لوحة Cloudflare: ‏Rules → Transform Rules → Managed Transforms، ثم فعّل \"Remove X-Powered-By headers\".")),
    ])
 
 _s("S-DIRLIST",
@@ -720,7 +723,7 @@ SSLCompression          off""", "apache"),
        _b("spring", "server.ssl.enabled-protocols=TLSv1.2,TLSv1.3", "properties"),
        _b("cloudflare", note=("SSL/TLS → Edge Certificates → Minimum TLS Version = 1.2, TLS 1.3 = On; SSL mode "
                              "\"Full (strict)\".",
-                             "SSL/TLS ← Edge Certificates ← Minimum TLS Version = 1.2 وTLS 1.3 = On، واختر وضع "
+                             "SSL/TLS → Edge Certificates → Minimum TLS Version = 1.2 وTLS 1.3 = On، واختر وضع "
                              "SSL ‏\"Full (strict)\".")),
        _b("any", note=("Certificates: ACME (Let's Encrypt or another CA) with automatic renewal; RSA 2048 or ECDSA P-256; "
                       "serve the full chain (fullchain.pem).",
@@ -812,7 +815,7 @@ _s("S-CACHE",
          "text", ("OWASP: Cache-Control: no-store, max-age=0.", "توصية OWASP: ‏Cache-Control: no-store, max-age=0.")),
        _b("nginx", 'add_header Cache-Control "no-store" always;', "nginx",
          ("In the sensitive location{}.", "داخل كتلة location{} الحساسة.")),
-       _b("apache", '<LocationMatch "^/(account|admin)">Header always set Cache-Control "no-store"</LocationMatch>',
+       _b("apache", '<LocationMatch "^/(account|admin)">\n    Header always set Cache-Control "no-store"\n</LocationMatch>',
          "apache"),
        _b("django", "from django.views.decorators.cache import never_cache\n\n@never_cache\ndef account(request): ...",
          "python"),
@@ -820,7 +823,7 @@ _s("S-CACHE",
                          "افتراضي في الاستجابات المحمية (no-cache, no-store, max-age=0, must-revalidate).")),
        _b("aspnetcore", "[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]", "csharp"),
        _b("cloudflare", note=("Cache Rules → bypass cache for authenticated paths / when a session cookie is present.",
-                             "Cache Rules ← تجاوز التخزين المؤقت للمسارات المحمية أو عند وجود كوكي جلسة.")),
+                             "في Cache Rules: تجاوز التخزين المؤقت للمسارات المحمية أو عند وجود كوكي جلسة.")),
    ],
    [Header("Cache-Control", "no-store", "sensitive"),
     Header("Clear-Site-Data", '"cache", "cookies", "storage"', "logout")])
@@ -956,13 +959,26 @@ def _registrable(host: str) -> str:
         return host
 
 
+def _host_of(host: Any) -> str:
+    """The host name of a URL, a ``host:port`` or a bare host ("" when it cannot be parsed)."""
+    h = host.strip() if isinstance(host, str) else ""
+    if not h:
+        return ""
+    import urllib.parse
+    try:
+        if "://" in h:
+            return urllib.parse.urlsplit(h).hostname or ""
+        if h.count(":") > 1 and not h.startswith("["):      # a bare IPv6 literal
+            return h
+        return urllib.parse.urlsplit("//" + h).hostname or ""
+    except ValueError:      # "http://[::1", "a]b": a malformed URL is no host name
+        return ""
+
+
 def placeholders(host: str | None = None, now: datetime | None = None) -> dict[str, str]:
-    """Token values for :func:`fill`. ``host`` may be a URL or a bare host name; without one, ``example.com``."""
-    h = (host or "").strip()
-    if "://" in h:
-        import urllib.parse
-        h = urllib.parse.urlsplit(h).hostname or ""
-    h = h.strip("[]").rstrip(".").lower()
+    """Token values for :func:`fill`. ``host`` may be a URL, a ``host:port`` or a bare host name; without one (or for
+    anything that is not a plain host name) the values read ``example.com``."""
+    h = _host_of(host).strip("[]").rstrip(".").lower()
     if h and not h.isascii():
         try:
             h = h.encode("idna").decode("ascii")
@@ -975,11 +991,13 @@ def placeholders(host: str | None = None, now: datetime | None = None) -> dict[s
     domain = h if h.startswith("[") else _registrable(h)
     is_ip = h.startswith("[") or bool(re.fullmatch(r"[0-9.]+", h))
     names = f"{domain} www.{domain}" if h in (domain, "www." + domain) and "." in domain and not is_ip else h
-    return {"host": h, "domain": domain, "names": names, "expires": security_txt_expires(now)}
+    return {"host": h, "domain": domain, "domain_re": re.escape(domain), "names": names,
+            "expires": security_txt_expires(now)}
 
 
 def fill(text: str, values: dict[str, str] | None = None) -> str:
-    """Replace the exact tokens ``{host}``, ``{domain}``, ``{names}`` and ``{expires}``; nothing else is interpreted."""
+    """Replace the exact tokens ``{host}``, ``{domain}``, ``{domain_re}`` (the domain escaped for a regular
+    expression), ``{names}`` and ``{expires}``; nothing else is interpreted."""
     vals = values or placeholders()
     return _TOKEN_RX.sub(lambda m: vals.get(m.group(1), m.group(0)), text)
 
@@ -994,24 +1012,42 @@ def header_lines(snippet_id: str, *, host: str | None = None, now: datetime | No
 # -- platform detection and ordering --------------------------------------------------------------------------------
 
 def _header_items(headers: Any) -> list[tuple[str, str]]:
-    if headers is None:
+    if headers is None or isinstance(headers, (str, bytes)):
         return []
     items = getattr(headers, "items", None)
     if isinstance(items, tuple):                      # types.HeaderList
-        return [(str(k), str(v)) for k, v in items]
-    if isinstance(headers, dict):
-        return [(str(k), str(v)) for k, v in headers.items()]
-    return [(str(k), str(v)) for k, v in headers]
+        pairs: Iterable[Any] = items
+    elif isinstance(headers, dict):
+        pairs = headers.items()
+    else:
+        pairs = headers
+    out = []
+    for pair in pairs:
+        if isinstance(pair, (tuple, list)) and len(pair) == 2 and isinstance(pair[0], str) and isinstance(pair[1], str):
+            out.append((pair[0], pair[1]))
+    return out
+
+
+# inventory entries (tech.py) below this confidence are not "detected on this site" (exposure.py uses the same bar)
+MIN_TECH_CONFIDENCE = 50
 
 
 def _tech_ids(technologies: Any) -> list[str]:
     out = []
+    if isinstance(technologies, str):
+        technologies = (technologies,)
     for t in technologies or ():
         if isinstance(t, str):
             out.append(t)
         elif isinstance(t, dict):
+            conf = t.get("confidence", 100)
+            if isinstance(conf, (int, float)) and conf < MIN_TECH_CONFIDENCE:
+                continue
             out.append(str(t.get("id") or t.get("product") or t.get("name") or ""))
-        else:
+        elif t is not None:
+            conf = getattr(t, "confidence", 100)
+            if isinstance(conf, (int, float)) and conf < MIN_TECH_CONFIDENCE:
+                continue
             out.append(str(getattr(t, "id", "") or getattr(getattr(t, "tech", None), "id", "")))
     return [t.strip().lower() for t in out if t]
 

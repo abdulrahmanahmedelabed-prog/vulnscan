@@ -19,6 +19,12 @@ vulnerabilities), WEB801 (end-of-life server software or runtime), WEB802 (obsol
   Incomplete versions (``PHP/8.1``) are tentative and list every CVE of that branch.
 * **WEB802** flags Flash, Silverlight and Java applet content in live markup.
 
+Hostile input (§0.6): ``html`` signals are confined to one tag (:func:`confine_html`) and see at most
+:data:`SEGMENT_CAP` characters after each ``<`` (:func:`cap_segments`), so a crafted 2 MB page costs linear time;
+banners, header values, URLs and versions are length-capped, and a site shows at most
+:data:`MAX_VERSIONS_PER_PRODUCT` versions of one product. A path-only script/link signal of a platform on another
+site's URL (a widget from somebody's WordPress) counts half.
+
 The module never fetches anything; it reads ``ctx`` only.
 """
 
@@ -42,6 +48,8 @@ FAVICON_FILE = "favicons.json"
 EOL_FILE = "eol.json"
 CVE_FILE = "server-cve.json"
 HTML_CAP = 2 * 1024 * 1024
+SEGMENT_CAP = 2048              # html signals see at most this much of the text after each "<" (bounded regex cost)
+VALUE_CAP = 4096                # header values, meta contents and URLs longer than this are cut for the signals
 MAX_CVE_NOTES = 10
 SHOW_AT_DEFAULT = 50            # WEB080: confidence >= 50 is shown at default sensitivity (firm), below at paranoid only
 
@@ -98,7 +106,7 @@ STR: dict[str, tuple[str, str]] = {
     "eol_branch_nodate": ("The {branch} branch is end of life.", "انتهى دعم الفرع {branch}."),
     "latest_patch": ("The latest release of the {branch} branch is {latest}.", "آخر إصدار في الفرع {branch} هو {latest}."),
     "cve": ("{id} ({severity}): {summary}; fixed in {fixed}", "{id} ({severity}): {summary}؛ مُصحَّح في {fixed}"),
-    "cve_more": ("…and {count} more CVEs.", "…و{count} من الثغرات الأخرى."),
+    "cve_more": ("…and {count}.", "…و{count}."),
     "distro": ("This looks like a {distro} build: distributions backport security fixes without changing the version, "
                "so this server may already be patched. Check the package changelog.",
                "يبدو أن هذا إصدار من توزيعة {distro}: التوزيعات تنقل تصحيحات الأمان دون تغيير رقم الإصدار، لذا قد يكون "
@@ -115,6 +123,15 @@ STR: dict[str, tuple[str, str]] = {
     "applet": ("a Java applet (no browser runs applets since 2017)", "بُريمج Java (لا يشغّله أي متصفح منذ 2017)"),
 }
 _PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+# Arabic count phrases (one, two, few, many, other) for vulnscan.i18n.plural.ar_count
+_MORE_CVES = ("{n} more CVE", "{n} more CVEs",
+              ("ثغرة أخرى", "ثغرتان أخريان", "{n} ثغرات أخرى", "{n} ثغرةً أخرى", "{n} ثغرة أخرى"))
+
+
+def _count(n: int, forms: tuple) -> tuple[str, str]:
+    from ..i18n.plural import ar_count   # lazy: vulnscan.i18n imports webscan modules through cat_web2
+    en = (forms[0] if n == 1 else forms[1]).replace("{n}", str(n))
+    return en, ar_count(n, forms[2])
 
 
 def _note(key: str, **values: Any) -> tuple[str, str]:
@@ -379,6 +396,60 @@ def _flags(s: str) -> int:
     return f
 
 
+def confine_html(src: str) -> str:
+    """Rewrite an ``html`` signal so that no quantified part can cross a ``<``: negated classes gain ``<``
+    (``[^>]`` → ``[^<>]``), any-character constructs (``.``, ``[\\s\\S]``, JavaScript's ``[^]``, ``\\S``, ``\\W``,
+    ``\\D``) exclude it. A match then spans one tag (plus the literal ``<`` the pattern itself names), so together
+    with :func:`cap_segments` the cost of every signal is linear in the page size: a hostile page of 2 MB of
+    ``<link a<link a…`` cannot make the scan quadratic (§0.6). Markers are tags: no real signature needs to see a
+    ``<`` inside a quantified gap."""
+    out: list[str] = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c == "\\" and i + 1 < n:
+            nxt = src[i + 1]
+            out.append({"S": r"[^\s<]", "W": r"[^\w<]", "D": r"[^\d<]"}.get(nxt, src[i:i + 2]))
+            i += 2
+            continue
+        if c == "[":
+            j = i + 1
+            neg = j < n and src[j] == "^"
+            if neg:
+                j += 1
+            if neg and j < n and src[j] == "]":           # JavaScript [^]: any character
+                out.append("[^<]")
+                i = j + 1
+                continue
+            k = j + 1 if j < n and src[j] == "]" else j     # a leading "]" is literal in Python
+            while k < n and src[k] != "]":
+                k += 2 if src[k] == "\\" else 1
+            body = src[j:k]
+            if body in (r"\s\S", r"\S\s", r"\w\W", r"\W\w", r"\d\D", r"\D\d"):
+                out.append("[^<]")
+            elif neg and "<" not in body:
+                out.append("[^<" + body + "]")
+            else:
+                out.append(src[i:k + 1])
+            i = k + 1
+            continue
+        if c == ".":
+            out.append(r"[^<\n]")
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def cap_segments(text: str, cap: int = SEGMENT_CAP) -> str:
+    """``text`` with every run between two ``<`` cut to ``cap`` characters (a long inline script or a hostile
+    attribute keeps its first ``cap`` characters): with :func:`confine_html` this bounds each match attempt."""
+    if len(text) <= cap:
+        return text
+    return "<".join(part if len(part) <= cap else part[:cap] for part in text.split("<"))
+
+
 def build_db(tech_obj: dict, favicon_obj: dict | None = None) -> TechDB:
     techs: dict[str, TechDef] = {}
     signals: dict[str, list[Signal]] = {}
@@ -392,7 +463,8 @@ def build_db(tech_obj: dict, favicon_obj: dict | None = None) -> TechDB:
                              tuple(t.get("implies") or ()), tuple(t.get("excludes") or ()), str(t.get("eol_product") or ""))
         for s in t.get("signals") or []:
             try:
-                rx = re.compile(str(s["pattern"]), _flags(str(s.get("flags", ""))))
+                src = str(s["pattern"])
+                rx = re.compile(confine_html(src) if s.get("source") == "html" else src, _flags(str(s.get("flags", ""))))
             except (re.error, KeyError):
                 skipped += 1
                 continue
@@ -531,7 +603,7 @@ def _metas(doc) -> list[tuple[str, str]]:
         key = (el.get("name") or el.get("property") or el.get("itemprop") or "").strip().lower()
         content = el.get("content")
         if key and content is not None:
-            out.append((key, content.strip()))
+            out.append((key, content.strip()[:VALUE_CAP]))
     return out
 
 
@@ -540,7 +612,7 @@ def _urls(doc, tag: str, attr: str) -> list[str]:
     for el in doc.find_all(tag):
         v = el.get(attr)
         if v and v.strip():
-            u = doc.resolve(v.strip())
+            u = doc.resolve(v.strip()[:VALUE_CAP])
             if u.startswith(("http://", "https://")):
                 out.append(u)
     return out
@@ -625,7 +697,7 @@ class _Detector:
         cookie_items = []
         for r in responses:
             for k, v in r.headers:
-                header_items.append((k.lower(), v, r))
+                header_items.append((k.lower(), v[:VALUE_CAP], r))
             for name in _cookie_names(r, ctx):
                 cookie_items.append(("", name, r))
         self.run_signals("header", header_items)
@@ -643,7 +715,7 @@ class _Detector:
             script_items.extend(("", u, r, _cross_site(u, sites)) for u in _urls(page.doc, "script", "src"))
             link_items.extend(("", u, r, _cross_site(u, sites)) for u in _urls(page.doc, "link", "href"))
             try:
-                html_items.append(("", r.text()[:HTML_CAP], r))
+                html_items.append(("", cap_segments(r.text()[:HTML_CAP]), r))
             except (LookupError, ValueError):
                 pass
         self.run_signals("meta", meta_items)
@@ -760,6 +832,10 @@ def banners(ctx: ScanContext) -> list[Banner]:
                 m = rx.search(text)
                 if m:
                     sources.append(("error page", m.group(1)))
+        # "Server: Apache/2.4.62 (Debian)" + "X-Powered-By: PHP/8.2.20": the PHP of a distribution's web server is
+        # that distribution's package (Debian's PHP version string carries no marker), so it is a distro build too
+        server_distro = next((d for v in r.headers.get_all("server")
+                              if (d := _distro_of("", _COMMENT.findall(v[:MAX_BANNER_LEN])))), "")
         for where, value in sources:
             for name, version, key, comments in parse_banner(value):
                 prod = BANNER_PRODUCTS.get(key)
@@ -771,8 +847,10 @@ def banners(ctx: ScanContext) -> list[Banner]:
                     continue
                 need = 2 if pkey in TWO_PART else 3
                 incomplete = len(numeric_parts(base)) < need
-                out.append(Banner(pkey, display, version, base, _distro_of(version, comments), incomplete, where,
-                                  value, r))
+                distro = _distro_of(version, comments)
+                if not distro and pkey == "php" and where == "X-Powered-By":
+                    distro = server_distro
+                out.append(Banner(pkey, display, version, base, distro, incomplete, where, value, r))
         for v in r.headers.get_all("server"):
             if re.search(r"\(CentOS\)", v):
                 apache = re.search(r"Apache/(\d+\.\d+\.\d+)", v)
@@ -989,7 +1067,7 @@ def _server_issues(st: _Run, cve_data: dict | None, eol_data: dict | None) -> No
                                        summary=_short(str(c.get("summary") or ""), 120) or "-",
                                        fixed=c.get("fixed") or r.get("below")))
                 if len(ordered) > MAX_CVE_NOTES:
-                    notes.append(_note("cve_more", count=len(ordered) - MAX_CVE_NOTES))
+                    notes.append(_note("cve_more", count=_count(len(ordered) - MAX_CVE_NOTES, _MORE_CVES)))
                 fixed = _fixed_version(b, matches) or "the latest release"
                 params = {"product": b.display, "version": b.version, "fixed": fixed,
                           "cves": [c["id"] for c, _r in ordered][:50]}

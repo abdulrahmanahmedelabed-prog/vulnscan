@@ -68,6 +68,7 @@ STR: dict[str, tuple[str, str]] = {
                 "شوهد عبر الوكيل {proxy}؛ والوكيل الذي يفحص الحركة يستبدل الشهادة"),
     "sampled": ("more than 4 addresses; this one was not sampled", "أكثر من 4 عناوين؛ لم يُختر هذا العنوان للفحص"),
     "no_address": ("no address to connect to", "لا يوجد عنوان للاتصال به"),
+    "probe_failed": ("TLS probe failed: {error}", "فشل فحص TLS: {error}"),
     "ipv6": ("IPv6 address unreachable from this network", "عنوان IPv6 غير قابل للوصول من هذه الشبكة"),
     "legacy_only": ("this Python build cannot complete a handshake with the protocols the server offers",
                     "لا يستطيع إصدار Python هذا إتمام مصافحة بالبروتوكولات التي يقدّمها الخادم"),
@@ -141,7 +142,7 @@ def ssl_handshake(connector: Any, host: str, port: int, ip: str | None, *, verif
     ``legacy`` relaxes the verifying context to security level 0 and TLS 1.0 (used only to judge trust on old servers)."""
     out: dict = {"ok": None, "verify_code": None, "verify_message": "", "version": None, "cipher": None, "alpn": None,
                  "chain": [], "chain_complete": False, "verified_chain": None, "error": None, "refused": None,
-                 "legacy": legacy}
+                 "legacy": legacy, "timeout": False}
     try:
         ctx = connector.tls_context(verified)
     except Exception as e:   # noqa: BLE001 - a broken hook file must not crash the scan
@@ -184,6 +185,9 @@ def ssl_handshake(connector: Any, host: str, port: int, ip: str | None, *, verif
         out["ok"] = False
         out["verify_code"] = getattr(e, "verify_code", None)
         out["verify_message"] = str(getattr(e, "verify_message", "") or e)[:300]
+    except (socket.timeout, TimeoutError) as e:      # the handshake has one overall deadline (CPython _ssl.c)
+        out["error"] = f"{e.__class__.__name__}: {e}"[:300]
+        out["timeout"] = True
     except (ssl.SSLError, OSError, ValueError) as e:
         out["error"] = f"{e.__class__.__name__}: {e}"[:300]
     finally:
@@ -251,7 +255,7 @@ class IpSession:
             if fl.result in ("hello", "alert", "eof"):
                 self.failures = 0
                 return fl
-            if fl.result == "timeout":
+            if fl.result == "timeout" or (fl.result == "not_tls" and fl.detail == raw.PARTIAL_TIMEOUT):
                 self._fail()
             if self.backed_off:
                 return fl
@@ -325,7 +329,11 @@ def probe_ip(connector: Any, host: str, port: int, ip: str | None, *, profile: s
             rep["verified"] = again
             return _finish(rep, sess)
         ver = rep["verified"] = again
-    if (ver.get("ok") is False and ver.get("verify_code") in SECLEVEL_CODES) or (
+    if ver.get("timeout"):
+        # a silent server: no security-level retry (it would wait the full timeout again), and the silence counts
+        # towards the back-off of the raw probes (a tarpit must not cost 3 × timeout + 6 probes × 2 × 6 s per IP)
+        sess._fail()
+    elif (ver.get("ok") is False and ver.get("verify_code") in SECLEVEL_CODES) or (
             ver.get("ok") is None and ver.get("error") and not ver.get("refused")):
         # weak key/digest or a protocol the default context refuses: judge trust again at security level 0
         rep["verified_legacy"] = ssl_handshake(connector, host, port, ip, verified=True, timeout=sess.ssl_timeout,
@@ -340,6 +348,8 @@ def probe_ip(connector: Any, host: str, port: int, ip: str | None, *, profile: s
     else:
         unv = ssl_handshake(connector, host, port, ip, verified=False, timeout=sess.ssl_timeout)
         sess.handshakes += 1
+        if unv.get("timeout"):
+            sess._fail()
         rep["unverified"] = unv
         if unv.get("chain"):
             rep["chain"] = list(unv["chain"])
@@ -418,6 +428,10 @@ def _categories(rep: dict, sess: IpSession, host: str, cat_version: str | None, 
         return
     v = raw.VERSION_IDS[cat_version]
     base = flights.get(cat_version)
+    # the version is proven by a normal handshake but the raw hello of that version was refused: a "no" to a raw
+    # category hello then says nothing about the suites (only a ServerHello picking a member is evidence)
+    raw_trusted = base is not None and base.result == "hello" and base.version == v
+    ssl_aead = next((c for c in _ssl_ciphers(rep) if _openssl_aead(c)), None)
     for name, suites in raw.CATEGORY_PROBES.items():
         if name == "aead":
             proven = rep["versions"].get("TLSv1.3", {}).get("state") == "yes" or (
@@ -426,19 +440,42 @@ def _categories(rep: dict, sess: IpSession, host: str, cat_version: str | None, 
                 rep["categories"][name] = {"state": "yes", "cipher": raw.suite_name(base.cipher) if base and
                                            base.cipher in suites else "TLS 1.3", "version": cat_version, "source": "free"}
                 continue
+            if ssl_aead is not None:
+                rep["categories"][name] = {"state": "yes", "cipher": ssl_aead, "version": cat_version, "source": "ssl"}
+                continue
         if name == "cbc" and base is not None and base.cipher in suites:
             rep["categories"][name] = {"state": "yes", "cipher": raw.suite_name(base.cipher), "version": cat_version,
                                        "source": "free"}
             continue
         fl = sess.send(raw.client_hello(host, v, suites))
-        rep["categories"][name] = _category_state(fl, v, suites, cat_version)
+        st = _category_state(fl, v, suites, cat_version)
+        if st["state"] == "no" and not raw_trusted:
+            st = {"state": "inconclusive", "reason": "raw_refused", "detail": STR["raw_disagrees"][0]}
+        rep["categories"][name] = st
     fl = sess.send(raw.client_hello(host, v, raw.LEGACY_SUITES, compression=(1, 0)))
     if fl.result == "hello" and fl.version == v:
         rep["compression"] = fl.compression == 1
-    elif fl.result in ("alert", "eof"):
+        if fl.ocsp and (rep.get("ocsp") or {}).get("state") == "absent":
+            # servers that fetch the OCSP response lazily (nginx) staple only from the second handshake on
+            rep["ocsp"] = {"state": "stapled", "der": _b64(fl.ocsp), "reason": "", "late": True}
+    elif fl.result in ("alert", "eof") and raw_trusted:
         rep["compression"] = False
     else:
         rep["compression"] = None
+
+
+def _ssl_ciphers(rep: dict) -> list[str]:
+    """Cipher names (OpenSSL spelling) negotiated by the ``ssl`` handshakes of this IP over TLS ≤ 1.2."""
+    out = []
+    for key in ("verified", "verified_legacy", "unverified"):
+        hs = rep.get(key) or {}
+        if hs.get("cipher") and hs.get("version") in ("TLSv1.2", "TLSv1.1", "TLSv1"):
+            out.append(str(hs["cipher"]))
+    return out
+
+
+def _openssl_aead(name: str) -> bool:
+    return any(t in name for t in ("GCM", "CHACHA20", "CCM")) and not name.startswith(("ADH", "AECDH"))
 
 
 def _category_state(fl: raw.Flight, v: int, suites: tuple[int, ...], version_name: str) -> dict:
@@ -625,7 +662,13 @@ def collect(ctx: Any, connector: Any = None) -> dict:
                             "error": {"code": "budget", "en": "more https hosts than the TLS budget allows",
                                       "ar": "عدد مضيفي HTTPS أكبر مما تسمح به ميزانية فحص TLS"}}
             continue
-        ctx.tls[key] = scan_host(connector, host, port, profile=ctx.options.profile, timeout=ctx.options.timeout)
+        try:
+            ctx.tls[key] = scan_host(connector, host, port, profile=ctx.options.profile, timeout=ctx.options.timeout)
+        except Exception as e:   # noqa: BLE001 - a probe bug on one host must not abort the scan (checks → not_tested)
+            ctx.tls[key] = {"kind": HOST_KIND, "host": host, "port": port, "proxied": False, "proxy": None,
+                            "profile": ctx.options.profile, "ips": {}, "not_sampled": [], "leaf": {},
+                            "error": {"code": "error", "en": STR["probe_failed"][0].format(error=e.__class__.__name__),
+                                      "ar": STR["probe_failed"][1].format(error=e.__class__.__name__)}}
     return ctx.tls
 
 

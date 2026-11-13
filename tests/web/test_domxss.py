@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import os
 import pathlib
+import random
 import sys
 import tempfile
 
@@ -88,6 +89,16 @@ CASES = [
     ("message_worker.js", set(), None),
     ("message_delegate.js", set(), None),
     ("message_class.js", set(), None),
+    # adversarial review
+    ("redirect_protocol_relative.js", {"WEB521"}, "firm"),
+    ("url_searchparams.js", {"WEB520"}, "firm"),
+    ("message_method.js", {"WEB522"}, "firm"),
+    ("jquery_selector.js", {"WEB520"}, "tentative"),
+    ("redirect_https_upgrade.js", set(), None),
+    ("redirect_fixed_prefix.js", set(), None),
+    ("share_link.js", set(), None),
+    ("url_constant.js", set(), None),
+    ("message_shadowed.js", set(), None),
 ]
 
 
@@ -448,6 +459,202 @@ def test_registry_and_i18n():
                 break
         else:
             raise AssertionError(f"no i18n entry for {key}")
+
+
+# ----------------------------------------------------------------------------------------------- adversarial review
+
+def inline_rules(code: str, sensitivity: str = "paranoid", **fields) -> list[tuple[str, str]]:
+    issues, _cov, _ctx = scan([html_page(HEAD + "<script>\n" + code + "\n</script>\n")], sensitivity=sensitivity, **fields)
+    return [(i.rule, i.confidence) for i in issues]
+
+
+P = "var p = new URLSearchParams(location.search);\n"
+
+
+@pytest.mark.parametrize("code", [
+    "location.href = location.href.replace(/^http:/, 'https:');",
+    "location.replace(location.protocol + '//' + location.host + '/home?x=' + location.hash);",
+    P + "location.href = '/search?q=' + p.get('q');",
+    P + "location.href = 'results.html?q=' + p.get('q');",
+    P + "location.href = '#' + p.get('tab');",
+    P + "location = window.location.origin + '/r?u=' + p.get('u');",
+    P + "location.href = `https://www.example.test/${p.get('x')}`;",
+    P + "var u = '/a?b=' + p.get('b');\nwindow.location.href = u;",
+    P + "document.getElementById('share').href = 'https://x.test/?u=' + p.get('u');",
+    P + "this.href = p.get('u');",
+])
+def test_redirect_with_a_fixed_origin_or_to_a_link_is_not_reported(code):
+    assert inline_rules(code) == []
+
+
+@pytest.mark.parametrize("code", [
+    P + "location.href = '//' + p.get('h');",
+    P + "location.href = 'https://' + p.get('h') + '/x';",
+    P + "location.href = p.get('next') || '/';",
+    P + "location.href = '/' + p.get('x');",                  # "/" + "/evil.test" is protocol-relative
+    P + "location.href = location.origin + p.get('x');",      # origin + "@evil.test"
+    P + "location.href = location.pathname + '?x=1';",        # the path can be //evil.test
+    P + "var u = '/home';\nif (p.get('n')) { u = p.get('n'); }\nlocation.href = u;",
+    P + "var w = p.get('w');\nwindow.open(w);",
+    P + "location.href = `https://${p.get('h')}/a`;",
+    P + "location.href = location.href.replace('a', p.get('x'));",
+    P + "document.location.href = p.get('u');",
+    P + "top.location = p.get('u');",
+])
+def test_redirect_to_an_attacker_chosen_origin_is_reported(code):
+    assert ("WEB521", "firm") in inline_rules(code)
+
+
+def test_jquery_selector_is_tentative_unless_an_old_jquery_is_known():
+    code = "$('.tabs a[href=\"' + location.hash + '\"]').tab('show');"
+    issues, _cov, _ctx = scan([html_page(HEAD + "<script>\n" + code + "\n</script>\n")])
+    assert [(i.rule, i.confidence) for i in issues] == [("WEB520", "tentative")]
+    assert any("jQuery 1.9" in en and "jQuery 1.9" in ar for en, ar in issues[0].notes)
+    old = {"libraries": [{"name": "jQuery", "component": "jquery", "version": "1.8.3", "detection": "filename",
+                          "url": "https://cdn.other.test/jquery-1.8.3.min.js"}]}
+    assert inline_rules(code, inventory=old) == [("WEB520", "firm")]
+    assert inline_rules("$('<div>' + location.hash + '</div>').appendTo('body');") == [("WEB520", "firm")]
+    assert inline_rules("$(decodeURIComponent(location.hash.slice(1)));") == [("WEB520", "firm")]
+    _issues, cov, _ctx = scan([html_page(HEAD + "<script>\n$(location.hash).show();\n</script>\n")], sensitivity="default")
+    assert cov.state("WEB520").state == "not_tested"          # hidden at default, never "pass"
+
+
+def test_url_object_sources():
+    assert inline_rules("const u = new URL(location);\nlocation.assign(u.searchParams.get('r'));") == [("WEB521", "firm")]
+    assert inline_rules("document.getElementById('out').innerHTML = "
+                        "new URL(document.URL).searchParams.get('q');") == [("WEB520", "firm")]
+    assert domxss.url_source("u.searchParams.get()", "const u = new URL(window.location.href);")
+    assert not domxss.url_source("u.searchParams.get()", "const u = new URL('https://api.test/?a=1');")
+    assert not domxss.url_source("req.query", "new URL(location)")
+
+
+def test_message_handler_resolution_is_scoped():
+    # minified style: every closure has its own "n"; the registered one checks the origin
+    code = ("!function(){function n(e){if(e.origin!=='https://a.test')return;document.body.innerHTML=e.data}"
+            "window.addEventListener('message',n)}();\n!function(){function n(e){console.log(e)}n(1)}();")
+    assert inline_rules(code) == []
+    code = ("!function(){function n(e){document.body.innerHTML=e.data}window.addEventListener('message',n)}();\n"
+            "!function(){function n(e){if(e.origin!=='x')return}n(1)}();")
+    assert inline_rules(code) == [("WEB522", "firm")]
+    # the handler hands the event to a helper that cannot be resolved in scope: unknown, no finding
+    assert inline_rules("window.addEventListener('message', function (e) { helpers.check(e); });") == []
+    # an object-literal handler is resolved
+    assert inline_rules("var H = { onMsg: function (e) { document.body.innerHTML = e.data; } };\n"
+                        "window.addEventListener('message', H.onMsg);") == [("WEB522", "firm")]
+    # a class method that checks the origin
+    assert inline_rules("class A { constructor() { window.addEventListener('message', this.m.bind(this)); }\n"
+                        "m(e) { if (e.origin !== 'https://a.test') return; document.body.innerHTML = e.data; } }\n"
+                        "new A();") == []
+
+
+def test_message_sink_in_another_file_names_that_file():
+    lib = "function onMsg(e) {\n  document.getElementById('out').innerHTML = e.data;\n}\n"
+    page = html_page(HEAD + '<script src="/static/h.js"></script>\n'
+                     "<script>\nwindow.addEventListener('message', onMsg);\n</script>\n")
+    issues, _cov, _ctx = scan([page], [script(lib, SITE + "/static/h.js")])
+    w = [i for i in issues if i.rule == "WEB522"]
+    assert len(w) == 1 and w[0].confidence == "firm"
+    assert any(f"{SITE}/static/h.js:2" in en for en, _ar in w[0].notes)
+
+
+@pytest.mark.parametrize("url,text", [
+    (SITE + "/static/core.js", "var x;"),
+    (SITE + "/static/chart.js", "var x;"),
+    (SITE + "/static/scheduler.js", "var x;"),
+    (SITE + "/js/lib/app.js", "var x;"),
+    (SITE + "/assets/plugins/checkout.js", "var x;"),
+    (SITE + "/static/x.js", "/*! Shop core v1.2.3 */\nvar x;"),
+    (SITE + "/static/x.js", "/*! Checkout v3.2 - requires jQuery 3.5+ */\nvar x;"),
+    (SITE + "/static/x.js", "/*! myapp v1.0.0 | built with react */\nvar x;"),
+    (SITE + "/static/x.js", "/*! Next generation checkout 2.1 (c) Acme */\nvar x;"),
+])
+def test_site_code_with_library_like_names_is_analysed(url, text):
+    assert domxss.library_name(url, text, domxss.library_names()) is None
+
+
+@pytest.mark.parametrize("url,text", [
+    (SITE + "/static/core-js.min.js", "var x;"),
+    (SITE + "/static/chart.umd.min.js", "var x;"),
+    (SITE + "/static/x.js", "//! moment.js\n//! version : 2.29.4\nvar x;"),
+    (SITE + "/static/x.js", "/**\n * @popperjs/core v2.11.8 - MIT License\n */\nvar x;"),
+    (SITE + "/static/x.js", "/*! jQuery UI - v1.13.2 - 2022-07-14 */\nvar x;"),
+    (SITE + "/static/x.js", "/*!\n * Chart.js v4.4.0\n */\nvar x;"),
+    (SITE + "/static/x.js", "/*!\n  * Bootstrap v5.3.0 (https://getbootstrap.com/)\n */\nvar x;"),
+    (SITE + "/static/x.js", "/*! @license DOMPurify 3.0.6 | (c) Cure53 */\nvar x;"),
+    (SITE + "/node_modules/pkg/index.js", "var x;"),
+])
+def test_libraries_by_name_or_banner(url, text):
+    assert domxss.library_name(url, text, domxss.library_names())
+
+
+def test_temp_names_are_safe_on_windows():
+    used: set[str] = set()
+    deep = SITE + "/" + "/".join(["d" * 200] * 20) + "/x.js"
+    rels = [domxss._rel_for_url(u, used) for u in (SITE + "/static/con.js", SITE + "/nul/x.js", SITE + "/static/App.js",
+                                                    SITE + "/static/app.js", deep, SITE + "/LPT1.min.js")]
+    for r in rels:
+        parts = r.split("/")
+        assert not any(domxss._WIN_RESERVED.match(x) for x in parts), r
+        assert len(r) <= 160 and ".." not in parts
+    assert len({r.lower() for r in rels}) == len(rels)          # unique on case-insensitive file systems
+
+
+def test_windows_device_name_script_is_analysed():
+    page = html_page(HEAD + '<script src="/static/con.js"></script>')
+    issues, _cov, _ctx = scan([page], [script(fixture("innerhtml_hash.js"), SITE + "/static/con.js")])
+    assert [i.rule for i in issues] == ["WEB520"]
+
+
+def test_lone_cr_line_ends_map_to_browser_lines():
+    code = "var a = 1;\rvar b = 2;\rdocument.body.innerHTML = location.hash;\r"
+    page = html_page(HEAD + '<script src="/static/cr.js"></script>')
+    sub = script(code, SITE + "/static/cr.js")
+    issues, _cov, _ctx = scan([page], [sub])
+    assert issues[0].params["line"] == 3
+    assert sub.text()[issues[0].evidence.match["offset"]:].startswith("document.body")
+    html = (HEAD + "<p>x</p>\n<script>\nvar a = 1;\ndocument.body.innerHTML = location.hash;\n</script>\n").replace("\n", "\r")
+    page = html_page(html)
+    issues, _cov, _ctx = scan([page])
+    assert issues[0].params["line"] == 8 and issues[0].params["column"] == 1
+    assert page.response.text()[issues[0].evidence.match["offset"]:].startswith("document.body")
+
+
+def test_script_served_as_text_plain_runs_unless_nosniff():
+    page = html_page(HEAD + '<script src="/static/a.js"></script>')
+    plain = script(fixture("innerhtml_hash.js"), SITE + "/static/a.js", ctype="text/plain", kind="text")
+    issues, _cov, _ctx = scan([page], [plain])
+    assert [i.rule for i in issues] == ["WEB520"]
+    blocked = Response(url=SITE + "/static/a.js", source="subresource", kind="text", body=fixture("innerhtml_hash.js").encode(),
+                       headers=HeaderList.of(("Content-Type", "text/plain"), ("X-Content-Type-Options", "nosniff")))
+    issues, _cov, _ctx = scan([page], [blocked])
+    assert issues == []
+    issues, _cov, _ctx = scan([html_page(HEAD)], [plain])       # not referenced by a <script src>: not code
+    assert issues == []
+
+
+def test_unparseable_script_is_not_tested_not_passed(monkeypatch):
+    from vulnscan import js_frontend
+    import ast as _ast
+    monkeypatch.setattr(js_frontend, "parse_js", lambda text, rel="": _ast.Module(body=[], type_ignores=[]))
+    issues, cov, ctx = scan_files("innerhtml_hash.js")
+    assert issues == []
+    st = cov.state("WEB520")
+    assert st.state == "not_tested" and st.reasons[0][0] == "error" and "innerhtml_hash.js" in st.reasons[0][1]
+    assert ctx.inventory["dom_scripts"]["skipped"][0]["reason"] == "error"
+
+
+def test_hostile_bodies_do_not_crash():
+    page = html_page(HEAD + "".join(f'<script src="/s/{n}.js"></script>' for n in range(6)))
+    rnd = random.Random(1110)
+    subs = [script(rnd.randbytes(50_000), SITE + "/s/0.js"),
+            script(b"\x89PNG\r\n\x1a\n" + rnd.randbytes(2000), SITE + "/s/1.js"),
+            script("﻿document.body.innerHTML = location.hash;\n".encode("utf-16"), SITE + "/s/2.js"),
+            script(b"var a='\xff\xfe\xc3\x00';\ndocument.body.innerHTML = location.hash;\n", SITE + "/s/3.js"),
+            script("function a(){" * 3000 + "}" * 3000, SITE + "/s/4.js"),
+            script("x=" + "(" * 20000 + ")" * 20000 + ";", SITE + "/s/5.js")]
+    issues, cov, _ctx = scan([page], subs)
+    assert {i.params["file"] for i in issues} == {SITE + "/s/2.js", SITE + "/s/3.js"}
+    assert cov.state("WEB520").state == "fail"
 
 
 # ----------------------------------------------------------------------------------------------- corpus (§5.2 C-DOM)

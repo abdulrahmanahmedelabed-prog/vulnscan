@@ -998,13 +998,23 @@ def _webdata_installed(root: pathlib.Path) -> tuple[str, pathlib.Path] | None:
 
 
 def _webdata_read_archive(fileobj) -> dict[str, bytes]:
-    """name -> bytes of a flat tar.gz, read in memory (nothing is extracted to disk by tarfile)."""
+    """name -> bytes of a flat tar.gz, read in memory (nothing is extracted to disk by tarfile).
+
+    The gzip layer is decompressed first, with a cap: tarfile reads pax and GNU long-name headers into memory whatever
+    their size, and those are not members, so the per-member caps alone would not bound memory."""
+    import gzip
+    import io
     import tarfile
     import zlib
     files: dict[str, bytes] = {}
     total = 0
+    cap = MAX_WEBDATA_TOTAL + (MAX_WEBDATA_MEMBERS + 1) * 1024 + 20 * 1024   # members + headers/padding + end blocks
     try:
-        with tarfile.open(fileobj=fileobj, mode="r:gz") as tar:
+        with gzip.GzipFile(fileobj=fileobj, mode="rb") as g:
+            stream = g.read(cap + 1)
+        if len(stream) > cap:
+            raise WebDataError("webdata_invalid", "the archive unpacks to more than the size cap")
+        with tarfile.open(fileobj=io.BytesIO(stream), mode="r:") as tar:
             for count, m in enumerate(tar, 1):
                 if count > MAX_WEBDATA_MEMBERS:
                     raise WebDataError("webdata_invalid", "too many members")
@@ -1029,10 +1039,11 @@ def _webdata_check(files: dict[str, bytes], day: str) -> dict:
     """Verify an archive's content (manifest, schema version, sha256 of every file, JSON schemas). Returns the manifest."""
     import gzip
     import io
+    import zlib
     d = _webdata()
     try:
         man = json.loads(files[d.MANIFEST].decode("utf-8"))
-    except (KeyError, ValueError) as e:
+    except (KeyError, ValueError, RecursionError) as e:
         raise WebDataError("webdata_invalid", "no readable MANIFEST.json") from e
     errs = d.validate(d.MANIFEST_SCHEMA, man)
     if errs:
@@ -1060,7 +1071,7 @@ def _webdata_check(files: dict[str, bytes], day: str) -> dict:
                 if len(raw) > MAX_WEBDATA_TOTAL:
                     raise ValueError("decompressed size above the cap")
             obj = json.loads(raw.decode("utf-8"))
-        except (OSError, ValueError, EOFError) as e:
+        except (OSError, ValueError, EOFError, RecursionError, zlib.error) as e:   # zlib.error: a damaged deflate stream
             raise WebDataError("webdata_invalid", f"{name}: {e}") from e
         errs = d.validate_data(name, obj)
         if errs:
@@ -1069,7 +1080,7 @@ def _webdata_check(files: dict[str, bytes], day: str) -> dict:
         if (binary in known) != (side in known):
             raise WebDataError("webdata_invalid", f"{binary} and {side} come together")
         if binary in known:
-            want = json.loads(files[side].decode("utf-8")).get("sha256", "")
+            want = json.loads(files[side].decode("utf-8")).get("sha256", "")   # schema-checked above
             if not hmac.compare_digest(hashlib.sha256(files[binary]).hexdigest(), str(want)):
                 raise WebDataError("webdata_invalid", f"{side}: sha256 does not match {binary}")
     return man
@@ -1111,8 +1122,9 @@ def _webdata_install(root: pathlib.Path, day: str, files: dict[str, bytes]) -> p
     return final
 
 
-def _webdata_prune(root: pathlib.Path, keep: int = WEBDATA_KEEP) -> None:
-    """Best effort: keep the newest `keep` dated snapshots; drop leftovers of interrupted runs (older than 1 hour)."""
+def _webdata_prune(root: pathlib.Path, keep: int = WEBDATA_KEEP, keep_path: pathlib.Path | None = None) -> None:
+    """Best effort: keep the newest `keep` dated snapshots (and always `keep_path`, the one just installed, even when
+    newer folders this Kashif cannot use exist); drop leftovers of interrupted runs (older than 1 hour)."""
     import shutil
     try:
         entries = list(root.iterdir())
@@ -1121,7 +1133,8 @@ def _webdata_prune(root: pathlib.Path, keep: int = WEBDATA_KEEP) -> None:
     dated = sorted((p for p in entries if _WEB_DAY.fullmatch(p.name) and p.is_dir() and not p.is_symlink()),
                    key=lambda p: p.name, reverse=True)
     for p in dated[keep:]:
-        shutil.rmtree(p, ignore_errors=True)
+        if keep_path is None or p.name != keep_path.name:
+            shutil.rmtree(p, ignore_errors=True)
     for p in entries:
         if not p.name.startswith((_WEB_TMP, _WEB_OLD)) or p.is_symlink():
             continue
@@ -1134,6 +1147,17 @@ def _webdata_prune(root: pathlib.Path, keep: int = WEBDATA_KEEP) -> None:
                 p.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def _webdata_day(text: str) -> bool:
+    """A real calendar date. An asset named 2026-13-45 or 9999-99-99 would sort above every later snapshot and, once
+    installed, make every future update look older than it: such a name is ignored."""
+    import datetime
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
 
 
 def _webdata_text(code: str, day: str) -> dict:
@@ -1159,7 +1183,8 @@ def update_web_data(*, net: Net = NET, root: pathlib.Path | None = None, check_o
     if release.get("prerelease"):
         raise UpdateError("no_release")
     by_name = {a["name"]: a for a in release["assets"]}
-    offered = sorted(((m.group(1), n) for n in by_name if (m := WEBDATA_ASSET.fullmatch(n))), reverse=True)
+    offered = sorted(((m.group(1), n) for n in by_name if (m := WEBDATA_ASSET.fullmatch(n)) and _webdata_day(m.group(1))),
+                     reverse=True)
     if not offered:
         raise WebDataError("webdata_missing", release["tag"])
     day, asset = offered[0]
@@ -1203,7 +1228,7 @@ def update_web_data(*, net: Net = NET, root: pathlib.Path | None = None, check_o
         path = _webdata_install(root, day, files)
     finally:
         tmp.unlink(missing_ok=True)
-    _webdata_prune(root)
+    _webdata_prune(root, keep_path=path)
     d.clear_cache()
     return {**out, "status": "installed", "current": day, "installed": day, "path": str(path),
             **_webdata_text("webdata_installed", day), "notes": d.staleness()}

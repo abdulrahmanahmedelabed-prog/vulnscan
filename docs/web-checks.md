@@ -1015,7 +1015,8 @@ CSRF_COOKIE_SECURE = True
 server.servlet.session.cookie.secure=true
 server.servlet.session.cookie.http-only=true
 server.servlet.session.cookie.same-site=lax
-server.servlet.session.tracking-modes=cookie   # stops ;jsessionid= URLs
+# stops ;jsessionid= URLs
+server.servlet.session.tracking-modes=cookie
 ```
 
 Spring Boot application.properties.
@@ -1073,7 +1074,7 @@ add_header Vary Origin always;
 **Apache httpd 2.4**
 
 ```apache
-SetEnvIf Origin "^(https://app\.example.com)$" CORS_OK=$1
+SetEnvIf Origin "^(https://app\.example\.com)$" CORS_OK=$1
 Header always set Access-Control-Allow-Origin "%{CORS_OK}e" env=CORS_OK
 Header always merge Vary Origin
 ```
@@ -1146,7 +1147,8 @@ fastcgi_hide_header X-Powered-By;
 ServerTokens Prod
 ServerSignature Off
 Header always unset X-Powered-By
-FileETag MTime Size   # WEB604: no inode in ETag
+# WEB604: no inode in ETag
+FileETag MTime Size
 ```
 
 **IIS 10 (web.config)**
@@ -1603,7 +1605,9 @@ In the sensitive location{}.
 **Apache httpd 2.4**
 
 ```apache
-<LocationMatch "^/(account|admin)">Header always set Cache-Control "no-store"</LocationMatch>
+<LocationMatch "^/(account|admin)">
+    Header always set Cache-Control "no-store"
+</LocationMatch>
 ```
 
 **Django**

@@ -35,6 +35,7 @@ import json
 import re
 import sys
 import tarfile
+import zlib
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -61,13 +62,23 @@ def expected_files() -> tuple[str, ...]:
     return tuple(sorted(set(data.DATA_FILES) | set(data.SIDECARS.values())))
 
 
+def _gunzip(raw: bytes) -> bytes:
+    """Decompressed content, capped. A damaged deflate stream raises ``zlib.error`` (not an OSError): reported as
+    ValueError like every other unreadable file."""
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(raw)) as g:
+            out = g.read(MAX_FILE + 1)
+    except zlib.error as e:
+        raise ValueError(f"damaged gzip data ({e})") from e
+    if len(out) > MAX_FILE:
+        raise ValueError("decompressed size above the cap")
+    return out
+
+
 def _load(path: Path):
     raw = path.read_bytes()
     if path.name.endswith(".gz"):
-        with gzip.GzipFile(fileobj=io.BytesIO(raw)) as g:
-            raw = g.read(MAX_FILE + 1)
-        if len(raw) > MAX_FILE:
-            raise ValueError("decompressed size above the cap")
+        raw = _gunzip(raw)
     return json.loads(raw.decode("utf-8"))
 
 
@@ -83,6 +94,28 @@ def _gzip_header_errors(name: str, raw: bytes) -> list[str]:
     if raw[3] & 0x08:
         errs.append(f"{name}: gzip header carries a file name (use filename='')")
     return errs
+
+
+PSL_MARKERS = ("===BEGIN ICANN DOMAINS===", "===END ICANN DOMAINS===", "===BEGIN PRIVATE DOMAINS===",
+               "===END PRIVATE DOMAINS===")
+
+
+def _psl_errors(name: str, raw: bytes, sidecar: dict | None) -> list[str]:
+    """``psl.dat.gz`` has no JSON schema: it must still be the list (both sections, the sidecar's rule count)."""
+    try:
+        text = _gunzip(raw).decode("utf-8")
+    except UnicodeDecodeError:
+        return [f"{name}: not UTF-8 (the Public Suffix List is UTF-8 text)"]
+    except (OSError, ValueError, EOFError) as e:
+        return [f"{name}: unreadable ({e})"]
+    missing = [m for m in PSL_MARKERS if m not in text]
+    if missing:
+        return [f"{name}: not a Public Suffix List (no {missing[0]})"]
+    rules = sum(1 for line in text.splitlines() if line.strip() and not line.strip().startswith("//"))
+    want = (sidecar or {}).get("rules")
+    if isinstance(want, int) and want != rules:
+        return [f"{name}: rule count {rules} differs from the sidecar's {want}"]
+    return []
 
 
 def _regex_errors(name: str, obj) -> list[str]:
@@ -175,11 +208,14 @@ def validate_dir(directory: Path = DATA_DIR, *, max_age: int | None = None, toda
             continue
         try:
             obj = _load(path)
-        except (OSError, ValueError, EOFError) as e:
+        except (OSError, ValueError, EOFError, RecursionError) as e:
             errs.append(f"{n}: unreadable ({e})")
             continue
+        bad = [e if e.startswith(n + ":") else f"{n}: {e}" for e in data.validate_data(n, obj)]
+        if bad:            # the cross-file checks below assume the schema's shapes
+            errs += bad
+            continue
         objs[n] = obj
-        errs += [e if e.startswith(n + ":") else f"{n}: {e}" for e in data.validate_data(n, obj)]
         errs += _regex_errors(n, obj)
         if max_age is not None:
             d = (obj.get("meta") or {}).get("date") if isinstance(obj, dict) else None
@@ -199,6 +235,8 @@ def validate_dir(directory: Path = DATA_DIR, *, max_age: int | None = None, toda
             digest = hashlib.sha256((directory / binary).read_bytes()).hexdigest()
             if meta.get("sha256") != digest:
                 errs.append(f"{side}: sha256 does not match {binary}")
+        if binary == "psl.dat.gz" and binary in present:
+            errs += _psl_errors(binary, (directory / binary).read_bytes(), meta)
     exposed, platform = _deep_paths(objs)
     both = sorted(set(exposed) & set(platform))
     if both:
@@ -210,6 +248,8 @@ def validate_dir(directory: Path = DATA_DIR, *, max_age: int | None = None, toda
         size = compressed_size(directory, sorted(want))
         if size > SIZE_BUDGET:
             errs.append(f"snapshot is {size} bytes compressed; the §4.4 budget is {SIZE_BUDGET}")
+    if not errs:          # what the loader and update_web_data() will read must pass their own schema
+        errs += [f"{MANIFEST}: {e}" for e in data.validate(data.MANIFEST_SCHEMA, build_manifest(directory))]
     return errs
 
 
@@ -229,7 +269,9 @@ def build_manifest(directory: Path = DATA_DIR) -> dict:
         meta_name = data.SIDECARS.get(n, n)
         try:
             meta = (_load(directory / meta_name) or {}).get("meta") or {}
-        except (OSError, ValueError, EOFError, AttributeError):
+        except (OSError, ValueError, EOFError, AttributeError, RecursionError):
+            meta = {}
+        if not isinstance(meta, dict):     # a broken file: validate_dir() reports it; the manifest just omits its meta
             meta = {}
         for key in ("date", "source", "license", "schema_version"):
             if meta.get(key) not in (None, ""):
@@ -308,12 +350,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dir", default=str(DATA_DIR), help="snapshot directory (default: vulnscan/data/web)")
     ap.add_argument("--check", action="store_true", help="do not write: fail when MANIFEST.json is not current")
     ap.add_argument("--max-age", type=int, metavar="DAYS", help="fail when any snapshot is older than DAYS (release: 30)")
-    ap.add_argument("--today", help="reference date for --max-age (YYYY-MM-DD; default: today, UTC)")
+    ap.add_argument("--today", type=date.fromisoformat, help="reference date for --max-age (YYYY-MM-DD; default: today, UTC)")
     ap.add_argument("--pack", metavar="DIR", help="also write the release asset kashif-webdata-<date>.tar.gz into DIR")
     args = ap.parse_args(argv)
     directory = Path(args.dir)
-    today = date.fromisoformat(args.today) if args.today else None
-    errs = validate_dir(directory, max_age=args.max_age, today=today)
+    errs = validate_dir(directory, max_age=args.max_age, today=args.today)
     if errs:
         print(f"{len(errs)} problem(s) in {directory}:", file=sys.stderr)
         for e in errs:

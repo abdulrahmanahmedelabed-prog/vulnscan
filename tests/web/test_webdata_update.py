@@ -804,3 +804,174 @@ def test_release_layout_temp_names_are_not_next_to_the_binary():
     """update_web_data works in <home>/webdata only; the binary updater's mkstemp/glob prefixes are untouched."""
     src = (ROOT / "vulnscan" / "updater.py").read_text(encoding="utf-8")
     assert 'mkstemp(prefix=_WEB_TMP' in src and 'dir=root' in src
+
+
+# ===================================================================== adversarial review (WP17 review)
+
+def _corrupt_deflate(gz: bytes) -> bytes:
+    """A gzip file whose header is intact but whose deflate stream is not (zlib.error, not OSError, on read)."""
+    return gz[:10] + b"\xff" * 64 + gz[74:]
+
+
+def test_validate_reports_a_corrupt_deflate_stream_instead_of_crashing(snap):
+    p = snap / "retire-jsrepository.json.gz"
+    p.write_bytes(_corrupt_deflate(p.read_bytes()))
+    errs = validate.validate_dir(snap)
+    assert any(e.startswith("retire-jsrepository.json.gz: unreadable") for e in errs), errs
+    validate.build_manifest(snap)                                    # never raises either
+    assert validate.main(["--dir", str(snap)]) == 1
+
+
+def _psl_snap(snap: Path, text: bytes) -> None:
+    gz = gzip.compress(text, 9, mtime=0)
+    (snap / "psl.dat.gz").write_bytes(gz)
+    side = json.loads((snap / "psl.dat.meta.json").read_text(encoding="utf-8"))
+    side["sha256"] = hashlib.sha256(gz).hexdigest()
+    (snap / "psl.dat.meta.json").write_text(json.dumps(side, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+@pytest.mark.parametrize("text, needle", [
+    (b"<html>not the list</html>\n", "not a Public Suffix List"),
+    (b"\xff\xfe\x00garbage", "not UTF-8"),
+    (None, "rule count"),
+])
+def test_validate_checks_the_psl_content_not_only_its_sidecar_hash(snap, text, needle):
+    real = gzip.decompress((snap / "psl.dat.gz").read_bytes())
+    if text is None:                                                  # a real list missing one rule
+        text = real.replace(b"\ncom\n", b"\n", 1)
+        assert text != real
+    _psl_snap(snap, text)
+    errs = validate.validate_dir(snap)
+    assert any(e.startswith("psl.dat.gz:") and needle in e for e in errs), errs
+
+
+def test_validate_cli_rejects_a_bad_today_date_cleanly(snap, capsys):
+    with pytest.raises(SystemExit) as e:
+        validate.main(["--dir", str(snap), "--max-age", "30", "--today", "13/11/2026"])
+    assert e.value.code == 2
+    capsys.readouterr()
+
+
+def test_update_refuses_a_member_with_a_corrupt_deflate_stream(fake, home, tmp_path):
+    good = _snapshot(tmp_path, "2099-01-02", name="zlib")
+    p = good / "retire-jsrepository.json.gz"
+    p.write_bytes(_corrupt_deflate(p.read_bytes()))
+    validate.write_manifest(good)                                     # the manifest hash matches the broken file
+    files = {q.name: q.read_bytes() for q in good.iterdir()}
+    fake.release({"kashif-webdata-2099-01-02.tar.gz": _tar(files)})
+    with pytest.raises(updater.WebDataError) as e:
+        updater.update_web_data(net=fake.net)
+    assert e.value.code == "webdata_invalid"
+    assert list(home.iterdir()) == []
+
+
+def test_an_asset_with_an_impossible_date_is_ignored(fake, home, tmp_path):
+    name, body = _asset(tmp_path, "2099-01-02")
+    fake.release({name: body, "kashif-webdata-2099-13-45.tar.gz": body, "kashif-webdata-9999-99-99.tar.gz": body})
+    res = updater.update_web_data(net=fake.net)
+    assert res["installed"] == "2099-01-02" and sorted(p.name for p in home.iterdir()) == ["2099-01-02"]
+
+
+def test_an_archive_whose_tar_stream_is_larger_than_the_caps_is_refused(fake, home, tmp_path, monkeypatch):
+    """A pax header is read into memory by tarfile and is not a member: the decompressed stream itself is capped."""
+    good = _snapshot(tmp_path, "2099-01-02", name="pax")
+    files = {q.name: q.read_bytes() for q in good.iterdir()}
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT) as tar:
+        for n, raw in sorted(files.items()):
+            info = tarfile.TarInfo(n)
+            info.size = len(raw)
+            if n == "MANIFEST.json":
+                info.pax_headers = {"comment": "x" * (4 * 1024 * 1024)}
+            tar.addfile(info, io.BytesIO(raw))
+    fake.release({"kashif-webdata-2099-01-02.tar.gz": gzip.compress(buf.getvalue(), 9, mtime=0)})
+    monkeypatch.setattr(updater, "MAX_WEBDATA_TOTAL", 3 * 1024 * 1024)
+    with pytest.raises(updater.WebDataError) as e:
+        updater.update_web_data(net=fake.net)
+    assert e.value.code == "webdata_invalid"
+    assert list(home.iterdir()) == []
+
+
+def test_pruning_never_removes_the_snapshot_just_installed(fake, home, tmp_path):
+    """Two newer dated folders this Kashif cannot use (another version's schema) must not evict the new install."""
+    for day in ("2099-05-01", "2099-06-01"):
+        other = _snapshot(tmp_path, day, name=f"other{day}")
+        man = json.loads((other / data.MANIFEST).read_text(encoding="utf-8"))
+        man["schema_version"] = data.SCHEMA_VERSION + 1
+        (other / data.MANIFEST).write_text(json.dumps(man), encoding="utf-8")
+        shutil.copytree(other, home / day)
+    name, body = _asset(tmp_path, "2099-01-02")
+    fake.release({name: body})
+    res = updater.update_web_data(net=fake.net)
+    assert res["status"] == "installed" and Path(res["path"]).is_dir()
+    assert data.user_dir() == home / "2099-01-02"
+
+
+def test_a_generator_crashing_with_any_exception_installs_nothing(mirror, tmp_path):
+    out = _copy_bundled(tmp_path / "out")
+    before = {p.name: p.read_bytes() for p in out.iterdir()}
+
+    def hook(name, m):
+        _relax(name, m)
+        if name == "takeover":
+            m.build = lambda day: (_ for _ in ()).throw(AttributeError("boom"))
+
+    with pytest.raises(refresh.RefreshError) as e:
+        refresh.refresh(out=out, sources=mirror, module_hook=hook, log=_quiet)
+    assert "takeover" in str(e.value) and "boom" in str(e.value)
+    assert {p.name: p.read_bytes() for p in out.iterdir()} == before
+
+
+def test_http_get_turns_a_truncated_body_into_a_refresh_error(monkeypatch, tmp_path):
+    import http.client
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n):
+            raise http.client.IncompleteRead(b"part", 100)
+
+    class Opener:
+        def open(self, req, timeout):
+            return Resp()
+
+    monkeypatch.setattr(refresh.urllib.request, "build_opener", lambda *a: Opener())
+    with pytest.raises(refresh.RefreshError):
+        refresh.http_get("https://raw.githubusercontent.com/x/y")
+    # so record() tries the next mirror (here: the PSL's GitHub copy) instead of stopping with a traceback
+    first, second = refresh._psl_inputs(refresh.load_module("psl"))[0].urls
+    psl = synthetic_mirror()[first]
+
+    def fetch(url):
+        return refresh.http_get(url) if url == first else psl
+    index = refresh.record([refresh.BY_NAME["psl"]], Path(tmp_path) / "m", DAY, fetch=fetch, log=_quiet)
+    assert index["inputs"]["psl"]["public_suffix_list.dat"]["url"] == second
+
+
+def test_a_snapshot_root_that_is_a_file_fails_cleanly(fake, home, tmp_path):
+    name, body = _asset(tmp_path, "2099-01-02")
+    fake.release({name: body})
+    home.parent.mkdir(parents=True)
+    home.write_text("not a folder", encoding="utf-8")
+    with pytest.raises(updater.WebDataError) as e:
+        updater.update_web_data(net=fake.net)
+    assert e.value.code == "webdata_install_failed" and home.read_text(encoding="utf-8") == "not a folder"
+    assert data.user_dir() is None
+
+
+
+@pytest.mark.parametrize("name, text", [
+    ("tech.json", "[]\n"),
+    ("malicious-hosts.json", '{"meta": 1, "signatures": "x"}\n'),
+    ("exposed-paths.json", '{"meta": {}, "paths": ["/x", 3]}\n'),
+    ("psl.dat.meta.json", "[]\n"),
+])
+def test_validate_reports_wrongly_shaped_files_instead_of_crashing(snap, name, text):
+    (snap / name).write_text(text, encoding="utf-8", newline="\n")
+    errs = validate.validate_dir(snap)
+    assert any(e.startswith(name + ":") for e in errs), errs
+    validate.build_manifest(snap)

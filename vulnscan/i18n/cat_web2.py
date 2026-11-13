@@ -14,8 +14,14 @@ which every ``kashif`` command would otherwise pay at start-up (``vulnscan.model
 * an explicit :func:`ensure_loaded` (the web engine calls it before rendering English), or
 * a ``vulnscan.i18n.to_en`` call whose text no other catalogue translates: while ``vulnscan.i18n`` loads its modules,
   ``CATALOG.items()`` appends a loader entry to the end of ``vulnscan.i18n.PATTERNS``; when the lookup reaches it, the
-  web catalogue is installed into ``vulnscan.i18n`` (exact strings into its ``CATALOG``, patterns right after the
-  loader) and the same lookup continues through them. Code scans never reach the loader for their own strings.
+  web catalogue is installed into ``vulnscan.i18n`` (exact strings into its ``CATALOG``, and right after the loader two
+  pattern-like entries: the exact strings and one :class:`_Patterns` dispatcher for all templates) and the same lookup
+  continues through them. Code scans never reach the loader for their own strings.
+
+**Bounded.** Text from the scanned site can reach ``to_en`` inside a finding's parameters, so the dispatcher limits
+the text length (:data:`MAX_TEXT`, :data:`MAX_GENERIC` for templates with no Arabic of their own) and the nesting of
+group translations (:data:`MAX_DEPTH`); without that, ``"x: x: x: …"`` recursed once per separator (quadratic or worse,
+then RecursionError).
 
 The 1.0.1 strings of ``vulnscan/web.py`` stay in ``cat_web`` (earlier in ``vulnscan.i18n``, so their English is
 unchanged for 1.x reports). A source that fails to import is skipped and named in ``FAILED`` (an i18n problem must never
@@ -238,6 +244,65 @@ class _Exact:
         return _Hit(en) if en is not None else None
 
 
+# Bounds for the web patterns (hostile-target safety, §0.6): a page's own text can reach a report through a finding's
+# parameters, and a lazy ``(?P<a>.+?): (?P<b>.+?)`` template matched against ``"x: x: x: …"`` recurses once per
+# separator (``to_en`` translates every group), so an unbounded lookup is quadratic-to-cubic in the text length and
+# ends in RecursionError. The longest legitimate web text is a few hundred characters.
+MAX_TEXT = 2000          # longer texts are not pattern-translated by this catalogue (exact strings still are)
+MAX_GENERIC = 400        # templates without Arabic text of their own ("{kind}: {value}") only on short texts
+MAX_DEPTH = 6            # nested group translations through this catalogue
+_TLS = threading.local()
+
+
+class _Patterns:
+    """One pattern-like entry for all web templates, installed right after :class:`_Exact`. It tries them in order and
+    translates the matched groups itself (through ``vulnscan.i18n.to_en``), within :data:`MAX_TEXT`,
+    :data:`MAX_GENERIC` and :data:`MAX_DEPTH`; a hit is returned as an already translated sentence."""
+
+    pattern = "<kashif web catalogue: templates>"
+
+    def __init__(self, entries: list[tuple[re.Pattern, str, bool]]):
+        self.entries = entries
+
+    def fullmatch(self, text, *args):
+        if not isinstance(text, str) or len(text) > MAX_TEXT:
+            return None
+        if text == getattr(_TLS, "result", None):
+            # ``to_en`` passes the sentence this entry just returned through ``to_en`` once more (as the ``t`` group of
+            # the hit); a sentence that still holds untranslated Arabic must not be matched again
+            _TLS.result = None
+            return None
+        depth = getattr(_TLS, "depth", 0)
+        if depth >= MAX_DEPTH:
+            return None
+        mod = _i18n()
+        to_en = getattr(mod, "to_en", None) or (lambda t: t)
+        short = len(text) <= MAX_GENERIC
+        for rx, en, generic in self.entries:
+            if generic and not short:
+                continue
+            m = rx.fullmatch(text)
+            if m is None:
+                continue
+            _TLS.depth = depth + 1
+            try:
+                groups = {k: to_en(v) if v is not None else "" for k, v in m.groupdict().items()}
+            finally:
+                _TLS.depth = depth
+            out = re.sub(r"\\g<(\w+)>", lambda g: groups.get(g.group(1), ""), en)
+            _TLS.result = out
+            return _Hit(out)
+        return None
+
+
+_LITERAL_AR = _ARABIC
+
+
+def _is_generic(rx: str) -> bool:
+    """A template whose own text has no Arabic (``{kind}: {value}``): it only re-joins translated groups."""
+    return not _LITERAL_AR.search(_ANY_GROUP.sub("", rx))
+
+
 class _Loader:
     """Pattern-like entry at the end of ``vulnscan.i18n.PATTERNS``; reaching it means no other catalogue knew the text."""
 
@@ -280,8 +345,8 @@ def ensure_loaded() -> None:
         target = mod.CATALOG
         for ar, en in dict.items(CATALOG):
             target.setdefault(norm(ar), en)
-        compiled = [(_Exact(), "\\g<t>")]
-        compiled += [(_COMPILED.get(rx) or re.compile(rx, re.S), en) for rx, en in PATTERNS]
+        entries = [(_COMPILED.get(rx) or re.compile(rx, re.S), en, _is_generic(rx)) for rx, en in PATTERNS]
+        compiled = [(_Exact(), "\\g<t>"), (_Patterns(entries), "\\g<t>")]
         pats = mod.PATTERNS
         at = next((i for i, (p, _) in enumerate(pats) if p is _LOADER), len(pats) - 1)
         pats[at + 1:at + 1] = compiled

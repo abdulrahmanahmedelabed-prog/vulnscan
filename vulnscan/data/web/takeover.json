@@ -131,18 +131,6 @@
    "reference": "nuclei-templates http/takeovers/bitbucket-takeover.yaml"
   },
   {
-   "name": "Campaign Monitor",
-   "cname": [
-    "createsend.com"
-   ],
-   "fingerprints": [
-    "css.createsend1.com"
-   ],
-   "status": null,
-   "vulnerable": true,
-   "reference": "nuclei-templates http/takeovers/campaignmonitor-takeover.yaml"
-  },
-  {
    "name": "Canny",
    "cname": [
     "canny.io"
@@ -260,10 +248,7 @@
     "github.io"
    ],
    "fingerprints": [
-    "There isn't a GitHub Pages site here.",
-    "For root URLs (like http://example.com/) you must provide an index.html file",
-    "The site configured at this address does not contain the requested file.",
-    "For root URLs (like <code>http://example.com/</code>)"
+    "There isn't a GitHub Pages site here."
    ],
    "status": 404,
    "vulnerable": true,
@@ -526,18 +511,6 @@
    "status": null,
    "vulnerable": true,
    "reference": "nuclei-templates http/takeovers/ngrok-takeover.yaml"
-  },
-  {
-   "name": "Pagewiz",
-   "cname": [
-    "pagewiz.com"
-   ],
-   "fingerprints": [
-    "Start Your New Landing Page Now!"
-   ],
-   "status": null,
-   "vulnerable": true,
-   "reference": "nuclei-templates http/takeovers/pagewiz-takeover.yaml"
   },
   {
    "name": "Pantheon",
