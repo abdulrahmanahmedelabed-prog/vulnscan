@@ -30,7 +30,8 @@ case "$(uname -s)" in
   Linux)
     case "$(uname -m)" in
       x86_64|amd64) ASSET="kashif-linux-x86_64"; LEGACY="vulnscan-linux" ;;
-      *) die "no prebuilt binary for $(uname -m); install with: pip install vulnscan" ;;
+      # from git, not from PyPI: "vulnscan" there is an unrelated project
+      *) die "no prebuilt binary for $(uname -m); install with Python 3.10+: pip install \"git+https://github.com/$REPO\"" ;;
     esac ;;
   *) die "unsupported system $(uname -s); on Windows use install.ps1 or download kashif-windows-x86_64.exe" ;;
 esac

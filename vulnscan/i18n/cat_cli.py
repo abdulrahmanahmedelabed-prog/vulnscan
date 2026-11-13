@@ -22,7 +22,7 @@ CATALOG: dict[str, str] = {
     "صيغة التقرير؛ sarif للتكامل مع GitHub Code Scanning وVS Code":
         "Report format; use sarif for GitHub Code Scanning and VS Code",
     "اكتب التقرير إلى هذا الملف بدلًا من الشاشة": "Write the report to this file instead of standard output",
-    "اكتب PREFIX.md و PREFIX.json و PREFIX.html معًا": "Write PREFIX.md, PREFIX.json, PREFIX.html and PREFIX.sarif at once",
+    "اكتب PREFIX.md وPREFIX.json وPREFIX.html وPREFIX.sarif معًا": "Write PREFIX.md, PREFIX.json, PREFIX.html and PREFIX.sarif at once",
     "استثنِ مسارات (يمكن تكراره)": "Exclude paths matching GLOB (repeatable)",
     "تجاهل قاعدة بمعرّفها": "Ignore a rule by its ID (repeatable)",
     "اعرض هذه الخطورة فما فوق فقط": "Report only findings at or above this severity",
@@ -62,8 +62,9 @@ CATALOG: dict[str, str] = {
     "مجلد ذاكرة مؤقتة تزايدية: إعادة فحص مشروع لم يتغير أسرع بكثير وبالنتائج نفسها":
         "Incremental cache directory: re-scanning an unchanged project is much faster, with identical results",
     "لا تستخدم الذاكرة المؤقتة للفحص": "Do not use the scan cache",
-    "لغة المخرجات: ar عربية، en إنجليزية، both الاثنتان؛ auto (الافتراضي) يتبع VULNSCAN_LANG ثم لغة النظام":
-        "Output language: ar (Arabic), en (English) or both; auto (default) follows VULNSCAN_LANG, then the system locale",
+    "لغة المخرجات: ar عربية، en إنجليزية، both الاثنتان؛ auto (الافتراضي) يتبع VULNSCAN_LANG أو KASHIF_LANG ثم لغة النظام":
+        "Output language: ar (Arabic), en (English) or both; auto (default) follows VULNSCAN_LANG or KASHIF_LANG, then "
+        "the system locale",
     "اعرض القواعد المدمجة واخرج": "List the built-in rules and exit",
     "لا تلوّن مخرجات الطرفية": "Do not color the terminal output",
     "لا تفتح المتصفح تلقائيًا": "Do not open the browser automatically",
@@ -140,8 +141,6 @@ CATALOG: dict[str, str] = {
     "لا يوجد ملف سياسة في المجلد المفحوص": "No policy file in the scanned folder",
     "قيمة --sla غير صالحة (مثال: critical=7,high=30,medium=90)": "Invalid --sla value (example: critical=7,high=30,medium=90)",
     "صيغة --export هي FORMAT=FILE بصيغة تصدير معروفة": "--export takes FORMAT=FILE with a known export format",
-    "لصيغة asff استخدم: kashif export REPORT.json -f asff --aws-account ID --aws-region REGION":
-        "for asff use: kashif export REPORT.json -f asff --aws-account ID --aws-region REGION",
     "ملف السياسة يطلب تقارير (reports) لم تُكتب: حدّد مجلدها بالخيار --policy-reports-dir":
         "The policy file asks for reports (reports:) that were not written: choose their directory with "
         "--policy-reports-dir",
@@ -164,6 +163,10 @@ CATALOG: dict[str, str] = {
     "فحص ويب سلبي أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة، بلا اختبار نشط.":
         "Deeper passive web scan: page analysis and common exposed-path probes; no active testing.",
     "فحص ويب سلبي: طلب واحد فقط، بلا أي اختبار نشط.": "Passive web scan: a single request; no active testing.",
+    "تقرير الفحص المطلوب ربطه بأطر الامتثال غير محدَّد: kashif compliance REPORT.json (تقرير JSON أو SARIF؛ "
+    "أنشئه بالأمر: kashif PATH -f json -o REPORT.json)":
+        "the scan report to map to compliance frameworks is missing: kashif compliance REPORT.json (a JSON or SARIF "
+        "report; make one with: kashif PATH -f json -o REPORT.json)",
     "خط الأساس غير موجود أو فارغ؛ كل النتائج تُعرض كجديدة.":
         "Baseline is missing or empty; all findings are reported as new.",
     # ------------------------------------------------------------------ scan notes and errors (server.py)
@@ -175,12 +178,6 @@ CATALOG: dict[str, str] = {
 }
 
 PATTERNS: list[tuple[str, str]] = [
-    # --list-rules headings
-    (r"(?P<n>\d+) قاعدة مدمجة:", r"\g<n> built-in rules:"),
-    (r"(?P<n>\d+) قاعدة تدفق بيانات وAPEX \(12 لغة منها PL/SQL، مدركة للأنواع، عبر الملفات\):",
-     r"\g<n> data-flow and APEX rules (12 languages including PL/SQL; type-aware, cross-file):"),
-    (r"(?P<n>\d+) استعلام VQL مدمج \(فوق قاعدة بيانات البرنامج\):",
-     r"\g<n> built-in VQL queries (over the program database):"),
     # errors
     (r"الهدف غير موجود: (?P<target>.+)", r"Target not found: \g<target>"),
     (r"حزمة القواعد غير مثبّتة: (?P<names>.+)", r"Rule pack not installed: \g<names>"),
@@ -192,18 +189,22 @@ PATTERNS: list[tuple[str, str]] = [
      r"كجديدة: (?P<path>.+)",
      r"The baseline file was not written by --write-baseline (it has no fingerprints list); it counts as empty and "
      r"every finding is shown as new: \g<path>"),
-    (r"تجاوز مهلة الإصلاح: (?P<n>\d+) نتيجة مفتوحة", r"Fix deadline (SLA) exceeded: \g<n> open findings"),
     (r"لم يُحدَّث ملف الفرز: المجلد ‎\.kashif أو ملف triage\.json في المشروع رابط رمزي يشير إلى خارجه",
      r"The triage file was not updated: .kashif or triage.json in the project is a symbolic link pointing "
      r"outside it"),
-    (r"قبول خطر منتهٍ: أُعيد فتح (?P<n>\d+) نتيجة", r"Risk acceptance expired: \g<n> findings re-opened"),
-    (r"ارتداد: عادت (?P<n>\d+) نتيجة بعد إصلاحها", r"Regression: \g<n> findings are back after being fixed"),
-    # scan notes (cli.py); a count of exactly 1 gets the English singular
-    (r"استعلام OSV\.dev عن الاعتماديات: 1 ثغرة معروفة\.", r"OSV.dev dependency check: 1 known vulnerability."),
-    (r"خط الأساس: كُتمت 1 نتيجة معروفة من أصل (?P<size>\d+)؛ تُعرض النتائج الجديدة فقط\.",
+    # scan notes (cli.py): the count agrees with its noun in Arabic (one, two, few, many, other: i18n/plural.py);
+    # "1 ..." / "(?P<n>\d+) ..." with the singular noun are the notes of reports written by Kashif 1.0.1 and earlier
+    (r"استعلام OSV\.dev عن الاعتماديات: (?:ثغرة معروفة واحدة|1 ثغرة معروفة)\.",
+     r"OSV.dev dependency check: 1 known vulnerability."),
+    (r"استعلام OSV\.dev عن الاعتماديات: ثغرتان معروفتان\.", r"OSV.dev dependency check: 2 known vulnerabilities."),
+    (r"استعلام OSV\.dev عن الاعتماديات: (?P<n>\d+) (?:ثغرات معروفة|ثغرةً معروفةً)\.",
+     r"OSV.dev dependency check: \g<n> known vulnerabilities."),
+    (r"خط الأساس: كُتمت (?:نتيجة معروفة واحدة|1 نتيجة معروفة) من أصل (?P<size>\d+)؛ تُعرض النتائج الجديدة فقط\.",
      r"Baseline: suppressed 1 known finding out of \g<size>; reporting new findings only."),
-    (r"حُفظ خط الأساس: 1 بصمة في (?P<file>.+?)\. الفحوص القادمة مع --baseline ستعرض الجديد فقط\.",
-     r"Baseline saved: 1 fingerprint in \g<file>. Future scans with --baseline will report new findings only."),
+    (r"خط الأساس: كُتمت نتيجتان معروفتان من أصل (?P<size>\d+)؛ تُعرض النتائج الجديدة فقط\.",
+     r"Baseline: suppressed 2 known findings out of \g<size>; reporting new findings only."),
+    (r"خط الأساس: كُتمت (?P<n>\d+) (?:نتائج معروفة|نتيجةً معروفةً) من أصل (?P<size>\d+)؛ تُعرض النتائج الجديدة فقط\.",
+     r"Baseline: suppressed \g<n> known findings out of \g<size>; reporting new findings only."),
     (r"فحص ويب سلبي مع زحف على 1 صفحة من النطاق نفسه \(طلب كل (?P<delay>[\d.e+-]+) ثانية\)\.",
      r"Passive web scan with a same-origin crawl of 1 page (one request every \g<delay> s)."),
     (r"OSV\.dev: 1 ثغرة معروفة في الاعتماديات\.", r"OSV.dev: 1 known vulnerability in dependencies."),
@@ -214,12 +215,17 @@ PATTERNS: list[tuple[str, str]] = [
     (r"خط الأساس: كُتمت (?P<n>\d+) نتيجة معروفة من أصل (?P<size>\d+)؛ تُعرض النتائج الجديدة فقط\.",
      r"Baseline: suppressed \g<n> known findings out of \g<size>; reporting new findings only."),
     # console messages (cli.py)
-    (r"حُفظ خط الأساس: (?P<n>\d+) بصمة في (?P<file>.+?)\. الفحوص القادمة مع --baseline ستعرض الجديد فقط\.",
-     r"Baseline saved: \g<n> fingerprints in \g<file>. Future scans with --baseline will report new findings only."),
     (r"كُتبت التقارير: (?P<prefix>.+?)\.md / \.json / \.html / \.sarif",
      r"Reports written: \g<prefix>.md / .json / .html / .sarif"),
     (r"كُتب التقرير إلى (?P<file>.+)", r"Report written to \g<file>"),
-    # scan notes (server.py)
+    # scan notes (server.py); the page count agrees with its noun since 1.0.2 (the "N صفحة" pattern below is the
+    # wording of 1.0.1, still in saved scans)
+    (r"فحص ويب سلبي مع زحف على صفحة واحدة من النطاق نفسه \(طلب كل (?P<delay>[\d.e+-]+) ثانية\)\.",
+     r"Passive web scan with a same-origin crawl of 1 page (one request every \g<delay> s)."),
+    (r"فحص ويب سلبي مع زحف على صفحتين من النطاق نفسه \(طلب كل (?P<delay>[\d.e+-]+) ثانية\)\.",
+     r"Passive web scan with a same-origin crawl of 2 pages (one request every \g<delay> s)."),
+    (r"فحص ويب سلبي مع زحف على (?P<n>\d+) (?:صفحات|صفحةً) من النطاق نفسه \(طلب كل (?P<delay>[\d.e+-]+) ثانية\)\.",
+     r"Passive web scan with a same-origin crawl of \g<n> pages (one request every \g<delay> s)."),
     (r"فحص ويب سلبي مع زحف على (?P<n>\d+) صفحة من النطاق نفسه \(طلب كل (?P<delay>[\d.e+-]+) ثانية\)\.",
      r"Passive web scan with a same-origin crawl of \g<n> pages (one request every \g<delay> s)."),
     (r"OSV\.dev: (?P<n>\d+) ثغرة معروفة في الاعتماديات\.", r"OSV.dev: \g<n> known vulnerabilities in dependencies."),

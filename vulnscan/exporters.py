@@ -186,6 +186,12 @@ STR = {
         "e_aws_cli": "the asff format needs --aws-account (the 12-digit AWS account ID) and --aws-region "
                      "(e.g. eu-west-1)",
         "e_report": "cannot read the report '{path}': {error}",
+        "e_report_kind": "cannot read the report '{path}': not a regular file (it may be a device, pipe or directory)",
+        "e_report_big": "the report '{path}' is larger than {mb} MB; not read",
+        "r_missing": "the file does not exist",
+        "r_denied": "permission denied",
+        "r_json": "not valid JSON (line {line}, column {col})",
+        "r_utf8": "not UTF-8 text",
         "e_shape": "'{path}' is not a Kashif JSON report (expected the output of 'kashif PATH -f json': an object "
                    "with a 'findings' list, or a non-empty list of findings)",
         "e_write": "cannot write '{path}': {error}",
@@ -205,8 +211,11 @@ STR = {
         "h_ref": "branch or commit used in those links (default: HEAD)",
         "h_bom": "csv, jira-csv: start the file with a byte order mark so Excel reads it as UTF-8",
         "h_score": "print the project's Kashif risk score to standard error",
-        "m_score": "Kashif risk score: {score}/10 ({rating}) - {n} open findings. Not a CVSS score.",
+        "m_score": "Kashif risk score: {score}/10 ({rating}) - {n:open_findings}. Not a CVSS score.",
         "m_written": "written: {path} ({fmt})",
+        "e_no_report": "the JSON report to convert is missing: kashif export REPORT.json -f FORMAT "
+                       "(make one with: kashif PATH -f json -o REPORT.json)",
+        "e_no_format": "the output format is missing: add -f FORMAT (list: kashif export --list-formats) or --score",
     },
     "ar": {
         "f_defectdojo": "DefectDojo (Generic Findings Import، JSON)",
@@ -251,6 +260,12 @@ STR = {
         "e_aws_cli": "تحتاج صيغة asff إلى --aws-account (رقم حساب AWS من 12 رقمًا) وإلى --aws-region "
                      "(مثل eu-west-1)",
         "e_report": "تعذّرت قراءة التقرير '{path}': {error}",
+        "e_report_kind": "تعذّرت قراءة التقرير '{path}': ليس ملفًا عاديًا (قد يكون جهازًا أو أنبوبًا أو مجلدًا)",
+        "e_report_big": "التقرير '{path}' أكبر من {mb} ميغابايت؛ لم يُقرأ",
+        "r_missing": "الملف غير موجود",
+        "r_denied": "لا صلاحية لقراءته",
+        "r_json": "ليس JSON صالحًا (السطر {line}، العمود {col})",
+        "r_utf8": "ليس نصًا بترميز UTF-8",
         "e_shape": "'{path}' ليس تقرير JSON من كاشِف (المتوقع مخرجات 'kashif PATH -f json': كائن فيه قائمة "
                    "'findings'، أو قائمة نتائج غير فارغة)",
         "e_write": "تعذّرت الكتابة إلى '{path}': {error}",
@@ -270,15 +285,19 @@ STR = {
         "h_ref": "الفرع أو الإيداع المستخدم في تلك الروابط (الافتراضي: HEAD)",
         "h_bom": "csv و jira-csv: بدء الملف بعلامة ترتيب البايتات ليقرأه Excel بترميز UTF-8",
         "h_score": "طباعة درجة خطر كاشِف للمشروع على خرج الأخطاء",
-        "m_score": "درجة خطر كاشِف: {score}/10 ({rating}) - {n} نتيجة مفتوحة. ليست درجة CVSS.",
+        "m_score": "درجة خطر كاشِف: {score}/10 ({rating}) - {n:open_findings}. ليست درجة CVSS.",
         "m_written": "كُتب الملف: {path} ({fmt})",
+        "e_no_report": "تقرير JSON المراد تحويله غير محدَّد: kashif export REPORT.json -f FORMAT "
+                       "(أنشئه بالأمر: kashif PATH -f json -o REPORT.json)",
+        "e_no_format": "صيغة الإخراج غير محدَّدة: أضف ‎-f FORMAT (القائمة: kashif export --list-formats) أو ‎--score",
     },
 }
 
 
 def _t(lang: str, key: str, **kw) -> str:
+    from .i18n.cliargs import fmt                  # "{n:open_findings}": the noun agrees with the number
     text = STR["ar" if lang == "ar" else "en"].get(key) or STR["en"][key]
-    return text.format(**kw) if kw else text
+    return fmt(text, "ar" if lang == "ar" else "en", **kw) if kw else text
 
 
 class ExportError(ValueError):
@@ -1334,24 +1353,63 @@ def _parser(lang: str) -> argparse.ArgumentParser:
     return p
 
 
+MAX_REPORT_BYTES = 64_000_000          # the same bound as a baseline (baseline.MAX_BASELINE_BYTES)
+
+
 def _load_report(path: str, lang: str):
-    """(findings list, report meta) from a Kashif JSON report file, or from standard input when ``path`` is -."""
+    """(findings list, report meta) from a Kashif JSON report file, or from standard input when ``path`` is -.
+
+    At most ``MAX_REPORT_BYTES`` are read, and a named path must be a regular file: ``/dev/zero``, a FIFO or a
+    directory is refused with a clear error (exit 2) instead of reading without end or blocking."""
+    import os
+    import stat
+    too_big = ExportError(_bi(lang, "e_report_big", path=path, mb=MAX_REPORT_BYTES // 1_000_000))
     try:
         if path == "-":                                     # bytes, not the console code page (Windows)
             stdin = getattr(sys.stdin, "buffer", None)
-            text = stdin.read().decode("utf-8-sig") if stdin is not None else sys.stdin.read()
+            raw = stdin.read(MAX_REPORT_BYTES + 1) if stdin is not None else sys.stdin.read(MAX_REPORT_BYTES + 1)
         else:
-            with open(path, encoding="utf-8-sig") as fh:
-                text = fh.read()
+            info = os.stat(path)
+            if not stat.S_ISREG(info.st_mode):
+                raise ExportError(_bi(lang, "e_report_kind", path=path))
+            if info.st_size > MAX_REPORT_BYTES:
+                raise too_big
+            with open(path, "rb") as fh:
+                raw = fh.read(MAX_REPORT_BYTES + 1)
+        if len(raw) > MAX_REPORT_BYTES:                     # stdin, or a file that grew after the stat
+            raise too_big
+        text = raw.decode("utf-8-sig") if isinstance(raw, bytes) else raw
         data = json.loads(text)
+    except ExportError:
+        raise
     except (OSError, ValueError, RecursionError) as e:     # RecursionError: JSON nested thousands of levels deep
-        raise ExportError(_bi(lang, "e_report", path=path, error=str(e)[:300] or type(e).__name__)) from e
+        raise ExportError(_read_error(lang, path, e)) from e
     # Only a Kashif report goes on: `[]`, `{}` or another tool's JSON would otherwise give an empty export (exit 0)
     if isinstance(data, list) and data and all(_is_finding(d) for d in data):
         return data, {}
     if isinstance(data, dict) and isinstance(data.get("findings"), list) and all(_is_finding(d) for d in data["findings"]):
         return data["findings"], {k: data[k] for k in ("target", "generated_at", "files_scanned") if k in data}
     raise ExportError(_bi(lang, "e_shape", path=path))
+
+
+def _read_error(lang: str, path: str, e: BaseException) -> str:
+    """"cannot read the report" with the reason in the message's own language: the common causes (missing file,
+    no permission, broken JSON, not UTF-8) are worded per language instead of Python's English error text."""
+    from .i18n.cliargs import pick
+
+    def reason(lg: str) -> str:
+        if isinstance(e, FileNotFoundError):
+            return _t(lg, "r_missing")
+        if isinstance(e, PermissionError):
+            return _t(lg, "r_denied")
+        if isinstance(e, json.JSONDecodeError):
+            return _t(lg, "r_json", line=e.lineno, col=e.colno)
+        if isinstance(e, UnicodeDecodeError):
+            return _t(lg, "r_utf8")
+        return str(e)[:300] or type(e).__name__
+
+    return pick(lang, _t("ar", "e_report", path=path, error=reason("ar")),
+                _t("en", "e_report", path=path, error=reason("en")))
 
 
 def _is_finding(d) -> bool:
@@ -1385,8 +1443,11 @@ def main(argv: "list[str] | None" = None) -> int:
             print(f"{info['id']:<17} .{info['ext']:<5} {info['name']} — {info['description']}")
         return 0
     if not args.report or not (args.fmt or args.score):
-        parser.print_usage(sys.stderr)
-        return 2
+        try:                                                # usage, then the missing part, exit 2
+            with localized_argparse(hlang):
+                parser.error(_bi(hlang, "e_no_report" if not args.report else "e_no_format"))
+        except SystemExit:
+            return 2
     try:
         findings, meta = _load_report(args.report, args.lang)
         meta["lang"] = lang

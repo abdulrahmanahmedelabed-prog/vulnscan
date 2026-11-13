@@ -296,8 +296,10 @@ def test_html_report_is_self_contained():
 def test_html_report_arabic_rtl():
     out = _report("ar", frameworks=["owasp", "pci"])
     assert "<html lang='ar' dir='rtl'>" in out
-    assert C.STR["ar"]["not_cert"] in out and "الملخص التنفيذي" in out and "A03:2021 الحقن" in out
-    assert "استعلام SQL من مدخلات" in out and "استخدم استعلامات مُعلَّمة." in out and "نقطة الخطر: SQL" in out
+    text = re.sub(r"<[^>]+>", "", out)                                       # Latin runs are isolated in <bdi>
+    assert C.STR["ar"]["not_cert"] in out and "الملخص التنفيذي" in out and "A03:2021 الحقن" in text
+    assert "<bdi dir='rtl'><bdi dir='ltr'>A03:2021</bdi> الحقن</bdi>" in out   # Arabic title after an id: RTL
+    assert "استعلام SQL من مدخلات" in text and "استخدم استعلامات مُعلَّمة." in out and "نقطة الخطر: SQL" in text
     assert "ملاحظة" in out and "id='fw-pci-dss-4.0'" in out and "id='fw-hipaa-164.312'" not in out
     assert "<bdi dir='ltr'>6.2.4-injection</bdi>" in out                     # identifiers stay left-to-right
     assert "direction:ltr" in out                                            # code blocks

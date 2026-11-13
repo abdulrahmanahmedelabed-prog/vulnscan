@@ -48,7 +48,7 @@ _sleep = time.sleep                  # tests replace this
 _LABELS = {
     "title": ("كاشِف — نتائج الفحص الأمني", "Kashif — security scan results"),
     "none": ("✔ لا نتائج جديدة في هذا التغيير.", "✔ No new findings in this change."),
-    "found": ("{n} نتيجة جديدة في هذا التغيير", "{n} new finding(s) in this change"),
+    "found": ("{n:new_findings} في هذا التغيير", "{n:new_findings} in this change"),     # count agrees with n
     "base": ("مقارنة مع", "Compared with"),
     "sev": ("الخطورة", "Severity"),
     "count": ("العدد", "Count"),
@@ -219,8 +219,9 @@ class _Text:
         self.en = lang != "ar"
 
     def __call__(self, key: str, **kw) -> str:
+        from ..i18n.cliargs import fmt         # "{n:new_findings}": the noun agrees with the number
         t = _LABELS[key][1 if self.en else 0]
-        return t.format(**kw) if kw else t
+        return fmt(t, "en" if self.en else "ar", **kw) if kw else t
 
     def sev(self, s: str) -> str:
         return s.upper() if self.en else SEVERITY_AR.get(s, s)

@@ -59,7 +59,7 @@ RUN apt-get update \
 
 # Install the wheel (compiled to .pyc here, once), then drop pip: nothing is installed at run time.
 RUN --mount=type=bind,from=build,source=/dist,target=/dist \
-    pip install --no-cache-dir --no-index --no-deps /dist/vulnscan-*.whl \
+    pip install --no-cache-dir --no-index --no-deps /dist/kashif-*.whl \
  && pip uninstall -y pip \
  && kashif --version \
  && vulnscan --version

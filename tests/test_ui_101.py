@@ -165,16 +165,17 @@ def test_auditor_report_shows_arabic_notes_and_citations():
     data = C.load_data()
     ar = C.render_html([finding], {}, "ar")
     en = C.render_html([finding], {}, "en")
+    ar_text = re.sub(r"<[^>]+>", "", ar)                 # 1.0.2: Latin runs of Arabic prose are isolated in <bdi>
     for fid, fw in data["frameworks"].items():
-        assert C._e(fw["note_ar"]) in ar and C._e(fw["note"]) not in ar, fid
+        assert C._e(fw["note_ar"]) in ar_text and C._e(fw["note"]) not in ar_text, fid
         assert C._e(fw["note"]) in en and C._e(fw["note_ar"]) not in en, fid
     for sid in ("owasp-top10-2021", "cwe-hierarchy", "kashif-analyst"):
         src = data["sources"][sid]
-        assert C._e(src["title_ar"]) in ar and C._e(src["title"]) not in ar, sid
+        assert C._e(src["title_ar"]) in ar_text and C._e(src["title"]) not in ar_text, sid
         # a citation that starts with a Latin name ("OWASP Top 10:2021، …") still reads right to left
-        assert f"<bdi dir='rtl'>{C._e(src['title_ar'])}</bdi>" in ar, sid
+        assert f"<bdi dir='rtl'>{C._ltr_runs(src['title_ar'])}</bdi>" in ar, sid
         assert C._e(src["title"]) in en and C._e(src["title_ar"]) not in en, sid
-    assert C._e(data["sources"]["cwe-top25-2024"]["retrieved_ar"]) in ar
+    assert C._e(data["sources"]["cwe-top25-2024"]["retrieved_ar"]) in ar_text
     assert C._e(data["sources"]["cwe-top25-2024"]["retrieved"]) in en
 
 
@@ -189,5 +190,5 @@ def test_compliance_cli_html_in_arabic(tmp_path):
                           "--framework", "pci", "-o", str(out)], capture_output=True, text=True, encoding="utf-8",
                          timeout=120)
     assert res.returncode in (0, 1), res.stderr
-    html = out.read_text(encoding="utf-8")
+    html = re.sub(r"<[^>]+>", "", out.read_text(encoding="utf-8"))
     assert "لا ينشر PCI DSS ربطًا مع CWE" in html and "PCI DSS does not publish" not in html

@@ -1342,10 +1342,34 @@ def add_to_baseline(path: pathlib.Path, finding: Finding) -> bool:
     return True
 
 
-def main(argv: list[str] | None = None) -> int:
-    """``vulnscan lsp [--stdio]``: run the language server on stdin/stdout."""
-    p = argparse.ArgumentParser(prog="kashif lsp", description="Kashif language server (LSP over stdio).")
-    p.add_argument("--stdio", action="store_true", help="accepted for editor compatibility; stdio is the only transport")
+# --help in English and Arabic ("both": the Arabic line, then the English line; see vulnscan/i18n/cliargs.py)
+_HELP = {
+    "desc": ("خادم لغة كاشِف (بروتوكول LSP عبر الدخل والخرج القياسيين) للمحررات: الثغرات تحت الكود أثناء الكتابة "
+             "مع إصلاحات سريعة.",
+             "Kashif language server (LSP over stdio) for editors: vulnerabilities underlined as you type, with "
+             "quick fixes."),
+    "stdio": ("مقبول للتوافق مع المحررات؛ الدخل والخرج القياسيان هما وسيلة النقل الوحيدة",
+              "accepted for editor compatibility; stdio is the only transport"),
+    "lang": ("لغة هذه المساعدة: en أو ar أو both (الافتراضي: VULNSCAN_LANG أو KASHIF_LANG ثم لغة النظام)؛ "
+             "لغة التشخيصات يحددها إعداد kashif.language في المحرر",
+             "language of this help: en, ar or both (default: VULNSCAN_LANG or KASHIF_LANG, then the system "
+             "locale); the diagnostics follow the editor setting kashif.language"),
+}
+
+
+def main(argv: list[str] | None = None, help_lang: str | None = None) -> int:
+    """``vulnscan lsp [--stdio]``: run the language server on stdin/stdout. ``help_lang`` (en, ar or both; from
+    ``kashif --lang``): the language of --help, else --lang, else VULNSCAN_LANG / KASHIF_LANG, else English."""
+    from .i18n.cliargs import HelpFormatter, help_lang as lang_of, lang_from_env, pick
+    argv = list(sys.argv[1:] if argv is None else argv)
+    lang = lang_of(argv, default=help_lang or lang_from_env() or "en")
+
+    def h(key: str) -> str:
+        return pick(lang, *_HELP[key])
+
+    p = argparse.ArgumentParser(prog="kashif lsp", description=h("desc"), formatter_class=HelpFormatter)
+    p.add_argument("--stdio", action="store_true", help=h("stdio"))
+    p.add_argument("--lang", choices=("auto", "en", "ar", "both"), default=None, metavar="{en,ar,both}", help=h("lang"))
     p.add_argument("--debounce", type=float, default=0.4, help=argparse.SUPPRESS)
     args, unknown = p.parse_known_args(argv)
     if unknown:

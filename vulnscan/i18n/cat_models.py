@@ -135,6 +135,9 @@ CATALOG: dict[str, str] = {
     "قيّد الوجهات بقائمة بيضاء من النطاقات، وارفض العناوين الداخلية وعناوين البيانات الوصفية.":
         "Restrict outbound destinations to an allowlist of domains, and reject internal and cloud metadata addresses.",
     # --- code evaluation / dynamic loading ------------------------------------------------------------------
+    "لا تنفّذ كودًا مبنيًا من المدخلات.":
+        "Do not execute code built from input.",
+    # the wording of Kashif 1.0.1 (الشيفرة), still in older reports
     "لا تنفّذ شيفرة مبنية من المدخلات.":
         "Do not execute code built from input.",
     "استخدم قائمة بيضاء ثابتة من الأنواع.":

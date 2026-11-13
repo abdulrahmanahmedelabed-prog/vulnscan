@@ -4,7 +4,7 @@ Security findings from [Kashif](https://github.com/abdulrahmanahmedelabed-prog/v
 application security tester with a type-aware, **cross-file taint engine** for 12 languages (Python, JavaScript/TypeScript,
 Java, Kotlin, C#, Go, PHP, C/C++, Rust, Swift, Ruby, PL/SQL and Oracle APEX) — shown directly in the editor.
 
-The extension is a thin client of the Kashif language server (`vulnscan lsp`). All analysis runs locally on your
+The extension is a thin client of the Kashif language server (`kashif lsp`). All analysis runs locally on your
 machine, offline: no code leaves it, no account is needed.
 
 ## Features
@@ -25,8 +25,12 @@ Kashif itself (Python 3.10+, no other dependencies):
 
 ```bash
 pip install git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan
-vulnscan --version
+kashif --version
 ```
+
+The release binaries and the one-line installers (see the project's install guide) work as well. A pip install made
+before Kashif 1.0.2 is the distribution `vulnscan`: run `pip uninstall -y vulnscan kashif` before installing the new
+version (`vulnscan` on PyPI is an unrelated project).
 
 If neither `kashif` nor `vulnscan` is on `PATH`, set `kashif.serverPath` to its absolute path, or to a Python interpreter together with
 `"kashif.serverArgs": ["-m", "vulnscan"]`.

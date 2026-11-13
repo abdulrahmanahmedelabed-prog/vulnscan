@@ -683,8 +683,8 @@
     "g_module_open"
    ],
    "title": "Tainted data reaches code evaluation",
-   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
-   "advice": "لا تنفّذ شيفرة مبنية من المدخلات."
+   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ كود",
+   "advice": "لا تنفّذ كودًا مبنيًا من المدخلات."
   },
   {
    "rule": "DF013",
@@ -1223,8 +1223,8 @@
    "cwe": "CWE-94",
    "label": "code execution",
    "title": "Tainted data reaches code evaluation",
-   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
-   "advice": "لا تنفّذ شيفرة مبنية من المدخلات.",
+   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ كود",
+   "advice": "لا تنفّذ كودًا مبنيًا من المدخلات.",
    "args": [
     0,
     1,
@@ -1263,8 +1263,8 @@
    "cwe": "CWE-94",
    "label": "code execution",
    "title": "Tainted data reaches code evaluation",
-   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ شيفرة",
-   "advice": "لا تنفّذ شيفرة مبنية من المدخلات.",
+   "title_ar": "بيانات غير موثوقة تصل إلى تنفيذ كود",
+   "advice": "لا تنفّذ كودًا مبنيًا من المدخلات.",
    "args": [
     0
    ],

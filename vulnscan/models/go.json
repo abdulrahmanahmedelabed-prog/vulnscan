@@ -1002,7 +1002,7 @@
    ],
    "title": "Tainted data reaches plugin or script loading",
    "title_ar": "بيانات غير موثوقة تصل إلى تحميل إضافات أو سكربتات",
-   "advice": "لا تقيّم شيفرة JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.",
+   "advice": "لا تقيّم كود JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.",
    "receiver": "(?i)(^|\\.)(vm|otto|goja|jsvm|js|interp|interpreter)$"
   },
   {
@@ -1018,7 +1018,7 @@
    ],
    "title": "Tainted data reaches plugin or script loading",
    "title_ar": "بيانات غير موثوقة تصل إلى تحميل إضافات أو سكربتات",
-   "advice": "لا تقيّم شيفرة JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.",
+   "advice": "لا تقيّم كود JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.",
    "receiver": "(?i)(^|\\.)(vm|goja|jsvm|js|runtime)$"
   },
   {
@@ -1035,7 +1035,7 @@
    ],
    "title": "Tainted data reaches plugin or script loading",
    "title_ar": "بيانات غير موثوقة تصل إلى تحميل إضافات أو سكربتات",
-   "advice": "لا تقيّم شيفرة JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.",
+   "advice": "لا تقيّم كود JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط.",
    "receiver": "^expr$"
   },
   {
@@ -1052,7 +1052,7 @@
    ],
    "title": "Tainted data reaches plugin or script loading",
    "title_ar": "بيانات غير موثوقة تصل إلى تحميل إضافات أو سكربتات",
-   "advice": "لا تقيّم شيفرة JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط."
+   "advice": "لا تقيّم كود JavaScript أو تعبيرات (otto/goja/expr/govaluate) مبنية من المدخلات؛ مرّر المدخلات كمتغيرات فقط."
   },
   {
    "rule": "DF013",

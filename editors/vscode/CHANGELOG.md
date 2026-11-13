@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2
+
+- Released with Kashif 1.0.2 (the extension follows the Kashif version).
+- The README names the language server command `kashif lsp` and explains the upgrade of a pip install made before
+  Kashif 1.0.2, whose distribution is `vulnscan`: run `pip uninstall -y vulnscan kashif` before installing the new
+  version (`vulnscan` on PyPI is an unrelated project).
+- `kashif lsp --help` is in English and Arabic, and `kashif lsp --lang` is accepted. The language of the diagnostics
+  still follows the `kashif.language` setting.
+
 ## 1.0.1
 
 - Released with Kashif 1.0.1 (the extension follows the Kashif version).

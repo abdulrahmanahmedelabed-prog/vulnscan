@@ -464,7 +464,8 @@ def test_offline_falls_back_to_expired_cache(tmp_path, monkeypatch):
     (tmp_path / "proj" / "requirements.txt").write_text("requests==2.19.0\nnewpkg==1.0.0\n")
     findings, err = audit(tmp_path / "proj", tmp_path, Replay(fail=OSError("network is unreachable")))
     assert [f.extra["package"] for f in findings] == ["requests"] and findings[0].severity == "critical"
-    assert not has_arabic(to_en(err)) and "1 dependencies were left unchecked" in to_en(err)
+    assert not has_arabic(to_en(err)) and "1 dependency left unchecked" in to_en(err)    # count agrees (1.0.2)
+    assert "وبقيت اعتمادية واحدة بلا فحص" in err
 
 
 def test_malformed_osv_answer_is_an_error_not_a_crash(tmp_path):

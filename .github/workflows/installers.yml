@@ -78,6 +78,37 @@ jobs:
           # the pre-rename name stays as an alias (a .cmd shim, like the setup wizard's)
           cmd /c "`"$env:KASHIF_INSTALL_DIR\vulnscan.cmd`" --version"
           if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: install.ps1 reinstalls while kashif.exe is running (kashif ui)
+        shell: pwsh
+        env:
+          KASHIF_INSTALL_DIR: ${{ runner.temp }}\kashif-bin
+        run: |
+          $exe = "$env:KASHIF_INSTALL_DIR\kashif.exe"
+          $ui = Start-Process -FilePath $exe -ArgumentList "ui", "--no-browser", "--port", "8797" -PassThru -WindowStyle Hidden
+          try {
+            $up = $false
+            foreach ($i in 1..40) {
+              try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8797/ -TimeoutSec 2 | Out-Null; $up = $true; break } catch { Start-Sleep -Seconds 1 }
+            }
+            if (-not $up) { throw "kashif ui did not start" }
+            # 1.0.1 failed here: Copy-Item cannot overwrite a running .exe
+            ./site/install.ps1
+            & $exe --version; if ($LASTEXITCODE -ne 0) { exit 1 }
+            if ($ui.HasExited) { throw "the running kashif ui was stopped by the install" }
+            # once more while the renamed copy (kashif.exe.old) is still running: a uniquely named copy is used
+            ./site/install.ps1
+            & $exe --version; if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          finally {
+            # the one-file binary runs as two processes (the bootloader and its child): stop the whole tree
+            taskkill /PID $ui.Id /T /F | Out-Null
+            $ui.WaitForExit(30000) | Out-Null
+          }
+          Start-Sleep -Seconds 2
+          # with nothing running, the next install removes every leftover copy
+          ./site/install.ps1
+          $left = @(Get-ChildItem -LiteralPath $env:KASHIF_INSTALL_DIR -Filter "kashif.exe*" -File | Where-Object { $_.Name -ne "kashif.exe" })
+          if ($left.Count -ne 0) { throw "leftovers: $($left.Name -join ', ')" }
       - name: install.ps1 works with an unset, empty or messy user PATH
         shell: pwsh
         env:

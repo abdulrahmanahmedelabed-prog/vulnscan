@@ -3,8 +3,11 @@ requires = ["setuptools>=77"]   # SPDX `license` expression (PEP 639)
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vulnscan"
-version = "1.0.1"
+# The distribution is "kashif" (PyPI's "vulnscan" is an unrelated project); the import package stays `vulnscan` and
+# both commands, kashif and vulnscan, are installed. Up to 1.0.1 the distribution was called "vulnscan" (git installs):
+# `pip uninstall vulnscan` first, see vulnscan/updater.py install_info() and docs/publishing.md.
+name = "kashif"
+version = "1.0.2"
 description = "Standalone source-code vulnerability scanner that reports findings from highest to lowest severity."
 readme = "README.md"
 requires-python = ">=3.10"

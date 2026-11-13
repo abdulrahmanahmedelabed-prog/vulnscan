@@ -305,6 +305,8 @@ class Parser:
         self.go_structs: dict = {}
         self.no_brace_call = 0           # >0 while parsing an if/for/while/match head: `x {` is a block, not a closure
         self.ruby_locals: set = set()
+        self.ruby_vis = "public"          # Ruby: the visibility `private` / `protected` sets for the defs after it
+        self.ruby_hidden: set = set()     # Ruby: methods a class names in `private :a, :b`
         self.yield_targets: list = []   # Java switch expressions being parsed: the temporaries their arms assign
         self.class_fields: dict = {}
         self.in_command_args = 0
@@ -531,15 +533,14 @@ class Parser:
                 return decs
             if self.at("@") and self.peek().kind == "id":
                 self.i += 1
-                d = self.parse_postfix(no_call=False)
-                decs.append(d)
+                decs.append(self.parse_annotation())
             elif self.lang == "csharp" and self.at("[") and self.peek().kind == "id":
                 self.i += 1
                 while not self.at("]") and self.t.kind != "eof":
                     if self.t.kind == "id" and self.peek().val == ":":   # [return: X]
                         self.i += 2
                         continue
-                    decs.append(self.parse_postfix(no_call=False))
+                    decs.append(self.parse_annotation())
                     if not self.opt(","):
                         break
                 self.eat("]")
@@ -552,6 +553,39 @@ class Parser:
                 self.eat("]")
             else:
                 return decs
+
+    def parse_annotation(self):
+        """One annotation / attribute. Its named elements (`@SelectProvider(type = X.class, method = "m")`,
+        `[Route("x", Name = "y")]`) become keyword arguments, not assignments leaking into the enclosing body."""
+        h0 = len(self.hoisted)
+        d = self.parse_postfix(no_call=False)
+        new = self.hoisted[h0:]
+        if not new or not isinstance(d, ast.Call):
+            return d
+
+        def key(n):
+            if isinstance(n, ast.Name):
+                return n.id
+            if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self":
+                return n.attr
+            return None
+        named = {}
+        for st in new:
+            if isinstance(st, ast.Assign) and len(st.targets) == 1 and key(st.targets[0]):
+                named.setdefault(key(st.targets[0]), st)
+        args, used = [], {}
+        for a in d.args:
+            k = key(a)
+            if k in named and k not in used:
+                used[k] = named[k]
+                d.keywords.append(_mk(ast.keyword, getattr(a, "lineno", 1), arg=k, value=named[k].value))
+            else:
+                args.append(a)
+        if used:
+            d.args = args
+            drop = {id(st) for st in used.values()}
+            self.hoisted[h0:] = [st for st in new if id(st) not in drop]
+        return d
 
     # ----------------------------------------------------------- statements
     def parse_statement(self) -> list:
@@ -1285,6 +1319,12 @@ class Parser:
                 self.skip_type()
                 if self.t.kind == "id":
                     tname = self.toks[start].val
+                    if self.lang in ("java", "csharp"):
+                        # a qualified type, `Mappers.UserMapper m` / `java.util.Map m`: the class is the last name
+                        j = start
+                        while j + 2 < self.i and self.toks[j + 1].val == "." and self.toks[j + 2].kind == "id":
+                            j += 2
+                        tname = self.toks[j].val
                     name = self.eat().val
                     while self.lang == "cpp" and self.at("["):
                         self.skip_balanced("[", "]")
@@ -2225,11 +2265,46 @@ class Parser:
         if self.at("("):
             call = self.parse_call(self.untuple(target), line)
             if self.at("{"):   # anonymous class / object initializer
+                if self.lang == "java" and self.in_function and self.peek().val == "{":
+                    return self.double_brace(call, line)
                 self.skip_balanced("{", "}")
             return call
         if self.at("{"):
             self.skip_balanced("{", "}")
         return _mk(ast.Call, line, func=self.untuple(target), args=[], keywords=[])
+
+    def double_brace(self, call, line):
+        """Java double-brace initialisation, `new SQL() {{ SELECT("*"); WHERE("name = '" + n + "'"); }}` (the MyBatis
+        SQL builder) or `new HashMap<>() {{ put("k", v); }}`: the object, then its initializer's calls made on it."""
+        tmp = f"_anon_{line}_{self.anon}"
+        self.anon += 1
+        saved, self.hoisted = self.hoisted, []
+        try:
+            self.eat("{")
+            init = self.block()
+            while not self.at("}") and self.t.kind != "eof":     # other members of the anonymous class
+                if self.at("{"):
+                    self.skip_balanced("{", "}")
+                else:
+                    self.i += 1
+            self.eat("}")
+        finally:
+            inner, self.hoisted = self.hoisted, saved
+        for st in inner + init:
+            for n in ast.walk(st):
+                if not isinstance(n, ast.Expr):
+                    continue
+                root = n.value                 # `WHERE(a).AND()`: the call the chain starts from
+                while isinstance(root, ast.Call) and isinstance(root.func, ast.Attribute) and isinstance(root.func.value, ast.Call):
+                    root = root.func.value
+                if isinstance(root, ast.Call) and isinstance(root.func, ast.Name):
+                    ln = root.func.lineno
+                    root.func = _mk(ast.Attribute, ln, value=_name(tmp, ln), attr=root.func.id, ctx=ast.Load())
+                    # `tmp = tmp.WHERE(…)`: the builder carries what its calls were given into `toString()`
+                    n.__class__, n.targets, n.type_comment = ast.Assign, [_name(tmp, ln, store=True)], None
+        self.hoisted.append(_mk(ast.Assign, line, targets=[_name(tmp, line, store=True)], value=call))
+        self.hoisted.extend(inner + init)
+        return _name(tmp, line)
 
     def parse_array_literal(self):
         line = self.t.line
@@ -2908,7 +2983,10 @@ class Parser:
             body = self.parse_ruby_body(line)
         self.in_function = prev_in
         self.ruby_locals = prev_locals
-        return self.make_function("__init__" if name == "initialize" else name, params, body, line, decs, method=bool(self.cls_stack))
+        fn = self.make_function("__init__" if name == "initialize" else name, params, body, line, decs, method=bool(self.cls_stack))
+        if self.cls_stack and self.ruby_vis != "public":
+            fn.vulnscan_private = True       # not a Rails action: a helper / filter of the controller
+        return fn
 
     def parse_ruby_class(self, decs) -> list:
         line = self.t.line
@@ -2925,10 +3003,19 @@ class Parser:
         self.cls_stack.append(name)
         self.field_names_stack.append(set())
         prev_in, self.in_function = self.in_function, False
-        body = self.parse_ruby_body(line)
+        prev_vis, self.ruby_vis = self.ruby_vis, "public"
+        prev_hidden, self.ruby_hidden = self.ruby_hidden, set()
+        try:
+            body = self.parse_ruby_body(line)
+        finally:
+            hidden = self.ruby_hidden
+            self.ruby_vis, self.ruby_hidden = prev_vis, prev_hidden
         self.in_function = prev_in
         self.cls_stack.pop()
         self.field_names_stack.pop()
+        for st in body:                      # `private :set_user, :load`
+            if isinstance(st, ast.FunctionDef) and st.name in hidden:
+                st.vulnscan_private = True
         if len(body) == 1 and isinstance(body[0], ast.Try):
             body = body[0].body + [h for hb in body[0].handlers for h in hb.body]
         bases.extend(_ruby_mixins(body))
@@ -3063,7 +3150,24 @@ class Parser:
             return [_mk(ast.Expr, line, value=_mk(ast.Call, line, func=_name(v, line), args=[arg], keywords=[]))]
         if v in ("private", "protected", "public", "module_function", "private_constant") and (self.peek().nl_before or self.peek().kind == "eof"):
             self.i += 1
+            if v in ("private", "protected", "public") and not self.in_function:
+                self.ruby_vis = v
             return []
+        if v in ("private", "protected") and not self.in_function and self.cls_stack and self.peek().kind == "sym":
+            self.i += 1                      # `private :set_user, :load`: those methods are not actions
+            while self.t.kind == "sym" and not self.t.nl_before:
+                self.ruby_hidden.add(self.t.val.lstrip(":"))
+                self.i += 1
+                if not self.opt(","):
+                    break
+            self.end_stmt()
+            return []
+        if v in ("private", "protected") and not self.in_function and self.cls_stack and self.peek().val == "def" \
+                and not self.peek().nl_before:
+            self.i += 1                      # `private def load …`
+            fn = self.parse_ruby_def([])
+            fn.vulnscan_private = True
+            return [fn]
         if v in ("alias", "alias_method", "undef", "__END__"):
             if v == "__END__":
                 self.i = len(self.toks) - 1
@@ -3379,6 +3483,8 @@ def _strict_pattern(decs) -> str | None:
 # parameter; `${x}` pastes the value into the SQL text (CWE-89). Such a method is given the body it amounts to: the
 # referenced parameters concatenated into the SQL, run as a query, so a request value passed to it is SQL injection.
 _MYBATIS_ANNOTATIONS = ("Select", "Update", "Insert", "Delete")
+_MYBATIS_PROVIDERS = ("SelectProvider", "UpdateProvider", "InsertProvider", "DeleteProvider")
+_JVM_PACKAGE = re.compile(r"^[ \t]*package[ \t]+([\w.]+)", re.M)
 _MYBATIS_DOLLAR = re.compile(r"\$\{\s*([A-Za-z_][\w.]*)?[^}]*\}")
 _MYBATIS_MAPPER = re.compile(r"<mapper\b[^>]*\bnamespace\s*=\s*[\"']([\w.$]+)[\"']")
 _MYBATIS_STMT = re.compile(r"<(select|insert|update|delete|sql)\b([^>]*)>(.*?)</\1\s*>", re.S | re.I)
@@ -3524,11 +3630,51 @@ def _abstract_body(fn) -> bool:
     return all(isinstance(s, ast.Pass) or (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant)) for s in fn.body)
 
 
+def _classes(body, chain=()):
+    """Every class of a module, nested ones included, with its chain of enclosing class names."""
+    for cls in body:
+        if isinstance(cls, ast.ClassDef):
+            here = (*chain, cls.name)
+            yield cls, here
+            yield from _classes(cls.body, here)
+
+
+def _provider_body(fn, d, classes: dict) -> bool:
+    """`@SelectProvider(type = UserSql.class, method = "byName")`: the SQL is what the provider method returns
+    for the mapper's arguments, so the mapper method's body executes `UserSql().byName(args)`. Without `method`
+    MyBatis (3.5.1+) calls the provider method of the mapper method's name."""
+    kw = {k.arg: k.value for k in d.keywords if k.arg}
+    typ = kw.get("type") or kw.get("value") or (d.args[0] if d.args else None)
+    if not (isinstance(typ, ast.Attribute) and typ.attr == "class"):
+        return False
+    pname = _dotted_text(typ.value).split(".")[-1]
+    meth = kw.get("method")
+    mname = meth.value if isinstance(meth, ast.Constant) and isinstance(meth.value, str) else fn.name
+    if not pname or pname == "_" or not mname:
+        return False
+    params = [a for a in fn.args.args if a.arg != "self"]
+    line = getattr(d, "lineno", fn.lineno)
+    args = [_name(a.arg, line) for a in params]
+    pcls = classes.get(pname)
+    target = next((m for m in (pcls.body if pcls is not None else ()) if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))
+                   and m.name == mname), None)
+    if target is not None and len(params) > 1 and len([a for a in target.args.args if a.arg != "self"]) == 1:
+        # one `Map<String, Object>` parameter receives every mapper argument by its (@Param) name
+        keys = [_const(getattr(a.annotation, "vulnscan_param", None) or a.arg, line) for a in params]
+        args = [_mk(ast.Dict, line, keys=keys, values=args)]
+    prov = _mk(ast.Call, line, func=_name(pname, line), args=[], keywords=[])
+    sql = _mk(ast.Call, line, func=_mk(ast.Attribute, line, value=prov, attr=mname, ctx=ast.Load()), args=args, keywords=[])
+    call = _mk(ast.Call, line, func=_mk(ast.Attribute, line, value=_name("MyBatis", line), attr="executeQuery", ctx=ast.Load()),
+               args=[sql], keywords=[])
+    fn.body = [_mk(ast.Expr, line, value=call)]
+    return True
+
+
 def _mybatis_annotated(mod) -> None:
-    """Mapper methods annotated `@Select("… ${x} …")` (and @Update/@Insert/@Delete) get their SQL as a body."""
-    for cls in mod.body:
-        if not isinstance(cls, ast.ClassDef):
-            continue
+    """Mapper methods annotated `@Select("… ${x} …")` (and @Update/@Insert/@Delete) get their SQL as a body;
+    `@SelectProvider` (and the other providers) the call of their provider method. Nested mapper interfaces too."""
+    classes = None
+    for cls, _chain in _classes(mod.body):
         for fn in cls.body:
             if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _abstract_body(fn):
                 continue
@@ -3537,6 +3683,12 @@ def _mybatis_annotated(mod) -> None:
                     continue
                 f = d.func
                 dname = f.id if isinstance(f, ast.Name) else (f.attr if isinstance(f, ast.Attribute) else "")
+                if dname in _MYBATIS_PROVIDERS:
+                    if classes is None:
+                        classes = {c.name: c for c, _ch in _classes(mod.body)}
+                    if _provider_body(fn, d, classes):
+                        break
+                    continue
                 if dname not in _MYBATIS_ANNOTATIONS:
                     continue
                 for a in list(d.args) + [k.value for k in d.keywords if k.arg in ("value", None)]:
@@ -3545,18 +3697,31 @@ def _mybatis_annotated(mod) -> None:
                         break
 
 
-def apply_mybatis_xml(mod, modname: str, mappers: dict) -> int:
+def jvm_package(text: str) -> str:
+    """The `package` a Java / Kotlin source file declares ("" for the default package)."""
+    clean = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), text[:20000], flags=re.S)
+    m = _JVM_PACKAGE.search(clean)
+    return m.group(1) if m else ""
+
+
+def apply_mybatis_xml(mod, modname: str, mappers: dict, package: str | None = None) -> int:
     """Give the methods of mapper interfaces declared in `mod` the `${…}` SQL of their mapper XML statements.
-    `mappers` maps a namespace (`org.app.UserMapper`) to (xml file, {statement id: (line, SQL)})."""
+    `mappers` maps a namespace (`org.app.UserMapper`) to (xml file, {statement id: (line, SQL)}). A namespace is
+    the interface's binary name: the declared `package` (none: the default package) plus the class, a nested
+    interface as `Outer$Inner` (or `Outer.Inner`). Without `package` the file's path stands for it."""
     n = 0
     pkg = modname.rsplit(".", 1)[0] if "." in modname else ""
-    for cls in getattr(mod, "body", ()):
-        if not isinstance(cls, ast.ClassDef):
-            continue
-        full = f"{pkg}.{cls.name}" if pkg else cls.name
-        for ns, (rel, stmts) in mappers.items():
-            if ns.rsplit(".", 1)[-1] != cls.name or not (full == ns or full.endswith("." + ns)):
-                continue
+    for cls, chain in _classes(getattr(mod, "body", ())):
+        if package is not None:
+            prefix = package + "." if package else ""
+            wanted = {prefix + "$".join(chain), prefix + ".".join(chain)}
+            hits = [mappers[ns] for ns in wanted if ns in mappers]
+        else:
+            full = ".".join(([pkg] if pkg else []) + list(chain))
+            hits = [v for ns, v in mappers.items()
+                    if ns.replace("$", ".").rsplit(".", 1)[-1] == cls.name
+                    and (full == ns.replace("$", ".") or full.endswith("." + ns.replace("$", ".")))]
+        for rel, stmts in hits:
             for fn in cls.body:
                 if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name in stmts and _abstract_body(fn):
                     line, sql = stmts[fn.name]
@@ -3589,7 +3754,7 @@ def parse_cfamily_ex(text: str, rel: str, lang: str):
                 cls.body = [s for s in cls.body if not isinstance(s, ast.Pass)] + fns
                 if not cls.body:
                     cls.body = [_mk(ast.Pass, 1)]
-        if lang in ("java", "kotlin") and "${" in text:
+        if lang in ("java", "kotlin") and ("${" in text or "Provider" in text):
             _mybatis_annotated(mod)
         diag["statements"] = p.n_statements
         diag["skipped"] = len(p.diagnostics)

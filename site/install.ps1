@@ -45,7 +45,42 @@ try {
 
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
     $Dir = (Resolve-Path -LiteralPath $Dir).ProviderPath       # a relative KASHIF_INSTALL_DIR must not go on PATH as is
-    Copy-Item -Force (Join-Path $Tmp $Asset) (Join-Path $Dir "kashif.exe")
+    # A running kashif.exe (e.g. `kashif ui`) cannot be overwritten or deleted, but it can be renamed: move it out of
+    # the way first, as the in-app updater does (vulnscan/updater.py), and put it back if the copy fails. The running
+    # program keeps working from the renamed file; the next install or `kashif update` removes it.
+    $Exe = Join-Path $Dir "kashif.exe"
+    $Old = $null
+    if (Test-Path -LiteralPath $Exe) {
+        $Old = "$Exe.old"
+        Remove-Item -Force -LiteralPath $Old -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $Old) {
+            # an older kashif.exe.old is itself still running: use a name of its own
+            $Old = "$Exe." + [Guid]::NewGuid().ToString("N").Substring(0, 8) + ".old"
+        }
+        Move-Item -LiteralPath $Exe -Destination $Old
+    }
+    try {
+        Copy-Item -Force (Join-Path $Tmp $Asset) $Exe
+    }
+    catch {
+        if ($Old) {
+            # a copy that failed half-way (disk full, antivirus) may have left a truncated kashif.exe: drop it first
+            Remove-Item -Force -LiteralPath $Exe -ErrorAction SilentlyContinue
+            if (-not (Test-Path -LiteralPath $Exe)) { Move-Item -LiteralPath $Old -Destination $Exe }
+        }
+        throw
+    }
+    # leftovers of earlier installs over a running kashif.exe; any that are still running stay until the next time
+    $leftovers = Get-ChildItem -LiteralPath $Dir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^kashif\.exe\.[0-9a-f]{8}\.old$' }
+    foreach ($leftover in @($leftovers)) {
+        Remove-Item -Force -LiteralPath $leftover.FullName -ErrorAction SilentlyContinue
+    }
+    if ($Old) {
+        Remove-Item -Force -LiteralPath $Old -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $Old) {
+            Write-Host "kashif: the previous version is still running; it keeps working until you close it"
+        }
+    }
     # "vulnscan" keeps working as an alias, the same shim the setup wizard installs (packaging/windows/vulnscan.cmd)
     Set-Content -Encoding Ascii -Path (Join-Path $Dir "vulnscan.cmd") -Value "@echo off`r`n`"%~dp0kashif.exe`" %*"
     # an older (0.9.x) install put a full copy at vulnscan.exe, which would win over vulnscan.cmd on PATH and never be

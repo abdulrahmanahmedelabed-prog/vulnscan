@@ -1,5 +1,5 @@
 {
- "_comment": "Compliance mapping data for vulnscan/compliance.py. Resolution order per framework and CWE: cwe (published by the framework owner) > cwe_analyst > cwe_na (documented: no control) > nearest CWE ancestor with an entry > category fallback; controls under \"all\" apply to every finding. CWEs under \"no_inherit\" pass neither their controls nor their category to descendants; a framework with \"inherit\": false skips the ancestor step.",
+ "_comment": "Compliance mapping data for vulnscan/compliance.py. Resolution order per framework and CWE: cwe (published by the framework owner) > cwe_analyst > cwe_na (documented: no control) > nearest CWE ancestor with an entry > category fallback; controls under \"all\" apply to every finding. CWEs under \"no_inherit\" pass neither their controls nor their category to descendants; a framework with \"inherit\": false skips the ancestor step. Every written justification has an Arabic text: cwe_analyst[*].note_ar, and cwe_na_ar for cwe_na.",
  "version": 1,
  "updated": "2026-11-11",
  "sources": {
@@ -78,7 +78,7 @@
  "categories": {
   "injection": {
    "title": "Injection (SQL, OS command, code, LDAP, XPath, template, header)",
-   "title_ar": "الحقن (SQL، أوامر النظام، الشيفرة، LDAP، XPath، القوالب، الترويسات)"
+   "title_ar": "الحقن (SQL، أوامر النظام، الكود، LDAP، XPath، القوالب، الترويسات)"
   },
   "xss": {
    "title": "Cross-site scripting",
@@ -138,7 +138,7 @@
   },
   "secrets": {
    "title": "Hard-coded credentials and secrets",
-   "title_ar": "بيانات اعتماد وأسرار مضمّنة في الشيفرة"
+   "title_ar": "بيانات اعتماد وأسرار مضمّنة في الكود"
   },
   "password-storage": {
    "title": "Password storage",
@@ -1116,61 +1116,71 @@
      "controls": [
       "A06"
      ],
-     "note": "A dependency with a known vulnerability is the subject of A06; CWE-1395 was created after the 2021 list."
+     "note": "A dependency with a known vulnerability is the subject of A06; CWE-1395 was created after the 2021 list.",
+     "note_ar": "الاعتمادية المصابة بثغرة معروفة هي موضوع الفئة A06؛ وقد أُنشئ CWE-1395 بعد صدور قائمة 2021."
     },
     "1321": {
      "controls": [
       "A08"
      ],
-     "note": "Child of CWE-915, which OWASP lists under A08."
+     "note": "Child of CWE-915, which OWASP lists under A08.",
+     "note_ar": "متفرّع من CWE-915 الذي تُدرجه OWASP تحت A08."
     },
     "1327": {
      "controls": [
       "A05"
      ],
-     "note": "A service bound to all interfaces is a deployment configuration weakness."
+     "note": "A service bound to all interfaces is a deployment configuration weakness.",
+     "note_ar": "الخدمة المرتبطة بجميع واجهات الشبكة نقطة ضعف في إعدادات النشر."
     },
     "489": {
      "controls": [
       "A05"
      ],
-     "note": "A05 covers 'unnecessary features are enabled'; active debug code is such a feature."
+     "note": "A05 covers 'unnecessary features are enabled'; active debug code is such a feature.",
+     "note_ar": "تشمل A05 «تفعيل ميزات غير ضرورية»، وكود التصحيح الفعّال من هذه الميزات."
     },
     "693": {
      "controls": [
       "A05"
      ],
-     "note": "Kashif emits CWE-693 for disabled platform protections (seccomp, AppArmor), a configuration weakness. Applies to CWE-693 itself only; it is not inherited by its descendants."
+     "note": "Kashif emits CWE-693 for disabled platform protections (seccomp, AppArmor), a configuration weakness. Applies to CWE-693 itself only; it is not inherited by its descendants.",
+     "note_ar": "يُصدر كاشِف CWE-693 عند تعطيل حمايات المنصة (seccomp وAppArmor)، وهي نقطة ضعف في الإعدادات. ينطبق على CWE-693 نفسه فقط، ولا ترثه المعرّفات المتفرّعة منه."
     },
     "320": {
      "controls": [
       "A02"
      ],
-     "note": "Key management errors are cryptographic failures."
+     "note": "Key management errors are cryptographic failures.",
+     "note_ar": "أخطاء إدارة المفاتيح إخفاقات تشفيرية."
     },
     "134": {
      "controls": [
       "A03"
      ],
-     "note": "Externally controlled format string: attacker data interpreted as directives."
+     "note": "Externally controlled format string: attacker data interpreted as directives.",
+     "note_ar": "سلسلة تنسيق يتحكم بها طرف خارجي: بيانات المهاجم تُفسَّر كتوجيهات تنسيق."
     },
     "625": {
      "controls": [
       "A03"
      ],
-     "note": "Kashif emits CWE-625 when untrusted input is used as a regular expression."
+     "note": "Kashif emits CWE-625 when untrusted input is used as a regular expression.",
+     "note_ar": "يُصدر كاشِف CWE-625 عند استخدام مدخلات غير موثوقة كتعبير نمطي."
     },
     "1426": {
      "controls": [
       "A03"
      ],
-     "note": "Unvalidated model output reaching an interpreter is handled as an injection weakness."
+     "note": "Unvalidated model output reaching an interpreter is handled as an injection weakness.",
+     "note_ar": "مخرجات النموذج غير المتحقَّق منها التي تصل إلى مفسِّر تُعامَل كنقطة ضعف حقن."
     },
     "1427": {
      "controls": [
       "A03"
      ],
-     "note": "Prompt injection; child of CWE-77, which OWASP lists under A03."
+     "note": "Prompt injection; child of CWE-77, which OWASP lists under A03.",
+     "note_ar": "حقن التعليمات؛ متفرّع من CWE-77 الذي تُدرجه OWASP تحت A03."
     }
    },
    "cwe_na": {
@@ -1195,6 +1205,29 @@
     "476": "Memory-safety weaknesses have no category in OWASP Top 10:2021.",
     "787": "Memory-safety weaknesses have no category in OWASP Top 10:2021.",
     "824": "Memory-safety weaknesses have no category in OWASP Top 10:2021."
+   },
+   "cwe_na_ar": {
+    "400": "حجب الخدمة واستنزاف الموارد ليس لهما فئة في OWASP Top 10:2021.",
+    "770": "حجب الخدمة واستنزاف الموارد ليس لهما فئة في OWASP Top 10:2021.",
+    "1333": "حجب الخدمة واستنزاف الموارد ليس لهما فئة في OWASP Top 10:2021.",
+    "730": "حجب الخدمة واستنزاف الموارد ليس لهما فئة في OWASP Top 10:2021.",
+    "617": "حجب الخدمة واستنزاف الموارد ليس لهما فئة في OWASP Top 10:2021.",
+    "407": "حجب الخدمة واستنزاف الموارد ليس لهما فئة في OWASP Top 10:2021.",
+    "409": "حجب الخدمة واستنزاف الموارد ليس لهما فئة في OWASP Top 10:2021.",
+    "674": "حجب الخدمة واستنزاف الموارد ليس لهما فئة في OWASP Top 10:2021.",
+    "835": "حجب الخدمة واستنزاف الموارد ليس لهما فئة في OWASP Top 10:2021.",
+    "119": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "120": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "121": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "122": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "125": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "190": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "191": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "415": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "416": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "476": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "787": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021.",
+    "824": "نقاط ضعف أمان الذاكرة ليس لها فئة في OWASP Top 10:2021."
    },
    "category": {},
    "note": "Controls with basis \"official\" are the CWE lists OWASP publishes for each category.",
@@ -1311,12 +1344,17 @@
      "controls": [
       "API4"
      ],
-     "note": "Regular-expression denial of service consumes CPU without limit."
+     "note": "Regular-expression denial of service consumes CPU without limit.",
+     "note_ar": "حجب الخدمة عبر التعبير النمطي يستهلك المعالج دون حد."
     }
    },
    "cwe_na": {
     "200": "OWASP cites CWE-200 for API10 only for data received from third-party APIs; a generic exposure finding is not mapped.",
     "20": "OWASP cites CWE-20 for API10 only for data received from third-party APIs; a generic validation finding is not mapped."
+   },
+   "cwe_na_ar": {
+    "200": "تذكر OWASP المعرّف CWE-200 تحت API10 للبيانات المستلمة من واجهات برمجية لأطراف ثالثة فقط؛ فلا تُربط به نتيجة عامة عن كشف البيانات.",
+    "20": "تذكر OWASP المعرّف CWE-20 تحت API10 للبيانات المستلمة من واجهات برمجية لأطراف ثالثة فقط؛ فلا تُربط به نتيجة عامة عن التحقق من المدخلات."
    },
    "category": {
     "access-control": [
@@ -1361,7 +1399,7 @@
     ]
    },
    "note": "Only meaningful when the code under assessment exposes or consumes an API. OWASP publishes few CWE references per risk, so most rows rest on analyst mappings. A CWE that OWASP does not cite is mapped by weakness category, not by its CWE parents, because the cited CWEs are references, not a complete mapping.",
-   "note_ar": "لا معنى لهذا الإطار إلا إذا كانت الشيفرة المُقيَّمة تعرض واجهة API أو تستهلكها. تنشر OWASP مراجع CWE قليلة لكل خطر، لذا تستند معظم الصفوف إلى ربط المحلل. أما معرّف CWE الذي لا تذكره OWASP فيُربط حسب فئة نقطة الضعف لا حسب آبائه في CWE، لأن معرّفات CWE المذكورة مراجع وليست ربطًا كاملًا.",
+   "note_ar": "لا معنى لهذا الإطار إلا إذا كان الكود المُقيَّم يعرض واجهة API أو يستهلكها. تنشر OWASP مراجع CWE قليلة لكل خطر، لذا تستند معظم الصفوف إلى ربط المحلل. أما معرّف CWE الذي لا تذكره OWASP فيُربط حسب فئة نقطة الضعف لا حسب آبائه في CWE، لأن معرّفات CWE المذكورة مراجع وليست ربطًا كاملًا.",
    "inherit": false
   },
   "owasp-asvs-4.0.3": {
@@ -3569,145 +3607,169 @@
      "controls": [
       "V5.3"
      ],
-     "note": "Generic injection: section V5.3 Output Encoding and Injection Prevention."
+     "note": "Generic injection: section V5.3 Output Encoding and Injection Prevention.",
+     "note_ar": "حقن عام: القسم V5.3 ترميز المخرجات ومنع الحقن."
     },
     "88": {
      "controls": [
       "V5.3.8"
      ],
-     "note": "Argument injection is prevented by the OS command injection requirement."
+     "note": "Argument injection is prevented by the OS command injection requirement.",
+     "note_ar": "حقن الوسائط يمنعه متطلب منع حقن أوامر نظام التشغيل."
     },
     "93": {
      "controls": [
       "V5.3.1"
      ],
-     "note": "CRLF injection: context-specific output encoding."
+     "note": "CRLF injection: context-specific output encoding.",
+     "note_ar": "حقن CRLF: ترميز المخرجات بحسب السياق."
     },
     "113": {
      "controls": [
       "V5.3.1"
      ],
-     "note": "HTTP response splitting: context-specific output encoding."
+     "note": "HTTP response splitting: context-specific output encoding.",
+     "note_ar": "تقسيم استجابة HTTP: ترميز المخرجات بحسب السياق."
     },
     "943": {
      "controls": [
       "V5.3.4"
      ],
-     "note": "V5.3.4 names NoSQL queries explicitly."
+     "note": "V5.3.4 names NoSQL queries explicitly.",
+     "note_ar": "المتطلب V5.3.4 يذكر استعلامات NoSQL صراحةً."
     },
     "470": {
      "controls": [
       "V5.1.3"
      ],
-     "note": "Class or code selected by input must be validated against an allow list."
+     "note": "Class or code selected by input must be validated against an allow list.",
+     "note_ar": "الصنف أو الكود الذي تختاره المدخلات يجب التحقق منه بقائمة بيضاء."
     },
     "862": {
      "controls": [
       "V4.1.3"
      ],
-     "note": "Missing authorization: least-privilege access to functions and data."
+     "note": "Missing authorization: least-privilege access to functions and data.",
+     "note_ar": "غياب التفويض: الوصول إلى الدوال والبيانات بأقل الصلاحيات."
     },
     "926": {
      "controls": [
       "V4.1.3"
      ],
-     "note": "Exported component reachable without authorization."
+     "note": "Exported component reachable without authorization.",
+     "note_ar": "مكوّن مُصدَّر يمكن الوصول إليه دون تفويض."
     },
     "269": {
      "controls": [
       "V4.1.3"
      ],
-     "note": "Privilege management: least privilege."
+     "note": "Privilege management: least privilege.",
+     "note_ar": "إدارة الصلاحيات: مبدأ أقل الصلاحيات."
     },
     "328": {
      "controls": [
       "V6.2.2"
      ],
-     "note": "Weak hash: approved algorithms only."
+     "note": "Weak hash: approved algorithms only.",
+     "note_ar": "تجزئة ضعيفة: الخوارزميات المعتمدة فقط."
     },
     "329": {
      "controls": [
       "V6.2.6"
      ],
-     "note": "V6.2.6 covers initialization vectors and nonces."
+     "note": "V6.2.6 covers initialization vectors and nonces.",
+     "note_ar": "المتطلب V6.2.6 يشمل متجهات التهيئة والقيم أحادية الاستخدام (nonces)."
     },
     "297": {
      "controls": [
       "V9.2.1"
      ],
-     "note": "Host name check is part of trusted TLS certificate validation."
+     "note": "Host name check is part of trusted TLS certificate validation.",
+     "note_ar": "التحقق من اسم المضيف جزء من التحقق من شهادة TLS الموثوقة."
     },
     "942": {
      "controls": [
       "V14.5.3"
      ],
-     "note": "V14.5.3 is the CORS allow-list requirement."
+     "note": "V14.5.3 is the CORS allow-list requirement.",
+     "note_ar": "المتطلب V14.5.3 هو متطلب القائمة البيضاء في CORS."
     },
     "209": {
      "controls": [
       "V7.4.1"
      ],
-     "note": "V7.4.1 requires generic error messages."
+     "note": "V7.4.1 requires generic error messages.",
+     "note_ar": "المتطلب V7.4.1 يشترط رسائل خطأ عامة."
     },
     "538": {
      "controls": [
       "V8.3"
      ],
-     "note": "Sensitive files shipped with the application: section V8.3 Sensitive Private Data."
+     "note": "Sensitive files shipped with the application: section V8.3 Sensitive Private Data.",
+     "note_ar": "ملفات حساسة تُشحن مع التطبيق: القسم V8.3 البيانات الخاصة الحساسة."
     },
     "214": {
      "controls": [
       "V6.4.1"
      ],
-     "note": "Secrets passed on a command line are outside a secrets-management solution."
+     "note": "Secrets passed on a command line are outside a secrets-management solution.",
+     "note_ar": "الأسرار المُمرَّرة في سطر الأوامر تقع خارج حل إدارة الأسرار."
     },
     "530": {
      "controls": [
       "V12.5.1"
      ],
-     "note": "V12.5.1 names backup files explicitly."
+     "note": "V12.5.1 names backup files explicitly.",
+     "note_ar": "المتطلب V12.5.1 يذكر ملفات النسخ الاحتياطي صراحةً."
     },
     "489": {
      "controls": [
       "V14.3.2"
      ],
-     "note": "V14.3.2 requires debug modes to be disabled in production."
+     "note": "V14.3.2 requires debug modes to be disabled in production.",
+     "note_ar": "المتطلب V14.3.2 يشترط تعطيل أوضاع التصحيح في بيئة الإنتاج."
     },
     "1395": {
      "controls": [
       "V14.2.1"
      ],
-     "note": "V14.2.1 requires components to be up to date."
+     "note": "V14.2.1 requires components to be up to date.",
+     "note_ar": "المتطلب V14.2.1 يشترط أن تكون المكوّنات محدَّثة."
     },
     "1336": {
      "controls": [
       "V5.2.5"
      ],
-     "note": "V5.2.5 is the template injection requirement."
+     "note": "V5.2.5 is the template injection requirement.",
+     "note_ar": "المتطلب V5.2.5 هو متطلب منع حقن القوالب."
     },
     "1327": {
      "controls": [
       "V14.1"
      ],
-     "note": "Deployment configuration: section V14.1 Build and Deploy."
+     "note": "Deployment configuration: section V14.1 Build and Deploy.",
+     "note_ar": "إعدادات النشر: القسم V14.1 البناء والنشر."
     },
     "693": {
      "controls": [
       "V14.1"
      ],
-     "note": "Disabled platform protections: section V14.1 Build and Deploy. Applies to CWE-693 itself only."
+     "note": "Disabled platform protections: section V14.1 Build and Deploy. Applies to CWE-693 itself only.",
+     "note_ar": "حمايات المنصة المعطَّلة: القسم V14.1 البناء والنشر. ينطبق على CWE-693 نفسه فقط."
     },
     "1426": {
      "controls": [
       "V5.2"
      ],
-     "note": "Model output must be sanitized before use: section V5.2 Sanitization and Sandboxing."
+     "note": "Model output must be sanitized before use: section V5.2 Sanitization and Sandboxing.",
+     "note_ar": "يجب تنقية مخرجات النموذج قبل استخدامها: القسم V5.2 التنقية والعزل."
     },
     "1427": {
      "controls": [
       "V5.2"
      ],
-     "note": "ASVS 4.0.3 predates LLM prompting; nearest section is V5.2 Sanitization and Sandboxing."
+     "note": "ASVS 4.0.3 predates LLM prompting; nearest section is V5.2 Sanitization and Sandboxing.",
+     "note_ar": "صدر ASVS 4.0.3 قبل شيوع توجيه النماذج اللغوية الكبيرة بالتعليمات؛ وأقرب قسم إليه V5.2 التنقية والعزل."
     }
    },
    "cwe_na": {
@@ -3715,6 +3777,12 @@
     "625": "No ASVS 4.0.3 requirement addresses regular-expression complexity or reachable assertions.",
     "730": "No ASVS 4.0.3 requirement addresses regular-expression complexity or reachable assertions.",
     "617": "No ASVS 4.0.3 requirement addresses regular-expression complexity or reachable assertions."
+   },
+   "cwe_na_ar": {
+    "1333": "لا يتناول أي متطلب في ASVS 4.0.3 تعقيد التعبير النمطي أو التأكيدات (assertions) القابلة للوصول.",
+    "625": "لا يتناول أي متطلب في ASVS 4.0.3 تعقيد التعبير النمطي أو التأكيدات (assertions) القابلة للوصول.",
+    "730": "لا يتناول أي متطلب في ASVS 4.0.3 تعقيد التعبير النمطي أو التأكيدات (assertions) القابلة للوصول.",
+    "617": "لا يتناول أي متطلب في ASVS 4.0.3 تعقيد التعبير النمطي أو التأكيدات (assertions) القابلة للوصول."
    },
    "category": {
     "injection": [
@@ -4043,7 +4111,7 @@
     },
     "6.2.3": {
      "title": "Bespoke and custom software is reviewed before release to identify and correct coding vulnerabilities",
-     "title_ar": "مراجعة البرمجيات المخصصة قبل الإصدار لاكتشاف ثغرات الشيفرة وتصحيحها",
+     "title_ar": "مراجعة البرمجيات المخصصة قبل الإصدار لاكتشاف ثغرات الكود وتصحيحها",
      "broad": true
     },
     "6.2.4-injection": {
@@ -4104,7 +4172,7 @@
     },
     "8.6.2": {
      "title": "Passwords/passphrases for application and system accounts that can be used for interactive login are not hard coded in scripts, configuration/property files, or bespoke and custom source code",
-     "title_ar": "عدم تضمين كلمات مرور حسابات التطبيقات والأنظمة القابلة لتسجيل الدخول التفاعلي في السكربتات أو ملفات الإعداد أو الشيفرة المصدرية"
+     "title_ar": "عدم تضمين كلمات مرور حسابات التطبيقات والأنظمة القابلة لتسجيل الدخول التفاعلي في السكربتات أو ملفات الإعداد أو الكود المصدري"
     },
     "10.2.1": {
      "title": "Audit logs are enabled and active",
@@ -4304,7 +4372,7 @@
     },
     "PW.7.2": {
      "title": "Perform code review or code analysis, and record and triage all discovered issues",
-     "title_ar": "إجراء مراجعة أو تحليل للشيفرة وتسجيل المشكلات المكتشفة وفرزها"
+     "title_ar": "إجراء مراجعة أو تحليل للكود وتسجيل المشكلات المكتشفة وفرزها"
     },
     "PW.9.1": {
      "title": "Define a secure baseline for every setting that affects security",
@@ -4320,7 +4388,7 @@
     },
     "RV.1.2": {
      "title": "Review, analyze or test the code to identify previously undetected vulnerabilities",
-     "title_ar": "مراجعة الشيفرة أو تحليلها أو اختبارها لاكتشاف ثغرات غير مكتشفة سابقًا"
+     "title_ar": "مراجعة الكود أو تحليله أو اختباره لاكتشاف ثغرات غير مكتشفة سابقًا"
     },
     "RV.2.1": {
      "title": "Analyze each vulnerability to gather enough information about risk to plan its remediation",
@@ -4530,7 +4598,7 @@
     },
     "SA-11(1)": {
      "title": "Developer Testing and Evaluation: Static Code Analysis",
-     "title_ar": "اختبار وتقييم المطوّر: التحليل الساكن للشيفرة",
+     "title_ar": "اختبار وتقييم المطوّر: التحليل الساكن للكود",
      "broad": true
     },
     "SA-22": {

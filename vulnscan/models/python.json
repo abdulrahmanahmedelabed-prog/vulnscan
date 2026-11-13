@@ -978,8 +978,8 @@
       "cwe": "CWE-943",
       "label": "NoSQL server-side JavaScript",
       "title": "Tainted data reaches a MongoDB server-side JavaScript query",
-      "title_ar": "بيانات غير موثوقة تصل إلى شيفرة JavaScript تنفّذها MongoDB",
-      "advice": "لا تبنِ شيفرة JavaScript لـ MongoDB ($where / Code / where()) من المدخلات؛ استخدم مشغّلات الاستعلام ومرّر القيم عبر scope.",
+      "title_ar": "بيانات غير موثوقة تصل إلى كود JavaScript تنفّذه MongoDB",
+      "advice": "لا تبنِ كود JavaScript لـ MongoDB ($where / Code / where()) من المدخلات؛ استخدم مشغّلات الاستعلام ومرّر القيم عبر scope.",
       "args": [
         0
       ],
@@ -995,8 +995,8 @@
       "cwe": "CWE-943",
       "label": "NoSQL server-side JavaScript",
       "title": "Tainted data reaches a MongoDB server-side JavaScript query",
-      "title_ar": "بيانات غير موثوقة تصل إلى شيفرة JavaScript تنفّذها MongoDB",
-      "advice": "لا تبنِ شيفرة JavaScript لـ MongoDB ($where / Code / where()) من المدخلات؛ استخدم مشغّلات الاستعلام ومرّر القيم عبر scope.",
+      "title_ar": "بيانات غير موثوقة تصل إلى كود JavaScript تنفّذه MongoDB",
+      "advice": "لا تبنِ كود JavaScript لـ MongoDB ($where / Code / where()) من المدخلات؛ استخدم مشغّلات الاستعلام ومرّر القيم عبر scope.",
       "args": [
         0
       ],

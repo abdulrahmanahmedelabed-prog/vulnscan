@@ -188,7 +188,7 @@ kashif:
 
 ```bash
 python3 -m venv .kashif && . .kashif/bin/activate
-pip install "git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.0.1"   # pin a release tag
+pip install "git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.0.2"   # pin a release tag
 kashif . --no-deps --no-external --lang en -f sarif -o kashif.sarif --fail-on high
 ```
 
@@ -219,19 +219,21 @@ To bring Kashif into an isolated network:
 
 ```bash
 # on a connected machine
-docker pull ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.1
-docker save ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.1 -o kashif-1.0.1.tar
-sha256sum kashif-1.0.1.tar > kashif-1.0.1.tar.sha256
+docker pull ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2
+docker save ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2 -o kashif-1.0.2.tar
+sha256sum kashif-1.0.2.tar > kashif-1.0.2.tar.sha256
 
 # on the isolated machine
-sha256sum -c kashif-1.0.1.tar.sha256 && docker load -i kashif-1.0.1.tar
-docker run --rm --network none -v "$PWD:/src:ro" ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.1 . --no-deps --no-external
+sha256sum -c kashif-1.0.2.tar.sha256 && docker load -i kashif-1.0.2.tar
+docker run --rm --network none -v "$PWD:/src:ro" ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2 . --no-deps --no-external
 ```
 
 Without Docker, carry the release binary and `SHA256SUMS.txt`, or a wheel built with
-`pip wheel --no-deps git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.0.1` and installed with
-`pip install --no-index vulnscan-*.whl`; there are no dependencies to mirror. Upgrade the same way: the in-app
-updater needs GitHub and is not used in an isolated network.
+`pip wheel --no-deps git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.0.2` and installed with
+`pip install --no-index kashif-*.whl` (the wheel of 1.0.1 and older is `vulnscan-*.whl`); there are no
+dependencies to mirror. Upgrade the same way, removing a pre-1.0.2 install first (see
+[Upgrading a pip install to 1.0.2](#upgrading-a-pip-install-to-102)): the in-app updater needs GitHub and is not
+used in an isolated network.
 
 ### Central dashboard
 
@@ -331,6 +333,59 @@ After editing one file the whole-program analysis still runs, so the rescan is o
 
 Measure your own repository with `/usr/bin/time -v kashif . --no-deps --no-external -f json -o /dev/null`.
 
+## Command-line details for pipelines
+
+### Output language, also for sub-commands
+
+The language comes from `--lang ar|en|both`, else `VULNSCAN_LANG` (or `KASHIF_LANG`; the first one set wins), else
+the system locale (Arabic locale: `ar`), else `both`. A scan under `both` prints its text report in Arabic with the
+English next to it, and writes JSON, SARIF and the other machine formats in English. Every sub-command (`export`,
+`compliance`, `history`, `triage`, `policy`, `surface`, `rules`, `mcp`, ...) inherits the same language when it is
+not given `--lang`: under `both` its `--help` and its usage errors are in Arabic then English, and what it writes
+(exports, reports, messages) is in English, as the add-on outputs of a scan are. Pin `--lang en` (or set
+`VULNSCAN_LANG=en`) in CI so that logs and files do not depend on the runner's locale.
+
+### `--baseline FILE`
+
+The baseline is checked before the scan starts:
+
+| The file | Result |
+|---|---|
+| Does not exist | The first run of a pipeline: every finding is new; the scan runs and exits as usual. |
+| Exists but cannot be read, is not a regular file (a directory, `/dev/zero`, a FIFO), is over 64 MB or is not JSON | `✖` on stderr and **exit 2**; nothing is scanned. |
+| JSON, but not written by `--write-baseline` (no `fingerprints` list) | A `⚠` warning on stderr; it counts as empty (every finding is new) and the exit code is decided as usual. |
+
+### `kashif export REPORT.json`
+
+The report is read only if it is a regular file (or `-` for standard input) of at most 64 MB; a device such as
+`/dev/zero`, a FIFO, a directory or a larger input stops with a clear error and exit 2 before anything is
+converted. A JSON file that is not a Kashif report (`kashif PATH -f json`) is refused the same way, so an empty
+export never passes as success.
+
+### ASFF output: `--aws-account` and `--aws-region`
+
+`-f asff` (AWS Security Hub) and `--export asff=FILE` need the account and region the findings belong to:
+`--aws-account` (the 12-digit AWS account ID) and `--aws-region` (e.g. `eu-west-1`). Both are checked before the
+scan starts; a missing or malformed value is a usage error (exit 2), so a long scan is never lost to a typo.
+`kashif export report.json -f asff --aws-account 123456789012 --aws-region eu-west-1` takes the same options.
+
+### Rule packs: `--require-sha256`
+
+A SHA-256 proves integrity, not authorship. `kashif rules install PACK.zip --sha256 HEX` checks the archive
+against the hash its publisher gave you; without `--sha256` only the archive's own manifest is checked, and a
+warning on stderr shows the archive's hash to compare by hand. In CI and on shared machines, refuse unpinned
+installs: `kashif rules install PACK.zip --require-sha256 ...`, or set `KASHIF_REQUIRE_PACK_SHA256=1` (also `true`,
+`yes`, `on`) to make that the default. Without `--sha256` the install then stops with exit 2, installs nothing
+and prints the archive's SHA-256, to compare with the publisher's before passing it.
+
+### Triage: `--triage-update` and symbolic links
+
+`kashif . --triage --triage-update` saves the triage decisions to the project's `.kashif/triage.json`. A checkout
+is untrusted input: if `.kashif` or `triage.json` there is a symbolic link (or a Windows junction) that points
+elsewhere, the update is refused with exit 2 and nothing is written, so a hostile repository cannot make the scan
+overwrite a file outside it. Name the file explicitly (`--triage path/to/triage.json --triage-update`) to write
+somewhere else on purpose.
+
 ## Verifying what you run
 
 ```bash
@@ -339,12 +394,30 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 gh attestation verify kashif-linux-x86_64 --repo abdulrahmanahmedelabed-prog/vulnscan
 
 # container image: signed SLSA build provenance, and the SBOM attached to the image
-gh attestation verify oci://ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.1 --repo abdulrahmanahmedelabed-prog/vulnscan
-docker buildx imagetools inspect ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.1 --format '{{ json .SBOM }}'
+gh attestation verify oci://ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2 --repo abdulrahmanahmedelabed-prog/vulnscan
+docker buildx imagetools inspect ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2 --format '{{ json .SBOM }}'
 ```
 
 The provenance states the repository, the workflow and the commit the artifact was built from. A release also
 carries a CycloneDX SBOM of the source (`kashif-sbom.cdx.json`).
+
+## Upgrading a pip install to 1.0.2
+
+Up to 1.0.1 the pip distribution was called `vulnscan`; from 1.0.2 on it is `kashif` (the name it will have on PyPI,
+where `vulnscan` is an unrelated project that must not be installed in its place). The import package stays `vulnscan` and
+both commands, `kashif` and `vulnscan`, are installed as before. Installing 1.0.2 over a 1.0.1 git install
+(`pip install --upgrade git+https://...`) does not remove the old distribution: both then own the same files, and
+uninstalling either one later deletes the files of the other. Remove the old one first:
+
+```bash
+python3 -m pip uninstall -y vulnscan kashif        # "Skipping kashif" is fine when only the old one is there
+python3 -m pip install "git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.0.2"
+python3 -m pip list | grep -Ei '^(kashif|vulnscan) '   # only kashif
+```
+
+When a newer release is out, `kashif update` and the UI's update screen show the same two steps for a pip install
+that still has the old distribution. The binaries, the one-line installers, Homebrew, the Windows setup and the container image are not
+affected.
 
 ## Upgrading from 0.x
 

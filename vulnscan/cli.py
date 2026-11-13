@@ -13,7 +13,9 @@ from . import __version__
 from .deps import audit_dependencies
 from .external import run_external
 from .i18n import localize, to_en
-from .i18n.cliargs import RawDescriptionHelpFormatter as _HelpFormatter, localized_argparse, pick, usage_prefix
+from .i18n.cliargs import RawDescriptionHelpFormatter as _HelpFormatter, lang_from_env, localized_argparse, pick, \
+    usage_prefix
+from .i18n.plural import ar_count
 from .model import SEVERITIES, SEVERITY_RANK, Finding, assign_fingerprints, sort_findings
 from .report import render_console, render_html, render_json, render_markdown, render_sarif, summary_counts
 from .baseline import apply_baseline, load_baseline, save_baseline
@@ -53,7 +55,8 @@ DELEGATES = {"mcp": "mcp", "export": "exporters", "compliance": "compliance", "h
 # Delegates whose --lang also takes "both": their --help and usage errors are then Arabic and English, like
 # `kashif --help`; their reports and messages are English under "both", as the add-on outputs of a scan are
 # (exports, --compliance, the policy explanation). The other delegates take en|ar, so "both" means English there.
-BOTH_LANG = frozenset({"mcp", "export", "compliance", "triage", "policy"})
+BOTH_LANG = frozenset({"mcp", "export", "compliance", "triage", "policy", "history", "secrets-history", "surface",
+                       "rules"})
 
 
 def _is_arabic_locale(environ=None) -> bool:
@@ -69,13 +72,14 @@ def _is_arabic_locale(environ=None) -> bool:
 def resolve_lang(value: str | None = "auto", environ=None) -> str:
     """The output language: "ar", "en" or "both".
 
-    An explicit --lang wins; "auto" uses the VULNSCAN_LANG environment variable when set, else "ar" on an Arabic
-    system locale, else "both" (today's bilingual output: nobody is switched to English-only silently)."""
+    An explicit --lang wins; "auto" uses the VULNSCAN_LANG (or else KASHIF_LANG) environment variable when set,
+    else "ar" on an Arabic system locale, else "both" (today's bilingual output: nobody is switched to English-only
+    silently)."""
     if value in ("ar", "en", "both"):
         return value
     env = os.environ if environ is None else environ
-    from_env = (env.get("VULNSCAN_LANG") or "").strip().lower()
-    if from_env in ("ar", "en", "both"):
+    from_env = lang_from_env(env)
+    if from_env:
         return from_env
     return "ar" if _is_arabic_locale(env) else "both"
 
@@ -107,7 +111,7 @@ def _subcommand_help(lang: str = "both") -> str:
 def _forward_lang(argv: list[str], after_command: bool = False, both: bool = False) -> list[str]:
     """Arguments for a sub-command module, whose --lang takes en or ar (and "both" when ``both`` is true): an
     explicit --lang is kept unless the module cannot take it ("both"/"auto" are dropped then), and without one the
-    language Kashif resolved (VULNSCAN_LANG, then the system locale, else "both") is appended when the module takes
+    language Kashif resolved (VULNSCAN_LANG or KASHIF_LANG, then the system locale, else "both") is appended when the module takes
     it, so `kashif <sub-command>` speaks the same language as a scan.
 
     after_command: --lang is moved right after the module's own command word (`kashif policy check --lang ar`); with
@@ -169,7 +173,7 @@ _HELP_FLAGS = ("-h", "--help")
 
 
 def _mcp_args(argv: list[str]) -> list[str]:
-    """`kashif mcp`: the server's language stays its own choice (--lang, else VULNSCAN_LANG, else English: what
+    """`kashif mcp`: the server's language stays its own choice (--lang, else VULNSCAN_LANG or KASHIF_LANG, else English: what
     the assistant reads); only --help follows the language Kashif resolved, like every other sub-command."""
     head = argv[:argv.index("--")] if "--" in argv else argv
     if any(a in _HELP_FLAGS for a in head) and not any(a == "--lang" or a.startswith("--lang=") for a in head):
@@ -195,6 +199,8 @@ def run_subcommand(name: str, argv: list[str]) -> int:
     hlang = _module_lang(args)
     if name == "mcp" and not any(a == "--lang" or a.startswith("--lang=") for a in args):
         hlang = resolve_lang("auto")                # usage errors follow Kashif's language, as --help does
+    if name == "compliance" and _compliance_input_missing(module, args, hlang):
+        return 2
     try:
         with localized_argparse(hlang):             # argparse's own headings and errors, in that language
             code = module.main(args)
@@ -207,6 +213,44 @@ def run_subcommand(name: str, argv: list[str]) -> int:
         _silence_stdout()
         code = 0
     return int(code or 0)
+
+
+def _compliance_input_missing(module, args: list[str], hlang: str) -> bool:
+    """`kashif compliance` without a report (and without --list-frameworks / --check-coverage): the usage and a
+    message naming the missing report, exit 2 (the module itself prints the usage only)."""
+    import contextlib
+    import io
+    if any(a in _HELP_FLAGS for a in args) or not hasattr(module, "_parser"):
+        return False
+    try:
+        with localized_argparse(hlang), contextlib.redirect_stderr(io.StringIO()), \
+                contextlib.redirect_stdout(io.StringIO()):
+            ns = module._parser(hlang).parse_args(args)     # a usage error is left to the module to report
+    except SystemExit:
+        return False
+    if getattr(ns, "input", None) or getattr(ns, "list_frameworks", False) or getattr(ns, "check_coverage", False):
+        return False
+    with localized_argparse(hlang):
+        try:
+            module._parser(hlang).error(_bi("تقرير الفحص المطلوب ربطه بأطر الامتثال غير محدَّد: kashif compliance "
+                                            "REPORT.json (تقرير JSON أو SARIF؛ أنشئه بالأمر: kashif PATH -f json "
+                                            "-o REPORT.json)", hlang))
+        except SystemExit:
+            pass
+    return True
+
+
+# Count phrases of the scan notes (stored in Arabic; their English is in i18n/cat_cli.py for every form).
+_KNOWN_VULNS = ("ثغرة معروفة واحدة", "ثغرتان معروفتان", "{n} ثغرات معروفة", "{n} ثغرةً معروفةً", "{n} ثغرة معروفة")
+_KNOWN_FINDINGS = ("نتيجة معروفة واحدة", "نتيجتان معروفتان", "{n} نتائج معروفة", "{n} نتيجةً معروفةً",
+                   "{n} نتيجة معروفة")
+
+
+def _say(lang: str, ar: str, en: str, **kw) -> str:
+    """A console message: English for "en", else Arabic (as ``localize``); a field written ``{n:noun}`` prints the
+    number with the noun that agrees with it (vulnscan/i18n/cliargs.py, NOUNS)."""
+    from .i18n.cliargs import fmt
+    return fmt(en, "en", **kw) if lang == "en" else fmt(ar, "ar", **kw)
 
 
 def _bi(text: str, lang: str) -> str:
@@ -239,7 +283,7 @@ def build_parser(lang: str = "both") -> argparse.ArgumentParser:
     p.add_argument("--aws-region", metavar="REGION",
                    help=h("لصيغة asff: منطقة AWS لـ Security Hub، مثل eu-west-1"))
     p.add_argument("-o", "--output", help=h("اكتب التقرير إلى هذا الملف بدلًا من الشاشة"))
-    p.add_argument("--all-formats", metavar="PREFIX", help=h("اكتب PREFIX.md و PREFIX.json و PREFIX.html معًا"))
+    p.add_argument("--all-formats", metavar="PREFIX", help=h("اكتب PREFIX.md وPREFIX.json وPREFIX.html وPREFIX.sarif معًا"))
     p.add_argument("--export", action="append", default=[], metavar="FORMAT=FILE",
                    help=h("اكتب أيضًا الفحص بصيغة تصدير إلى ملف، مثل gitlab-sast=gl-sast-report.json (يمكن تكراره)"))
     p.add_argument("--risk-score", action="store_true",
@@ -313,7 +357,7 @@ def build_parser(lang: str = "both") -> argparse.ArgumentParser:
                    help=h("مجلد ذاكرة مؤقتة تزايدية: إعادة فحص مشروع لم يتغير أسرع بكثير وبالنتائج نفسها"))
     p.add_argument("--no-cache", action="store_true", help=h("لا تستخدم الذاكرة المؤقتة للفحص"))
     p.add_argument("--lang", choices=LANG_CHOICES, default="auto",
-                   help=h("لغة المخرجات: ar عربية، en إنجليزية، both الاثنتان؛ auto (الافتراضي) يتبع VULNSCAN_LANG ثم لغة النظام"))
+                   help=h("لغة المخرجات: ar عربية، en إنجليزية، both الاثنتان؛ auto (الافتراضي) يتبع VULNSCAN_LANG أو KASHIF_LANG ثم لغة النظام"))
     p.add_argument("--no-color", action="store_true", help=h("لا تلوّن مخرجات الطرفية"))
     p.add_argument("--list-rules", action="store_true", help=h("اعرض القواعد المدمجة واخرج"))
     # Keep "vulnscan X.Y.Z": the in-app updater of every release (0.9.x included) checks a new binary by this exact text.
@@ -343,9 +387,6 @@ def ui_main(argv: list[str]) -> int:
 def _list_rules(lang: str = "both") -> str:
     en = lang == "en"
 
-    def m(text: str) -> str:
-        return localize(text, lang)
-
     def row(rid: str, sev: str, cwe: str, title: str, title_ar: str, advice: str = "", width: int = 8) -> list[str]:
         if not en:
             return [f"{rid:<{width}} {sev:<9} {cwe:<9} {title_ar} — {title}" if title else
@@ -355,7 +396,7 @@ def _list_rules(lang: str = "both") -> str:
             out.append(f"{'':<{width}}   {to_en(advice)}")
         return out
 
-    lines = [m(f"{len(RULES) + 4} قاعدة مدمجة:"), ""]
+    lines = [_say(lang, "{n:builtin_rules}:", "{n:builtin_rules}:", n=len(RULES) + 4), ""]
     for r in sorted(RULES, key=lambda r: (SEVERITY_RANK[r.severity], r.id)):
         lines += row(r.id, r.severity, r.cwe, r.title, r.title_ar, r.advice)
     from .scanner import ENTROPY_RULE as e
@@ -367,12 +408,15 @@ def _list_rules(lang: str = "both") -> str:
     for r in SEM:
         lines += row(r["id"], r["severity"], r["cwe"], r["title"], r["title_ar"], r.get("advice", ""))
     from .taint import TAINT_RULES
-    lines += ["", m(f"{len(TAINT_RULES)} قاعدة تدفق بيانات وAPEX (12 لغة منها PL/SQL، مدركة للأنواع، عبر الملفات):"), ""]
+    lines += ["", _say(lang, "{n:dataflow_rules} (12 لغة منها PL/SQL، مدركة للأنواع، عبر الملفات):",
+                       "{n:dataflow_rules} (12 languages including PL/SQL; type-aware, cross-file):",
+                       n=len(TAINT_RULES)), ""]
     for t in sorted(TAINT_RULES, key=lambda t: (SEVERITY_RANK[t["severity"]], t["id"])):
         lines += row(t["id"], t["severity"], t["cwe"], t["title"], t["title_ar"], t.get("advice", ""))
     from .vql import catalogue
     qs = catalogue()
-    lines += ["", m(f"{len(qs)} استعلام VQL مدمج (فوق قاعدة بيانات البرنامج):"), ""]
+    lines += ["", _say(lang, "{n:vql_queries} (فوق قاعدة بيانات البرنامج):",
+                       "{n:vql_queries} (over the program database):", n=len(qs)), ""]
     for q in sorted(qs, key=lambda q: (SEVERITY_RANK.get(q["severity"], 9), q["id"])):
         lines += row(q["id"], q["severity"], q["cwe"], q["title"] if en else "", q["title_ar"], q.get("advice", ""), width=32)
     return "\n".join(lines)
@@ -420,7 +464,7 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]] |
     if not args.no_deps:
         dep_findings, err = audit_dependencies(path)
         findings.extend(dep_findings)
-        notes.append(err or f"استعلام OSV.dev عن الاعتماديات: {len(dep_findings)} ثغرة معروفة.")
+        notes.append(err or f"استعلام OSV.dev عن الاعتماديات: {ar_count(len(dep_findings), _KNOWN_VULNS)}.")
         if not err:
             scanners.add("deps")
     if not args.no_external:
@@ -579,12 +623,15 @@ def _hoist_lang(argv: list[str]) -> list[str]:
 
 
 def _main(argv: list[str]) -> int:
+    raw = list(argv)
     argv = _hoist_lang(argv)
     if argv and argv[0] == "ui":
         return ui_main(argv[1:])
     if argv and argv[0] == "lsp":                    # language server for editors (stdio; --stdio accepted)
         from .lsp import main as lsp_main
-        return lsp_main(argv[1:])
+        hlang = _lang_from_argv(raw)                 # --help follows `kashif --lang X lsp` like every sub-command
+        with localized_argparse(hlang):
+            return lsp_main(argv[1:], help_lang=hlang)
     if argv and argv[0] == "update":
         from .updater import cli_main as update_main
         with localized_argparse(_lang_from_argv(argv[1:])):
@@ -646,7 +693,9 @@ def _scan_main(argv: list[str], lang: str) -> int:
             n = save_baseline(findings, args.write_baseline)
         except OSError as e:
             raise _OutputError(f"{args.write_baseline}: {e.strerror or e}") from None
-        print(m(f"حُفظ خط الأساس: {n} بصمة في {args.write_baseline}. الفحوص القادمة مع --baseline ستعرض الجديد فقط."))
+        print(_say(lang, "حُفظ خط الأساس: {n:fingerprints} في {file}. الفحوص القادمة مع --baseline ستعرض الجديد فقط.",
+                   "Baseline saved: {n:fingerprints} in {file}. Future scans with --baseline will report new "
+                   "findings only.", n=n, file=args.write_baseline))
         return 0
 
     exit_code = 0
@@ -672,7 +721,8 @@ def _scan_main(argv: list[str], lang: str) -> int:
 
     if args.baseline:
         findings, suppressed, size = apply_baseline(findings, args.baseline)
-        notes = list(notes) + ([f"خط الأساس: كُتمت {suppressed} نتيجة معروفة من أصل {size}؛ تُعرض النتائج الجديدة فقط."]
+        notes = list(notes) + ([f"خط الأساس: كُتمت {ar_count(suppressed, _KNOWN_FINDINGS)} من أصل {size}؛ "
+                                "تُعرض النتائج الجديدة فقط."]
                                if size else ["خط الأساس غير موجود أو فارغ؛ كل النتائج تُعرض كجديدة."])
     if scope is not None:                      # after the baseline (which records everything), before --fail-on
         from .diffscope import filter_findings
@@ -732,10 +782,10 @@ def _scan_main(argv: list[str], lang: str) -> int:
         print(m(f"كُتب التقرير إلى {dest}") + f" ({fmt})", file=sys.stderr if machine_stdout else sys.stdout)
     side = sys.stderr if machine_stdout else sys.stdout   # never mix extra text into a JSON/SARIF/... on stdout
     if args.risk_score:
-        from .exporters import STR as EXPORT_STR, project_risk, rating_label
+        from .exporters import _t as export_text, project_risk, rating_label
         risk = project_risk(findings, export_meta)
-        print(EXPORT_STR[mod_lang]["m_score"].format(score=risk["score"], rating=rating_label(risk["rating"], mod_lang),
-                                                     n=risk["open_findings"]), file=side)
+        print(export_text(mod_lang, "m_score", score=risk["score"], rating=rating_label(risk["rating"], mod_lang),
+                          n=risk["open_findings"]), file=side)
     if args.compliance or args.audit_report:
         code = _compliance_outputs(args, findings, target, files, notes, mod_lang, m, side)
         if code:
@@ -744,7 +794,8 @@ def _scan_main(argv: list[str], lang: str) -> int:
         from . import triage
         breaches = triage.stats(tri, sla_days=sla_days)["sla"]["breaches"]
         if breaches:
-            print(f"✖ {m(f'تجاوز مهلة الإصلاح: {len(breaches)} نتيجة مفتوحة')}", file=sys.stderr)
+            print("✖ " + _say(lang, "تجاوز مهلة الإصلاح: {n:open_findings}", "Fix deadline (SLA) exceeded: {n:open_findings}",
+                              n=len(breaches)), file=sys.stderr)
             exit_code = 1
     if decision is not None:
         from . import policy
@@ -814,10 +865,13 @@ def _apply_triage(args, findings: list[Finding], mod_lang: str, m):
     except OSError as e:
         print(f"✖ {path}: {e}", file=sys.stderr)
         return None, findings, [], 2
+    lang = getattr(args, "lang_resolved", None) or mod_lang
     if res.expired:
-        print(f"⚠ {m(f'قبول خطر منتهٍ: أُعيد فتح {len(res.expired)} نتيجة')}", file=sys.stderr)
+        print("⚠ " + _say(lang, "قبول خطر منتهٍ: أُعيد فتح {n:findings}", "Risk acceptance expired: {n:findings} re-opened",
+                          n=len(res.expired)), file=sys.stderr)
     if res.regressions:
-        print(f"⚠ {m(f'ارتداد: عادت {len(res.regressions)} نتيجة بعد إصلاحها')}", file=sys.stderr)
+        print("⚠ " + _say(lang, "ارتداد: عادت {n:findings} بعد الإصلاح", "Regression: {n:findings} back after being fixed",
+                          n=len(res.regressions)), file=sys.stderr)
     return tri, list(res.visible), list(res.hidden), 0
 
 

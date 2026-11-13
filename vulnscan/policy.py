@@ -239,7 +239,7 @@ STR = {
         "e_encoding": "the file is not valid UTF-8",
         "e_control_char": "control character U+{code:04X} is not allowed",
         "e_tab": "tab in indentation; use spaces",
-        "e_line_too_long": "line longer than {limit} characters",
+        "e_line_too_long": "line longer than {limit:characters_obl}",
         "e_multi_doc": "multiple YAML documents ('---') are not supported",
         "e_directive": "YAML directives ('%...') are not supported",
         "e_anchor": "YAML anchors ('&name') are not supported",
@@ -263,8 +263,8 @@ STR = {
         "e_inline_map": "a value containing ': ' must be quoted (nested mappings go on their own indented lines)",
         "e_inline_seq": "a list cannot start on the same line as its key; put each '- item' on its own line",
         "e_multiline_scalar": "multi-line values are not supported; keep the value on one line",
-        "e_depth": "nesting deeper than {limit} levels",
-        "e_nodes": "more than {limit} values",
+        "e_depth": "nesting deeper than {limit:levels_obl}",
+        "e_nodes": "more than {limit:values_obl}",
         "e_json": "invalid JSON: {msg}",
         "e_json_const": "NaN, Infinity and numbers longer than 40 characters are not allowed",
         "e_ext": "unsupported policy file type; use .yml, .yaml or .json",
@@ -294,7 +294,7 @@ STR = {
         "e_identifier": "'{value}' is not a valid name (lowercase letters, digits, '-' and '_')",
         "e_extends_unknown": "'{name}' is neither a builtin preset ({presets}) nor a .yml/.yaml/.json path",
         "e_extends_cycle": "inheritance cycle: {chain}",
-        "e_extends_depth": "more than {limit} levels of 'extends'",
+        "e_extends_depth": "more than {limit:levels_obl} of 'extends'",
         "e_extends_missing": "inherited policy '{path}' was not found",
         "e_locked": "'{key}' is locked by the inherited policy {parent} and cannot be changed here",
         "e_report_path": "a report path must be relative, may not contain '..' and must be a portable file name "
@@ -305,42 +305,42 @@ STR = {
                              "its own directory or repository (trusted policy: --allow-external-extends)",
         "e_locked_unknown": "'{key}' cannot be locked; lock a section (gate, scopes, rules, ignores, sla, reports, "
                             "required_scanners) or a key such as gate.fail_on, gate.max.high, rules.disable, sla.high",
-        "e_too_long": "longer than {limit} characters",
-        "e_list_too_long": "more than {limit} entries",
+        "e_too_long": "longer than {limit:characters_obl}",
+        "e_list_too_long": "more than {limit:entries_obl}",
         "w_report_format": "report format '{value}' is not one of the built-in formats ({allowed})",
         # violations
-        "v_severity-threshold": "{count} finding(s) at or above severity {threshold} in scope '{scope}'",
-        "v_max-count": "{count} {severity} finding(s) in scope '{scope}'; the policy allows at most {max}",
-        "v_max-total": "{count} finding(s) in scope '{scope}'; the policy allows at most {max} in total",
-        "v_forbidden-cwe": "{count} finding(s) of CWE-{cwe}, which the policy forbids (scope '{scope}')",
-        "v_forbidden-rule": "{count} finding(s) of rule '{rule}', which the policy forbids (scope '{scope}')",
-        "v_forbidden-owasp": "{count} finding(s) in OWASP category {category}, which the policy forbids (scope '{scope}')",
-        "v_secret": "{count} secret(s) in the code (scope '{scope}'); secrets always fail the gate",
-        "v_expired-ignore": "ignore #{index} ({selector}), approved by {approver}, expired on {date} ({days} day(s) ago): "
-                            "{count} finding(s) are no longer accepted",
-        "v_expired-acceptance": "{count} finding(s) whose risk acceptance has expired",
-        "v_acceptance-too-long": "ignore #{index} ({selector}) expires on {date}, {days} day(s) from today; "
-                                 "the policy allows at most {max}",
+        "v_severity-threshold": "{count:findings} at or above severity {threshold} in scope '{scope}'",
+        "v_max-count": "{count:findings} of severity {severity} in scope '{scope}'; the policy allows at most {max}",
+        "v_max-total": "{count:findings} in scope '{scope}'; the policy allows at most {max} in total",
+        "v_forbidden-cwe": "{count:findings} of CWE-{cwe}, which the policy forbids (scope '{scope}')",
+        "v_forbidden-rule": "{count:findings} of rule '{rule}', which the policy forbids (scope '{scope}')",
+        "v_forbidden-owasp": "{count:findings} in OWASP category {category}, which the policy forbids (scope '{scope}')",
+        "v_secret": "{count:secrets} in the code (scope '{scope}'); secrets always fail the gate",
+        "v_expired-ignore": "ignore #{index} ({selector}), approved by {approver}, expired on {date} ({days:days} ago): "
+                            "{count:findings} no longer accepted",
+        "v_expired-acceptance": "{count:findings} with an expired risk acceptance",
+        "v_acceptance-too-long": "ignore #{index} ({selector}) expires on {date}, {days:days} from today; "
+                                 "the policy allows at most {max:days}",
         "v_required-scanner": "required scanner '{scanner}' did not run, or there is no evidence that it ran",
-        "v_sla-breach": "{count} {severity} finding(s) are older than the SLA of {days} day(s) (oldest: {oldest} day(s))",
-        "v_warnings-as-errors": "{count} warning(s) and warnings are treated as errors",
+        "v_sla-breach": "{count:findings} of severity {severity} past the SLA of {days:days} (oldest: {oldest:days})",
+        "v_warnings-as-errors": "{count:warnings}, and warnings are treated as errors",
         # warnings
         "w_new-only-no-reference": "new_only is set but there is no baseline, changed-file set or 'new' flag; "
                                    "every finding was evaluated",
         "w_baseline-unreadable": "baseline '{path}' could not be read; every finding was evaluated",
-        "w_ignore-expiring": "ignore #{index} ({selector}) expires on {date} (in {days} day(s))",
+        "w_ignore-expiring": "ignore #{index} ({selector}) expires on {date} (in {days:days_obl})",
         "w_ignore-unused": "ignore #{index} ({selector}) matches no finding; remove it",
         "w_ignore-expired-unused": "ignore #{index} ({selector}) expired on {date} and matches no finding; remove it",
-        "w_expired-not-enforced": "{count} expired ignore(s) / risk acceptance(s); fail_on_expired is off",
-        "w_sla-no-dates": "SLA not checked for {count} finding(s): no first-seen date (use triage or a first_seen map)",
-        "w_sla-breach": "{count} {severity} finding(s) are older than the SLA of {days} day(s) (oldest: {oldest} day(s))",
-        "w_unknown-severity": "{count} finding(s) with an unknown severity were treated as medium",
+        "w_expired-not-enforced": "expired ignores / risk acceptances: {count}; fail_on_expired is off",
+        "w_sla-no-dates": "SLA not checked for {count:findings_obl}: no first-seen date (use triage or a first_seen map)",
+        "w_sla-breach": "{count:findings} of severity {severity} past the SLA of {days:days} (oldest: {oldest:days})",
+        "w_unknown-severity": "{count:findings} with an unknown severity treated as medium",
         "w_owasp-fallback": "vulnscan.compliance is unavailable; OWASP categories come from a small built-in table",
         # explain
         "x_title": "Kashif security gate",
         "x_passed": "PASSED", "x_failed": "FAILED",
         "x_policy": "Policy", "x_date": "Evaluated on", "x_exit": "Exit code",
-        "x_summary": "{evaluated} of {total} finding(s) evaluated (ignored {ignored}, rule disabled {disabled}, "
+        "x_summary": "{evaluated} of {total:findings_obl} evaluated (ignored {ignored}, rule disabled {disabled}, "
                      "triaged {triaged}, out of scope {skipped})",
         "x_violations": "Violations", "x_warnings": "Warnings", "x_none": "none",
         "x_more": "... and {count} more",
@@ -348,7 +348,7 @@ STR = {
         "x_scope_default": "default",
         "sev_critical": "critical", "sev_high": "high", "sev_medium": "medium", "sev_low": "low", "sev_info": "info",
         # cli
-        "c_valid": "{path}: valid policy '{name}' ({rules} gate condition(s), {scopes} scope(s), {ignores} ignore(s))",
+        "c_valid": "{path}: valid policy '{name}' ({rules:conditions}, {scopes:scopes}, {ignores:ignores})",
         "c_written": "wrote {path}",
         "c_exists": "{path} already exists; use --force to overwrite",
         "c_no_policy": "no policy file found (looked for {names}); pass --policy",
@@ -364,7 +364,7 @@ STR = {
         "e_encoding": "ترميز الملف ليس UTF-8 صالحًا",
         "e_control_char": "محرف التحكم U+{code:04X} غير مسموح",
         "e_tab": "محرف Tab في الإزاحة؛ استخدم المسافات",
-        "e_line_too_long": "سطر أطول من {limit} محرفًا",
+        "e_line_too_long": "سطر أطول من {limit:characters_obl}",
         "e_multi_doc": "تعدد مستندات YAML ('---') غير مدعوم",
         "e_directive": "توجيهات YAML ('%...') غير مدعومة",
         "e_anchor": "مراسي YAML ('&name') غير مدعومة",
@@ -388,8 +388,8 @@ STR = {
         "e_inline_map": "القيمة التي تحوي ': ' يجب أن تُقتبس (القواميس المتداخلة تُكتب في أسطر مزاحة)",
         "e_inline_seq": "لا تبدأ القائمة في سطر مفتاحها؛ اكتب كل '- عنصر' في سطر مستقل",
         "e_multiline_scalar": "القيم متعددة الأسطر غير مدعومة؛ اكتب القيمة في سطر واحد",
-        "e_depth": "تداخل أعمق من {limit} مستوى",
-        "e_nodes": "أكثر من {limit} قيمة",
+        "e_depth": "تداخل أعمق من {limit:levels_obl}",
+        "e_nodes": "أكثر من {limit:values_obl}",
         "e_json": "JSON غير صالح: {msg}",
         "e_json_const": "القيم NaN و Infinity والأعداد الأطول من 40 محرفًا غير مسموحة",
         "e_ext": "نوع ملف السياسة غير مدعوم؛ استخدم .yml أو .yaml أو .json",
@@ -418,7 +418,7 @@ STR = {
         "e_identifier": "'{value}' ليس اسمًا صالحًا (أحرف لاتينية صغيرة وأرقام و'-' و'_')",
         "e_extends_unknown": "'{name}' ليس قالبًا مدمجًا ({presets}) ولا مسار ملف .yml/.yaml/.json",
         "e_extends_cycle": "حلقة وراثة: {chain}",
-        "e_extends_depth": "أكثر من {limit} مستويات من 'extends'",
+        "e_extends_depth": "أكثر من {limit:levels_obl} من 'extends'",
         "e_extends_missing": "السياسة الموروثة '{path}' غير موجودة",
         "e_locked": "المفتاح '{key}' مقفل في السياسة الموروثة {parent} ولا يجوز تغييره هنا",
         "e_report_path": "مسار التقرير يجب أن يكون نسبيًا ولا يحوي '..' وأن يكون اسم ملف محمولًا "
@@ -429,46 +429,46 @@ STR = {
                              "أو مستودعها (لسياسة موثوقة: --allow-external-extends)",
         "e_locked_unknown": "لا يمكن قفل '{key}'؛ اقفل قسمًا (gate أو scopes أو rules أو ignores أو sla أو reports أو "
                             "required_scanners) أو مفتاحًا مثل gate.fail_on أو gate.max.high أو rules.disable أو sla.high",
-        "e_too_long": "أطول من {limit} محرفًا",
-        "e_list_too_long": "أكثر من {limit} عنصر",
+        "e_too_long": "أطول من {limit:characters_obl}",
+        "e_list_too_long": "أكثر من {limit:entries_obl}",
         "w_report_format": "صيغة التقرير '{value}' ليست من الصيغ المدمجة ({allowed})",
-        "v_severity-threshold": "{count} نتيجة بخطورة {threshold} أو أعلى في النطاق '{scope}'",
-        "v_max-count": "{count} نتيجة بخطورة {severity} في النطاق '{scope}' والسياسة تسمح بـ {max} على الأكثر",
-        "v_max-total": "{count} نتيجة في النطاق '{scope}' والسياسة تسمح بـ {max} إجمالًا على الأكثر",
-        "v_forbidden-cwe": "{count} نتيجة من نوع CWE-{cwe} الذي تمنعه السياسة (النطاق '{scope}')",
-        "v_forbidden-rule": "{count} نتيجة للقاعدة '{rule}' التي تمنعها السياسة (النطاق '{scope}')",
-        "v_forbidden-owasp": "{count} نتيجة ضمن فئة OWASP {category} التي تمنعها السياسة (النطاق '{scope}')",
-        "v_secret": "{count} سرّ مكتوب في الكود (النطاق '{scope}')؛ الأسرار تُفشل البوابة دائمًا",
-        "v_expired-ignore": "الاستثناء رقم {index} ({selector}) الذي اعتمده {approver} انتهى في {date} (منذ {days} يومًا): "
-                            "{count} نتيجة لم تعد مقبولة",
-        "v_expired-acceptance": "{count} نتيجة انتهى قبول الخطر الخاص بها",
-        "v_acceptance-too-long": "الاستثناء رقم {index} ({selector}) ينتهي في {date} أي بعد {days} يومًا؛ "
-                                 "السياسة تسمح بـ {max} يومًا على الأكثر",
+        "v_severity-threshold": "{count:findings} بخطورة {threshold} أو أعلى في النطاق '{scope}'",
+        "v_max-count": "{count:findings} بخطورة {severity} في النطاق '{scope}' والسياسة تسمح بـ {max} على الأكثر",
+        "v_max-total": "{count:findings} في النطاق '{scope}' والسياسة تسمح بـ {max} إجمالًا على الأكثر",
+        "v_forbidden-cwe": "{count:findings} من نوع CWE-{cwe} الذي تمنعه السياسة (النطاق '{scope}')",
+        "v_forbidden-rule": "{count:findings} للقاعدة '{rule}' التي تمنعها السياسة (النطاق '{scope}')",
+        "v_forbidden-owasp": "{count:findings} ضمن فئة OWASP {category} التي تمنعها السياسة (النطاق '{scope}')",
+        "v_secret": "{count:secrets} في الكود (النطاق '{scope}')؛ الأسرار تُفشل البوابة دائمًا",
+        "v_expired-ignore": "الاستثناء رقم {index} ({selector}) الذي اعتمده {approver} انتهى في {date} (منذ {days:days_obl}): "
+                            "النتائج التي لم تعد مقبولة: {count}",
+        "v_expired-acceptance": "{count:findings} بقبول خطر منتهٍ",
+        "v_acceptance-too-long": "الاستثناء رقم {index} ({selector}) ينتهي في {date} أي بعد {days:days_obl}؛ "
+                                 "والسياسة تسمح بمدة أقصاها {max:days}",
         "v_required-scanner": "الفاحص الإلزامي '{scanner}' لم يعمل أو لا دليل على أنه عمل",
-        "v_sla-breach": "{count} نتيجة بخطورة {severity} تجاوزت مهلة الإصلاح {days} يومًا (الأقدم: {oldest} يومًا)",
-        "v_warnings-as-errors": "{count} تحذير، والتحذيرات تُعامَل كأخطاء",
+        "v_sla-breach": "تجاوزت مهلة الإصلاح ({days:days}) {count:findings} بخطورة {severity} (عمر أقدمها: {oldest:days})",
+        "v_warnings-as-errors": "{count:warnings}، والتحذيرات تُعامَل كأخطاء",
         "w_new-only-no-reference": "الخيار new_only مفعّل دون خط أساس أو قائمة ملفات متغيّرة أو علامة 'new'؛ "
                                    "قُيّمت كل النتائج",
         "w_baseline-unreadable": "تعذّرت قراءة خط الأساس '{path}'؛ قُيّمت كل النتائج",
-        "w_ignore-expiring": "الاستثناء رقم {index} ({selector}) ينتهي في {date} (بعد {days} يومًا)",
+        "w_ignore-expiring": "الاستثناء رقم {index} ({selector}) ينتهي في {date} (بعد {days:days_obl})",
         "w_ignore-unused": "الاستثناء رقم {index} ({selector}) لا يطابق أي نتيجة؛ احذفه",
         "w_ignore-expired-unused": "الاستثناء رقم {index} ({selector}) انتهى في {date} ولا يطابق أي نتيجة؛ احذفه",
-        "w_expired-not-enforced": "{count} استثناء أو قبول خطر منتهٍ؛ الخيار fail_on_expired معطّل",
-        "w_sla-no-dates": "لم تُفحص مهلة الإصلاح لـ {count} نتيجة: لا يوجد تاريخ أول ظهور (استخدم الفرز أو خريطة first_seen)",
-        "w_sla-breach": "{count} نتيجة بخطورة {severity} تجاوزت مهلة الإصلاح {days} يومًا (الأقدم: {oldest} يومًا)",
-        "w_unknown-severity": "{count} نتيجة بخطورة غير معروفة عوملت كمتوسطة",
+        "w_expired-not-enforced": "استثناءات أو حالات قبول خطر منتهية: {count}؛ الخيار fail_on_expired معطّل",
+        "w_sla-no-dates": "لم تُفحص مهلة الإصلاح لـ {count:findings_obl}: لا يوجد تاريخ أول ظهور (استخدم الفرز أو خريطة first_seen)",
+        "w_sla-breach": "تجاوزت مهلة الإصلاح ({days:days}) {count:findings} بخطورة {severity} (عمر أقدمها: {oldest:days})",
+        "w_unknown-severity": "عوملت كمتوسطة الخطورة {count:findings} بخطورة غير معروفة",
         "w_owasp-fallback": "الوحدة vulnscan.compliance غير متاحة؛ فئات OWASP مأخوذة من جدول مدمج صغير",
         "x_title": "بوابة الأمان في كاشِف",
         "x_passed": "نجحت", "x_failed": "فشلت",
         "x_policy": "السياسة", "x_date": "تاريخ التقييم", "x_exit": "رمز الخروج",
-        "x_summary": "قُيّمت {evaluated} من {total} نتيجة (مستثناة {ignored}، قاعدة معطّلة {disabled}، "
+        "x_summary": "قُيّمت {evaluated} من {total:findings_obl} (مستثناة {ignored}، قاعدة معطّلة {disabled}، "
                      "مفروزة {triaged}، خارج النطاق {skipped})",
         "x_violations": "المخالفات", "x_warnings": "التحذيرات", "x_none": "لا شيء",
         "x_more": "... و{count} أخرى",
         "x_col_rule": "القاعدة", "x_col_sev": "الخطورة", "x_col_loc": "الموضع", "x_col_fp": "البصمة",
         "x_scope_default": "الافتراضي",
         "sev_critical": "حرجة", "sev_high": "عالية", "sev_medium": "متوسطة", "sev_low": "منخفضة", "sev_info": "معلوماتية",
-        "c_valid": "{path}: سياسة صالحة '{name}' ({rules} شرط بوابة، {scopes} نطاق، {ignores} استثناء)",
+        "c_valid": "{path}: سياسة صالحة '{name}' ({rules:conditions}، {scopes:scopes}، {ignores:ignores})",
         "c_written": "كُتب الملف {path}",
         "c_exists": "الملف {path} موجود؛ استخدم --force للكتابة فوقه",
         "c_no_policy": "لم يُعثر على ملف سياسة (بُحث عن {names})؛ مرّر --policy",
@@ -487,10 +487,11 @@ def _lang(lang) -> str:
 
 
 def _t(lang, key: str, /, **kw) -> str:
+    from .i18n.cliargs import fmt                  # "{count:findings}": the noun agrees with the number
     table = STR[_lang(lang)]
     text = table.get(key) or STR["en"].get(key) or key
     try:
-        return text.format(**kw)
+        return fmt(text, _lang(lang), **kw)
     except (KeyError, IndexError, ValueError):
         return text
 
@@ -2690,7 +2691,11 @@ def init_template(preset: str = "startup", name: str = "my-project", expand: boo
 # CLI
 # --------------------------------------------------------------------------------------------------------------
 def _auto_lang() -> str:
-    for var in ("KASHIF_LANG", "LC_ALL", "LC_MESSAGES", "LANG"):
+    from .i18n.cliargs import lang_from_env
+    env = lang_from_env()                          # VULNSCAN_LANG, then KASHIF_LANG
+    if env:
+        return "ar" if env == "ar" else "en"
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
         if os.environ.get(var):
             return _lang(os.environ[var])
     return "en"
@@ -2721,7 +2726,7 @@ def _read_report(path: str) -> tuple[list, dict]:
 _HELP = {
     "en": {
         "desc": "Kashif policy-as-code: security gates from kashif.yml / kashif.json.",
-        "lang": "message language: en or ar (default: from KASHIF_LANG or the system locale)",
+        "lang": "message language: en or ar (default: from VULNSCAN_LANG or KASHIF_LANG, else the system locale)",
         "check": "evaluate a JSON/SARIF report against a policy",
         "report": "Kashif JSON report or SARIF file",
         "policy": "policy file or builtin preset (default: kashif.yml in the current directory)",
@@ -2746,7 +2751,7 @@ _HELP = {
     },
     "ar": {
         "desc": "السياسة ككود في كاشِف: بوابات أمان من kashif.yml أو kashif.json.",
-        "lang": "لغة الرسائل: en أو ar (الافتراضي: من KASHIF_LANG أو لغة النظام)",
+        "lang": "لغة الرسائل: en أو ar (الافتراضي: من VULNSCAN_LANG أو KASHIF_LANG، وإلا لغة النظام)",
         "check": "قيّم تقرير JSON أو SARIF وفق سياسة",
         "report": "تقرير JSON من كاشِف أو ملف SARIF",
         "policy": "ملف السياسة أو قالب مدمج (الافتراضي: kashif.yml في المجلد الحالي)",
