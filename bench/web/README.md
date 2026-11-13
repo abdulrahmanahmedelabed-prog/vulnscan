@@ -1,6 +1,6 @@
 # Kashif passive web corpus, scorer and ZAP comparison
 
-This folder measures how accurate Kashif's passive web scanner is (spec §5.2–§5.5). It holds 342 labelled
+This folder measures how accurate Kashif's passive web scanner is (spec §5.2–§5.5). It holds 380 labelled
 cases that run offline on `127.0.0.1`. Kashif scans every case through its command line. The results are scored per
 rule and gated in CI. The same corpus also runs through OWASP ZAP's passive scanner as a baseline.
 
@@ -50,17 +50,17 @@ exactly as declared: duplicates, order, raw bytes, obsolete folding and 120 head
 
 | Group | Cases | Content |
 |---|---|---|
-| C-RED | 17 | Plain-HTTP content, the first hop not going to HTTPS, a host change, downgrades (Location, meta refresh, script), 302 vs 308, a 12-hop loop, full-page redirects, D1 |
+| C-RED | 19 | Plain-HTTP content, the first hop not going to HTTPS, a host change, downgrades (Location, meta refresh, script), 302 vs 308, a 12-hop loop, full-page redirects, Basic auth over http, D1 |
 | C-HSTS | 19 | Missing HSTS, `max-age=0` (quoted too), short max-age, duplicates, folding, curly quotes, a leading zero, preload, meta, cross-host hops; traps for http-only, IP literal, invalid certificate and same-host redirect |
-| C-CSP | 41 | Every CSP rule plus traps for D2 and D7–D11 (nonce + `unsafe-inline`, strict-dynamic, `*.host`, `default-src 'none'`, meta CSP, intersection, JSON API, `script-src-elem`) |
-| C-HDR | 34 | XFO, XCTO, Referrer-Policy, Permissions/Feature-Policy, COOP/COEP/CORP, X-XSS-Protection, HPKP, Content-Type, charset, caching, Clear-Site-Data |
+| C-CSP | 45 | Every CSP rule plus traps for D2 and D7–D11 (nonce + `unsafe-inline`, strict-dynamic, `*.host`, `default-src 'none'`, meta CSP, intersection, JSON API, `script-src-elem`), reporting, Trusted Types |
+| C-HDR | 36 | XFO, XCTO, Referrer-Policy, Permissions/Feature-Policy, COOP/COEP/CORP, X-XSS-Protection, HPKP, Content-Type, charset, caching, Clear-Site-Data, the BREACH precondition |
 | C-CORS | 12 | Reflection with and without credentials, `null`, `*` + credentials, Vary, `http:` origin, origin lists, `*` with a session |
-| C-COOKIE | 31 | Secure/HttpOnly/SameSite by cookie class and HSTS, prefixes, Partitioned, Domain, lifetime, size, BIG-IP, JWT `alg:none`, cookies over http, D3–D5, D23 (crawled cookies) |
-| C-HTML | 32 | Mixed content (active and passive), forms, SRI (missing, crossorigin, sha1, over http, mismatch), tabnabbing, malicious CDNs, miners, URL tokens, D6, D22, D24 (grouping) |
+| C-COOKIE | 33 | Secure/HttpOnly/SameSite by cookie class and HSTS, prefixes, Partitioned, Domain, lifetime, size, BIG-IP, JWT `alg:none`, cookies over http, `__Host-` prefix, D3–D5, D23 (crawled cookies) |
+| C-HTML | 45 | Mixed content (active and passive), forms, SRI (missing, crossorigin, sha1, over http, mismatch), tabnabbing, malicious CDNs, miners, URL tokens, password forms (http, downgrade, off-site, autocomplete), CSRF tokens, inline handlers, Flash, D6, D22, D24 (grouping) |
 | C-DOM | 11 | DOM XSS, open redirect and postMessage flows; traps for textContent, DOMPurify, a library file and a 2 MB bundle |
-| C-DISC | 33 | Banners, debug headers, source maps, internal IPs, ETags, listings, debug pages, DB errors, raw PHP, secrets, serialized objects, ViewState, hashes, cards, D16, D18 |
+| C-DISC | 39 | Banners, debug headers, source maps, internal IPs, ETags, listings, debug pages, DB errors, raw PHP, secrets, serialized objects, ViewState, hashes, cards, HTML comments, error-page banners, EXIF GPS, D16, D18 |
 | C-LIB | 15 | retire.js matches (URL, banner, bundle header), EOL frameworks and runtimes, CMS versions, D15 |
-| C-TLS | 25 | Expired, not yet valid, self-signed, wrong host, chain problems, SHA-1, RSA-1024, ROCA, 400-day lifetime, must-staple, TLS 1.0, no TLS 1.3, raw-probe stub flights, two IPs, D17, D19–D21 |
+| C-TLS | 34 | Expired, not yet valid, self-signed, wrong host, chain problems, SHA-1, RSA-1024, ROCA, 400-day lifetime, must-staple, TLS 1.0, no TLS 1.3, raw-probe stub flights (incl. 1024-bit DHE, a higher version than offered, post-quantum groups), CT, certificate names, Mozilla intermediate conformance, two IPs, D17, D19–D21 |
 | C-EXP | 26 | The deep list (with D12–D14 and the never-list check), security.txt, robots.txt, takeover, platform files, D25 (request gaps) |
 | C-WAF | 6 | Cloudflare, Akamai and AWS WAF challenges, 429/503 with Retry-After, a WAF that only blocks the deep probes |
 | C-GRADE | 12 | A+, A, B, C, F, `*`, `?`, grade monotonicity, and three Observatory fixtures |
@@ -116,6 +116,7 @@ variables for every case and starts Kashif with `python -m vulnscan` from the re
   target to `127.0.0.2` or `169.254.169.254` must therefore be refused.
 * `tls.ct_required: false`: certificates from the test CA do not get WEB713, because no corpus certificate can carry
   real SCTs. Without this exception every https case would have a CT finding, and no fixture could reach the A+ grade.
+  A case sets `ct_required=True` to declare the CA CT-bound (`tls-ct-missing`, the WEB713 true positive).
 * The run also needs the 1.1 CLI options of §4.5: `--web-profile`, `--web-sensitivity`, `--delay`, `--timeout`,
   `--no-proxy`, `--crawl`, `--max-pages`, `--max-depth` and `--web-cookie-ignore`. For the JSON report, score.py reads
   `findings[].extra.confidence` and `extra.instances`, `web.grades.kashif.grade` (or `letter`, with `provisional` for
@@ -169,11 +170,24 @@ python bench/web/score.py bench/web/results/1.0.2-legacy.json --baseline bench/w
 
 ### Grade fixtures
 
-The A+, A, B, C, F, `*` and `?` fixtures and the monotonicity pair follow §3.4. The expected letters for B and C were
-worked out by hand from §3.4: a target score sits well inside its band. Phase D must confirm them against WP13's
-implementation before ratcheting. The Observatory fixtures (`grade-obs-*`) have `observatory: null`, which is shown as
-*pending*. Their numbers must be recorded with the official `@mdn/mdn-http-observatory` 1.7.2 scorer, never by hand.
-Set `expect={"observatory": <score>}` once they are recorded.
+The A+, A, B, C, F, `*` and `?` fixtures and the monotonicity pair follow §3.4; phase D confirmed every letter against
+the assembled engine (B and C were hand-derived; C now uses distribution banners so WEB800 stays tentative and cannot
+cap the grade at F). The Observatory fixtures carry numbers recorded with the official `@mdn/mdn-http-observatory`
+1.7.2 analyzer, never by hand: 140, 115 and 0 (`grade-obs-165` is 140 because the corpus host is in no preload list).
+To reproduce them (Node 24+, no network once installed):
+
+```sh
+npm install --prefix /tmp/obs --ignore-scripts @mdn/mdn-http-observatory@1.7.2
+echo '{}' > /tmp/obs/node_modules/@mdn/mdn-http-observatory/conf/hsts-preload.json
+python bench/web/observatory_official.py --package /tmp/obs/node_modules/@mdn/mdn-http-observatory \
+       --results <run_kashif.py --keep dir>
+```
+
+`observatory_official.py` records the fixture responses from the local servers, builds Observatory's `Requests`
+object the way its retriever would (Node's header joining included) and calls the package's own `analyzeScan()`.
+In phase D the same comparison over every simple corpus case (288 cases) agreed test by test, except where the
+recorder cannot know Observatory's view (certificate verification); it found one real difference, repeated
+Strict-Transport-Security fields, which transport.py now joins as Node does.
 
 ## ZAP comparison (spec §5.5)
 

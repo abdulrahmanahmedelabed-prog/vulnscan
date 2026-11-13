@@ -390,6 +390,12 @@ def _fetch_counterpart(run: _Run) -> None:
 def _fetch_cors(run: _Run) -> None:
     ctx = run.ctx
     url = ctx.entry.url if _received(ctx.entry) else ctx.target
+    if ctx.entry is not None and "deadline" in ctx.entry.flags:
+        # the same URL just ran into the per-response deadline (a dripping or stalled server, §0.6): asking again
+        # would only wait another deadline; the CORS checks become not_tested ("timeout")
+        ctx.cors = Response(url=url, status=None, error="not sent: the entry URL hit the per-response deadline",
+                            source="cors", flags=frozenset({"error:deadline"}))
+        return
     r = _fetch(run, url, source="cors", origin=CORS_PROBE_ORIGIN, cookies=False)
     if r is not None and not _never_sent(r):
         _classify(r)

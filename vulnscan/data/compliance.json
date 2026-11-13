@@ -1150,7 +1150,7 @@
       "A08"
      ],
      "note": "Malicious code injected into a served script (cryptominer, loader) is a software integrity failure of A08.",
-     "note_ar": "الشيفرة الخبيثة المحقونة في سكربت مُقدَّم (معدِّن عملات أو محمِّل) إخفاق في سلامة البرمجيات ضمن الفئة A08."
+     "note_ar": "الكود الخبيث المحقون في سكربت يقدّمه الموقع (معدِّن عملات أو محمِّل) إخفاق في سلامة البرمجيات ضمن الفئة A08."
     },
     "1395": {
      "controls": [

@@ -1358,9 +1358,9 @@ def observatory_hsts_slug(response: Response | None, site_host: str, preload: Pr
         result = "hsts-invalid-cert"
     else:
         result = "hsts-not-implemented"
-        fields = response.headers.get_all(STS)
-        if fields:
-            data = (fields[0] or "")[:1024]
+        joined = response.headers.joined(STS)       # Node's http module joins duplicate fields with ", " (two headers
+        if joined is not None:                      # therefore always contain a comma: "hsts-header-invalid")
+            data = joined[:1024]
             if "," in data:
                 result = "hsts-header-invalid"
             else:

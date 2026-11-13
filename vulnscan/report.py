@@ -653,9 +653,14 @@ def clean_text(value, limit: int = 300) -> str:
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
+_TAG_START = re.compile(r"<(?!redacted:)(?=[A-Za-z/!?])")
+
+
 def _md_code(value, limit: int = 300) -> str:
-    """Untrusted text for an inline code span: everything inside is literal except a backtick."""
-    return clean_text(value, limit).replace("`", "ˋ")
+    """Untrusted text for an inline code span. CommonMark keeps a code span literal, but a renderer that allows raw
+    HTML may not: a backtick cannot close the span and nothing that could open a tag stays (``<redacted:N bytes>``,
+    Kashif's own marker, is kept)."""
+    return _TAG_START.sub("&lt;", clean_text(value, limit).replace("`", "ˋ"))
 
 
 def _note(L: "_Lang", note: str, web: dict | None) -> str:
@@ -1143,3 +1148,41 @@ def _sarif_web_properties(web: dict) -> dict:
     summary = web.get("coverage_summary") if isinstance(web.get("coverage_summary"), dict) else {}
     return {"webProfile": web.get("profile", ""), "grades": grades,
             "coverage": {"counts": _coverage_counts(web), "summary": summary.get("en", ""), "notTested": not_run[:500]}}
+
+
+def web_view(findings: list[Finding], web: dict, lang: str = "ar") -> dict:
+    """What the local UI shows of a web scan (GET /api/scans/<id>/web): the same data as the HTML report, already
+    in the UI language and cleaned of control characters (the UI escapes every value again before display).
+
+    ``facts`` (profile, requests, final URL, data date) · ``grades`` [{key, name, grade, score, max, label, caps,
+    provisional}] · ``coverage`` {counts, states (labels), problems [[check, state, reason]]} · ``diff`` (None, or
+    {comparable, notes, new, resolved, unchanged (count), posture [{direction, label, text}], grades [text]}) ·
+    ``inventory`` [{id, label, head, rows}] · ``remediation`` (the snippet library's render(), detected platforms
+    first)."""
+    L = _Lang("en" if lang == "en" else "ar")
+    web = web if _web_ok(web) else {}
+    dp = _diff_parts(web) if web else None
+    diff = None
+    if dp:
+        diff = {"comparable": dp["comparable"], "notes": [clean_text(_pair(L, n), 400) for n in dp["notes"]],
+                "new": [{"rule": clean_text(r.get("rule"), 40), "severity": r.get("severity") if r.get("severity") in SEVERITIES else "info",
+                         "title": _row_title(L, r)} for r in dp["new"][:200]],
+                "resolved": [{"rule": clean_text(r.get("rule"), 40), "severity": r.get("severity") if r.get("severity") in SEVERITIES else "info",
+                              "title": _row_title(L, r)} for r in dp["resolved"][:200]],
+                "unchanged": len(dp["unchanged"]),
+                "posture": [{"direction": str(p.get("direction") or ""),
+                             "label": _wl(L, "d_" + str(p.get("direction"))) if ("d_" + str(p.get("direction"))) in _WEB_LABELS else "",
+                             "text": clean_text(_pair(L, p), 400)} for p in dp["posture"][:200]],
+                "grades": [c for c in (_grade_change_text(L, k, v) for k, v in dp["grades"].items()) if c]}
+    tables = inventory_tables(web, L) if web else {}
+    return {"facts": {"profile": clean_text(web.get("profile"), 20), "requests": web.get("requests"),
+                      "final_url": clean_text(web.get("final_url"), 500), "data_date": clean_text(web.get("data_date"), 20),
+                      "sensitivity": clean_text(web.get("sensitivity"), 20)},
+            "grades": _grade_rows(web, L) if web else [],
+            "coverage": {"counts": _coverage_counts(web), "states": {s: _wl(L, "s_" + s) for s in _STATE_ORDER},
+                         "problems": [[c, _wl(L, "s_" + s) if ("s_" + s) in _WEB_LABELS else s, r]
+                                      for c, s, r in _coverage_problems(web, L)] if web else []},
+            "diff": diff,
+            "inventory": [{"id": k, "label": _wl(L, "t_" + k), "head": tables[k][0], "rows": tables[k][1]}
+                          for k in INVENTORY_TABS if k in tables],
+            "remediation": remediation_snippets(findings, web, L.lang) if web else []}

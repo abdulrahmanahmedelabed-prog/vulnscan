@@ -28,7 +28,7 @@ TOKEN_SHAPES = [
     ("Private key block", r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----\s*\n[A-Za-z0-9+/=\n]{200,}"),
 ]
 ALLOWED = {"AKIAIOSFODNN7EXAMPLE"}          # AWS's documented example key
-SKIP_DIRS = {".git", "node_modules", "__pycache__", "dist", "build", "dist-download", ".venv", "venv"}
+SKIP_DIRS = {".git", ".pytest_cache", "node_modules", "__pycache__", "dist", "build", "dist-download", ".venv", "venv"}
 TEXT_SUFFIXES = {".py", ".js", ".ts", ".java", ".kt", ".cs", ".go", ".php", ".rb", ".rs", ".swift", ".c", ".cpp", ".h",
                  ".txt", ".md", ".json", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".env", ".properties", ".xml",
                  ".html", ".sh", ".tf", ".sql", ".vql", ".dockerfile", ""}

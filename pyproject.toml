@@ -71,4 +71,4 @@ omit = ["vulnscan/__main__.py"]
 include = ["vulnscan*"]
 
 [tool.setuptools.package-data]
-vulnscan = ["ui/*", "models/*", "queries/*", "data/*"]
+vulnscan = ["ui/*", "models/*", "queries/*", "data/*", "data/web/*"]   # data/web: web scanner snapshots (1.1.0)

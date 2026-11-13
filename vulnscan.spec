@@ -1,14 +1,18 @@
 # PyInstaller spec — one-file executable that bundles the web UI assets.
 # Build:  pyinstaller --clean --noconfirm vulnscan.spec
 import glob
+import os
 import sys
 
 # Data files, at the same relative paths as in the package (robust whether or not the package is installed).
 datas = [(f, "vulnscan/ui") for f in glob.glob("vulnscan/ui/*")]                    # web UI
 datas += [(f, "vulnscan/models") for f in glob.glob("vulnscan/models/*.json")]      # data-flow library models
 datas += [(f, "vulnscan/queries") for f in glob.glob("vulnscan/queries/*.vql")]     # built-in VQL queries
-datas += [(f, "vulnscan/data") for f in glob.glob("vulnscan/data/*")]               # compliance.json (package-data)
-for _required in ("vulnscan/ui/index.html", "vulnscan/ui/app.js", "vulnscan/data/compliance.json"):
+datas += [(f, "vulnscan/data") for f in glob.glob("vulnscan/data/*") if os.path.isfile(f)]   # compliance.json
+# web scanner data snapshots (1.1.0: retire.js, PSL, HSTS preload, tech, ... and MANIFEST.json), spec §4.4
+datas += [(f, "vulnscan/data/web") for f in glob.glob("vulnscan/data/web/*") if os.path.isfile(f)]
+for _required in ("vulnscan/ui/index.html", "vulnscan/ui/app.js", "vulnscan/data/compliance.json",
+                  "vulnscan/data/web/psl.dat.gz", "vulnscan/data/web/retire-jsrepository.json.gz"):
     assert any(src.replace("\\", "/") == _required for src, _ in datas), f"{_required} not found: run from the repo root"
 assert any(d == "vulnscan/models" for _, d in datas) and any(d == "vulnscan/queries" for _, d in datas), \
     "vulnscan/models or vulnscan/queries not found: run from the repo root"
@@ -23,6 +27,9 @@ EXPLICIT = [
     # 1.0 sub-commands and features
     "vulnscan.mcp", "vulnscan.compliance", "vulnscan.history", "vulnscan.triage", "vulnscan.policy",
     "vulnscan.surface", "vulnscan.exporters", "vulnscan.ruletest", "vulnscan.autofix",
+    # 1.1.0 passive web scanner: the engine imports its check modules lazily (inside scan())
+    "vulnscan.webscan", "vulnscan.webscan.engine", "vulnscan.webscan.http", "vulnscan.webscan.tls",
+    "vulnscan.webscan.remediation", "vulnscan.i18n.cat_web2",
     # i18n catalogs (imported by vulnscan.i18n; listed so a frozen build never lacks English text)
     "vulnscan.i18n.cat_cli", "vulnscan.i18n.cat_autofix", "vulnscan.i18n.cat_sca", "vulnscan.i18n.cat_integrations",
     "vulnscan.i18n.cat_updater", "vulnscan.i18n.cat_projects",

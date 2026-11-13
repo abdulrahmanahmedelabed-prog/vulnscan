@@ -99,6 +99,10 @@ PROFILES: dict[str, Profile] = {
     "stub-compression": Profile("good", own_port=True, stub="compression"),
     "stub-noreneg": Profile("good", own_port=True, stub="no_renegotiation_info"),
     "stub-timeout": Profile("good", own_port=True, stub="timeout"),
+    "stub-dhe1024": Profile("good", own_port=True, stub="dhe1024_pt"),
+    "stub-higher": Profile("good", own_port=True, stub="higher_pt"),
+    "stub-nopq": Profile("good", own_port=True, stub="nopq_pt"),
+    "stub-pq": Profile("good", own_port=True, stub="pq_pt"),
     "roca": Profile("roca", own_port=True, weak=True),      # needs a fixture from WP10 (tests/data/web/certs/roca*.pem)
 }
 

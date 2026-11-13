@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import gzip
 import datetime as _dt
 import hashlib
 import http.server
@@ -36,6 +37,7 @@ import select
 import socket
 import socketserver
 import ssl
+import struct
 import sys
 import threading
 import time
@@ -117,6 +119,7 @@ class Case:
     twin: str = ""
     note: str = ""
     wellknown: bool = True           # add default robots.txt / security.txt / favicon routes
+    ct_required: bool = False        # the test CA hook declares the CA bound by CT policy (WEB713 cases)
 
     @property
     def slug(self) -> str:
@@ -146,7 +149,8 @@ class Case:
         d = {"group": self.group, "host": self.host, "scheme": self.scheme, "path": self.path, "profile": self.profile,
              "sensitivity": self.sensitivity, "labels": dict(sorted(self.labels.items()))}
         for key, default in (("tls", None), ("crawl", False), ("defect", ()), ("expect", {}), ("requires", ()),
-                             ("twin", ""), ("note", ""), ("url_host", None), ("use_proxy", False), ("extra_args", ())):
+                             ("twin", ""), ("note", ""), ("url_host", None), ("use_proxy", False), ("extra_args", ()),
+                             ("ct_required", False)):
             val = getattr(self, key)
             if val != default:
                 d[key] = list(val) if isinstance(val, tuple) else val
@@ -835,7 +839,7 @@ class CorpusServer:
                "note": "test-only map for KASHIF_TEST_RESOLVE=1; 'public' marks the address as public for the SSRF guard, "
                        "loopback and private-network logic"}
         if cafile:
-            out["tls"] = {"cafile": cafile, "publicly_trusted": True, "ct_required": bool(c.expect.get("ct_required"))}
+            out["tls"] = {"cafile": cafile, "publicly_trusted": True, "ct_required": c.ct_required}
         return out
 
 
@@ -1413,7 +1417,14 @@ case("html-form-action-http", G, {"WEB051": True},
 case("html-formaction-http", G, {"WEB051": True},
      {"/": doc(TEXT + '<form method="post" action="/save"><input name="q"><button formaction="http://{HOST}/save">Save'
                       '</button></form>')}, twin="html-template-comment")
-case("html-password-http", G, {"WEB052": True}, {"/": doc(LOGIN, HTTP_HEADERS())}, scheme="http", twin="html-template-comment")
+case("html-password-http", G, {"WEB000": True, "WEB052": False}, {"/": doc(LOGIN, HTTP_HEADERS())}, scheme="http",
+     twin="html-password-downgrade",
+     note="the whole origin is plain HTTP: WEB000 (capped at D for a login page) explains the password field; WEB052 is "
+          "suppressed as a duplicate (§3.5, one cause, one finding) and listed under web.inventory.suppressed")
+case("html-password-downgrade", G, {"WEB052": True, "WEB103": True},
+     {"/": lambda r: redirect("{HTTP}/login", 302) if r.scheme == "https" else doc(LOGIN, HTTP_HEADERS()),
+      "/login": lambda r: doc(LOGIN, HTTP_HEADERS())}, twin="html-password-http",
+     note="https entry redirected to a plain-http login page: WEB000 does not apply, so WEB052 is reported")
 case("html-cdnjs-no-sri", G, {"WEB053": True, "WEB506": False, "WEB507": False},
      {"/": doc(TEXT + f'<script src="{CDNJS}/lodash.js/4.17.21/lodash.min.js"></script>')},
      expect={"severity": {"WEB053": "low"}}, twin="html-same-site-cdn")
@@ -1715,7 +1726,18 @@ case("lib-jquery-renamed", G, {"WEB054": True},
       "/static/app.vendor.js": js("/*! jQuery v2.2.4 | (c) jQuery Foundation | jquery.org/license */\n"
                                   "!function(a,b){a.jQuery={fn:{jquery:'2.2.4'}}}(window);\n")},
      twin="lib-jquery-371", note="version from the file banner, not the URL")
-case("lib-retire-hash", G, {"WEB054": True}, {"/": doc(TEXT + '<script src="/static/vendor.js"></script>')},
+_RETIRE_FIXTURE = HERE.parent.parent / "tests" / "data" / "web" / "libs" / "jquery-deparam-0.5.3.js"
+
+
+def _retire_fixture(_r: "Req") -> R:
+    """The exact jquery-deparam 0.5.3 file (WP9 fixture) whose SHA-1 is in the bundled retire.js data, under a name
+    that says nothing about the library: only the hash can identify it."""
+    return R(200, [("Content-Type", "text/javascript; charset=utf-8"), ("X-Content-Type-Options", "nosniff"),
+                   ("Cache-Control", "public, max-age=3600")], _RETIRE_FIXTURE.read_bytes())
+
+
+case("lib-retire-hash", G, {"WEB054": True}, {"/": doc(TEXT + '<script src="/static/vendor.js"></script>'),
+                                             "/static/vendor.js": _retire_fixture},
      requires=("fixture:retire-hash",), twin="lib-jquery-371",
      note="needs an exact library file whose SHA-1 is in retire.js (WP9 fixture); skipped otherwise")
 case("lib-angular-182", G, {"WEB054": True, "WEB803": True},
@@ -1800,7 +1822,9 @@ for _id, _prof, _labels, _extra in (
             "defect": ("D19",), "twin": "tls-wrong-host",
             "note": "Python 3.13's VERIFY_X509_STRICT rejects a leaf without AKI that browsers accept"}),
         ("tls-modern-only", "modern", {"WEB030": False, "WEB704": False, "WEB706": False, "WEB711": False, "WEB712": False,
-                                       "WEB705": False}, {"twin": "tls10-accepted"}),
+                                       "WEB705": False, "WEB716": False, "WEB717": False, "WEB718": False},
+         {"twin": "tls10-accepted", "note": "TLS 1.2+1.3, ECDHE AEAD only, a certificate naming exact hosts: Mozilla "
+                                            "intermediate conformant (WEB718 silent)"}),
         ("tls-stub-timeout", "stub-timeout", {"WEB030": False},
          {"requires": ("stub",), "expect": {"states": {"WEB030": "not_tested"}}, "twin": "tls10-accepted",
           "note": "raw probes time out: not_tested, never pass"}),
@@ -1975,12 +1999,14 @@ case("grade-b", G, {"WEB-content-security-policy": True, "WEB050": True}, {"/": 
           "item: base ≈ 77-79 (hand-derived from §3.4; confirm in phase D)")
 _C_HEADERS = H(_B_HEADERS, drop=[STS, SC],
                add=[(SC, "sessionid={RAND}; Secure; Path=/; Domain=grade.kashif.test; Max-Age=7776000"),
-                    (SC, "pref=1; Path=/; SameSite=None"), ("Server", "Apache/2.4.58 (Unix)"), ("X-Powered-By", "PHP/8.3.1"),
+                    (SC, "pref=1; Path=/; SameSite=None"), ("Server", "Apache/2.4.58 (Ubuntu)"),
+                    ("X-Powered-By", "PHP/8.3.1-1ubuntu1"),
                     ("X-Debug-Token", "c0ffee")])
 _C_BODY = _B_BODY + '<form method="post" action="http://{HOST}/subscribe"><input name="e"><button>Go</button></form>'
 case("grade-c", G, {"WEB-strict-transport-security": True}, {"/": doc(_C_BODY, _C_HEADERS)}, tls="modern", zap=False,
      legacy=False, expect={"grade": "C"},
-     note="adds missing HSTS, weak cookies, banners and a debug header: base ≈ 55-60 (hand-derived; confirm in phase D)")
+     note="adds missing HSTS, weak cookies, banners and a debug header: base 58.75 (measured in phase D). The banners are "
+          "distribution builds so WEB800 stays tentative (backports) and cannot cap the grade at F as a critical firm finding")
 case("grade-f", G, {"WEB609": True}, {"/": doc(TEXT + '<script nonce="{NONCE}">var k = `' + _PEM + '`;</script>')},
      expect={"grade": "F"}, note="a critical finding caps the grade at F")
 case("grade-star", G, {}, {"/": doc(TEXT, HTTP_HEADERS())}, scheme="http", expect={"grade_suffix": "*"},
@@ -1990,13 +2016,16 @@ case("grade-mono-frame-ancestors", G, {}, {"/": doc(APP, H(drop=["X-Frame-Option
      expect={"grade_at_least_case": "grade-mono-no-csp"}, note="a clickjacking-only CSP never grades below no CSP")
 case("grade-mono-no-csp", G, {"WEB-content-security-policy": True}, {"/": doc(APP, H(drop=[CSP]))})
 case("grade-obs-165", G, {}, {"/": doc(APP, H(_APLUS, set={STS: "max-age=63072000; includeSubDomains; preload"}))},
-     expect={"observatory": None}, note="Observatory fixture; the expected number is recorded with the official "
-                                        "@mdn/mdn-http-observatory 1.7.2 scorer (README), never by hand")
+     expect={"observatory": 140}, note="Observatory fixture: 140 recorded with the official @mdn/mdn-http-observatory "
+                                       "1.7.2 analyzer (bench/web/observatory_official.py), never by hand; the corpus host is "
+                                       "not in the preload list, so there is no preload credit")
 case("grade-obs-100", G, {}, {"/": doc(APP, H(drop=["Permissions-Policy", "Cross-Origin-Opener-Policy"]))},
-     expect={"observatory": None}, note="Observatory fixture (number pending, see README)")
+     expect={"observatory": 115}, note="Observatory fixture: 115 recorded with the official @mdn/mdn-http-observatory 1.7.2 "
+                                       "analyzer (bench/web/observatory_official.py)")
 case("grade-obs-0", G, {}, {"/": doc(LOGIN, HTTP_HEADERS(drop=[CSP, XFO, XCTO, RP],
                                                           add=[(SC, "sessionid={RAND}; Path=/")]))},
-     scheme="http", expect={"observatory": None}, note="Observatory fixture (number pending, see README)")
+     scheme="http", expect={"observatory": 0}, note="Observatory fixture: 0 recorded with the official "
+                                                    "@mdn/mdn-http-observatory 1.7.2 analyzer (bench/web/observatory_official.py)")
 
 # ============================================================================================ C-HOSTILE (12, spec §0.6)
 G = "C-HOSTILE"
@@ -2018,7 +2047,7 @@ case("hostile-120-headers", G, {},
 case("hostile-gzip-bomb", G, {}, {"/": R(200, [("Content-Type", "text/html"), ("Content-Encoding", "gzip")], b"",
                                         special="bomb")},
      expect={"max_elapsed": 60, "max_rss_mb": 600, "exit": [0, 1]}, note="1 MB of gzip inflating to 1 GiB: capped")
-case("hostile-brotli-body", G, {"WEB055": False, "WEB605": False, "WEB010": True},
+case("hostile-brotli-body", G, {"WEB055": False, "WEB605": False, "WEB010": True, "WEB991": True},
      {"/": R(200, [("Content-Type", "text/html"), ("Content-Encoding", "br"), ("Server", "Apache/2.4.49 (Unix)")],
              page('<h1>Index of /</h1><a href="../">../</a><a href="?C=N;O=D">Name</a>' + _WERKZEUG, title="Index of /"))},
      twin="disc-nginx-autoindex", note="an unrequested coding: header rules run, body rules are not_tested (the bytes are "
@@ -2101,6 +2130,156 @@ case("rev-git-head-catchall", G, {"WEB062": True},
      {"*": R(200, _PLAIN, "Nothing to see here :)\n"), "/": doc(), "/.git/HEAD": R(200, _PLAIN, "ref: refs/heads/main\n")},
      wellknown=False, profile="deep", twin="exp-catchall-text-ok",
      note="a strong signature decides against a catch-all baseline of similar length")
+
+
+# ============================================================================================ phase D additions
+# Spec §5.4 asks for at least one true positive (and a trap) for every rule. These cases cover the rules the original
+# groups left unscored; each sits in the group its rule belongs to.
+
+
+def _gzip_doc(body: str, headers: list | None = None) -> Handler:
+    """A gzip-encoded document (the corpus serves bytes as given), rendered per request like any other page."""
+    def fn(req: "Req") -> R:
+        raw = page(body).replace("{NONCE}", secrets.token_hex(12))
+        return R(200, H(headers, set={"Content-Encoding": "gzip"}) if headers else H(set={"Content-Encoding": "gzip"}),
+                 gzip.compress(raw.encode("utf-8")))
+    return fn
+
+
+def _jpeg(gps: bool) -> bytes:
+    """A minimal JPEG whose EXIF APP1 has a GPS IFD with latitude and longitude (``gps``) or only an Orientation tag."""
+    def entry(tag: int, typ: int, count: int, value: bytes) -> bytes:
+        return struct.pack(">HHI", tag, typ, count) + value.ljust(4, b"\0")
+    if gps:
+        gps_ifd_at, data_at = 8 + 18, 8 + 18 + 54
+        ifd0 = struct.pack(">H", 1) + entry(0x8825, 4, 1, struct.pack(">I", gps_ifd_at)) + b"\0\0\0\0"
+        lat = struct.pack(">6I", 21, 1, 25, 1, 3, 1)
+        lon = struct.pack(">6I", 39, 1, 49, 1, 7, 1)
+        gps_ifd = (struct.pack(">H", 4) + entry(1, 2, 2, b"N") + entry(2, 5, 3, struct.pack(">I", data_at))
+                   + entry(3, 2, 2, b"E") + entry(4, 5, 3, struct.pack(">I", data_at + 24)) + b"\0\0\0\0")
+        tiff = b"MM\x00\x2a" + struct.pack(">I", 8) + ifd0 + gps_ifd + lat + lon
+    else:
+        tiff = b"MM\x00\x2a" + struct.pack(">I", 8) + struct.pack(">H", 1) + entry(0x0112, 3, 1, b"\0\x01") + b"\0" * 4
+    app1 = b"Exif\0\0" + tiff
+    return b"\xff\xd8" + b"\xff\xe1" + struct.pack(">H", len(app1) + 2) + app1 + b"\xff\xd9"
+
+
+_JPEG_HEADERS = [("Content-Type", "image/jpeg"), ("X-Content-Type-Options", "nosniff"), ("Cache-Control", "public, max-age=600")]
+_APACHE_404 = R(404, [("Content-Type", "text/html; charset=iso-8859-1")],
+                "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n<html><head><title>404 Not Found</title></head><body>"
+                "<h1>Not Found</h1><p>The requested URL was not found on this server.</p><hr>"
+                "<address>Apache/2.4.58 (Ubuntu) Server at {HOST} Port 443</address></body></html>\n")
+_BASIC_401 = [("Content-Type", "text/html; charset=utf-8"), ("WWW-Authenticate", 'Basic realm="admin"'),
+              ("X-Content-Type-Options", "nosniff")]
+_TT = "; require-trusted-types-for 'script'"
+_NO_REPORT = "default-src 'self'; script-src 'nonce-{NONCE}' 'strict-dynamic'" + GOOD_TAIL
+
+# C-RED / C-HSTS: transport
+case("red-basic-auth-http", "C-RED", {"WEB118": True}, {"/": R(401, _BASIC_401, page("<h1>Sign in required</h1>"))},
+     scheme="http", twin="red-basic-auth-https", expect={"severity": {"WEB118": "high"}},
+     note="WWW-Authenticate: Basic over plain HTTP: the password travels base64-encoded in clear text")
+case("red-basic-auth-https", "C-RED", {"WEB118": False}, {"/": R(401, _BASIC_401, page("<h1>Sign in required</h1>"))},
+     twin="red-basic-auth-http")
+case("hdr-breach-token-gzip", "C-HDR", {"WEB119": True}, {"/": _gzip_doc(LOGIN)}, sensitivity="paranoid",
+     twin="hdr-breach-token-plain", note="gzip + a CSRF token in a form: the BREACH precondition (tentative, paranoid only)")
+case("hdr-breach-token-plain", "C-HDR", {"WEB119": False}, {"/": doc(LOGIN)}, sensitivity="paranoid",
+     twin="hdr-breach-token-gzip")
+
+# C-CSP
+case("csp-no-reporting", "C-CSP", {"WEB215": True}, csp(_NO_REPORT), twin="csp-with-reporting")
+case("csp-with-reporting", "C-CSP", {"WEB215": False, "WEB991": False}, {"/": doc()}, twin="csp-no-reporting",
+     note="report-to with a matching Reporting-Endpoints group")
+case("csp-no-trusted-types", "C-CSP", {"WEB219": True}, {"/": doc()}, sensitivity="paranoid", twin="csp-trusted-types")
+case("csp-trusted-types", "C-CSP", {"WEB219": False}, csp(STRICT_CSP + _TT), sensitivity="paranoid",
+     twin="csp-no-trusted-types")
+
+# C-COOKIE
+case("ck-session-no-host-prefix", "C-COOKIE", {"WEB409": True}, ck("sid={RAND}; Secure; HttpOnly; Path=/; SameSite=Lax"),
+     sensitivity="paranoid", twin="ck-session-host-prefix")
+case("ck-session-host-prefix", "C-COOKIE", {"WEB409": False},
+     ck("__Host-sid={RAND}; Secure; HttpOnly; Path=/; SameSite=Lax"), sensitivity="paranoid",
+     twin="ck-session-no-host-prefix")
+
+# C-HTML: forms and markup
+_CONTACT = '<form method="post" action="{HTTPS}/contact"><input name="email"><button>Send</button></form>'
+case("html-http-form-to-https", "C-HTML", {"WEB504": True, "WEB103": True},
+     {"/": lambda r: redirect("{HTTP}/contact", 302) if r.scheme == "https" else doc(TEXT + _CONTACT, HTTP_HEADERS()),
+      "/contact": lambda r: doc(TEXT + _CONTACT, HTTP_HEADERS())}, twin="html-http-form-to-https-web000",
+     note="an https entry redirected to a plain-http page whose form posts to https: a MITM can rewrite the form")
+case("html-http-form-to-https-web000", "C-HTML", {"WEB000": True, "WEB504": False},
+     {"/": doc(TEXT + _CONTACT, HTTP_HEADERS())}, scheme="http", twin="html-http-form-to-https",
+     note="the whole origin is plain HTTP: WEB000 explains it and WEB504 is suppressed (§3.5)")
+case("html-password-autocomplete-off", "C-HTML", {"WEB508": True},
+     {"/": doc(TEXT + '<form method="post" action="/login"><input name="user"><input type="password" name="pw" '
+                      'autocomplete="off"><input type="hidden" name="csrf_token" value="{NONCE}"><button>Go</button></form>')},
+     twin="html-password-manager-ok")
+case("html-password-manager-ok", "C-HTML", {"WEB508": False}, {"/": doc(LOGIN)}, twin="html-password-autocomplete-off")
+case("html-inline-handlers", "C-HTML", {"WEB515": True},
+     {"/": doc(TEXT + '<button onclick="go()">Go</button><a href="javascript:void(0)">menu</a>')},
+     sensitivity="paranoid", twin="html-no-inline-handlers")
+case("html-no-inline-handlers", "C-HTML", {"WEB515": False}, {"/": doc()}, sensitivity="paranoid",
+     twin="html-inline-handlers")
+_PROFILE_FORM = ('<form method="post" action="/profile"><input name="display_name"><input name="email">'
+                 '<button>Save</button></form>')
+case("html-form-no-csrf", "C-HTML", {"WEB516": True},
+     {"/": doc(TEXT + _PROFILE_FORM, H(add=[(SC, "sid={RAND}; Secure; HttpOnly; Path=/")]))}, sensitivity="paranoid",
+     twin="html-form-csrf-token", note="no anti-CSRF token and a session cookie without SameSite (tentative, paranoid)")
+case("html-form-csrf-token", "C-HTML", {"WEB516": False},
+     {"/": doc(TEXT + _PROFILE_FORM.replace("<button>", '<input type="hidden" name="csrf_token" value="{NONCE}"><button>'),
+               H(add=[(SC, "sid={RAND}; Secure; HttpOnly; Path=/")]))}, sensitivity="paranoid", twin="html-form-no-csrf")
+case("html-password-offsite", "C-HTML", {"WEB518": True},
+     {"/": doc(TEXT + LOGIN_FORM.replace('action="/login"', 'action="{THIRD}/collect"'),
+               H(set={CSP: STRICT_CSP.replace("form-action 'self'", "form-action 'self' {THIRD}")}))},
+     twin="html-password-onsite", note="a credential form posting to another registrable domain (skimmer shape)")
+case("html-password-onsite", "C-HTML", {"WEB518": False},
+     {"/": doc(TEXT + LOGIN_FORM.replace('action="/login"', 'action="{HTTPS:accounts}/login"'))}, aliases=("accounts",),
+     zap=False, twin="html-password-offsite", note="posting to another host of the same site (accounts.<site>) is fine")
+case("html-flash-object", "C-HTML", {"WEB802": True},
+     {"/": doc(TEXT + '<object type="application/x-shockwave-flash" data="/media/intro.swf" width="400" height="300">'
+                      '</object>')}, twin="html-pdf-object")
+case("html-pdf-object", "C-HTML", {"WEB802": False},
+     {"/": doc(TEXT + '<object type="application/pdf" data="/media/guide.pdf" width="400" height="300"></object>')},
+     twin="html-flash-object")
+
+# C-DISC
+case("disc-html-comment-secret", "C-DISC", {"WEB614": True},
+     {"/": doc(TEXT + "<!-- TODO: remove before release, admin password=Winter2026 -->")}, sensitivity="paranoid",
+     twin="disc-html-comment-plain")
+case("disc-html-comment-plain", "C-DISC", {"WEB614": False}, {"/": doc(TEXT + "<!-- layout: two columns, v2 -->")},
+     sensitivity="paranoid", twin="disc-html-comment-secret")
+case("disc-error-page-banner", "C-DISC", {"WEB616": True},
+     {"/.well-known/security.txt": _APACHE_404, "/security.txt": _APACHE_404}, twin="disc-error-page-plain",
+     note="the stock Apache 404 page names the exact version")
+case("disc-error-page-plain", "C-DISC", {"WEB616": False},
+     {"/.well-known/security.txt": NOT_FOUND, "/security.txt": NOT_FOUND}, twin="disc-error-page-banner")
+case("disc-jpeg-gps", "C-DISC", {"WEB619": True},
+     {"/": doc(TEXT + '<img src="/media/team.jpg" alt="team">'), "/media/team.jpg": R(200, _JPEG_HEADERS, _jpeg(True))},
+     crawl=True, twin="disc-jpeg-no-gps", note="EXIF GPSLatitude/GPSLongitude in a published photo (--crawl fetches it)")
+case("disc-jpeg-no-gps", "C-DISC", {"WEB619": False},
+     {"/": doc(TEXT + '<img src="/media/team.jpg" alt="team">'), "/media/team.jpg": R(200, _JPEG_HEADERS, _jpeg(False))},
+     crawl=True, twin="disc-jpeg-gps")
+
+# C-TLS: configuration and certificate-name notes, then raw-probe stub flights (deterministic, independent of the local
+# OpenSSL build)
+case("tls-intermediate-deviation", "C-TLS", {"WEB718": True, "WEB717": False}, {"/": doc()}, tls="good", zap=False,
+     twin="tls-modern-only", note="OpenSSL's default server suites include CBC suites the Mozilla intermediate profile drops")
+case("tls-wildcard-names", "C-TLS", {"WEB717": True}, {"/": doc()}, zap=False, twin="tls-modern-only",
+     note="the corpus' shared certificate lists *.<registrable domain> wildcards (one per group)")
+case("tls-modern-deep", "C-TLS", {"WEB710": False, "WEB716": False}, {"/": doc()}, tls="modern", profile="deep",
+     zap=False, twin="tls-stub-dhe1024", note="no DHE suite accepted and no version above the one offered (deep probes)")
+case("tls-stub-dhe1024", "C-TLS", {"WEB710": True}, {"/": doc()}, tls="stub-dhe1024", profile="deep", requires=("stub",),
+     zap=False, twin="tls-modern-deep", expect={"severity": {"WEB710": "medium"}},
+     note="DHE answered with the 1024-bit Oakley group 2 prime (Logjam's shared prime): medium")
+case("tls-stub-higher", "C-TLS", {"WEB716": True}, {"/": doc()}, tls="stub-higher", requires=("stub",), zap=False,
+     twin="tls-modern-deep", note="a TLS 1.0/1.1-only hello is answered with TLS 1.2")
+case("tls-stub-no-pq", "C-TLS", {"WEB719": True}, {"/": doc()}, tls="stub-nopq", profile="deep", sensitivity="paranoid",
+     requires=("stub",), zap=False, twin="tls-stub-pq", note="single-group probes: X25519MLKEM768 refused")
+case("tls-stub-pq", "C-TLS", {"WEB719": False}, {"/": doc()}, tls="stub-pq", profile="deep", sensitivity="paranoid",
+     requires=("stub",), zap=False, twin="tls-stub-no-pq", note="single-group probes: X25519MLKEM768 accepted")
+case("tls-ct-missing", "C-TLS", {"WEB713": True}, {"/": doc()}, tls="good", zap=False, ct_required=True,
+     twin="tls-ct-not-required", note="the test CA is declared publicly trusted and CT-bound: a leaf with 0 SCTs")
+case("tls-ct-not-required", "C-TLS", {"WEB713": False}, {"/": doc()}, tls="good", zap=False, twin="tls-ct-missing",
+     note="the same leaf from a CA that is not subject to CT policy (as private CAs are)")
 
 
 if __name__ == "__main__":

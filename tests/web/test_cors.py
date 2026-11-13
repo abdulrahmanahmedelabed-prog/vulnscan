@@ -209,6 +209,9 @@ def test_coverage_pass_and_fail():
     ([(ACAO, CORS_PROBE_ORIGIN)], "cross-origin-resource-sharing-implemented-with-restricted-access"),
     ([(ACAO, "https://partner.example"), (ACAC, "true")],
      "cross-origin-resource-sharing-implemented-with-restricted-access"),
+    # two ACAO lines reach Observatory joined by Node (", "): the value no longer equals the Origin it sent
+    ([(ACAO, CORS_PROBE_ORIGIN), (ACAO, CORS_PROBE_ORIGIN), (ACAC, "true")],
+     "cross-origin-resource-sharing-implemented-with-restricted-access"),
 ])
 def test_observatory_cors_slug(headers, slug):
     _, ctx = scan(R(), R(headers, probe=True))

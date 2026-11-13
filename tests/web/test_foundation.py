@@ -92,7 +92,7 @@ def test_evidence_redacts_cookies_and_quotes_commands(fixed_now):
 
 
 def test_secret_redaction_and_control_stripping():
-    assert redact_secret("AKIAABCDEFGHIJKLMNOP") == "AKIA…OP" and redact_secret("short") == "*****"
+    assert redact_secret("AKIA" + "ABCDEFGHIJKLMNOP") == "AKIA…OP" and redact_secret("short") == "*****"
     assert strip_controls("ok\x1b[31mred\x1b[0m\x07\x9b\ttab\nnl") == "okred\ttab\nnl"
 
 

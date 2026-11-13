@@ -313,3 +313,25 @@ def test_time_budget_gives_a_partial_result_not_an_error(site):
     res = scan(site, crawl=True, time_budget=0.7)
     assert res.findings and res.requests < 10
     assert any("time budget" in n["en"] for n in res.inventory["notes"])
+
+
+def test_entry_cut_by_the_deadline_is_not_fetched_again_for_cors(site, monkeypatch):
+    """Phase D (C-HOSTILE slow drip took two deadlines): after the entry URL hit the per-response deadline, the CORS GET
+    of the same URL is not sent (it could only wait another deadline); the CORS checks are not_tested ("timeout")."""
+    import dataclasses
+
+    from vulnscan.webscan import http as _http
+    real = _http.Fetcher.fetch
+    sources = []
+
+    def fetch(self, url, *, source="entry", **kw):
+        sources.append(source)
+        r = real(self, url, source=source, **kw)
+        return dataclasses.replace(r, flags=r.flags | {"deadline"}) if source == "entry" else r
+    monkeypatch.setattr(_http.Fetcher, "fetch", fetch)
+    res = scan(site, profile="standard")
+    assert "cors" not in sources and "wellknown" in sources
+    assert not any("origin" in h for _p, h in requests_of(site))
+    states = {c["check"]: c for c in res.coverage["checks"]}
+    assert states["WEB320"]["state"] == "not_tested"
+    assert "timeout" in {r["code"] for r in states["WEB320"]["reasons"]}

@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "note": "Spec §5.4 gate for the passive web corpus. 'targets' are the 1.1.0 release targets; 'rules' holds per-rule precision/recall floors that only go up (python bench/web/score.py RESULTS --min-score bench/web/min-score.json --ratchet). The per-rule floors are recorded in phase D from the first green run of the assembled 1.1 engine.",
+ "note": "Spec §5.4 gate for the passive web corpus. 'targets' are the 1.1.0 release targets; 'rules' holds per-rule precision/recall floors that only go up (python bench/web/score.py RESULTS --min-score bench/web/min-score.json --ratchet). Ratcheted in phase D from the first green run of the assembled 1.1 engine: 380 cases, every one of the 184 rules scored with at least one true positive and one trap, all floors at 1.0.",
  "targets": {
   "precision_certain": 1.0,
   "precision_firm": 0.98,
@@ -13,5 +13,742 @@
   "traffic": true,
   "max_errors": 0
  },
- "rules": {}
+ "rules": {
+  "WEB-content-security-policy": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB-permissions-policy": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB-referrer-policy": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB-strict-transport-security": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB-x-content-type-options": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB-x-frame-options": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB000": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB010": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB011": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB020": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB021": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB022": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB030": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB040": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB041": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB042": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB043": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB050": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB051": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB052": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB053": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB054": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB055": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB056": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB060": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB061": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB062": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB070": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB071": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB072": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB080": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB081": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB082": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB083": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB101": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB102": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB103": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB104": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB105": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB106": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB110": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB111": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB112": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB113": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB114": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB115": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB116": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB117": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB118": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB119": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB200": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB201": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB202": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB203": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB204": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB205": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB206": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB207": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB208": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB209": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB210": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB211": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB212": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB213": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB214": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB215": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB216": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB217": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB218": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB219": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB300": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB301": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB302": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB303": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB304": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB305": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB306": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB307": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB308": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB309": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB310": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB311": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB312": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB313": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB314": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB315": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB316": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB317": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB318": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB320": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB321": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB322": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB323": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB324": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB325": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB326": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB327": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB400": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB401": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB402": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB403": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB404": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB405": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB406": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB407": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB408": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB409": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB410": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB411": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB412": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB413": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB414": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB500": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB501": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB502": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB503": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB504": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB505": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB506": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB507": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB508": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB509": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB510": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB511": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB512": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB513": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB514": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB515": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB516": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB517": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB518": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB519": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB520": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB521": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB522": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB600": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB601": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB602": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB603": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB604": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB605": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB606": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB607": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB608": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB609": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB610": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB611": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB612": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB613": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB614": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB615": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB616": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB617": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB619": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB700": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB701": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB702": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB703": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB704": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB705": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB706": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB707": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB708": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB709": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB710": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB711": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB712": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB713": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB714": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB715": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB716": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB717": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB718": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB719": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB720": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB800": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB801": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB802": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB803": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB900": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB901": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB903": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB990": {
+   "precision": 1.0,
+   "recall": 1.0
+  },
+  "WEB991": {
+   "precision": 1.0,
+   "recall": 1.0
+  }
+ }
 }

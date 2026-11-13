@@ -97,6 +97,12 @@ PROFILES: dict[str, Behaviour] = {
     "compression": Behaviour(compression=True, match="compression", passthrough="not_matched"),
     "no_renegotiation_info": Behaviour(reneg=False, match="legacy_hello", passthrough="not_matched"),
     "timeout": Behaviour(mode="silent", match="legacy_hello", passthrough="not_matched"),
+    # phase D corpus profiles (bench/web): only the raw probes named by ``match`` are answered by the stub
+    "dhe1024_pt": Behaviour(versions=frozenset({TLS12}), suites=DHE, dh_prime=OAKLEY2, match="dhe_only",
+                            passthrough="not_matched"),
+    "higher_pt": Behaviour(mode="higher", versions=frozenset({TLS12}), match="below_tls12", passthrough="not_matched"),
+    "nopq_pt": Behaviour(groups13=(0x001D, 0x0017, 0x0018), match="single_group", passthrough="not_matched"),
+    "pq_pt": Behaviour(groups13=(0x11EC, 0x001D, 0x0017, 0x0018), match="single_group", passthrough="not_matched"),
 }
 
 
@@ -476,6 +482,12 @@ def _matches(rule: str, h: Hello) -> bool:
         return legacy and 1 in h.compression
     if rule == "legacy_hello":
         return legacy or h.sslv2
+    if rule == "dhe_only":                 # the deep probe's DHE-suites-only hello
+        return legacy and any(s in DHE for s in h.suites) and not any(s in ECDHE_GCM + ECDHE_CBC + KRSA for s in h.suites)
+    if rule == "below_tls12":              # a hello offering at most TLS 1.1
+        return legacy and not h.sslv2 and h.max_version < TLS12
+    if rule == "single_group":             # the deep probe's one-group TLS 1.3 hellos (never a library handshake)
+        return h.offers_tls13 and len(h.groups()) == 1
     return False
 
 

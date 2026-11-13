@@ -23,7 +23,7 @@ from .external import available, run_external
 from .i18n import to_en
 from .i18n.plural import ar_count
 from .model import SEVERITY_RANK, Finding, assign_fingerprints, sort_findings
-from .report import render_html, render_json, render_markdown, render_sarif, summary_counts
+from .report import render_html, render_json, render_markdown, render_sarif, summary_counts, web_view
 from .rules import RULES
 from .scanner import ARCHIVE_EXTS, JADX_EXTS, jadx_available, scan_path
 from .store import Store
@@ -557,6 +557,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._audit_html(scan)
             if len(parts) == 5 and fmt == "surface":
                 return self._surface_get(scan["id"])
+            if len(parts) == 5 and fmt == "web":           # 1.1.0: grades, coverage, inventory, fixes, diff
+                return self._web_view(scan)
             findings = [_dict_to_finding(d) for d in scan.get("findings") or [] if isinstance(d, dict) and "rule_id" in d]
             args = (findings, scan.get("target", ""), scan.get("files_scanned", 0), scan.get("notes") or [])
             web = scan.get("web") if isinstance(scan.get("web"), dict) else None   # a 1.1.0 web scan
@@ -575,6 +577,15 @@ class Handler(BaseHTTPRequestHandler):
             if fmt == "report.sarif":             # SARIF 2.1.0 (code-scanning platforms); messages are English
                 return self._text(render_sarif(*args, lang=lang, web=web), "application/sarif+json", name + ".sarif")
         return self._json({"error": "not found"}, 404)
+
+    def _web_view(self, scan: dict):
+        """GET /api/scans/<id>/web[?lang=ar|en]: the web scan panels of the UI (report.web_view); 404 for a scan
+        that is not a 1.1.0 web scan."""
+        web = scan.get("web") if isinstance(scan.get("web"), dict) else None
+        if web is None:
+            return self._json({"error": "not found"}, 404)
+        findings = [_dict_to_finding(d) for d in _scan_findings(scan)]
+        return self._json(web_view(findings, web, self._lang_param(("ar", "en"), "ar")))
 
     # ------------------------------------------------- 1.0: exports, compliance, attack surface, triage
     def _lang_param(self, allowed: tuple, default: str) -> str:

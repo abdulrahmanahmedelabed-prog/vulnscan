@@ -227,16 +227,37 @@
           </div>
         </div>
         <div class="tab-pane hidden" data-pane="url" role="tabpanel">
-          <label for="url-input" data-i18n="scan.urlLabel">عنوان الموقع (فحص سلبي: طلب واحد فقط)</label>
+          <label for="url-input" data-i18n="scan.urlLabel">عنوان الموقع (فحص سلبي: طلبات GET محدودة، بلا أي اختبار نشط)</label>
           <div class="row">
             <input id="url-input" class="input mono" placeholder="https://example.com" dir="ltr" autocomplete="off" spellcheck="false">
             <button id="url-btn" class="btn primary" type="button"><svg class="i" aria-hidden="true"><use href="#i-scan"/></svg><span data-i18n="scan.start">ابدأ الفحص</span></button>
           </div>
           <div class="checks">
             <label class="check"><input id="url-auth" type="checkbox"> <span data-i18n="scan.authorize">أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه</span></label>
-            <label class="check"><input id="url-deep" type="checkbox"> <span data-i18n="scan.deep">فحص أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)</span></label>
             <label class="check"><input id="url-crawl" type="checkbox"> <span data-i18n="scan.crawl">زحف على صفحات الموقع وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)</span></label>
+            <label class="check"><input id="url-compare" type="checkbox" checked> <span data-i18n="scan.compare">قارن بآخر فحص لهذا الموقع</span></label>
           </div>
+          <div class="field-row web-opts">
+            <div class="field"><label for="url-profile" data-i18n="scan.profile">ملف الفحص</label>
+              <select id="url-profile" class="input">
+                <option value="minimal" data-i18n="scan.pMinimal">minimal: الصفحة وتوجيهاتها فقط (10 طلبات على الأكثر)</option>
+                <option value="standard" selected data-i18n="scan.pStandard">standard (الافتراضي): الملفات المعروفة وسكربتات الصفحة (45 طلبًا على الأكثر)</option>
+                <option value="deep" data-i18n="scan.pDeep">deep: يضيف الملفات المكشوفة الشائعة (150 طلبًا على الأكثر)</option>
+              </select></div>
+            <div class="field"><label for="url-sens" data-i18n="scan.sens">الحساسية</label>
+              <select id="url-sens" class="input">
+                <option value="strict" data-i18n="scan.sStrict">strict: المؤكَّدة فقط</option>
+                <option value="default" selected data-i18n="scan.sDefault">default: المؤكَّدة والمرجَّحة</option>
+                <option value="paranoid" data-i18n="scan.sParanoid">paranoid: كل شيء مع الفحوص الإضافية</option>
+              </select></div>
+          </div>
+          <details class="web-more"><summary data-i18n="set.secWeb">فحص الويب</summary>
+            <div class="checks">
+              <label class="check"><input id="url-robots" type="checkbox"> <span data-i18n="scan.robots">تجاهل robots.txt عند الزحف (لمالك الموقع)</span></label>
+              <label class="check"><input id="url-3p" type="checkbox"> <span data-i18n="scan.thirdParty">اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (مثل hstspreload.org)</span></label>
+              <label class="check"><input id="url-noproxy" type="checkbox"> <span data-i18n="scan.noProxy">لا تستخدم الوكيل (proxy) المعرَّف في النظام</span></label>
+            </div>
+          </details>
           <div class="callout warn"><svg class="i" aria-hidden="true"><use href="#i-warning"/></svg><span data-i18n="scan.legal">فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.</span></div>
         </div>
       </div>
@@ -289,6 +310,7 @@
         </div>
       </div>
       <div id="findings-notes" class="notes"></div>
+      <div id="findings-web" class="web-panel"></div>
       <div id="findings-list" class="findings"></div>
     </section>
 
@@ -438,7 +460,17 @@
           <div class="sec-body">
             <div class="field-row">
               <div class="field"><label for="f-wt" data-i18n="set.webTimeout">مهلة طلب الويب بالثواني (يُعاد الطلب الأول مرة بمهلة مضاعفة)</label><input id="f-wt" name="web_timeout" type="number" min="5" max="120" class="input" dir="ltr"></div>
-              <div class="field"><label for="f-wd" data-i18n="set.webDelay">تأخير بين طلبات الزحف بالثواني (ألطف على الخادم وجدار الحماية)</label><input id="f-wd" name="web_delay" type="number" min="0" max="10" step="0.1" class="input" dir="ltr"></div>
+              <div class="field"><label for="f-wd" data-i18n="set.webDelay">أقل فاصل بالثواني بين طلبين إلى الموقع نفسه، لكل الطلبات (الحد الأدنى 0.2)</label><input id="f-wd" name="web_delay" type="number" min="0" max="10" step="0.1" class="input" dir="ltr"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label for="f-wp" data-i18n="set.webProfile">ملف فحص المواقع الافتراضي</label><select id="f-wp" name="web_profile" class="input"><option value="minimal">minimal</option><option value="standard">standard</option><option value="deep">deep</option></select></div>
+              <div class="field"><label for="f-ws" data-i18n="set.webSens">الحساسية الافتراضية</label><select id="f-ws" name="web_sensitivity" class="input"><option value="strict">strict</option><option value="default">default</option><option value="paranoid">paranoid</option></select></div>
+            </div>
+            <div class="checks">
+              <label class="check"><input name="web_compare_previous" type="checkbox"> <span data-i18n="set.webCompare">قارن كل فحص بآخر فحص للموقع نفسه</span></label>
+              <label class="check"><input name="web_respect_robots" type="checkbox"> <span data-i18n="set.webRobots">احترم robots.txt عند الزحف</span></label>
+              <label class="check"><input name="web_third_party_lookups" type="checkbox"> <span data-i18n="set.web3p">اسمح باستعلامات لدى أطراف ثالثة (مثل hstspreload.org)</span></label>
+              <label class="check"><input name="web_use_proxy" type="checkbox"> <span data-i18n="set.webProxy">استخدم الوكيل (proxy) المعرَّف في النظام</span></label>
             </div>
             <div class="field"><label for="f-at" data-i18n="set.authTargets">عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)</label><textarea id="f-at" name="authorized_targets" class="input mono" rows="3" dir="ltr" spellcheck="false"></textarea></div>
           </div>

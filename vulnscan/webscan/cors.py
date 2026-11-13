@@ -287,7 +287,7 @@ def run(ctx: ScanContext) -> list[Issue]:
     if ctx.cors is None:
         probe_reason = "profile" if ctx.options.profile == "minimal" else "not_run"
     elif ctx.cors.status is None or ctx.cors.error:
-        probe_reason = "network"
+        probe_reason = "timeout" if any(f in ("error:deadline", "error:timeout") for f in ctx.cors.flags) else "network"
     private_ip = private_target(ctx)
     for r in _responses(ctx, st):
         probed = (r.request_headers.first("origin") or "") == CORS_PROBE_ORIGIN
@@ -348,12 +348,14 @@ def observatory_cors_slug(probe: Response | None) -> str | None:
         return None
     if probe.status is None or probe.error:
         return "cross-origin-resource-sharing-not-implemented"
-    acao = probe.headers.first(ACAO)
+    # Node's http module (Observatory's client) joins duplicate response fields with ", "; these two are not on its
+    # first-value-wins list, so two ACAO lines reach Observatory as one value
+    acao = probe.headers.joined(ACAO)
     if not acao:
         return "cross-origin-resource-sharing-not-implemented"
     data = acao[:256].strip().lower()
     origin = probe.request_headers.first("origin")
-    acac = probe.headers.first(ACAC)
+    acac = probe.headers.joined(ACAC)
     if data == "*":
         return "cross-origin-resource-sharing-implemented-with-public-access"
     if origin and origin == acao and acac and acac.lower().strip() == "true":

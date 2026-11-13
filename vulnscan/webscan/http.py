@@ -1179,6 +1179,8 @@ class Fetcher:
         """Resolver status of ``host`` for ``ctx.dns`` (the OS resolver's normal lookup; §0.1 bounds: 30 referenced
         hosts, 10 registrable domains). ``confirm_missing`` repeats an nxdomain answer once, ≥ 2 s later (WEB517).
         Through a proxy every record is ``not_tested`` ("proxied")."""
+        if purpose not in ("target", "referenced", "registrable"):     # §0.1 DNS row; the last two are capped
+            raise ValueError(f"unknown DNS lookup kind {purpose!r}")
         host = psl.normalise(host)
         reg = psl.registrable_domain(host) or ""
         if self.proxied:
@@ -1320,6 +1322,8 @@ class Fetcher:
         refuses redirects that leave the target's registrable domain."""
         if origin is not None and origin != CORS_PROBE_ORIGIN:
             raise ValueError("only the benign CORS probe Origin may be sent (§0.1)")
+        if source not in SOURCE_CLASS:   # every request type is a row of the §0.1 table (tests/web/test_scope_contract.py)
+            raise ValueError(f"unknown request type {source!r}: add it to the §0.1 scope table first")
         if not self.target:              # the first URL fetched is the scan target (its category drives the guard)
             self.target = url
             self.target_host = psl.normalise(urllib.parse.urlsplit(url).hostname or "")
@@ -1583,6 +1587,9 @@ class Fetcher:
                 if wd.fired:             # the header block was cut by the deadline: never judge partial headers
                     raise TimeoutError("response deadline exceeded while reading the header block")
                 result = self._read(conn, resp, prep, source, req_headers, cap, wd, t0, ip, base_flags)
+                # the gap also runs from the end of this response: the server saw this request before it answered,
+                # so the next one reaches it ≥ delay later whatever the latency (§4.3, §5.7: measured server-side)
+                self.limiter.mark(prep.host)
                 if not resp.isclosed() or resp.will_close or result.flags & {"incomplete-body", "deadline"}:
                     _close(conn)
                 else:

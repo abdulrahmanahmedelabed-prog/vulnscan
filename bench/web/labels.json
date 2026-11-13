@@ -1,23 +1,23 @@
 {
  "schema": 1,
  "generated_by": "bench/web/corpus.py (python bench/web/corpus.py --write-labels)",
- "count": 342,
+ "count": 380,
  "groups": {
-  "C-COOKIE": 31,
+  "C-COOKIE": 33,
   "C-CORS": 12,
-  "C-CSP": 41,
-  "C-DISC": 33,
+  "C-CSP": 45,
+  "C-DISC": 39,
   "C-DOM": 11,
   "C-EXP": 26,
   "C-GRADE": 12,
-  "C-HDR": 34,
+  "C-HDR": 36,
   "C-HOSTILE": 12,
   "C-HSTS": 19,
-  "C-HTML": 32,
+  "C-HTML": 45,
   "C-LIB": 15,
-  "C-RED": 17,
+  "C-RED": 19,
   "C-REVIEW": 16,
-  "C-TLS": 25,
+  "C-TLS": 34,
   "C-WAF": 6
  },
  "cases": {
@@ -2565,9 +2565,27 @@
    "profile": "standard",
    "sensitivity": "default",
    "labels": {
-    "WEB052": true
+    "WEB000": true,
+    "WEB052": false
    },
-   "twin": "html-template-comment",
+   "twin": "html-password-downgrade",
+   "note": "the whole origin is plain HTTP: WEB000 (capped at D for a login page) explains the password field; WEB052 is suppressed as a duplicate (§3.5, one cause, one finding) and listed under web.inventory.suppressed",
+   "zap": true,
+   "legacy": true
+  },
+  "html-password-downgrade": {
+   "group": "C-HTML",
+   "host": "html-password-downgrade.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB052": true,
+    "WEB103": true
+   },
+   "twin": "html-password-http",
+   "note": "https entry redirected to a plain-http login page: WEB000 does not apply, so WEB052 is reported",
    "zap": true,
    "legacy": true
   },
@@ -4339,10 +4357,14 @@
     "WEB705": false,
     "WEB706": false,
     "WEB711": false,
-    "WEB712": false
+    "WEB712": false,
+    "WEB716": false,
+    "WEB717": false,
+    "WEB718": false
    },
    "tls": "modern",
    "twin": "tls10-accepted",
+   "note": "TLS 1.2+1.3, ECDHE AEAD only, a certificate naming exact hosts: Mozilla intermediate conformant (WEB718 silent)",
    "zap": false,
    "zap_note": "ZAP's passive scanner has no TLS rules",
    "legacy": true
@@ -4999,7 +5021,7 @@
    "expect": {
     "grade": "C"
    },
-   "note": "adds missing HSTS, weak cookies, banners and a debug header: base ≈ 55-60 (hand-derived; confirm in phase D)",
+   "note": "adds missing HSTS, weak cookies, banners and a debug header: base 58.75 (measured in phase D). The banners are distribution builds so WEB800 stays tentative (backports) and cannot cap the grade at F as a critical firm finding",
    "zap": false,
    "legacy": false
   },
@@ -5088,9 +5110,9 @@
    "sensitivity": "default",
    "labels": {},
    "expect": {
-    "observatory": null
+    "observatory": 140
    },
-   "note": "Observatory fixture; the expected number is recorded with the official @mdn/mdn-http-observatory 1.7.2 scorer (README), never by hand",
+   "note": "Observatory fixture: 140 recorded with the official @mdn/mdn-http-observatory 1.7.2 analyzer (bench/web/observatory_official.py), never by hand; the corpus host is not in the preload list, so there is no preload credit",
    "zap": true,
    "legacy": true
   },
@@ -5103,9 +5125,9 @@
    "sensitivity": "default",
    "labels": {},
    "expect": {
-    "observatory": null
+    "observatory": 115
    },
-   "note": "Observatory fixture (number pending, see README)",
+   "note": "Observatory fixture: 115 recorded with the official @mdn/mdn-http-observatory 1.7.2 analyzer (bench/web/observatory_official.py)",
    "zap": true,
    "legacy": true
   },
@@ -5118,9 +5140,9 @@
    "sensitivity": "default",
    "labels": {},
    "expect": {
-    "observatory": null
+    "observatory": 0
    },
-   "note": "Observatory fixture (number pending, see README)",
+   "note": "Observatory fixture: 0 recorded with the official @mdn/mdn-http-observatory 1.7.2 analyzer (bench/web/observatory_official.py)",
    "zap": true,
    "legacy": true
   },
@@ -5234,7 +5256,8 @@
    "labels": {
     "WEB010": true,
     "WEB055": false,
-    "WEB605": false
+    "WEB605": false,
+    "WEB991": true
    },
    "twin": "disc-nginx-autoindex",
    "note": "an unrequested coding: header rules run, body rules are not_tested (the bytes are never parsed)",
@@ -5609,6 +5632,581 @@
    "twin": "exp-catchall-text-ok",
    "note": "a strong signature decides against a catch-all baseline of similar length",
    "zap": true,
+   "legacy": true
+  },
+  "red-basic-auth-http": {
+   "group": "C-RED",
+   "host": "red-basic-auth-http.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB118": true
+   },
+   "expect": {
+    "severity": {
+     "WEB118": "high"
+    }
+   },
+   "twin": "red-basic-auth-https",
+   "note": "WWW-Authenticate: Basic over plain HTTP: the password travels base64-encoded in clear text",
+   "zap": true,
+   "legacy": true
+  },
+  "red-basic-auth-https": {
+   "group": "C-RED",
+   "host": "red-basic-auth-https.red.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB118": false
+   },
+   "twin": "red-basic-auth-http",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-breach-token-gzip": {
+   "group": "C-HDR",
+   "host": "hdr-breach-token-gzip.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB119": true
+   },
+   "twin": "hdr-breach-token-plain",
+   "note": "gzip + a CSRF token in a form: the BREACH precondition (tentative, paranoid only)",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-breach-token-plain": {
+   "group": "C-HDR",
+   "host": "hdr-breach-token-plain.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB119": false
+   },
+   "twin": "hdr-breach-token-gzip",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-no-reporting": {
+   "group": "C-CSP",
+   "host": "csp-no-reporting.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB215": true
+   },
+   "twin": "csp-with-reporting",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-with-reporting": {
+   "group": "C-CSP",
+   "host": "csp-with-reporting.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB215": false,
+    "WEB991": false
+   },
+   "twin": "csp-no-reporting",
+   "note": "report-to with a matching Reporting-Endpoints group",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-no-trusted-types": {
+   "group": "C-CSP",
+   "host": "csp-no-trusted-types.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB219": true
+   },
+   "twin": "csp-trusted-types",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-trusted-types": {
+   "group": "C-CSP",
+   "host": "csp-trusted-types.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB219": false
+   },
+   "twin": "csp-no-trusted-types",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-no-host-prefix": {
+   "group": "C-COOKIE",
+   "host": "ck-session-no-host-prefix.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB409": true
+   },
+   "twin": "ck-session-host-prefix",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-host-prefix": {
+   "group": "C-COOKIE",
+   "host": "ck-session-host-prefix.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB409": false
+   },
+   "twin": "ck-session-no-host-prefix",
+   "zap": true,
+   "legacy": true
+  },
+  "html-http-form-to-https": {
+   "group": "C-HTML",
+   "host": "html-http-form-to-https.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB103": true,
+    "WEB504": true
+   },
+   "twin": "html-http-form-to-https-web000",
+   "note": "an https entry redirected to a plain-http page whose form posts to https: a MITM can rewrite the form",
+   "zap": true,
+   "legacy": true
+  },
+  "html-http-form-to-https-web000": {
+   "group": "C-HTML",
+   "host": "html-http-form-to-https-web000.html.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB000": true,
+    "WEB504": false
+   },
+   "twin": "html-http-form-to-https",
+   "note": "the whole origin is plain HTTP: WEB000 explains it and WEB504 is suppressed (§3.5)",
+   "zap": true,
+   "legacy": true
+  },
+  "html-password-autocomplete-off": {
+   "group": "C-HTML",
+   "host": "html-password-autocomplete-off.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB508": true
+   },
+   "twin": "html-password-manager-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "html-password-manager-ok": {
+   "group": "C-HTML",
+   "host": "html-password-manager-ok.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB508": false
+   },
+   "twin": "html-password-autocomplete-off",
+   "zap": true,
+   "legacy": true
+  },
+  "html-inline-handlers": {
+   "group": "C-HTML",
+   "host": "html-inline-handlers.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB515": true
+   },
+   "twin": "html-no-inline-handlers",
+   "zap": true,
+   "legacy": true
+  },
+  "html-no-inline-handlers": {
+   "group": "C-HTML",
+   "host": "html-no-inline-handlers.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB515": false
+   },
+   "twin": "html-inline-handlers",
+   "zap": true,
+   "legacy": true
+  },
+  "html-form-no-csrf": {
+   "group": "C-HTML",
+   "host": "html-form-no-csrf.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB516": true
+   },
+   "twin": "html-form-csrf-token",
+   "note": "no anti-CSRF token and a session cookie without SameSite (tentative, paranoid)",
+   "zap": true,
+   "legacy": true
+  },
+  "html-form-csrf-token": {
+   "group": "C-HTML",
+   "host": "html-form-csrf-token.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB516": false
+   },
+   "twin": "html-form-no-csrf",
+   "zap": true,
+   "legacy": true
+  },
+  "html-password-offsite": {
+   "group": "C-HTML",
+   "host": "html-password-offsite.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB518": true
+   },
+   "twin": "html-password-onsite",
+   "note": "a credential form posting to another registrable domain (skimmer shape)",
+   "zap": true,
+   "legacy": true
+  },
+  "html-password-onsite": {
+   "group": "C-HTML",
+   "host": "html-password-onsite.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB518": false
+   },
+   "twin": "html-password-offsite",
+   "note": "posting to another host of the same site (accounts.<site>) is fine",
+   "zap": false,
+   "legacy": true
+  },
+  "html-flash-object": {
+   "group": "C-HTML",
+   "host": "html-flash-object.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB802": true
+   },
+   "twin": "html-pdf-object",
+   "zap": true,
+   "legacy": true
+  },
+  "html-pdf-object": {
+   "group": "C-HTML",
+   "host": "html-pdf-object.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB802": false
+   },
+   "twin": "html-flash-object",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-html-comment-secret": {
+   "group": "C-DISC",
+   "host": "disc-html-comment-secret.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB614": true
+   },
+   "twin": "disc-html-comment-plain",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-html-comment-plain": {
+   "group": "C-DISC",
+   "host": "disc-html-comment-plain.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB614": false
+   },
+   "twin": "disc-html-comment-secret",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-error-page-banner": {
+   "group": "C-DISC",
+   "host": "disc-error-page-banner.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB616": true
+   },
+   "twin": "disc-error-page-plain",
+   "note": "the stock Apache 404 page names the exact version",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-error-page-plain": {
+   "group": "C-DISC",
+   "host": "disc-error-page-plain.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB616": false
+   },
+   "twin": "disc-error-page-banner",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-jpeg-gps": {
+   "group": "C-DISC",
+   "host": "disc-jpeg-gps.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB619": true
+   },
+   "crawl": true,
+   "twin": "disc-jpeg-no-gps",
+   "note": "EXIF GPSLatitude/GPSLongitude in a published photo (--crawl fetches it)",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-jpeg-no-gps": {
+   "group": "C-DISC",
+   "host": "disc-jpeg-no-gps.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB619": false
+   },
+   "crawl": true,
+   "twin": "disc-jpeg-gps",
+   "zap": true,
+   "legacy": true
+  },
+  "tls-intermediate-deviation": {
+   "group": "C-TLS",
+   "host": "tls-intermediate-deviation.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB717": false,
+    "WEB718": true
+   },
+   "tls": "good",
+   "twin": "tls-modern-only",
+   "note": "OpenSSL's default server suites include CBC suites the Mozilla intermediate profile drops",
+   "zap": false,
+   "legacy": true
+  },
+  "tls-wildcard-names": {
+   "group": "C-TLS",
+   "host": "tls-wildcard-names.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB717": true
+   },
+   "twin": "tls-modern-only",
+   "note": "the corpus' shared certificate lists *.<registrable domain> wildcards (one per group)",
+   "zap": false,
+   "legacy": true
+  },
+  "tls-modern-deep": {
+   "group": "C-TLS",
+   "host": "tls-modern-deep.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB710": false,
+    "WEB716": false
+   },
+   "tls": "modern",
+   "twin": "tls-stub-dhe1024",
+   "note": "no DHE suite accepted and no version above the one offered (deep probes)",
+   "zap": false,
+   "legacy": true
+  },
+  "tls-stub-dhe1024": {
+   "group": "C-TLS",
+   "host": "tls-stub-dhe1024.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB710": true
+   },
+   "tls": "stub-dhe1024",
+   "expect": {
+    "severity": {
+     "WEB710": "medium"
+    }
+   },
+   "requires": [
+    "stub"
+   ],
+   "twin": "tls-modern-deep",
+   "note": "DHE answered with the 1024-bit Oakley group 2 prime (Logjam's shared prime): medium",
+   "zap": false,
+   "legacy": true
+  },
+  "tls-stub-higher": {
+   "group": "C-TLS",
+   "host": "tls-stub-higher.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB716": true
+   },
+   "tls": "stub-higher",
+   "requires": [
+    "stub"
+   ],
+   "twin": "tls-modern-deep",
+   "note": "a TLS 1.0/1.1-only hello is answered with TLS 1.2",
+   "zap": false,
+   "legacy": true
+  },
+  "tls-stub-no-pq": {
+   "group": "C-TLS",
+   "host": "tls-stub-no-pq.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB719": true
+   },
+   "tls": "stub-nopq",
+   "requires": [
+    "stub"
+   ],
+   "twin": "tls-stub-pq",
+   "note": "single-group probes: X25519MLKEM768 refused",
+   "zap": false,
+   "legacy": true
+  },
+  "tls-stub-pq": {
+   "group": "C-TLS",
+   "host": "tls-stub-pq.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB719": false
+   },
+   "tls": "stub-pq",
+   "requires": [
+    "stub"
+   ],
+   "twin": "tls-stub-no-pq",
+   "note": "single-group probes: X25519MLKEM768 accepted",
+   "zap": false,
+   "legacy": true
+  },
+  "tls-ct-missing": {
+   "group": "C-TLS",
+   "host": "tls-ct-missing.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB713": true
+   },
+   "tls": "good",
+   "twin": "tls-ct-not-required",
+   "note": "the test CA is declared publicly trusted and CT-bound: a leaf with 0 SCTs",
+   "ct_required": true,
+   "zap": false,
+   "legacy": true
+  },
+  "tls-ct-not-required": {
+   "group": "C-TLS",
+   "host": "tls-ct-not-required.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB713": false
+   },
+   "tls": "good",
+   "twin": "tls-ct-missing",
+   "note": "the same leaf from a CA that is not subject to CT policy (as private CAs are)",
+   "zap": false,
    "legacy": true
   }
  }

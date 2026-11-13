@@ -17,7 +17,7 @@ const I18N = {
     'scan.title': 'فحص جديد', 'scan.sub': 'افحص مجلدًا على هذا الجهاز، أو ارفع برنامجًا مضغوطًا أو ملفات، أو افحص عنوان ويب تملكه.',
     'scan.tabPath': 'مسار على الجهاز', 'scan.tabUpload': 'رفع ملفات / أرشيف', 'scan.tabUrl': 'عنوان ويب', 'scan.pathLabel': 'مسار المجلد أو الملف أو الأرشيف', 'scan.start': 'ابدأ الفحص',
     'scan.pathHint': 'يُفحص المجلد بكل محتوياته (تُتجاهل node_modules و .git و build تلقائيًا).', 'scan.drop': 'اسحب وأفلت هنا برنامجًا مضغوطًا (zip / apk / jar / tar.gz / whl) أو أي ملفات',
-    'scan.chooseFiles': 'اختر ملفات', 'scan.chooseFolder': 'اختر مجلدًا كاملًا', 'scan.uploadStart': 'ارفع وافحص', 'scan.urlLabel': 'عنوان الموقع (فحص سلبي: طلب واحد فقط)',
+    'scan.chooseFiles': 'اختر ملفات', 'scan.chooseFolder': 'اختر مجلدًا كاملًا', 'scan.uploadStart': 'ارفع وافحص', 'scan.urlLabel': 'عنوان الموقع (فحص سلبي: طلبات GET محدودة، بلا أي اختبار نشط)',
     'scan.authorize': 'أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه', 'scan.deep': 'فحص أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)', 'scan.crawl': 'زحف على صفحات الموقع وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)', 'scan.legal': 'فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.', 'scan.viewResults': 'عرض النتائج',
     'scan.running': 'جارٍ الفحص…', 'scan.done': 'اكتمل الفحص', 'scan.failed': 'فشل الفحص', 'scan.needAuth': 'يجب تأكيد الصلاحية أولًا', 'scan.uploading': 'جارٍ الرفع…', 'scan.uploadFailed': 'تعذّر الرفع',
     'scan.jadxOn': 'jadx مثبّت: سيُفكّ تجميع APK/JAR/AAR/DEX ويُفحص الكود الناتج أيضًا.', 'scan.jadxOff': 'jadx غير مثبّت: تُفحص الملفات النصية داخل APK/JAR فقط. ثبّت jadx (يحتاج Java) لفك تجميع الكود.',
@@ -34,7 +34,7 @@ const I18N = {
     'set.ignore': 'قواعد متجاهَلة (معرّف لكل سطر)', 'set.authTargets': 'عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)', 'set.osv': 'الاستعلام من OSV.dev عن ثغرات الاعتماديات (يحتاج إنترنت)',
     'set.external': 'دمج نتائج الأدوات الخارجية المثبّتة', 'set.audit': 'ملف التدقيق: اعرض أيضًا كل استدعاء خطر لم يُثبت تحليل التدفق وصول مدخل إليه (أشمل، وإنذارات أكثر)', 'set.jadx': 'فك تجميع APK / JAR / AAR / DEX بواسطة jadx وفحص الكود الناتج', 'set.jadxLibs': 'فحص مكتبات الطرف الثالث داخل الكود المفكوك أيضًا (نتائج أكثر وضجيج أكثر)', 'set.jadxTimeout': 'مهلة jadx بالثواني', 'set.jadxOn': 'jadx مثبّت على هذا الجهاز.', 'set.jadxOff': 'jadx غير مثبّت — ثبّته من github.com/skylot/jadx ليُفكّ الكود الثنائي.',
     'set.models': 'مجلد نماذج إضافية لمحرّك تدفق البيانات (JSON: مصادر، نقاط خطر، مُعقّمات)', 'set.queries': 'مجلد استعلامات VQL إضافية (لغة استعلام تصريحية فوق قاعدة بيانات البرنامج)',
-    'set.keep': 'عدد الفحوصات المحفوظة', 'set.webTimeout': 'مهلة طلب الويب بالثواني (يُعاد الطلب الأول مرة بمهلة مضاعفة)', 'set.webDelay': 'تأخير بين طلبات الزحف بالثواني (ألطف على الخادم وجدار الحماية)', 'set.save': 'حفظ', 'set.saved': 'تم الحفظ', 'set.home': 'مجلد البيانات', 'set.none': 'لا توجد أدوات مثبّتة',
+    'set.keep': 'عدد الفحوصات المحفوظة', 'set.webTimeout': 'مهلة طلب الويب بالثواني (يُعاد الطلب الأول مرة بمهلة مضاعفة)', 'set.webDelay': 'أقل فاصل بالثواني بين طلبين إلى الموقع نفسه، لكل الطلبات (الحد الأدنى 0.2)', 'set.save': 'حفظ', 'set.saved': 'تم الحفظ', 'set.home': 'مجلد البيانات', 'set.none': 'لا توجد أدوات مثبّتة',
     'set.secScope': 'النطاق والحدود', 'set.secScopeHint': 'ما يُعرض من النتائج ومتى يفشل التكامل المستمر.', 'set.secAnalysis': 'التحليل والتكاملات', 'set.secAnalysisHint': 'مصادر إضافية للنتائج ودرجة الشمول.',
     'set.secBinary': 'الملفات الثنائية (jadx)', 'set.secWeb': 'فحص الويب', 'set.secWebHint': 'فحص سلبي ولطيف للمواقع المصرّح بها فقط.', 'set.secStorage': 'التخزين',
     'about.title': 'حول كاشِف', 'about.hint': 'فاحص أمان مفتوح المصدر للكود والتطبيقات.', 'about.name': 'كاشِف', 'about.by': 'من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة.', 'about.contact': 'للتواصل', 'about.license': 'الترخيص',
@@ -96,6 +96,24 @@ const I18N = {
     'sf.auth_none': 'غير ظاهرة', 'sf.auth_public': 'عامة صراحةً', 'sf.auth_protected': 'محمية', 'sf.showAll': 'عرض الكل ({n})', 'sf.showLess': 'عرض الأخطر فقط', 'sf.openapi': 'OpenAPI',
     'sf.builtAt': 'بُنيت {when}', 'sf.unauthOnly': 'بلا مصادقة فقط', 'sf.empty': 'لم يُعثر على نقاط دخول.', 'sf.search': 'ابحث في المسار أو المعالج…', 'sf.shown': 'عرض {n} من {total}', 'sf.noMatch': 'لا نقاط دخول تطابق المرشحات.',
     'reach.imported': 'مستوردة في كودك', 'reach.not_imported': 'غير مستوردة', 'reach.vulnerable_function_called': 'دالة مصابة مُستدعاة', 'reach.label': 'قابلية الوصول',
+    /* 1.1.0 passive web scanning */
+    'scan.profile': 'ملف الفحص', 'scan.pMinimal': 'minimal: الصفحة وتوجيهاتها فقط (10 طلبات على الأكثر)',
+    'scan.pStandard': 'standard (الافتراضي): الملفات المعروفة وسكربتات الصفحة (45 طلبًا على الأكثر)',
+    'scan.pDeep': 'deep: يضيف الملفات المكشوفة الشائعة (150 طلبًا على الأكثر)', 'scan.sens': 'الحساسية', 'scan.sStrict': 'strict: المؤكَّدة فقط',
+    'scan.sDefault': 'default: المؤكَّدة والمرجَّحة', 'scan.sParanoid': 'paranoid: كل شيء مع الفحوص الإضافية', 'scan.compare': 'قارن بآخر فحص لهذا الموقع',
+    'scan.robots': 'تجاهل robots.txt عند الزحف (لمالك الموقع)', 'scan.thirdParty': 'اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (مثل hstspreload.org)',
+    'scan.noProxy': 'لا تستخدم الوكيل (proxy) المعرَّف في النظام', 'web.grades': 'الدرجات',
+    'web.provisional': 'درجة مؤقتة (*): بعض المجموعات لم تُفحص فلم تُحسب', 'web.caps': 'حدود الدرجة', 'web.none': 'لم تُحسب', 'web.coverage': 'تغطية الفحوص',
+    'web.covNote': 'الفحص الذي لم يُجرَ أو كان غير حاسم لا يُعدّ ناجحًا ولا يدخل في الدرجة.', 'web.covDetails': 'الفحوص التي لم تنجح أو لم تُجرَ',
+    'web.check': 'الفحص', 'web.state': 'الحالة', 'web.reason': 'السبب', 'web.inventory': 'جرد الموقع', 'web.empty': 'لا شيء مسجَّل',
+    'web.remediation': 'إصلاحات جاهزة للنسخ', 'web.remHint': 'إعدادات المنصّات المكتشفة في الموقع تظهر أولًا.', 'web.caution': 'تنبيه',
+    'web.diff': 'مقارنة بالفحص السابق', 'web.dNew': 'نتائج جديدة', 'web.dResolved': 'نتائج حُلّت', 'web.dUnchanged': 'نتائج لم تتغير',
+    'web.dPosture': 'تغييرات في الوضع الأمني', 'web.dGrades': 'تغيّر الدرجات', 'web.dNone': 'لا تغييرات', 'web.confidence': 'الثقة', 'web.c_certain': 'مؤكَّدة',
+    'web.c_firm': 'مرجَّحة', 'web.c_tentative': 'محتملة', 'web.page': 'الصفحة', 'web.curl': 'أمر يعيد الطلب نفسه', 'web.mapping': 'ربط المحللين (WSTG وASVS)',
+    'web.profile': 'ملف الفحص', 'web.requests': 'الطلبات', 'web.final': 'العنوان النهائي', 'web.data': 'بيانات الويب بتاريخ',
+    'web.loadFail': 'تعذّر تحميل تفاصيل فحص الموقع: {err}', 'set.webProfile': 'ملف فحص المواقع الافتراضي', 'set.webSens': 'الحساسية الافتراضية',
+    'set.webCompare': 'قارن كل فحص بآخر فحص للموقع نفسه', 'set.webRobots': 'احترم robots.txt عند الزحف',
+    'set.web3p': 'اسمح باستعلامات لدى أطراف ثالثة (مثل hstspreload.org)', 'set.webProxy': 'استخدم الوكيل (proxy) المعرَّف في النظام',
     /* Count strings, read with tn(key, count). Arabic nouns take a different form after 1, 2, 3–10, 11–99 and
        100+ (and 0): keys one, two, few, many, other (see pluralCat). The keys marked "by total" agree with {total}. */
     pl: {
@@ -138,7 +156,7 @@ const I18N = {
     'scan.title': 'New scan', 'scan.sub': 'Scan a folder on this machine, upload an archive or files, or passively check a website you own.',
     'scan.tabPath': 'Local path', 'scan.tabUpload': 'Upload files / archive', 'scan.tabUrl': 'Web URL', 'scan.pathLabel': 'Folder, file or archive path', 'scan.start': 'Start scan',
     'scan.pathHint': 'The whole folder is scanned recursively (node_modules, .git and build are skipped).', 'scan.drop': 'Drop an archive (zip / apk / jar / tar.gz / whl) or any files here',
-    'scan.chooseFiles': 'Choose files', 'scan.chooseFolder': 'Choose a folder', 'scan.uploadStart': 'Upload and scan', 'scan.urlLabel': 'Site URL (passive: a single request)',
+    'scan.chooseFiles': 'Choose files', 'scan.chooseFolder': 'Choose a folder', 'scan.uploadStart': 'Upload and scan', 'scan.urlLabel': 'Site URL (passive: a bounded number of GET requests, no active test)',
     'scan.authorize': 'I own this site or have written permission to test it', 'scan.deep': 'Deeper scan: analyze the page and probe common exposed paths (a few extra requests)', 'scan.crawl': 'Crawl same-site pages and scan each one (for apps such as Moodle and university portals)', 'scan.legal': 'Testing systems without permission may be illegal.', 'scan.viewResults': 'View findings',
     'scan.running': 'Scanning…', 'scan.done': 'Scan complete', 'scan.failed': 'Scan failed', 'scan.needAuth': 'Confirm that you are authorized to test this site first', 'scan.uploading': 'Uploading…', 'scan.uploadFailed': 'Upload failed',
     'scan.jadxOn': 'jadx is installed: APK/JAR/AAR/DEX files are decompiled and the resulting code is scanned too.', 'scan.jadxOff': 'jadx is not installed: only text files inside APK/JAR are scanned. Install jadx (requires Java) to decompile bytecode.',
@@ -155,7 +173,7 @@ const I18N = {
     'set.ignore': 'Ignored rules (one ID per line)', 'set.authTargets': 'Authorized web targets (one per line)', 'set.osv': 'Query OSV.dev for known vulnerabilities in dependencies (requires internet)',
     'set.external': 'Merge results from installed external scanners', 'set.audit': 'Audit profile: also report risky calls that data-flow analysis did not prove reachable from input (broader, noisier)', 'set.jadx': 'Decompile APK / JAR / AAR / DEX with jadx and scan the output', 'set.jadxLibs': 'Also scan third-party libraries in decompiled code (more findings, more noise)', 'set.jadxTimeout': 'jadx timeout (seconds)', 'set.jadxOn': 'jadx is installed on this machine.', 'set.jadxOff': 'jadx is not installed. Get it from github.com/skylot/jadx to decompile bytecode.',
     'set.models': 'Extra models folder for the data-flow engine (JSON: sources, sinks, sanitizers)', 'set.queries': 'Extra VQL queries folder (declarative queries over the program database)',
-    'set.keep': 'Scans to keep', 'set.webTimeout': 'Web request timeout in seconds (the first request is retried once with double the timeout)', 'set.webDelay': 'Delay between crawl requests in seconds (gentler on the server and its firewall)', 'set.save': 'Save changes', 'set.saved': 'Saved', 'set.home': 'Data folder', 'set.none': 'none installed',
+    'set.keep': 'Scans to keep', 'set.webTimeout': 'Web request timeout in seconds (the first request is retried once with double the timeout)', 'set.webDelay': 'Minimum gap in seconds between two requests to one site, for every request (floor 0.2)', 'set.save': 'Save changes', 'set.saved': 'Saved', 'set.home': 'Data folder', 'set.none': 'none installed',
     'set.secScope': 'Scope and thresholds', 'set.secScopeHint': 'Which findings are shown and when CI fails.', 'set.secAnalysis': 'Analysis and integrations', 'set.secAnalysisHint': 'Extra result sources and how broad the analysis is.',
     'set.secBinary': 'Binaries (jadx)', 'set.secWeb': 'Web scanning', 'set.secWebHint': 'Passive, rate-limited checks of sites you are authorized to test.', 'set.secStorage': 'Storage',
     'about.title': 'About Kashif', 'about.hint': 'Open-source security scanner for code and applications.', 'about.name': 'Kashif', 'about.by': 'Developed by the Programming Department at the Islamic University of Gaza.', 'about.contact': 'Contact', 'about.license': 'License',
@@ -217,6 +235,27 @@ const I18N = {
     'sf.auth_none': 'None visible', 'sf.auth_public': 'Explicitly public', 'sf.auth_protected': 'Protected', 'sf.showAll': 'Show all ({n})', 'sf.showLess': 'Show the riskiest only', 'sf.openapi': 'OpenAPI',
     'sf.builtAt': 'Built {when}', 'sf.unauthOnly': 'Unauthenticated only', 'sf.empty': 'No entry points were found.', 'sf.search': 'Search path or handler…', 'sf.shown': 'Showing {n} of {total}', 'sf.noMatch': 'No entry point matches the filters.',
     'reach.imported': 'Imported by your code', 'reach.not_imported': 'Not imported', 'reach.vulnerable_function_called': 'Vulnerable function called', 'reach.label': 'Reachability',
+    /* 1.1.0 passive web scanning */
+    'scan.profile': 'Scan profile', 'scan.pMinimal': 'minimal: the page and its redirects only (at most 10 requests)',
+    'scan.pStandard': 'standard (default): well-known files and the page\'s own scripts (at most 45 requests)',
+    'scan.pDeep': 'deep: adds commonly exposed files (at most 150 requests)', 'scan.sens': 'Sensitivity', 'scan.sStrict': 'strict: certain findings only',
+    'scan.sDefault': 'default: certain and firm', 'scan.sParanoid': 'paranoid: everything, with the extra checks',
+    'scan.compare': 'Compare with the last scan of this site', 'scan.robots': 'Ignore robots.txt when crawling (for the site\'s owner)',
+    'scan.thirdParty': 'Allow third-party lookups that reveal the site\'s name (such as hstspreload.org)', 'scan.noProxy': 'Do not use the system\'s proxy',
+    'web.grades': 'Grades', 'web.provisional': 'Provisional grade (*): some families were not tested and do not count', 'web.caps': 'Grade caps',
+    'web.none': 'not computed', 'web.coverage': 'Check coverage',
+    'web.covNote': 'A check that was not tested or was inconclusive is never shown as passed and never counts in a grade.',
+    'web.covDetails': 'Checks that did not pass or did not run', 'web.check': 'Check', 'web.state': 'State', 'web.reason': 'Reason',
+    'web.inventory': 'Site inventory', 'web.empty': 'Nothing recorded', 'web.remediation': 'Copy-paste fixes',
+    'web.remHint': 'The settings for the platforms detected on the site are shown first.', 'web.caution': 'Caution',
+    'web.diff': 'Compared with the previous scan', 'web.dNew': 'New findings', 'web.dResolved': 'Resolved findings', 'web.dUnchanged': 'Unchanged findings',
+    'web.dPosture': 'Posture changes', 'web.dGrades': 'Grade changes', 'web.dNone': 'No changes', 'web.confidence': 'Confidence', 'web.c_certain': 'Certain',
+    'web.c_firm': 'Firm', 'web.c_tentative': 'Tentative', 'web.page': 'Page', 'web.curl': 'Command that repeats the request',
+    'web.mapping': 'Analyst mapping (WSTG and ASVS)', 'web.profile': 'Profile', 'web.requests': 'Requests', 'web.final': 'Final URL',
+    'web.data': 'Web data as of', 'web.loadFail': 'Could not load the details of the web scan: {err}', 'set.webProfile': 'Default web scan profile',
+    'set.webSens': 'Default sensitivity', 'set.webCompare': 'Compare every scan with the last scan of the same site',
+    'set.webRobots': 'Honour robots.txt when crawling', 'set.web3p': 'Allow third-party lookups (such as hstspreload.org)',
+    'set.webProxy': 'Use the system\'s proxy',
     pl: {
       'scan.uploaded': {one: '{n} uploaded file', other: '{n} uploaded files'},
       'scan.nSelected': {one: '{n} file selected', other: '{n} files selected'},
@@ -413,7 +452,17 @@ $('#theme-btn').onclick = () => {
 $('.skip').addEventListener('click', (e) => { e.preventDefault(); $('#main').focus(); });
 
 /* ------------------------------------------------------------- routing */
-const pages = {dashboard: loadDashboard, projects: loadProjects, scan: () => {}, findings: loadFindings, compliance: loadCompliance, reports: loadReports, rules: loadRules, settings: loadSettings};
+let webDefaultsSet = false;
+async function loadScanPage() {             // the web-scan options start from the settings (once per visit of the app)
+  if (webDefaultsSet) return;
+  const s = await api('/api/settings');
+  webDefaultsSet = true;
+  if (['minimal', 'standard', 'deep'].includes(s.web_profile)) $('#url-profile').value = s.web_profile;
+  if (['strict', 'default', 'paranoid'].includes(s.web_sensitivity)) $('#url-sens').value = s.web_sensitivity;
+  $('#url-compare').checked = s.web_compare_previous !== false; $('#url-3p').checked = !!s.web_third_party_lookups;
+  $('#url-noproxy').checked = s.web_use_proxy === false; $('#url-robots').checked = s.web_respect_robots === false;
+}
+const pages = {dashboard: loadDashboard, projects: loadProjects, scan: loadScanPage, findings: loadFindings, compliance: loadCompliance, reports: loadReports, rules: loadRules, settings: loadSettings};
 let curPage = '';
 function route() {
   const h = location.hash.slice(1);
@@ -787,7 +836,9 @@ $('#url-btn').onclick = () => {
     const box = $('#url-auth'); box.setAttribute('aria-invalid', 'true'); box.closest('.check').classList.add('invalid');
     toast(t('scan.needAuth')); box.focus(); return;
   }
-  startScan({target: v, authorized: true, deep: $('#url-deep').checked, crawl: $('#url-crawl').checked});
+  startScan({target: v, authorized: true, profile: $('#url-profile').value, sensitivity: $('#url-sens').value,
+    crawl: $('#url-crawl').checked, compare_previous: $('#url-compare').checked, ignore_robots: $('#url-robots').checked,
+    third_party_lookups: $('#url-3p').checked, use_proxy: !$('#url-noproxy').checked});
 };
 let pending = [];
 const dz = $('#dropzone');
@@ -864,7 +915,7 @@ async function loadFindings(arg) {
   sel.title = '';
   const chosen = id || (scans[0] && scans[0].id);
   if (!chosen) {
-    cur = null; onlyFp = null; renderChips(); $('#findings-toolbar2').classList.add('hidden'); $('#findings-comp').classList.add('hidden'); setHTML($('#findings-notes'), ''); setHTML($('#findings-context'), '');
+    cur = null; onlyFp = null; renderChips(); setHTML($('#findings-web'), ''); $('#findings-toolbar2').classList.add('hidden'); $('#findings-comp').classList.add('hidden'); setHTML($('#findings-notes'), ''); setHTML($('#findings-context'), '');
     setHTML($('#findings-list'), `<div class="empty inline"><span class="e-icon">${ic('findings', 'lg')}</span><h2>${esc(t('dash.empty'))}</h2><p class="muted">${esc(t('dash.emptyHint'))}</p><a class="btn primary" href="#scan">${ic('plus')}${esc(t('nav.scan'))}</a></div>`);
     return;
   }
@@ -885,6 +936,7 @@ async function loadFindings(arg) {
     + `<span class="ctx">${ic('findings', 'sm')}${esc(tn('find.nFindings', total(cur.summary)))}</span>`);
   setHTML($('#findings-notes'), notesOf(cur).map((n) => `<div class="note">${ic('info')}<span>${bidi(n)}</span></div>`).join('')
     + (tri.err ? `<div class="note warn">${ic('warning')}<span>${esc(t('tri.loadFail', {err: tri.err}))}</span></div>` : ''));
+  loadWebPanel(cur);
   renderFindings();
   if (onlyFp && shown.length) {          // open the finding the link pointed at
     const row = $('#findings-list .f-row'); if (row) { row.click(); row.focus(); row.scrollIntoView({block: 'nearest'}); }
@@ -937,7 +989,10 @@ function renderFindings() {
     };
   }
 }
-const sideHTML = (f, flow = isFlow(f)) => `${triTag(f)}${reachTag(f)}${hasFix(f) ? `<span class="tag fixable" title="${esc(t('fix.badge'))}">${ic('wrench')}<span class="tx">${esc(t('fix.badge'))}</span></span>` : ''}${flow ? `<span class="tag flow">${ic('flow')}${esc(t('find.dataflow'))}</span>` : ''}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ''}`;
+const confOf = (f) => { const c = f.extra && f.extra.confidence; return ['certain', 'firm', 'tentative'].includes(c) ? c : ''; };
+const CONF_KEY = {certain: 'web.c_certain', firm: 'web.c_firm', tentative: 'web.c_tentative'};
+const confTag = (f) => (confOf(f) ? `<span class="tag conf-${confOf(f)}" title="${esc(t('web.confidence'))}">${esc(t(CONF_KEY[confOf(f)]))}</span>` : '');
+const sideHTML = (f, flow = isFlow(f)) => `${triTag(f)}${reachTag(f)}${confTag(f)}${hasFix(f) ? `<span class="tag fixable" title="${esc(t('fix.badge'))}">${ic('wrench')}<span class="tx">${esc(t('fix.badge'))}</span></span>` : ''}${flow ? `<span class="tag flow">${ic('flow')}${esc(t('find.dataflow'))}</span>` : ''}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ''}`;
 $('#findings-list').addEventListener('click', (e) => {
   const row = e.target.closest('.f-row'); if (!row) return;
   const box = row.parentElement; const det = box.querySelector('.f-detail');
@@ -1021,7 +1076,7 @@ function detailHTML(f, idx) {
   const tags = [pill(f.severity), `<span class="tag code" dir="ltr">${esc(f.rule_id)}</span>`, cweTag(f.cwe),
     flow ? `<span class="tag flow">${ic('shield')}${esc(t('find.dataflow'))}</span>` : `<span class="tag">${ic('pattern')}${esc(t('find.pattern'))}</span>`,
     `<span class="tag" title="${esc(f.source)}">${ic('code')}${esc(srcName(f.source))}</span>`,
-    reachTag(f), x.decompiled ? '<span class="tag">jadx</span>' : '',
+    reachTag(f), confTag(f), x.decompiled ? '<span class="tag">jadx</span>' : '',
     x.page_count > 1 ? `<span class="tag">${esc(tn('find.onPages', x.page_count))}</span>` : ''].join('');
   let body = `<section class="d-sec"><h2>${ic('file')}${esc(t('find.location'))}</h2><div class="locbar">${ic('file')}<span class="p" title="${esc(where)}">${esc(dir)}<b>${esc(base)}</b>${f.line ? ':' + f.line : ''}</span>${copyBtn(where)}</div></section>`;
   if (flow && x.path && x.path.length) {
@@ -1034,10 +1089,97 @@ function detailHTML(f, idx) {
   if (adv) body += `<section class="d-sec"><div class="remedy">${ic('bulb')}<div><b>${esc(t('find.advice'))}</b><span>${bidi(adv)}</span></div></div></section>`;
   if (hasFix(f)) body += fixHTML(f, idx);
   body += triageHTML(f, idx);
-  if (x.url) body += `<section class="d-sec"><h2>${ic('link')}${esc(t('find.ref'))}</h2><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" dir="ltr">${esc(x.url)} ${ic('external', 'xs')}</a></section>`;
+  if (f.source === 'web') body += webDetailHTML(f);
+  else if (x.url) body += `<section class="d-sec"><h2>${ic('link')}${esc(t('find.ref'))}</h2><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" dir="ltr">${esc(x.url)} ${ic('external', 'xs')}</a></section>`;
   if (x.pages && x.pages.length > 1) body += `<section class="d-sec"><details><summary>${esc(tn('find.onPages', x.pages.length))}</summary><ul class="pages-list">${x.pages.slice(0, 50).map((u) => `<li>${esc(u)}</li>`).join('')}</ul></details></section>`;
   if (f.fingerprint) body += `<div class="fp">${ic('hash')}<span>${esc(t('find.fingerprint'))}</span><code>${esc(f.fingerprint)}</code>${copyBtn(f.fingerprint)}</div>`;
   return `<div class="sev-${f.severity}"><div class="d-tags">${tags}</div><div class="d-grid">${body}</div></div>`;
+}
+
+/* ------------------------------------------------------- web scan (1.1.0) */
+/* GET /api/scans/<id>/web gives grades, coverage, inventory, copy-paste fixes and the diff, already in the UI
+   language. Everything in it came from the scanned site: escaped with esc() and shown as text, never as a link. */
+const strList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+function webDetailHTML(f) {
+  const x = f.extra || {}; const ev = (x.evidence && typeof x.evidence === 'object') ? x.evidence : {};
+  let out = '';
+  if (typeof x.url === 'string' && x.url) out += `<section class="d-sec"><h2>${ic('globe')}${esc(t('web.page'))}</h2><div class="locbar"><span class="p" dir="ltr">${esc(x.url)}</span>${copyBtn(x.url)}</div></section>`;
+  if (typeof ev.curl === 'string' && ev.curl) out += `<section class="d-sec"><h2>${ic('code')}${esc(t('web.curl'))}</h2><div class="code"><div class="code-head"><span class="p">curl</span>${copyBtn(ev.curl)}</div><pre tabindex="0" dir="ltr"><code>${esc(ev.curl)}</code></pre></div></section>`;
+  const ids = [...strList(x.wstg).map((v) => 'WSTG ' + v), ...strList(x.asvs4).map((v) => 'ASVS 4 ' + v), ...strList(x.asvs5).map((v) => 'ASVS 5 ' + v)];
+  if (ids.length) out += `<section class="d-sec"><h2>${ic('compliance')}${esc(t('web.mapping'))}</h2><div class="d-tags">${ids.map((v) => `<span class="tag code" dir="ltr">${esc(v)}</span>`).join('')}</div></section>`;
+  return out;
+}
+const webTable = (head, rows) => (rows.length
+  ? `<div class="tw"><table class="web-table"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td dir="auto">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+  : `<p class="muted">${esc(t('web.empty'))}</p>`);
+function webTabs(name, tabs) {
+  if (!tabs.length) return '';
+  return `<div class="wtabs" data-wtabs="${esc(name)}"><div class="tabs" role="tablist">${tabs.map((tb, i) => `<button class="tab${i ? '' : ' active'}" type="button" role="tab" aria-selected="${i ? 'false' : 'true'}" data-wt="${i}">${esc(tb.label)}</button>`).join('')}</div>`
+    + tabs.map((tb, i) => `<div class="wpane${i ? ' hidden' : ''}" role="tabpanel" data-wp="${i}">${tb.body}</div>`).join('') + '</div>';
+}
+function wireTabs(root) {
+  $$('.wtabs', root).forEach((box) => {
+    $$(':scope > .tabs > .tab', box).forEach((b) => { b.onclick = () => {
+      $$(':scope > .tabs > .tab', box).forEach((x) => { x.classList.toggle('active', x === b); x.setAttribute('aria-selected', String(x === b)); });
+      $$(':scope > .wpane', box).forEach((p) => p.classList.toggle('hidden', p.dataset.wp !== b.dataset.wt));
+    }; });
+  });
+}
+function webPanelHTML(v) {
+  const num = (n) => (typeof n === 'number' && Number.isFinite(n) ? String(n) : '');
+  const f = v.facts || {};
+  let html = `<div class="card web-card"><div class="web-facts">${[['web.profile', f.profile], ['web.requests', num(f.requests)], ['web.final', f.final_url], ['web.data', f.data_date]]
+    .filter(([, val]) => val).map(([k, val]) => `<span class="ctx">${esc(t(k))}: <b dir="ltr">${esc(val)}</b></span>`).join('')}</div>`;
+  const grades = Array.isArray(v.grades) ? v.grades : [];
+  html += `<h2 class="web-h">${ic('shield')}${esc(t('web.grades'))}</h2><div class="grade-cards">${grades.map((g) => {
+    const score = num(g.score) ? num(g.score) + (num(g.max) ? '/' + num(g.max) : '') : '';
+    const caps = strList(g.caps);
+    return `<div class="grade-card g-${esc(g.key)}"><span class="g-name">${esc(g.name)}</span><span class="g-letter" dir="ltr">${esc(g.grade || '—')}</span>`
+      + `<span class="muted" dir="ltr">${esc(score || (g.grade ? '' : t('web.none')))}</span>`
+      + (g.label ? `<small class="muted">${esc(g.label)}</small>` : '')
+      + (caps.length ? `<details><summary>${esc(t('web.caps'))}</summary><ul>${caps.slice(0, 8).map((c) => `<li>${esc(c)}</li>`).join('')}</ul></details>` : '') + '</div>';
+  }).join('')}</div>`;
+  if (grades.some((g) => g.provisional)) html += `<p class="muted small">${esc(t('web.provisional'))}</p>`;
+  const cov = v.coverage || {}; const counts = cov.counts || {}; const states = cov.states || {};
+  html += `<h2 class="web-h">${ic('check')}${esc(t('web.coverage'))}</h2><div class="cov-chips">${['pass', 'fail', 'not_applicable', 'not_tested', 'inconclusive']
+    .map((s) => `<span class="chip cov-${s}">${esc(states[s] || s)} <b>${esc(num(counts[s]) || '0')}</b></span>`).join('')}</div><p class="muted small">${esc(t('web.covNote'))}</p>`;
+  const probs = Array.isArray(cov.problems) ? cov.problems : [];
+  if (probs.length) html += `<details class="web-details"><summary>${esc(t('web.covDetails'))} (${probs.length})</summary>${webTable([t('web.check'), t('web.state'), t('web.reason')], probs.map((r) => strList(r)))}</details>`;
+  const d = v.diff;
+  if (d && typeof d === 'object') {
+    html += `<h2 class="web-h">${ic('compare')}${esc(t('web.diff'))}</h2>` + strList(d.notes).map((n) => `<p class="muted">${esc(n)}</p>`).join('');
+    if (d.comparable) {
+      const rowsOf = (list) => (Array.isArray(list) ? list : []).map((r) => `<li>${pill(['critical', 'high', 'medium', 'low', 'info'].includes(r.severity) ? r.severity : 'info')} <code dir="ltr">${esc(r.rule)}</code> <span dir="auto">${esc(r.title)}</span></li>`).join('');
+      const post = Array.isArray(d.posture) ? d.posture : [];
+      if (strList(d.grades).length) html += `<p><b>${esc(t('web.dGrades'))}:</b> ${strList(d.grades).map((g) => `<bdi>${esc(g)}</bdi>`).join(' · ')}</p>`;
+      html += `<div class="diff-grid"><div><h3>${esc(t('web.dNew'))} <span class="count">${esc(String((d.new || []).length))}</span></h3><ul class="diff-list">${rowsOf(d.new)}</ul></div>`
+        + `<div><h3>${esc(t('web.dResolved'))} <span class="count">${esc(String((d.resolved || []).length))}</span></h3><ul class="diff-list">${rowsOf(d.resolved)}</ul></div></div>`
+        + `<p class="muted small">${esc(t('web.dUnchanged'))}: ${esc(num(d.unchanged) || '0')}</p>`
+        + `<h3>${esc(t('web.dPosture'))}</h3>` + (post.length ? `<ul class="posture">${post.map((p) => `<li class="dir-${esc(p.direction)}"><b>${esc(p.label)}</b> <span dir="auto">${esc(p.text)}</span></li>`).join('')}</ul>` : `<p class="muted">${esc(t('web.dNone'))}</p>`);
+    }
+  }
+  const inv = Array.isArray(v.inventory) ? v.inventory : [];
+  html += `<h2 class="web-h">${ic('search')}${esc(t('web.inventory'))}</h2>` + webTabs('inv', inv.map((tb) => ({label: tb.label, body: webTable(strList(tb.head), (Array.isArray(tb.rows) ? tb.rows : []).map((r) => strList(r)))})));
+  const rem = Array.isArray(v.remediation) ? v.remediation : [];
+  if (rem.length) {
+    html += `<h2 class="web-h">${ic('wrench')}${esc(t('web.remediation'))}</h2><p class="muted small">${esc(t('web.remHint'))}</p>`;
+    html += rem.map((sn, i) => {
+      const blocks = [...(Array.isArray(sn.detected) ? sn.detected : []), ...(Array.isArray(sn.other) ? sn.other : [])];
+      return `<div class="snip"><h3><code dir="ltr">${esc(sn.id)}</code> ${esc(sn.title)}</h3><p>${esc(sn.summary)}</p>`
+        + (sn.caveat ? `<p class="caveat">${ic('warning', 'sm')}<b>${esc(t('web.caution'))}:</b> ${esc(sn.caveat)}</p>` : '')
+        + webTabs('rem' + i, blocks.map((b) => ({label: b.name || b.platform || '', body: (b.code ? `<div class="code"><div class="code-head"><span class="p" dir="ltr">${esc(b.lang || '')}</span>${copyBtn(b.code)}</div><pre tabindex="0" dir="ltr"><code>${esc(b.code)}</code></pre></div>` : '') + (b.note ? `<p class="muted small">${esc(b.note)}</p>` : '')}))) + '</div>';
+    }).join('');
+  }
+  return html + '</div>';
+}
+async function loadWebPanel(scan) {
+  const box = $('#findings-web');
+  if (!scan || scan.kind !== 'url' || !scan.web) { setHTML(box, ''); return; }
+  try {
+    const v = await api(`/api/scans/${encodeURIComponent(scan.id)}/web?lang=${lang}`);
+    if (cur !== scan) return;              // another scan was chosen meanwhile
+    setHTML(box, webPanelHTML(v)); wireTabs(box);
+  } catch (err) { setHTML(box, `<div class="note warn">${ic('warning')}<span>${esc(t('web.loadFail', {err: err.message}))}</span></div>`); }
 }
 
 /* -------------------------------------------------------------- triage */
@@ -1364,6 +1506,14 @@ async function loadSettings(arg) {
   f.use_osv.checked = !!s.use_osv; f.use_external.checked = !!s.use_external;
   f.audit.checked = !!s.audit; f.use_jadx.checked = !!s.use_jadx; f.jadx_include_libs.checked = !!s.jadx_include_libs; f.jadx_timeout.value = s.jadx_timeout;
   f.models_dir.value = s.models_dir || ''; f.queries_dir.value = s.queries_dir || '';
+  f.web_profile.value = ['minimal', 'standard', 'deep'].includes(s.web_profile) ? s.web_profile : 'standard';
+  f.web_sensitivity.value = ['strict', 'default', 'paranoid'].includes(s.web_sensitivity) ? s.web_sensitivity : 'default';
+  f.web_compare_previous.checked = s.web_compare_previous !== false; f.web_respect_robots.checked = s.web_respect_robots !== false;
+  f.web_third_party_lookups.checked = !!s.web_third_party_lookups; f.web_use_proxy.checked = s.web_use_proxy !== false;
+  $('#url-profile').value = f.web_profile.value; $('#url-sens').value = f.web_sensitivity.value;
+  $('#url-compare').checked = f.web_compare_previous.checked; $('#url-3p').checked = f.web_third_party_lookups.checked;
+  $('#url-noproxy').checked = !f.web_use_proxy.checked; $('#url-robots').checked = !f.web_respect_robots.checked;
+  webDefaultsSet = true;
   $('#jadx-state').textContent = meta.jadx ? t('set.jadxOn') : t('set.jadxOff');
   $('#ext-tools').textContent = `(${meta.external_tools.length ? meta.external_tools.join(', ') : t('set.none')})`;
   setHTML($('#settings-home'), `${esc(t('set.home'))}<span class="home-path" dir="ltr" title="${esc(meta.home)}">${esc(meta.home)}</span>`);
@@ -1381,8 +1531,12 @@ $('#settings-form').onsubmit = async (e) => {
     await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, web_timeout: Math.min(120, Math.max(5, +f.web_timeout.value || 20)), web_delay: Math.min(10, Math.max(0, +f.web_delay.value || 0)), fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
       exclude: lines(f.exclude.value), ignore_rules: lines(f.ignore_rules.value), authorized_targets: lines(f.authorized_targets.value), use_osv: f.use_osv.checked, use_external: f.use_external.checked,
       audit: f.audit.checked, use_jadx: f.use_jadx.checked, jadx_include_libs: f.jadx_include_libs.checked, jadx_timeout: +f.jadx_timeout.value,
-      models_dir: f.models_dir.value.trim(), queries_dir: f.queries_dir.value.trim(), check_updates: f.check_updates.checked})});
+      models_dir: f.models_dir.value.trim(), queries_dir: f.queries_dir.value.trim(), check_updates: f.check_updates.checked,
+      web_profile: f.web_profile.value, web_sensitivity: f.web_sensitivity.value, web_compare_previous: f.web_compare_previous.checked,
+      web_respect_robots: f.web_respect_robots.checked, web_third_party_lookups: f.web_third_party_lookups.checked,
+      web_use_proxy: f.web_use_proxy.checked})});
   } catch (err) { toast(err.message); return; }
+  webDefaultsSet = false;
   const m = $('#settings-saved'); setHTML(m, `${ic('check', 'sm')}${esc(t('set.saved'))}`); clearTimeout(m._t); m._t = setTimeout(() => { m.textContent = ''; }, 2400);
 };
 

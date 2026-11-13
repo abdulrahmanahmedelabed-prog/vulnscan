@@ -667,6 +667,10 @@ def test_observatory_hsts_quirks():
     assert slug("max-age=15552000") == "hsts-implemented-max-age-at-least-six-months"
     assert slug('max-age="0"') == "hsts-implemented-max-age-at-least-six-months"   # parseInt('"0"') is NaN
     assert slug("max-age=1, max-age=2") == "hsts-header-invalid"
+    # two fields: Node's http module (Observatory's client) joins them with ", ", so Observatory 1.7.2 sees a comma
+    # (verified with the official analyzer on the hsts-two-headers corpus case in phase D)
+    two = R("https://a.example/", headers=[sts(GOOD), sts("max-age=300")])
+    assert transport.observatory_hsts_slug(two, "a.example", p) == "hsts-header-invalid"
     assert slug("includeSubDomains") == "hsts-header-invalid"
     assert slug(GOOD, verified=False) == "hsts-invalid-cert"
     assert slug("max-age=300", host="a.dev") == "hsts-preloaded"

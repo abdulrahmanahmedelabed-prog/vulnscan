@@ -1,0 +1,4148 @@
+{
+ "tool": "kashif",
+ "mode": "hook",
+ "version": "vulnscan 1.0.2",
+ "cases_scored": 380,
+ "cases_ran": 380,
+ "skipped": {},
+ "errors": {},
+ "labels_scored": 579,
+ "inconclusive": 26,
+ "inconclusive_rate": 0.0449,
+ "macro_f1": 1.0,
+ "micro": {
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "youden_j": 1.0
+ },
+ "precision_by_confidence": {
+  "certain": 1.0,
+  "firm": 1.0,
+  "tentative": 1.0,
+  "unknown": null
+ },
+ "confidence_monotone": true,
+ "noise_ratio": 1.031,
+ "findings_per_case": 3.61,
+ "zap_fp_family_trap_failures": 0,
+ "rules": {
+  "WEB-content-security-policy": {
+   "tp": 4,
+   "fp": 0,
+   "fn": 0,
+   "tn": 11,
+   "inconclusive": 4,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB-permissions-policy": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 3,
+   "inconclusive": 3,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB-referrer-policy": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 3,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB-strict-transport-security": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 10,
+   "inconclusive": 3,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB-x-content-type-options": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 4,
+   "inconclusive": 3,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB-x-frame-options": {
+   "tp": 3,
+   "fp": 0,
+   "fn": 0,
+   "tn": 7,
+   "inconclusive": 3,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB000": {
+   "tp": 4,
+   "fp": 0,
+   "fn": 0,
+   "tn": 6,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB010": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 3,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB011": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB020": {
+   "tp": 4,
+   "fp": 0,
+   "fn": 0,
+   "tn": 4,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB021": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 9,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB022": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 8,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB030": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 1,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB040": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 7,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB041": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB042": {
+   "tp": 4,
+   "fp": 0,
+   "fn": 0,
+   "tn": 5,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB043": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 3,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB050": {
+   "tp": 4,
+   "fp": 0,
+   "fn": 0,
+   "tn": 4,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB051": {
+   "tp": 3,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB052": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB053": {
+   "tp": 3,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB054": {
+   "tp": 5,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB055": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 1,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB056": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB060": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB061": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB062": {
+   "tp": 11,
+   "fp": 0,
+   "fn": 0,
+   "tn": 5,
+   "inconclusive": 1,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB070": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB071": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB072": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB080": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB081": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB082": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB083": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB101": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB102": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB103": {
+   "tp": 5,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB104": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB105": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB106": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB110": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB111": {
+   "tp": 3,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB112": {
+   "tp": 4,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB113": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB114": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB115": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB116": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB117": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB118": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB119": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB200": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB201": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB202": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB203": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB204": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB205": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB206": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB207": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB208": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB209": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 4,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB210": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB211": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB212": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB213": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB214": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB215": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB216": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB217": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB218": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB219": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB300": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB301": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB302": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB303": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB304": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB305": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB306": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB307": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB308": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB309": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB310": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB311": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB312": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB313": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB314": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB315": {
+   "tp": 3,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB316": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB317": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB318": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB320": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 3,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB321": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB322": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB323": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB324": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 3,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB325": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB326": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB327": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB400": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB401": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB402": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB403": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB404": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB405": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB406": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB407": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB408": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB409": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB410": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB411": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB412": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB413": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB414": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB500": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB501": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB502": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB503": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB504": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB505": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB506": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB507": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB508": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB509": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB510": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB511": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB512": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB513": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB514": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB515": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB516": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB517": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 2,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB518": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB519": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB520": {
+   "tp": 3,
+   "fp": 0,
+   "fn": 0,
+   "tn": 3,
+   "inconclusive": 1,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB521": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB522": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB600": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB601": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB602": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB603": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB604": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB605": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 0,
+   "inconclusive": 1,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB606": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB607": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB608": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB609": {
+   "tp": 3,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB610": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB611": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB612": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB613": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB614": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": true
+  },
+  "WEB615": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB616": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB617": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB619": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB700": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB701": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB702": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB703": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB704": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB705": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB706": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB707": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB708": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB709": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB710": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB711": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB712": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB713": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB714": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB715": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB716": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB717": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 2,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB718": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB719": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB720": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB800": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB801": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB802": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB803": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB900": {
+   "tp": 2,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB901": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB903": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB990": {
+   "tp": 5,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  },
+  "WEB991": {
+   "tp": 1,
+   "fp": 0,
+   "fn": 0,
+   "tn": 1,
+   "inconclusive": 0,
+   "error": 0,
+   "precision": 1.0,
+   "recall": 1.0,
+   "f1": 1.0,
+   "youden_j": 1.0,
+   "wrong": [],
+   "zap_fp_family": false
+  }
+ },
+ "verdicts": {
+  "red-http-200": {
+   "WEB000": "tp"
+  },
+  "red-http-to-https": {
+   "WEB000": "tn",
+   "WEB101": "tn",
+   "WEB102": "tn",
+   "WEB103": "tn",
+   "WEB104": "tn",
+   "WEB105": "tn"
+  },
+  "red-http-http-https": {
+   "WEB000": "tn",
+   "WEB101": "tp",
+   "WEB102": "tn"
+  },
+  "red-http-https-other-host": {
+   "WEB000": "tn",
+   "WEB101": "tn",
+   "WEB102": "tp"
+  },
+  "red-https-http-hop": {
+   "WEB103": "tp"
+  },
+  "red-meta-refresh-http": {
+   "WEB103": "tp"
+  },
+  "red-meta-refresh-https": {
+   "WEB103": "tn"
+  },
+  "red-302-upgrade": {
+   "WEB000": "tn",
+   "WEB105": "tp"
+  },
+  "red-308-upgrade": {
+   "WEB000": "tn",
+   "WEB105": "tn"
+  },
+  "red-loop-12": {
+   "WEB104": "tp"
+  },
+  "red-short-chain": {
+   "WEB104": "tn",
+   "WEB106": "tn"
+  },
+  "red-301-full-page": {
+   "WEB106": "tp"
+  },
+  "red-301-boilerplate": {
+   "WEB106": "tn"
+  },
+  "red-301-home-headers": {
+   "WEB-content-security-policy": "tn",
+   "WEB-permissions-policy": "tn",
+   "WEB-referrer-policy": "tn",
+   "WEB-x-content-type-options": "tn",
+   "WEB-x-frame-options": "tn"
+  },
+  "red-preloaded-dev": {
+   "WEB000": "tp"
+  },
+  "red-api-403": {
+   "WEB000": "tn"
+  },
+  "red-js-location-http": {
+   "WEB103": "tp"
+  },
+  "hsts-missing": {
+   "WEB-strict-transport-security": "tp"
+  },
+  "hsts-max-age-0": {
+   "WEB-strict-transport-security": "tn",
+   "WEB110": "tp"
+  },
+  "hsts-max-age-0-quoted": {
+   "WEB-strict-transport-security": "tn",
+   "WEB110": "tp"
+  },
+  "hsts-300s": {
+   "WEB111": "tp"
+  },
+  "hsts-100-days": {
+   "WEB111": "tp"
+  },
+  "hsts-200-days": {
+   "WEB111": "tp"
+  },
+  "hsts-two-headers": {
+   "WEB113": "tp"
+  },
+  "hsts-folded": {
+   "WEB112": "tp"
+  },
+  "hsts-curly-quotes": {
+   "WEB112": "tp"
+  },
+  "hsts-no-max-age": {
+   "WEB112": "tp"
+  },
+  "hsts-leading-zero": {
+   "WEB112": "tp"
+  },
+  "hsts-preload-no-subdomains": {
+   "WEB114": "tp",
+   "WEB115": "tp"
+  },
+  "hsts-meta": {
+   "WEB-strict-transport-security": "tn",
+   "WEB116": "tp"
+  },
+  "hsts-cross-host-hop": {
+   "WEB-strict-transport-security": "tn",
+   "WEB117": "tp"
+  },
+  "hsts-on-http-only": {
+   "WEB-strict-transport-security": "tn",
+   "WEB116": "tp"
+  },
+  "hsts-two-years": {
+   "WEB-strict-transport-security": "tn",
+   "WEB110": "tn",
+   "WEB111": "tn",
+   "WEB112": "tn",
+   "WEB113": "tn",
+   "WEB114": "tn",
+   "WEB115": "tn",
+   "WEB116": "tn",
+   "WEB117": "tn"
+  },
+  "hsts-ip-literal": {
+   "WEB-strict-transport-security": "tn"
+  },
+  "hsts-cert-invalid": {
+   "WEB-strict-transport-security": "tn",
+   "WEB701": "tp"
+  },
+  "hsts-same-host-redirect": {
+   "WEB-strict-transport-security": "tn",
+   "WEB117": "tn"
+  },
+  "csp-missing": {
+   "WEB-content-security-policy": "tp"
+  },
+  "csp-report-only": {
+   "WEB-content-security-policy": "tn",
+   "WEB200": "tp"
+  },
+  "csp-enforced-and-ro": {
+   "WEB-content-security-policy": "tn",
+   "WEB200": "tn"
+  },
+  "csp-unsafe-inline": {
+   "WEB040": "tp"
+  },
+  "csp-default-self-script-inline": {
+   "WEB040": "tp"
+  },
+  "csp-star": {
+   "WEB042": "tp"
+  },
+  "csp-https-scheme": {
+   "WEB042": "tp"
+  },
+  "csp-data-script": {
+   "WEB042": "tp"
+  },
+  "csp-strict-dynamic-no-nonce": {
+   "WEB203": "tp"
+  },
+  "csp-nonce-no-base-uri": {
+   "WEB204": "tp"
+  },
+  "csp-login-no-form-action": {
+   "WEB205": "tp"
+  },
+  "csp-no-forms": {
+   "WEB205": "tn"
+  },
+  "csp-frame-ancestors-star": {
+   "WEB206": "tp"
+  },
+  "csp-meta-frame-ancestors": {
+   "WEB-content-security-policy": "tn",
+   "WEB207": "tp"
+  },
+  "csp-meta-after-script": {
+   "WEB208": "tp"
+  },
+  "csp-google-allowlist": {
+   "WEB209": "tp"
+  },
+  "csp-strict-dynamic-allowlist": {
+   "WEB042": "tn",
+   "WEB209": "tn"
+  },
+  "csp-unsafe-hashes": {
+   "WEB210": "tp"
+  },
+  "csp-http-source": {
+   "WEB211": "tp"
+  },
+  "csp-static-nonce": {
+   "WEB212": "tp"
+  },
+  "csp-short-nonce": {
+   "WEB213": "tp"
+  },
+  "csp-duplicate-directive": {
+   "WEB040": "tn",
+   "WEB202": "tp"
+  },
+  "csp-unquoted-self": {
+   "WEB201": "tp"
+  },
+  "csp-typo-directive": {
+   "WEB201": "tp"
+  },
+  "csp-unsafe-eval": {
+   "WEB041": "tp"
+  },
+  "csp-no-object-src": {
+   "WEB043": "tp"
+  },
+  "csp-style-inline": {
+   "WEB214": "tp"
+  },
+  "csp-x-csp-only": {
+   "WEB-content-security-policy": "tp",
+   "WEB217": "tp"
+  },
+  "csp-deprecated-directive": {
+   "WEB216": "tp"
+  },
+  "csp-allowlist-only": {
+   "WEB209": "tn",
+   "WEB211": "tn",
+   "WEB218": "tp"
+  },
+  "csp-nonce-plus-unsafe-inline": {
+   "WEB040": "tn"
+  },
+  "csp-strict-dynamic-compat": {
+   "WEB040": "tn",
+   "WEB042": "tn",
+   "WEB209": "tn"
+  },
+  "csp-host-wildcard": {
+   "WEB042": "tn"
+  },
+  "csp-default-none": {
+   "WEB043": "tn"
+  },
+  "csp-meta-only": {
+   "WEB-content-security-policy": "tn",
+   "WEB207": "tn"
+  },
+  "csp-two-policies": {
+   "WEB-content-security-policy": "tn",
+   "WEB040": "tn"
+  },
+  "csp-api-json": {
+   "WEB-content-security-policy": "tn",
+   "WEB-permissions-policy": "tn",
+   "WEB-referrer-policy": "tn",
+   "WEB-x-frame-options": "tn"
+  },
+  "csp-script-src-elem": {
+   "WEB040": "tn",
+   "WEB042": "tn"
+  },
+  "csp-404-no-csp": {
+   "WEB-content-security-policy": "tn",
+   "WEB-x-frame-options": "tn"
+  },
+  "csp-strict-good": {
+   "WEB-content-security-policy": "tn",
+   "WEB040": "tn",
+   "WEB041": "tn",
+   "WEB042": "tn",
+   "WEB043": "tn",
+   "WEB200": "tn",
+   "WEB201": "tn",
+   "WEB202": "tn",
+   "WEB203": "tn",
+   "WEB204": "tn",
+   "WEB205": "tn",
+   "WEB206": "tn",
+   "WEB207": "tn",
+   "WEB208": "tn",
+   "WEB209": "tn",
+   "WEB210": "tn",
+   "WEB211": "tn",
+   "WEB212": "tn",
+   "WEB213": "tn",
+   "WEB214": "tn",
+   "WEB216": "tn",
+   "WEB217": "tn",
+   "WEB218": "tn",
+   "WEB509": "tn",
+   "WEB513": "tn",
+   "WEB514": "tn",
+   "WEB611": "tn",
+   "WEB990": "tn"
+  },
+  "csp-frame-ancestors-only": {
+   "WEB-content-security-policy": "tn",
+   "WEB-x-frame-options": "tn",
+   "WEB040": "tn",
+   "WEB042": "tp",
+   "WEB043": "tn",
+   "WEB204": "tn"
+  },
+  "hdr-xfo-missing-login": {
+   "WEB-x-frame-options": "tp"
+  },
+  "hdr-xfo-allow-from": {
+   "WEB300": "tp"
+  },
+  "hdr-xfo-deny-sameorigin": {
+   "WEB301": "tp"
+  },
+  "hdr-xfo-meta": {
+   "WEB-x-frame-options": "tp",
+   "WEB302": "tp"
+  },
+  "hdr-xfo-sameorigin-dup": {
+   "WEB-x-frame-options": "tn",
+   "WEB300": "tn",
+   "WEB301": "tn"
+  },
+  "hdr-xfo-missing-fa-none": {
+   "WEB-x-frame-options": "tn",
+   "WEB302": "tn"
+  },
+  "hdr-xcto-missing-js": {
+   "WEB-x-content-type-options": "tp"
+  },
+  "hdr-xcto-nosnif": {
+   "WEB303": "tp"
+  },
+  "hdr-xcto-double": {
+   "WEB-x-content-type-options": "tn",
+   "WEB303": "tn"
+  },
+  "hdr-xcto-missing-png": {
+   "WEB-x-content-type-options": "tn"
+  },
+  "hdr-xcto-missing-304": {
+   "WEB-content-security-policy": "tn",
+   "WEB-x-content-type-options": "tn",
+   "WEB-x-frame-options": "tn"
+  },
+  "hdr-referrer-unsafe-url": {
+   "WEB304": "tp"
+  },
+  "hdr-referrer-missing": {
+   "WEB-referrer-policy": "tp",
+   "WEB304": "tn"
+  },
+  "hdr-pp-feature-syntax": {
+   "WEB305": "tp"
+  },
+  "hdr-pp-geolocation-star": {
+   "WEB306": "tp"
+  },
+  "hdr-pp-good": {
+   "WEB-permissions-policy": "tn",
+   "WEB305": "tn",
+   "WEB306": "tn",
+   "WEB307": "tn",
+   "WEB308": "tn"
+  },
+  "hdr-pp-missing": {
+   "WEB-permissions-policy": "tp"
+  },
+  "hdr-feature-policy-only": {
+   "WEB307": "tp"
+  },
+  "hdr-coop-typo": {
+   "WEB308": "tp"
+  },
+  "hdr-coep-twice": {
+   "WEB309": "tp"
+  },
+  "hdr-coep-missing": {
+   "WEB309": "tn",
+   "WEB310": "tn",
+   "WEB312": "tn",
+   "WEB316": "tn",
+   "WEB317": "tn"
+  },
+  "hdr-corp-case": {
+   "WEB310": "tp"
+  },
+  "hdr-xxss-enabled": {
+   "WEB311": "tp"
+  },
+  "hdr-xxss-zero": {
+   "WEB311": "tn"
+  },
+  "hdr-hpkp": {
+   "WEB312": "tp"
+  },
+  "hdr-ctype-missing": {
+   "WEB313": "tp"
+  },
+  "hdr-json-as-html": {
+   "WEB313": "tp"
+  },
+  "hdr-charset-conflict": {
+   "WEB314": "tp"
+  },
+  "hdr-utf8-vs-utf-8": {
+   "WEB313": "tn",
+   "WEB314": "tn"
+  },
+  "hdr-cache-public-login": {
+   "WEB315": "tp"
+  },
+  "hdr-setcookie-shared-cache": {
+   "WEB315": "tp"
+  },
+  "hdr-static-immutable": {
+   "WEB315": "tn"
+  },
+  "hdr-clear-site-data-unquoted": {
+   "WEB317": "tp"
+  },
+  "hdr-xpcdp-all": {
+   "WEB316": "tp"
+  },
+  "cors-reflect-creds": {
+   "WEB320": "tp"
+  },
+  "cors-reflect-no-creds": {
+   "WEB320": "tn",
+   "WEB321": "tp"
+  },
+  "cors-null": {
+   "WEB322": "tp"
+  },
+  "cors-star-creds": {
+   "WEB323": "tp"
+  },
+  "cors-reflect-no-vary": {
+   "WEB324": "tp"
+  },
+  "cors-http-origin": {
+   "WEB326": "tp"
+  },
+  "cors-acao-list": {
+   "WEB325": "tp"
+  },
+  "cors-star-session": {
+   "WEB327": "tp"
+  },
+  "cors-fixed-allowlist": {
+   "WEB320": "tn",
+   "WEB321": "tn",
+   "WEB324": "tn",
+   "WEB325": "tn",
+   "WEB326": "tn"
+  },
+  "cors-star-static": {
+   "WEB323": "tn",
+   "WEB327": "tn"
+  },
+  "cors-none": {
+   "WEB320": "tn",
+   "WEB321": "tn",
+   "WEB322": "tn",
+   "WEB323": "tn",
+   "WEB324": "tn"
+  },
+  "cors-reflect-vary-ok": {
+   "WEB321": "tp",
+   "WEB324": "tn"
+  },
+  "ck-session-no-secure-no-hsts": {
+   "WEB020": "tp"
+  },
+  "ck-session-no-secure-hsts": {
+   "WEB020": "tp"
+  },
+  "ck-secure-pref": {
+   "WEB020": "tp"
+  },
+  "ck-secure-prefix-no-secure": {
+   "WEB401": "tp"
+  },
+  "ck-host-with-domain": {
+   "WEB401": "tp"
+  },
+  "ck-samesite-none-no-secure": {
+   "WEB400": "tp"
+  },
+  "ck-samesite-lax2": {
+   "WEB402": "tp"
+  },
+  "ck-partitioned-no-secure": {
+   "WEB403": "tp"
+  },
+  "ck-domain-parent-session": {
+   "WEB404": "tp"
+  },
+  "ck-domain-public-suffix": {
+   "WEB404": "tp"
+  },
+  "ck-session-90-days": {
+   "WEB405": "tp"
+  },
+  "ck-duplicate": {
+   "WEB406": "tp"
+  },
+  "ck-5kb": {
+   "WEB408": "tp"
+  },
+  "ck-bigip": {
+   "WEB411": "tp"
+  },
+  "ck-jwt-alg-none": {
+   "WEB412": "tp"
+  },
+  "ck-session-over-http": {
+   "WEB413": "tp"
+  },
+  "ck-secure-over-http": {
+   "WEB410": "tp"
+  },
+  "ck-session-no-httponly": {
+   "WEB021": "tp"
+  },
+  "ck-session-no-samesite": {
+   "WEB022": "tp"
+  },
+  "ck-csrf-no-samesite": {
+   "WEB021": "tn",
+   "WEB022": "tp"
+  },
+  "ck-session-samesite-none": {
+   "WEB407": "tp"
+  },
+  "ck-deletion": {
+   "WEB020": "tn",
+   "WEB021": "tn",
+   "WEB022": "tn"
+  },
+  "ck-ga": {
+   "WEB021": "tn",
+   "WEB022": "tn"
+  },
+  "ck-xsrf-token": {
+   "WEB021": "tn"
+  },
+  "ck-host-correct": {
+   "WEB020": "tn",
+   "WEB021": "tn",
+   "WEB022": "tn",
+   "WEB401": "tn",
+   "WEB404": "tn"
+  },
+  "ck-analytics-no-samesite": {
+   "WEB022": "tn"
+  },
+  "ck-lang": {
+   "WEB021": "tn",
+   "WEB022": "tn"
+  },
+  "ck-ignored": {
+   "WEB020": "tn",
+   "WEB021": "tn",
+   "WEB022": "tn"
+  },
+  "ck-session-secure-ok": {
+   "WEB020": "tn",
+   "WEB021": "tn",
+   "WEB022": "tn",
+   "WEB400": "tn",
+   "WEB402": "tn",
+   "WEB403": "tn",
+   "WEB405": "tn",
+   "WEB406": "tn",
+   "WEB407": "tn",
+   "WEB408": "tn",
+   "WEB410": "tn",
+   "WEB412": "tn",
+   "WEB413": "tn"
+  },
+  "ck-lb-cookie": {
+   "WEB021": "tn",
+   "WEB022": "tn",
+   "WEB411": "tn"
+  },
+  "ck-crawl-page-cookie": {
+   "WEB020": "tp"
+  },
+  "html-script-http": {
+   "WEB050": "tp"
+  },
+  "html-img-http": {
+   "WEB050": "tp"
+  },
+  "html-form-action-http": {
+   "WEB051": "tp"
+  },
+  "html-formaction-http": {
+   "WEB051": "tp"
+  },
+  "html-password-http": {
+   "WEB000": "tp",
+   "WEB052": "tn"
+  },
+  "html-password-downgrade": {
+   "WEB052": "tp",
+   "WEB103": "tp"
+  },
+  "html-cdnjs-no-sri": {
+   "WEB053": "tp",
+   "WEB506": "tn",
+   "WEB507": "tn"
+  },
+  "html-css-no-sri": {
+   "WEB053": "tp"
+  },
+  "html-sri-no-crossorigin": {
+   "WEB500": "tp"
+  },
+  "html-sri-good": {
+   "WEB053": "tn",
+   "WEB500": "tn",
+   "WEB501": "tn",
+   "WEB502": "tn"
+  },
+  "html-sri-sha1": {
+   "WEB501": "tp"
+  },
+  "html-sri-over-http": {
+   "WEB502": "tp"
+  },
+  "html-sri-mismatch": {
+   "WEB503": "tp"
+  },
+  "html-sri-match": {
+   "WEB503": "tn"
+  },
+  "html-rel-opener": {
+   "WEB505": "tp"
+  },
+  "html-blank-no-rel": {
+   "WEB505": "tn"
+  },
+  "html-polyfill-io": {
+   "WEB506": "tp"
+  },
+  "html-coinhive": {
+   "WEB507": "tp"
+  },
+  "html-login-get": {
+   "WEB509": "tp"
+  },
+  "html-jsessionid-links": {
+   "WEB510": "tp"
+  },
+  "html-token-links": {
+   "WEB511": "tp"
+  },
+  "html-next-param": {
+   "WEB512": "tp"
+  },
+  "html-params-benign": {
+   "WEB510": "tn",
+   "WEB511": "tn",
+   "WEB512": "tn"
+  },
+  "html-upload-form": {
+   "WEB513": "tp"
+  },
+  "html-quirks-relative-css": {
+   "WEB514": "tp"
+  },
+  "html-a-href-http": {
+   "WEB050": "tn"
+  },
+  "html-canonical-http": {
+   "WEB050": "tn"
+  },
+  "html-xmlns": {
+   "WEB050": "tn"
+  },
+  "html-template-comment": {
+   "WEB050": "tn",
+   "WEB051": "tn",
+   "WEB052": "tn"
+  },
+  "html-gtm-no-sri": {
+   "WEB053": "tp"
+  },
+  "html-same-site-cdn": {
+   "WEB053": "tn"
+  },
+  "html-upgrade-insecure": {
+   "WEB050": "tp"
+  },
+  "html-crawl-grouping": {
+   "WEB051": "tp"
+  },
+  "dom-innerhtml-hash": {
+   "WEB520": "tp"
+  },
+  "dom-document-write-search": {
+   "WEB520": "tp"
+  },
+  "dom-location-param": {
+   "WEB521": "tp"
+  },
+  "dom-location-constant": {
+   "WEB521": "tn"
+  },
+  "dom-message-no-origin": {
+   "WEB522": "tp"
+  },
+  "dom-message-origin-check": {
+   "WEB522": "tn"
+  },
+  "dom-external-file": {
+   "WEB520": "tp"
+  },
+  "dom-textcontent": {
+   "WEB520": "tn"
+  },
+  "dom-dompurify": {
+   "WEB520": "tn"
+  },
+  "dom-jquery-library": {
+   "WEB520": "tn"
+  },
+  "dom-big-bundle": {
+   "WEB520": "inconclusive"
+  },
+  "disc-server-version": {
+   "WEB010": "tp"
+  },
+  "disc-powered-by": {
+   "WEB011": "tp"
+  },
+  "disc-aspnet-version": {
+   "WEB600": "tp"
+  },
+  "disc-debug-token": {
+   "WEB601": "tp"
+  },
+  "disc-sourcemap-header": {
+   "WEB602": "tp"
+  },
+  "disc-internal-ip-location": {
+   "WEB603": "tp"
+  },
+  "disc-etag-inode": {
+   "WEB604": "tp"
+  },
+  "disc-nginx-autoindex": {
+   "WEB055": "tp"
+  },
+  "disc-iis-listing": {
+   "WEB055": "tp"
+  },
+  "disc-blog-index-of": {
+   "WEB055": "tn",
+   "WEB617": "tn"
+  },
+  "disc-werkzeug": {
+   "WEB605": "tp"
+  },
+  "disc-django-debug-404": {
+   "WEB605": "tp"
+  },
+  "disc-sqlstate-500": {
+   "WEB606": "tp"
+  },
+  "disc-path-500": {
+   "WEB607": "tp"
+  },
+  "disc-php-source": {
+   "WEB608": "tp"
+  },
+  "disc-php-escaped": {
+   "WEB608": "tn"
+  },
+  "disc-stripe-secret-inline": {
+   "WEB609": "tp"
+  },
+  "disc-pem-in-js": {
+   "WEB609": "tp"
+  },
+  "disc-pk-live": {
+   "WEB609": "tn"
+  },
+  "disc-java-serialized-cookie": {
+   "WEB610": "tp"
+  },
+  "disc-viewstate-no-mac": {
+   "WEB611": "tp"
+  },
+  "disc-bcrypt-json": {
+   "WEB612": "tp"
+  },
+  "disc-git-sha": {
+   "WEB612": "tn",
+   "WEB613": "tn"
+  },
+  "disc-card-number": {
+   "WEB613": "tp"
+  },
+  "disc-test-card": {
+   "WEB613": "tp"
+  },
+  "disc-openssl-banner": {
+   "WEB615": "tp"
+  },
+  "disc-openssl-fips": {
+   "WEB615": "tn"
+  },
+  "disc-apache-default-page": {
+   "WEB617": "tp"
+  },
+  "disc-ecs-server": {
+   "WEB010": "tn"
+  },
+  "disc-nginx-bare": {
+   "WEB010": "tn",
+   "WEB011": "tn",
+   "WEB600": "tn",
+   "WEB601": "tn",
+   "WEB604": "tn"
+  },
+  "disc-pre-traceback": {
+   "WEB056": "tn",
+   "WEB606": "tn",
+   "WEB607": "tn"
+  },
+  "disc-version-string": {
+   "WEB603": "tn",
+   "WEB610": "tn"
+  },
+  "disc-error-in-soft404": {
+   "WEB056": "tp"
+  },
+  "lib-jquery-url": {
+   "WEB054": "tp",
+   "WEB803": "tp"
+  },
+  "lib-jquery-renamed": {
+   "WEB054": "tp"
+  },
+  "lib-retire-hash": {
+   "WEB054": "tp"
+  },
+  "lib-angular-182": {
+   "WEB054": "tp",
+   "WEB803": "tp"
+  },
+  "lib-lodash-bundle": {
+   "WEB054": "tp"
+  },
+  "lib-php-81": {
+   "WEB800": "tp"
+  },
+  "lib-php-eol": {
+   "WEB801": "tp"
+  },
+  "lib-php-current": {
+   "WEB800": "tn",
+   "WEB801": "tn"
+  },
+  "lib-apache-ubuntu": {
+   "WEB800": "tp"
+  },
+  "lib-wordpress-49": {
+   "WEB080": "tp",
+   "WEB081": "tp"
+  },
+  "lib-jquery-371": {
+   "WEB054": "tn",
+   "WEB602": "tn",
+   "WEB803": "tn"
+  },
+  "lib-jquery-prose": {
+   "WEB054": "tn"
+  },
+  "lib-administrator-text": {
+   "WEB080": "tn"
+  },
+  "lib-wordpress-prose": {
+   "WEB080": "tn",
+   "WEB081": "tn"
+  },
+  "lib-two-platforms": {
+   "WEB080": "tp"
+  },
+  "tls-expired": {
+   "WEB070": "tp"
+  },
+  "tls-not-yet-valid": {
+   "WEB720": "tp"
+  },
+  "tls-self-signed": {
+   "WEB701": "tp"
+  },
+  "tls-wrong-host": {
+   "WEB700": "tp"
+  },
+  "tls-leaf-only": {
+   "WEB702": "tp"
+  },
+  "tls-wrong-order": {
+   "WEB703": "tp"
+  },
+  "tls-chain-with-root": {
+   "WEB703": "tp"
+  },
+  "tls-sha1-leaf": {
+   "WEB708": "tp"
+  },
+  "tls-rsa1024": {
+   "WEB707": "tp"
+  },
+  "tls-roca": {
+   "WEB707": "tp"
+  },
+  "tls-400-days": {
+   "WEB709": "tp"
+  },
+  "tls-must-staple": {
+   "WEB714": "tp"
+  },
+  "tls-expires-soon": {
+   "WEB071": "tp"
+  },
+  "tls-wrong-eku": {
+   "WEB072": "tp"
+  },
+  "tls-no-tls13": {
+   "WEB705": "tp"
+  },
+  "tls10-accepted": {
+   "WEB030": "tp"
+  },
+  "tls-stub-sslv3": {
+   "WEB704": "tp"
+  },
+  "tls-stub-rc4": {
+   "WEB706": "tp"
+  },
+  "tls-stub-compression": {
+   "WEB711": "tp"
+  },
+  "tls-stub-no-reneg": {
+   "WEB712": "tp"
+  },
+  "tls-two-ips": {
+   "WEB715": "tp"
+  },
+  "tls-good-no-aki": {
+   "WEB072": "tn",
+   "WEB702": "tn"
+  },
+  "tls-modern-only": {
+   "WEB030": "tn",
+   "WEB704": "tn",
+   "WEB705": "tn",
+   "WEB706": "tn",
+   "WEB711": "tn",
+   "WEB712": "tn",
+   "WEB716": "tn",
+   "WEB717": "tn",
+   "WEB718": "tn"
+  },
+  "tls-stub-timeout": {
+   "WEB030": "inconclusive"
+  },
+  "tls-good-chain": {
+   "WEB070": "tn",
+   "WEB071": "tn",
+   "WEB072": "tn",
+   "WEB700": "tn",
+   "WEB701": "tn",
+   "WEB702": "tn",
+   "WEB703": "tn",
+   "WEB707": "tn",
+   "WEB708": "tn",
+   "WEB709": "tn",
+   "WEB714": "tn",
+   "WEB715": "tn",
+   "WEB720": "tn"
+  },
+  "exp-git-head": {
+   "WEB062": "tp"
+  },
+  "exp-env": {
+   "WEB062": "tp"
+  },
+  "exp-ds-store": {
+   "WEB062": "tp"
+  },
+  "exp-svn-entries": {
+   "WEB062": "tp"
+  },
+  "exp-phpinfo": {
+   "WEB062": "tp"
+  },
+  "exp-server-status": {
+   "WEB062": "tp"
+  },
+  "exp-actuator-env": {
+   "WEB062": "tp"
+  },
+  "exp-actuator-index": {
+   "WEB062": "tp"
+  },
+  "exp-swagger": {
+   "WEB062": "tp"
+  },
+  "exp-laravel-log": {
+   "WEB062": "tp"
+  },
+  "exp-crossdomain": {
+   "WEB903": "tp"
+  },
+  "exp-sectxt-expired": {
+   "WEB900": "tp"
+  },
+  "exp-sectxt-no-contact": {
+   "WEB900": "tp"
+  },
+  "exp-sectxt-valid": {
+   "WEB060": "tn",
+   "WEB900": "tn"
+  },
+  "exp-no-sectxt": {
+   "WEB060": "tp"
+  },
+  "exp-robots-admin": {
+   "WEB061": "tp"
+  },
+  "exp-robots-admin-guide": {
+   "WEB061": "tn"
+  },
+  "exp-takeover": {
+   "WEB901": "tp"
+  },
+  "exp-takeover-no-cname": {
+   "WEB901": "tn"
+  },
+  "exp-wp-login": {
+   "WEB083": "tp"
+  },
+  "exp-drupal-changelog": {
+   "WEB082": "tp"
+  },
+  "exp-catchall-octet": {
+   "WEB062": "tn",
+   "WEB082": "tn"
+  },
+  "exp-catchall-text-ok": {
+   "WEB062": "tn",
+   "WEB903": "tn"
+  },
+  "exp-spa-catchall": {
+   "WEB062": "tn",
+   "WEB083": "tn"
+  },
+  "exp-env-html": {
+   "WEB062": "tn"
+  },
+  "exp-deep-gap": {
+   "WEB062": "tn"
+  },
+  "waf-cloudflare": {
+   "WEB-content-security-policy": "inconclusive",
+   "WEB-permissions-policy": "inconclusive",
+   "WEB-referrer-policy": "inconclusive",
+   "WEB-strict-transport-security": "inconclusive",
+   "WEB-x-content-type-options": "inconclusive",
+   "WEB-x-frame-options": "inconclusive",
+   "WEB990": "tp"
+  },
+  "waf-akamai": {
+   "WEB-content-security-policy": "inconclusive",
+   "WEB-permissions-policy": "inconclusive",
+   "WEB-referrer-policy": "inconclusive",
+   "WEB-strict-transport-security": "inconclusive",
+   "WEB-x-content-type-options": "inconclusive",
+   "WEB-x-frame-options": "inconclusive",
+   "WEB990": "tp"
+  },
+  "waf-aws": {
+   "WEB-content-security-policy": "inconclusive",
+   "WEB-permissions-policy": "inconclusive",
+   "WEB-referrer-policy": "inconclusive",
+   "WEB-strict-transport-security": "inconclusive",
+   "WEB-x-content-type-options": "inconclusive",
+   "WEB-x-frame-options": "inconclusive",
+   "WEB990": "tp"
+  },
+  "waf-429-retry-after": {},
+  "waf-503-twice": {
+   "WEB-content-security-policy": "inconclusive",
+   "WEB990": "tp"
+  },
+  "waf-deep-probe-only": {
+   "WEB-x-frame-options": "tp",
+   "WEB062": "inconclusive"
+  },
+  "grade-aplus": {},
+  "grade-a": {
+   "WEB114": "tp"
+  },
+  "grade-b": {
+   "WEB-content-security-policy": "tp",
+   "WEB050": "tp"
+  },
+  "grade-c": {
+   "WEB-strict-transport-security": "tp"
+  },
+  "grade-f": {
+   "WEB609": "tp"
+  },
+  "grade-star": {},
+  "grade-waf": {
+   "WEB990": "tp"
+  },
+  "grade-mono-frame-ancestors": {},
+  "grade-mono-no-csp": {
+   "WEB-content-security-policy": "tp"
+  },
+  "grade-obs-165": {},
+  "grade-obs-100": {},
+  "grade-obs-0": {},
+  "hostile-markup-ansi": {
+   "WEB010": "tn"
+  },
+  "hostile-curl-injection": {},
+  "hostile-slow-drip": {},
+  "hostile-120-headers": {},
+  "hostile-gzip-bomb": {},
+  "hostile-brotli-body": {
+   "WEB010": "tp",
+   "WEB055": "inconclusive",
+   "WEB605": "inconclusive",
+   "WEB991": "tp"
+  },
+  "hostile-redirect-metadata": {},
+  "hostile-redirect-ip2": {},
+  "hostile-dns-rebinding": {},
+  "hostile-redirect-file": {},
+  "hostile-redirect-javascript": {},
+  "hostile-obs-fold-hsts": {
+   "WEB-strict-transport-security": "tn"
+  },
+  "rev-cn-only": {
+   "WEB700": "tp"
+  },
+  "rev-shared-cache-session": {
+   "WEB315": "tp"
+  },
+  "rev-session-echo": {
+   "WEB414": "tp"
+  },
+  "rev-csrf-echo": {
+   "WEB414": "tn"
+  },
+  "rev-jsdelivr-unpinned": {
+   "WEB519": "tp"
+  },
+  "rev-jsdelivr-pinned": {
+   "WEB519": "tn"
+  },
+  "rev-unregistered-script": {
+   "WEB517": "tp"
+  },
+  "rev-s3-nosuchbucket": {
+   "WEB517": "tp"
+  },
+  "rev-404-drops-headers": {
+   "WEB318": "tp"
+  },
+  "rev-404-keeps-headers": {
+   "WEB318": "tn"
+  },
+  "rev-missing-host-live-domain": {
+   "WEB517": "tn"
+  },
+  "rev-all-nxdomain": {
+   "WEB517": "inconclusive"
+  },
+  "rev-proxied": {
+   "WEB517": "inconclusive"
+  },
+  "rev-cert-90d-25-left": {
+   "WEB071": "tn"
+  },
+  "rev-xxss-block": {
+   "WEB311": "tp"
+  },
+  "rev-git-head-catchall": {
+   "WEB062": "tp"
+  },
+  "red-basic-auth-http": {
+   "WEB118": "tp"
+  },
+  "red-basic-auth-https": {
+   "WEB118": "tn"
+  },
+  "hdr-breach-token-gzip": {
+   "WEB119": "tp"
+  },
+  "hdr-breach-token-plain": {
+   "WEB119": "tn"
+  },
+  "csp-no-reporting": {
+   "WEB215": "tp"
+  },
+  "csp-with-reporting": {
+   "WEB215": "tn",
+   "WEB991": "tn"
+  },
+  "csp-no-trusted-types": {
+   "WEB219": "tp"
+  },
+  "csp-trusted-types": {
+   "WEB219": "tn"
+  },
+  "ck-session-no-host-prefix": {
+   "WEB409": "tp"
+  },
+  "ck-session-host-prefix": {
+   "WEB409": "tn"
+  },
+  "html-http-form-to-https": {
+   "WEB103": "tp",
+   "WEB504": "tp"
+  },
+  "html-http-form-to-https-web000": {
+   "WEB000": "tp",
+   "WEB504": "tn"
+  },
+  "html-password-autocomplete-off": {
+   "WEB508": "tp"
+  },
+  "html-password-manager-ok": {
+   "WEB508": "tn"
+  },
+  "html-inline-handlers": {
+   "WEB515": "tp"
+  },
+  "html-no-inline-handlers": {
+   "WEB515": "tn"
+  },
+  "html-form-no-csrf": {
+   "WEB516": "tp"
+  },
+  "html-form-csrf-token": {
+   "WEB516": "tn"
+  },
+  "html-password-offsite": {
+   "WEB518": "tp"
+  },
+  "html-password-onsite": {
+   "WEB518": "tn"
+  },
+  "html-flash-object": {
+   "WEB802": "tp"
+  },
+  "html-pdf-object": {
+   "WEB802": "tn"
+  },
+  "disc-html-comment-secret": {
+   "WEB614": "tp"
+  },
+  "disc-html-comment-plain": {
+   "WEB614": "tn"
+  },
+  "disc-error-page-banner": {
+   "WEB616": "tp"
+  },
+  "disc-error-page-plain": {
+   "WEB616": "tn"
+  },
+  "disc-jpeg-gps": {
+   "WEB619": "tp"
+  },
+  "disc-jpeg-no-gps": {
+   "WEB619": "tn"
+  },
+  "tls-intermediate-deviation": {
+   "WEB717": "tn",
+   "WEB718": "tp"
+  },
+  "tls-wildcard-names": {
+   "WEB717": "tp"
+  },
+  "tls-modern-deep": {
+   "WEB710": "tn",
+   "WEB716": "tn"
+  },
+  "tls-stub-dhe1024": {
+   "WEB710": "tp"
+  },
+  "tls-stub-higher": {
+   "WEB716": "tp"
+  },
+  "tls-stub-no-pq": {
+   "WEB719": "tp"
+  },
+  "tls-stub-pq": {
+   "WEB719": "tn"
+  },
+  "tls-ct-missing": {
+   "WEB713": "tp"
+  },
+  "tls-ct-not-required": {
+   "WEB713": "tn"
+  }
+ },
+ "expectation_failures": [],
+ "expectation_pending": [],
+ "traffic_violations": {},
+ "server_violations": [],
+ "unavailable": {},
+ "defects": [
+  {
+   "defect": "D1",
+   "cases": [
+    "red-301-home-headers"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D2",
+   "cases": [
+    "csp-api-json"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D3",
+   "cases": [
+    "ck-secure-pref"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D4",
+   "cases": [
+    "ck-deletion"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D5",
+   "cases": [
+    "ck-ga"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D6",
+   "cases": [
+    "html-a-href-http"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D7",
+   "cases": [
+    "csp-nonce-plus-unsafe-inline",
+    "csp-strict-dynamic-compat"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D8",
+   "cases": [
+    "csp-default-self-script-inline",
+    "csp-script-src-elem"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D9",
+   "cases": [
+    "csp-host-wildcard"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D10",
+   "cases": [
+    "csp-default-none"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D11",
+   "cases": [
+    "csp-meta-only"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D12",
+   "cases": [
+    "exp-phpinfo",
+    "exp-server-status"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D13",
+   "cases": [
+    "exp-catchall-octet"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D14",
+   "cases": [
+    "exp-spa-catchall"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D15",
+   "cases": [
+    "lib-jquery-prose",
+    "lib-administrator-text",
+    "lib-wordpress-prose",
+    "lib-two-platforms"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D16",
+   "cases": [
+    "disc-pre-traceback"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D17",
+   "cases": [
+    "tls10-accepted"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D18",
+   "cases": [
+    "disc-ecs-server"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D19",
+   "cases": [
+    "tls-good-no-aki"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D20",
+   "cases": [
+    "tls-good-chain"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D21",
+   "cases": [
+    "tls-expired"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D22",
+   "cases": [
+    "html-css-no-sri",
+    "html-sri-no-crossorigin",
+    "html-same-site-cdn"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D23",
+   "cases": [
+    "ck-crawl-page-cookie"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D24",
+   "cases": [
+    "html-crawl-grouping"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  },
+  {
+   "defect": "D25",
+   "cases": [
+    "exp-deep-gap"
+   ],
+   "now": "fixed",
+   "baseline": "wrong"
+  }
+ ],
+ "zap": null
+}

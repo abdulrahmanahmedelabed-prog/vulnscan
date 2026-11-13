@@ -205,10 +205,8 @@ OFFICIAL = {
 }
 
 # fixtures where a family module does not yet reproduce Observatory (reported to the integrator)
-E2E_KNOWN_GAPS = {
-    "quirk-hsts-comma": "transport.observatory_hsts_slug reads only the first Strict-Transport-Security field; Node joins "
-                        "repeated fields with ', ', so Observatory sees a comma and answers hsts-header-invalid",
-}
+# (phase D closed "quirk-hsts-comma": transport now joins repeated Strict-Transport-Security fields as Node does)
+E2E_KNOWN_GAPS: dict[str, str] = {}
 
 
 def test_fixture_set_is_complete():

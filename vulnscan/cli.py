@@ -674,7 +674,7 @@ def _run_web(args: argparse.Namespace, target: str, lang: str):
         import uuid
         scan_id = uuid.uuid4().hex[:12]
     try:
-        res = scan_web(target, options=opts, previous=previous if (args.compare or previous) else None, scan_id=scan_id)
+        res = scan_web(target, options=opts, previous=previous, scan_id=scan_id)
     except WebUnreachable as e:
         print(f"✖ {localize(str(e), lang)}", file=sys.stderr)
         return 2

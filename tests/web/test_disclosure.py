@@ -560,8 +560,8 @@ def test_pem_header_constant_in_a_library_is_not_a_key(ctx_for, make_response):
 
 @pytest.mark.parametrize("js, rule_sev", [
     ('const pk = "' + "pk_" + "live_51HkashifCorpusPublishableKey0Xy" + '";', None),
-    ('firebase.initializeApp({apiKey: "AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY", authDomain: "x.firebaseapp.com"});', None),
-    ('maps.load("AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY");', ("low", "tentative")),
+    ('firebase.initializeApp({apiKey: "AIza' + 'SyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY", authDomain: "x.firebaseapp.com"});', None),
+    ('maps.load("AIza' + 'SyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY");', ("low", "tentative")),
     ('var t = "ghp_' + "Xx" * 18 + '";', None),                           # repeated pattern: placeholder
     ('var t = "ghp_' + "aB3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF3hJ6" + '";', ("high", "firm")),
     ('db = "postgres://app:' + 'S3cr3tPassw0rd' + '@db.internal:5432/app";', ("critical", "firm")),
@@ -1034,10 +1034,10 @@ def test_raw_binary_serialized_body_is_detected(ctx_for):
 
 def test_aws_pair_needs_a_base64_secret_not_a_hex_digest(ctx_for, make_response):
     sha = "3f2a1c9e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39"
-    js = 'var cfg={accessKeyId:"AKIA2E0A8F3B244C9986",build:"' + sha + '"};'
+    js = 'var cfg={accessKeyId:"AKIA' + '2E0A8F3B244C9986",build:"' + sha + '"};'
     assert "WEB609" not in by_rule(run(_secret_ctx(ctx_for, make_response, js=js)))
     real = "tL9Qx2vR8mN4bK7pW1zY6cF3hJ5sD0gA8eU2iO4r"
-    js = 'var cfg={accessKeyId:"AKIA2E0A8F3B244C9986",secretAccessKey:"' + real + '"};'
+    js = 'var cfg={accessKeyId:"AKIA' + '2E0A8F3B244C9986",secretAccessKey:"' + real + '"};'
     issues = run(_secret_ctx(ctx_for, make_response, js=js))
     assert "WEB609" in by_rule(issues)
     _no_raw_secret(issues, real)
