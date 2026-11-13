@@ -27,7 +27,7 @@ from .report import render_html, render_json, render_markdown, render_sarif, sum
 from .rules import RULES
 from .scanner import ARCHIVE_EXTS, JADX_EXTS, jadx_available, scan_path
 from .store import Store
-from .web import scan_site
+from .web import scan_site  # noqa: F401 - kept for callers and tests of 1.0.x (server.scan_site)
 
 # When frozen by PyInstaller the UI files are unpacked under sys._MEIPASS.
 if getattr(sys, "frozen", False):
