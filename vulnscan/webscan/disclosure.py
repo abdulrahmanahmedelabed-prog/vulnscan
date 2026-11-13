@@ -253,11 +253,35 @@ def _byte_offset(r: Response, text: str, pos: int) -> int:
         return pos
 
 
-def _excerpt(text: str, start: int, end: int, *, replace: str | None = None, around: int = 70) -> str:
-    """Context around ``text[start:end]`` (the match replaced by ``replace`` when given), one line, controls removed."""
-    mid = text[start:end] if replace is None else replace
-    out = text[max(0, start - around):start] + mid + text[end:end + around]
-    return cap(" ".join(strip_controls(out).split()), 200)
+def _excerpt(text: str, start: int, end: int, *, replace: str | None = None, around: int = 70,
+             masks: Iterable[tuple[int, int, str]] = ()) -> str:
+    """Context around ``text[start:end]`` (the match replaced by ``replace`` when given), one line, controls removed.
+
+    ``masks`` are other ``(start, end, replacement)`` spans of the same text (neighbouring secrets, card numbers,
+    hashes): each one inside the window is replaced too, and the window is cut short before one that straddles its
+    edge, so the context of one redacted value never shows the next value in clear."""
+    lo, hi = max(0, start - around), min(len(text), end + around)
+    inner = []
+    for a, z, rep in sorted(masks):
+        if z <= lo or a >= hi or (a, z) == (start, end) or (a < end and start < z):
+            continue
+        if a < lo:
+            lo = z
+        elif z > hi:
+            hi = a
+        else:
+            inner.append((a, z, rep))
+    pieces, pos = [], lo
+    spans = sorted([*((a, z, rep) for a, z, rep in inner if a >= lo and z <= hi),
+                    (start, end, text[start:end] if replace is None else replace)])
+    for a, z, rep in spans:
+        if a < pos:
+            continue
+        pieces.append(text[pos:a])
+        pieces.append(rep)
+        pos = z
+    pieces.append(text[pos:hi])
+    return cap(" ".join(strip_controls("".join(pieces)).split()), 200)
 
 
 _NUMS = re.compile(r"\b[0-9a-f]{8,}\b|\d+", re.I)
@@ -521,7 +545,8 @@ class _Body:
         return any(a <= pos < b for a, b in self._spans)
 
 
-_GUARD_OPEN = re.compile(r"<(pre|code|textarea|samp|xmp|listing)\b[^>]*>", re.I)
+# bounded attribute run: an unbounded ``[^>]*`` is quadratic on "<pre <pre <pre …" without a closing ">"
+_GUARD_OPEN = re.compile(r"<(pre|code|textarea|samp|xmp|listing)\b[^>]{0,512}>", re.I)
 
 
 def guarded_spans(text: str) -> list[tuple[int, int]]:
@@ -542,6 +567,9 @@ def guarded_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
+_CONF_RANK = {"tentative": 1, "firm": 2, "certain": 3}
+
+
 class _Run:
     """One pass over a context: issues, dedupe and per-check coverage bookkeeping."""
 
@@ -552,7 +580,7 @@ class _Run:
         self.evaluated: dict[str, set[str]] = {}
         self.failed: dict[str, set[str]] = {}
         self.not_tested: dict[str, dict[str, str]] = {}     # check → host → reason
-        self.dedupe: set[tuple] = set()
+        self.dedupe: dict[tuple, int] = {}                    # key → index in ``issues``
         self.own_sites = {psl.site(h) for h in (ctx.target_host, ctx.entry.host if ctx.entry else "") if h}
         self.blocked_hosts: dict[str, str] = {}
         if ctx.entry is not None and _kind(ctx.entry) in ("waf_challenge", "rate_limited"):
@@ -581,12 +609,19 @@ class _Run:
             return False
         h = host or r.host
         k = (rule, h, key if key is not None else group_value)
-        if k in self.dedupe:
-            return False
-        self.dedupe.add(k)
         sev = severity if severity in meta.allowed_severities else None
-        self.issues.append(Issue(rule=rule, url=url or r.url, confidence=conf, evidence=evidence, params=dict(params or {}),
-                                 severity=sev, group_value=cap(group_value, 300), notes=list(notes), host=h))
+        issue = Issue(rule=rule, url=url or r.url, confidence=conf, evidence=evidence, params=dict(params or {}),
+                      severity=sev, group_value=cap(group_value, 300), notes=list(notes), host=h)
+        if k in self.dedupe:
+            # one cause, one finding — but the strongest sighting wins: a traceback quoted in a 2xx docs page
+            # (tentative) must not hide the same signature on a 500 page (firm) seen later in the scan
+            i = self.dedupe[k]
+            if _CONF_RANK.get(conf, 0) <= _CONF_RANK.get(self.issues[i].confidence, 0):
+                return False
+            self.issues[i] = issue
+        else:
+            self.dedupe[k] = len(self.issues)
+            self.issues.append(issue)
         self.seen(meta.check_id, h)
         if self.ctx.options.reports(conf):
             self.failed.setdefault(meta.check_id, set()).add(h)
@@ -1065,6 +1100,20 @@ def _serialized(st: _Run) -> None:
             st.emit("WEB610", r, st.ev(r, where="cookie", name=c.name, value=c.redacted()),
                     group_value=f"cookie:{c.name}:{fmt}",
                     notes=[_note("serialized", where=(f"The cookie {c.name}", f"الكوكي {c.name}"), value=fmt)])
+    # raw binary serializations (Java ``AC ED 00 05``, pickle ``80 04 95``, BinaryFormatter) contain NUL and control
+    # bytes, so the binary skip keeps them out of the text set below: judge the magic bytes of those bodies here
+    text_set = {id(b.r) for b in st.bodies()}
+    for r in st.ctx.all_responses(include_hops=False):
+        if id(r) in text_set or not st.own(r) or r.status is None or r.host in st.blocked_hosts or not r.body \
+                or _opaque(r) or r.source in ("probe", "baseline", "image", "sourcemap") \
+                or _kind(r) in SKIP_KINDS or not is_binary(r.body):
+            continue
+        st.seen("WEB610", r.host)
+        fmt = serialized_format(r.body[:16])
+        if fmt:
+            st.emit("WEB610", r, st.ev(r, where="body", name="body", value=fmt, offset=0, excerpt=r.body[:8].hex(" ")),
+                    group_value=f"body:{fmt}", notes=[_note("serialized", where=("The response body", "جسم الاستجابة"),
+                                                            value=fmt)])
     for b in st.bodies():
         if b.code:
             continue
@@ -1192,7 +1241,7 @@ def _emit_sig(st: _Run, b: _Body, s: Signature, span: tuple[int, int], conf: str
 
 # ----------------------------------------------------------------------------------------------- WEB055 listings
 
-_A_HREF = re.compile(r"""<a\s[^>]*href\s*=\s*["']?([^"'\s>]+)""", re.I)
+_A_HREF = re.compile(r"""<a\s[^>]{0,512}?href\s*=\s*["']?([^"'\s>]{1,2048})""", re.I)   # bounded: hostile pages
 _TITLE = re.compile(r"<title\b[^>]{0,200}>(.{0,1024}?)</title\s*>", re.I | re.S)    # bounded: hostile pages
 _H1 = re.compile(r"<h1\b[^>]{0,200}>(.{0,2048}?)</h1\s*>", re.I | re.S)
 _TAGS = re.compile(r"<[^>]*>")
@@ -1456,12 +1505,14 @@ def _hashes(st: _Run) -> None:
         if b.code and not st.paranoid:
             continue
         st.seen("WEB612", b.r.host)
-        for kind, value, s, e in password_hashes(b.text):
+        found = password_hashes(b.text)
+        masks = [(s, e, redact_secret(value)) for _k, value, s, e in found]
+        for kind, value, s, e in found:
             if b.in_guard(s) or b.code:
                 continue                       # WEB612 allows firm only: documentation examples are dropped
             red = redact_secret(value)
             st.emit("WEB612", b.r, st.ev(b.r, where="body", name=kind, value=red, offset=_byte_offset(b.r, b.text, s),
-                                         excerpt=_excerpt(b.text, s, e, replace=red)),
+                                         excerpt=_excerpt(b.text, s, e, replace=red, masks=masks)),
                     group_value=f"{kind}:{_digest(value)}", notes=[_note("hash", kind=kind, value=red)])
 
 
@@ -1503,7 +1554,7 @@ def card_brand(d: str) -> str | None:
         return "Discover"
     if 3528 <= p4 <= 3589 and 16 <= n <= 19:
         return "JCB"
-    if (300 <= p3 <= 305 or p2 in (36, 38, 39)) and 14 <= n <= 19:
+    if (300 <= p3 <= 305 or p2 in (36, 38, 39)) and 14 <= n <= 16:
         return "Diners Club"
     if p4 in (5018, 5020, 5038, 5893, 6304, 6759, 6761, 6762, 6763) and 12 <= n <= 19:
         return "Maestro"
@@ -1535,6 +1586,8 @@ def card_numbers(text: str) -> list[tuple[str, str, int, int]]:
         if not 13 <= len(d) <= 19 or len(set(d)) <= 2:
             if d not in TEST_CARDS:
                 continue
+        if not seps and len(d) > 16:
+            continue                                   # an unseparated 17–19 digit run is an int64 id, not a card
         brand = card_brand(d)
         if brand is None or not luhn_ok(d):
             continue
@@ -1573,7 +1626,9 @@ def _cards(st: _Run) -> None:
             continue
         st.seen("WEB613", b.r.host)
         styles = _style_spans(b.text) if b.is_html else []
-        for brand, d, s, e in card_numbers(b.text):
+        found = card_numbers(b.text)
+        masks = [(s, e, "*" * (len(d) - 4) + d[-4:]) for _b, d, s, e in found]
+        for brand, d, s, e in found:
             if b.is_html and (_in_tag(b.text, s) or any(a <= s < z for a, z in styles)):
                 continue                       # visible text and scripts only (never attributes or styles)
             if b.in_guard(s):
@@ -1584,7 +1639,8 @@ def _cards(st: _Run) -> None:
             if test:
                 notes.append(_note("test_card"))
             st.emit("WEB613", b.r, st.ev(b.r, where="body", name=brand, value=masked,
-                                         offset=_byte_offset(b.r, b.text, s), excerpt=_excerpt(b.text, s, e, replace=masked)),
+                                         offset=_byte_offset(b.r, b.text, s), excerpt=_excerpt(b.text, s, e, replace=masked,
+                                                                                    masks=masks)),
                     severity="info" if test else "medium", group_value=f"{brand}:{d[-4:]}:{_digest(d)}", notes=notes)
 
 
@@ -1832,6 +1888,9 @@ def _judge(rule: SecretRule, m: re.Match, text: str, rules: SecretSet) -> Secret
             return None                            # a Twilio account SID alone is an identifier, not a secret
         if value.startswith("SK") and not re.search(r"(?<![A-Za-z0-9])AC[0-9a-fA-F]{32}(?![A-Za-z0-9])", text):
             return None                            # Twilio API key: only with its account SID
+    if rule.id in ("aws-secret-pair", "SEC031", "aws-secret-assign") and not (
+            re.search(r"[a-z]", value) and re.search(r"[A-Z]", value)):
+        return None                                # a 40-hex git SHA or digest near an access key id is not its secret
     if rule.id == "SEC029" and value.startswith("LTAI"):
         return None                                # Alibaba AccessKey id alone
     if value.startswith("AIza"):
@@ -1893,7 +1952,9 @@ def _secrets(st: _Run) -> None:
 def _scan_secrets(st: _Run, src: _Source, rules: SecretSet) -> None:
     r = src.response
     st.seen("WEB609", r.host if st.own(r) else st.ctx.target_host)
-    for hit in find_secrets(src.text, rules):
+    hits = find_secrets(src.text, rules)
+    masks = [(h.start, h.end, f"<{h.label} {redact_secret(h.value)}>") for h in hits]
+    for hit in hits:
         red = redact_secret(hit.value)
         offset = None
         if src.base is not None:
@@ -1901,7 +1962,8 @@ def _scan_secrets(st: _Run, src: _Source, rules: SecretSet) -> None:
         where = _WHERE.get(src.where, _WHERE["body"])
         notes = [_note("secret", kind=hit.title, value=red), _note("secret_where", where=where)]
         st.emit("WEB609", r, st.ev(r, where="body", name=f"{src.name}: {hit.title[0]}", value=red, offset=offset,
-                                   excerpt=_excerpt(src.text, hit.start, hit.end, replace=f"<{hit.label} {red}>", around=50)),
+                                   excerpt=_excerpt(src.text, hit.start, hit.end, replace=f"<{hit.label} {red}>", around=50,
+                                                    masks=masks)),
                 severity=hit.severity, confidence=hit.confidence, group_value=f"{hit.label}:{_digest(hit.value)}",
                 notes=notes, host=r.host if st.own(r) else st.ctx.target_host)
 

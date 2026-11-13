@@ -70,11 +70,11 @@ class Rule:
     pattern: str                # as written (trimmed)
     line: int = 0
     _norm: str = field(default="", repr=False)
-    _rx: Any = field(default=None, repr=False)
+    _glob: tuple[str, bool] = field(default=("", False), repr=False)
 
     def __post_init__(self) -> None:
         self._norm = normalise_path(self.pattern)
-        self._rx = _compile(self._norm)
+        self._glob = _compile(self._norm)
 
     @property
     def length(self) -> int:
@@ -82,14 +82,43 @@ class Rule:
         return len(self._norm.encode("utf-8"))
 
     def matches(self, norm_path: str) -> bool:
-        return self._rx.match(norm_path) is not None
+        body, anchored = self._glob
+        return _glob_match(body, norm_path, anchored)
 
 
-def _compile(pattern: str) -> "re.Pattern[str]":
+def _compile(pattern: str) -> tuple[str, bool]:
+    """``(body, anchored)``: the pattern without its end anchor ``$``, runs of ``*`` collapsed to one."""
     anchored = pattern.endswith("$")
     body = pattern[:-1] if anchored else pattern
-    rx = ".*".join(re.escape(part) for part in body.split("*"))
-    return re.compile(rx + (r"\Z" if anchored else ""), re.S)
+    return re.sub(r"\*{2,}", "*", body), anchored
+
+
+def _glob_match(pattern: str, text: str, anchored: bool) -> bool:
+    """True when ``text`` starts with ``pattern`` (equals it when ``anchored``); ``*`` matches any sequence.
+
+    Iterative wildcard matching that only ever backtracks to the last ``*``: O(len(pattern) * len(text)) in the
+    worst case. (A regex of ``.*`` groups backtracks exponentially: ``/*a*a*a*a*a*a*a*b`` against a 60-character path
+    took 10 s with ``re``, so a hostile robots.txt could stall the crawl.)"""
+    if not anchored:
+        pattern += "*"
+    p = t = 0
+    star, mark = -1, 0
+    np_, nt = len(pattern), len(text)
+    while t < nt:
+        if p < np_ and pattern[p] == "*":
+            star, mark = p, t
+            p += 1
+        elif p < np_ and pattern[p] == text[t]:
+            p += 1
+            t += 1
+        elif star >= 0:
+            mark += 1
+            p, t = star + 1, mark
+        else:
+            return False
+    while p < np_ and pattern[p] == "*":
+        p += 1
+    return p == np_
 
 
 @dataclass

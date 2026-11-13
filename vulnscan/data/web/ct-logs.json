@@ -1,0 +1,546 @@
+{
+ "meta": {
+  "schema_version": 1,
+  "date": "2026-11-12",
+  "source": "https://raw.githubusercontent.com/chromium/chromium/main/components/certificate_transparency/data/log_list.json",
+  "license": "BSD-3-Clause (Chromium)",
+  "generator": "tools/webdata/ct_logs.py",
+  "upstream_version": "96.8"
+ },
+ "logs": {
+  "+ZgQ1evkfhzxtCH/beNb+MHsluJeBNv8dW9r5FxlXMo=": {
+   "operator": "HARICA",
+   "state": "qualified",
+   "description": "HARICA Selene2028h2",
+   "state_since": "2026-10-13"
+  },
+  "/Cvx3M57P/mNzO4pdqi0IuiOCa6pt5mhesjSWzqR+MA=": {
+   "operator": "Sectigo",
+   "state": "qualified",
+   "description": "Sectigo Statue2028h1",
+   "state_since": "2026-10-14"
+  },
+  "/cLoBbiE8/CzcwbEliJzk9OExUIiB/1Aj+4CBc6jVhY=": {
+   "operator": "GoDaddy",
+   "state": "qualified",
+   "description": "GoDaddy Aquamarine2027h1",
+   "state_since": "2026-09-30"
+  },
+  "/jwyxS3R1tXbsRUdYe6iH5EhBfIZa1UNh/as89aPnFM=": {
+   "operator": "GoDaddy",
+   "state": "qualified",
+   "description": "GoDaddy Aquamarine2028h2",
+   "state_since": "2026-09-30"
+  },
+  "0J1XydPITy4G3x5te1QjepibtE1vlbKeTR/dmG3ySq4=": {
+   "operator": "TrustAsia",
+   "state": "qualified",
+   "description": "TrustAsia Taiji2028h2",
+   "state_since": "2026-11-03"
+  },
+  "0vxlL6X5tzi4N1X6XrFfC0UlP06Po7m2T9TeVmLRhwg=": {
+   "operator": "IPng Networks",
+   "state": "retired",
+   "description": "Bogus RFC6962 log to avoid breaking misbehaving CT libraries",
+   "state_since": "2025-06-21"
+  },
+  "1219ENGn9XfCx+lf1wC/+YLJM1pl4dCzAXMXwMjFaXc=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google Argon2026h2",
+   "state_since": "2024-09-30"
+  },
+  "1d5V7roItgyf/BjFE75qYLoARga8WVuWu0T2LMV9Ofo=": {
+   "operator": "Geomys",
+   "state": "usable",
+   "description": "Geomys Tuscolo2027h2",
+   "state_since": "2025-10-08"
+  },
+  "1tWNqdAXU/NqSqDHV0kCr+vH3CzTjNn3ZMgMiRkenwI=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google Argon2027h1",
+   "state_since": "2025-12-28"
+  },
+  "2AlVO5RPev/IFhlvlE+Fq7D4/F6HVSYPFdEucrtFSxQ=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google Xenon2026h2",
+   "state_since": "2024-09-30"
+  },
+  "2iKjSO8buzFuV+ARSkqcdAe1DxOmJTk9JtLe4joj4hY=": {
+   "operator": "Microsec",
+   "state": "qualified",
+   "description": "Microsec Eszigno2028h2",
+   "state_since": "2026-09-22"
+  },
+  "5eNiR9ku9K2jhYO1NZHbcp/C8ArktnRRdNPd/GqiU4g=": {
+   "operator": "Let's Encrypt",
+   "state": "usable",
+   "description": "Let's Encrypt Sycamore2027h2",
+   "state_since": "2025-11-27"
+  },
+  "6+a9C+qJOkTtPzg+2/4QzZnxhphufXsmsBqEMk57934=": {
+   "operator": "IPng Networks",
+   "state": "qualified",
+   "description": "IPng Networks Halloumi2028h1",
+   "state_since": "2026-09-09"
+  },
+  "6jAGlJ1CunsD2FCB4yYsua5xil5vUDT3ePE4BU6CdFw=": {
+   "operator": "GoDaddy",
+   "state": "qualified",
+   "description": "GoDaddy Aquamarine2026h2",
+   "state_since": "2026-09-30"
+  },
+  "7drrgVxjITRJtHvlB3kFq9DZMUfCesUUazvFjkPptsc=": {
+   "operator": "TrustAsia",
+   "state": "usable",
+   "description": "TrustAsia HETU2027",
+   "state_since": "2025-12-28"
+  },
+  "8LDBho1KJqIqj/7ghUOplCvvi7u69tYBqyHdvnFJ/68=": {
+   "operator": "GoDaddy",
+   "state": "qualified",
+   "description": "GoDaddy Aquamarine2027h2",
+   "state_since": "2026-09-30"
+  },
+  "A18eYQnn44YBqbhkHlfl9aePeIcnUy/PQlPx68mqDzk=": {
+   "operator": "Geomys",
+   "state": "qualified",
+   "description": "Geomys Tuscolo2028h2",
+   "state_since": "2026-09-09"
+  },
+  "A4AqwmL24F4D+Lxve5hRMk/Xaj31t1lRdeIi+46b1fY=": {
+   "operator": "Sectigo",
+   "state": "usable",
+   "description": "Sectigo Tiger2027h2",
+   "state_since": "2025-09-18"
+  },
+  "ABpdGhwtk3W2SFV4+C9xoa5u7zl9KXyK4xV7yt7hoB4=": {
+   "operator": "DigiCert",
+   "state": "usable",
+   "description": "DigiCert Wyvern2027h1",
+   "state_since": "2025-12-20"
+  },
+  "ALNWz93lJLRlXUxjZTxSUMQ04goEhRA5uv1kzlyFq2s=": {
+   "operator": "IPng Networks",
+   "state": "qualified",
+   "description": "IPng Networks Halloumi2028h2",
+   "state_since": "2026-09-09"
+  },
+  "ANXCUqZpzf6O0sgXpi5M/O2SyHSR7pccmv3bUoh4hag=": {
+   "operator": "IPng Networks",
+   "state": "qualified",
+   "description": "IPng Networks Gouda2028h2",
+   "state_since": "2026-09-09"
+  },
+  "CRV/Yy1Gx/dtlSZUk7wPALOVrF2zorJr+wQ9ukrGOJM=": {
+   "operator": "IPng Networks",
+   "state": "usable",
+   "description": "IPng Networks Halloumi2027h2",
+   "state_since": "2025-12-17"
+  },
+  "EgXQJVrBiTyuVBBwPE8Sc/yXAOErWEp/gGrcVVWAwLE=": {
+   "operator": "IPng Networks",
+   "state": "qualified",
+   "description": "IPng Networks Gouda2028h1",
+   "state_since": "2026-09-09"
+  },
+  "F23RQr8KrLyBjUUTu9zDCtteWTJiU5KLmtfLdg/247k=": {
+   "operator": "Geomys",
+   "state": "qualified",
+   "description": "Geomys Trastevere2027h1",
+   "state_since": "2026-09-09"
+  },
+  "G3i5n/pJwlzEUFl1q/10eRTf3fp7/dOdKjW5WQStPog=": {
+   "operator": "Let's Encrypt",
+   "state": "qualified",
+   "description": "Let's Encrypt Sycamore2028h1",
+   "state_since": "2026-10-14"
+  },
+  "GZ9TRtShpGoaPdygptJx/Taqms3LslRJmOM+dVHZi8k=": {
+   "operator": "HARICA",
+   "state": "qualified",
+   "description": "HARICA Selene2028h1",
+   "state_since": "2026-10-13"
+  },
+  "Gouda43XkdHNBUnttgNV1ga2T60w23H+eI8Px8j7xLE=": {
+   "operator": "IPng Networks",
+   "state": "usable",
+   "description": "IPng Networks Gouda2027h1",
+   "state_since": "2025-11-27"
+  },
+  "GoudaVNi2GSSp7niI2BuNOzp4xC6NPuTBXhdKc5XV+s=": {
+   "operator": "IPng Networks",
+   "state": "usable",
+   "description": "IPng Networks Gouda2027h2",
+   "state_since": "2025-11-27"
+  },
+  "Goudaw/+v4G0eTnG0jEKhtbRAtTwRuIYLJ3jX14mJe8=": {
+   "operator": "IPng Networks",
+   "state": "usable",
+   "description": "IPng Networks Gouda2026h2",
+   "state_since": "2025-11-27"
+  },
+  "GrnppF/Ct4QLH+fciv7lRpXau5p8I9NfpTclu4k6md0=": {
+   "operator": "Microsec",
+   "state": "qualified",
+   "description": "Microsec Eszigno2027h2",
+   "state_since": "2026-09-22"
+  },
+  "H1bRq5RwSkHdP+r99GmTVTAsFDG/5hNGCJ//rnldzC8=": {
+   "operator": "Sectigo",
+   "state": "readonly",
+   "description": "Sectigo Sabre2026h2",
+   "state_since": "2025-09-18"
+  },
+  "H7D4qS2K3aEhd2wF4qouFbrLxitlOTaVV2qqtS4R0R0=": {
+   "operator": "DigiCert",
+   "state": "usable",
+   "description": "DigiCert Sphinx2027h2",
+   "state_since": "2025-12-20"
+  },
+  "HIl0B+YBCgEpO7Z439ejaM6xjMpSHcyk04bkoy5bXQQ=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google ParcelYard2027h1",
+   "state_since": "2026-08-31"
+  },
+  "HJ9oLOn68EVpUPgbloqH3dsyENhM5siy44JSSsTPWZ8=": {
+   "operator": "Sectigo",
+   "state": "usable",
+   "description": "Sectigo Tiger2027h1",
+   "state_since": "2025-09-18"
+  },
+  "IPBfqqOkkvxqwUjMM6ICNhhrSfqpfmuzkk+yXsNrHDU=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google PlumbersArms2026h2",
+   "state_since": "2026-08-31"
+  },
+  "Jbfv3qETAZPtkweXcKoyKiZiDeNayKp8dRl94LGp4GU=": {
+   "operator": "TrustAsia",
+   "state": "usable",
+   "description": "TrustAsia log2026b",
+   "state_since": "2024-09-20"
+  },
+  "JuNkblhpISO8ND9HJDWbN5LNJFqI2BXTkzP9mRirRyM=": {
+   "operator": "IPng Networks",
+   "state": "usable",
+   "description": "IPng Networks Halloumi2026h2a",
+   "state_since": "2026-01-01"
+  },
+  "KNPGjqGDY293g5DLHjiKzpOgTpFpnQdXNunGFtEf4Gc=": {
+   "operator": "Microsec",
+   "state": "qualified",
+   "description": "Microsec Eszigno2026h2",
+   "state_since": "2026-09-22"
+  },
+  "LtakTeuPDIZGZ3acTt0EH4QjZ1X6OqymNNCTXfzVmnA=": {
+   "operator": "Geomys",
+   "state": "retired",
+   "description": "Bogus placeholder log to unbreak misbehaving CT libraries",
+   "state_since": "2025-06-21"
+  },
+  "M3qex8rmqQSLdS8tk65+SyqQLSG0lxKdg+J5x1PJL4w=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google PlumbersArms2027h2",
+   "state_since": "2026-08-31"
+  },
+  "Mk28xZLuH+bg6aYx4WURJaunVGze9l0TxxGtWhs4aqk=": {
+   "operator": "Sectigo",
+   "state": "qualified",
+   "description": "Sectigo Monument2028h1",
+   "state_since": "2026-10-14"
+  },
+  "N6oHzCFvLm2RnHCdJNj3MbAPKxR8YhzAkaX6GoTYFt0=": {
+   "operator": "DigiCert",
+   "state": "usable",
+   "description": "DigiCert Wyvern2027h2",
+   "state_since": "2025-12-20"
+  },
+  "Nh2PNG9+2gYj4hlfNqqVGKiHKCEzvpzppruUJGPrTaY=": {
+   "operator": "GoDaddy",
+   "state": "qualified",
+   "description": "GoDaddy Aquamarine2028h1",
+   "state_since": "2026-09-30"
+  },
+  "RMK9DOkUDmSlyUoBkwpaobs1lw4A7hEWiWgqHETXtWY=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google Xenon2027h1",
+   "state_since": "2025-12-28"
+  },
+  "ROgi/CurDpLu0On61pZkYCd20Bdg4IkFCckjobA/w38=": {
+   "operator": "IPng Networks",
+   "state": "usable",
+   "description": "IPng Networks Halloumi2027h1",
+   "state_since": "2025-12-17"
+  },
+  "Rq+GPTs+5Z+ld96oJF02sNntIqIj9GF3QSKUUu6VUF8=": {
+   "operator": "Geomys",
+   "state": "usable",
+   "description": "Geomys Tuscolo2026h2",
+   "state_since": "2025-08-31"
+  },
+  "RqI5Z8YNtkaHxm89+ZmUdpOmphEghFfVVefj0KHZtkY=": {
+   "operator": "DigiCert",
+   "state": "usable",
+   "description": "DigiCert Sphinx2027h1",
+   "state_since": "2025-12-20"
+  },
+  "TGPcmOWcHauI9h6KPd6uj6tEozd7X5uUw/uhnPzBviY=": {
+   "operator": "Cloudflare",
+   "state": "usable",
+   "description": "Cloudflare Nimbus2027",
+   "state_since": "2025-11-15"
+  },
+  "TefD7+U3ZpoMsB44OPqv3PCMmoBWM55wK1iVm9FxiS4=": {
+   "operator": "Geomys",
+   "state": "qualified",
+   "description": "Geomys Tuscolo2028h1",
+   "state_since": "2026-09-09"
+  },
+  "V+RgJ5TwE01vJbkN3nyKr9cuefY8ogzD9dFPs4lFv1U=": {
+   "operator": "Sectigo",
+   "state": "qualified",
+   "description": "Sectigo Statue2027h2",
+   "state_since": "2026-10-14"
+  },
+  "VzRIzG4dLA3JS2nyh9Hv5IPHolxQxTILuzrep29usEE=": {
+   "operator": "TrustAsia",
+   "state": "usable",
+   "description": "TrustAsia Luoshu2027",
+   "state_since": "2026-02-11"
+  },
+  "WW5sM4aUsllyolbIoOjdkEp26Ag92oc7AQg4KBQ87lk=": {
+   "operator": "Geomys",
+   "state": "usable",
+   "description": "Geomys Tuscolo2027h1",
+   "state_since": "2025-10-08"
+  },
+  "X/nA+6QtrHjOZELrGazggaKb1OL7U68MYzB55QWCBMk=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google PlumbersArms2027h1",
+   "state_since": "2026-08-31"
+  },
+  "YEyar3p/d18B1Ab8kg3ImesLHH34yVIb+voXdzuXi8k=": {
+   "operator": "Sectigo",
+   "state": "usable",
+   "description": "Sectigo Elephant2027h1",
+   "state_since": "2025-07-22"
+  },
+  "Zw/v+c0tZeC4UfTSi9vY+BdtNeIL3fhbQhT74s+jXiM=": {
+   "operator": "Sectigo",
+   "state": "qualified",
+   "description": "Sectigo Statue2028h2",
+   "state_since": "2026-10-14"
+  },
+  "aYS3IzyydLLRRn2l4EDXH+upCiHniGU3Srn5vPhocjc=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google ParcelYard2027h2",
+   "state_since": "2026-08-31"
+  },
+  "bHsR9YaIq7BLUlT3PyIbVVjgvpNRI3MlcGGfeugsbBA=": {
+   "operator": "Sectigo",
+   "state": "qualified",
+   "description": "Sectigo Monument2028h2",
+   "state_since": "2026-10-14"
+  },
+  "bP5QGUOoXqkWvFLRM+TcyR7xQRx9JYQg0XOAnhgY6zo=": {
+   "operator": "Let's Encrypt",
+   "state": "usable",
+   "description": "Let's Encrypt Sycamore2026h2",
+   "state_since": "2025-11-27"
+  },
+  "bdyd6YsZgQp1oXcR+tZVoOVbdYzpKkXZg27d9PznIBM=": {
+   "operator": "Microsec",
+   "state": "qualified",
+   "description": "Microsec Eszigno2028h1",
+   "state_since": "2026-09-22"
+  },
+  "caQ99zUpUI88YXJqTPeP+cknbMBSwvd3Zql1T9QKkMM=": {
+   "operator": "Let's Encrypt",
+   "state": "qualified",
+   "description": "Let's Encrypt Willow2028h1",
+   "state_since": "2026-10-14"
+  },
+  "cd1QREFkibQDp3c0FPKGnt4CnXEI84DXfoJshKW/fls=": {
+   "operator": "TrustAsia",
+   "state": "qualified",
+   "description": "TrustAsia Luoshu2028h1",
+   "state_since": "2026-11-03"
+  },
+  "d+CXC8fTD+AkXF2y76h1TAjrOpDdwSu11U7iiv4neHA=": {
+   "operator": "Let's Encrypt",
+   "state": "qualified",
+   "description": "Let's Encrypt Sycamore2028h2",
+   "state_since": "2026-10-14"
+  },
+  "dNudWPfUfp39eHoWKpkcGM9pjafHKZGMmhiwRQ26RLw=": {
+   "operator": "TrustAsia",
+   "state": "usable",
+   "description": "TrustAsia log2026a",
+   "state_since": "2024-09-20"
+  },
+  "dZIIKK86Y1XymO0JfjR1dfm5hDwR4TkfV0QpnxyujO4=": {
+   "operator": "Geomys",
+   "state": "qualified",
+   "description": "Geomys Trastevere2027h2",
+   "state_since": "2026-09-09"
+  },
+  "eBAmYgxXrnCeBgs/iwSfqrh6aXhhDP+YpDWqAgNwe9k=": {
+   "operator": "Microsec",
+   "state": "qualified",
+   "description": "Microsec Eszigno2027h1",
+   "state_since": "2026-09-22"
+  },
+  "g92PTAqC4jctZFmPZBgRxF27h4JAz96XF7b9cOQAZ4c=": {
+   "operator": "HARICA",
+   "state": "qualified",
+   "description": "HARICA Selene2027h1",
+   "state_since": "2026-10-13"
+  },
+  "j5ct6c9T2eqhZDHY6vWLWGZ8/QysT5c0VLGZaVHvlYc=": {
+   "operator": "Geomys",
+   "state": "qualified",
+   "description": "Geomys Trastevere2028h1",
+   "state_since": "2026-09-09"
+  },
+  "jap0vUvSSHaUVxo2MsA8HZSVk3N5615qDROINcMzR8k=": {
+   "operator": "TrustAsia",
+   "state": "qualified",
+   "description": "TrustAsia Luoshu2028h2",
+   "state_since": "2026-11-03"
+  },
+  "jspHC6zeavOiBrCkeoS3Rv4fxr+VPiXmm07kAkjzxug=": {
+   "operator": "Let's Encrypt",
+   "state": "usable",
+   "description": "Let's Encrypt Sycamore2027h1",
+   "state_since": "2025-11-27"
+  },
+  "k0C4iKejzC796l4cBupj6U7f6w4VXgIIZFIAYZlMotE=": {
+   "operator": "Sectigo",
+   "state": "qualified",
+   "description": "Sectigo Statue2027h1",
+   "state_since": "2026-10-14"
+  },
+  "lE5Dh/rswe+B8xkkJqgYZQHH0184AgE/cmd9VTcuGdg=": {
+   "operator": "DigiCert",
+   "state": "usable",
+   "description": "DigiCert Sphinx2026h2",
+   "state_since": "2024-11-08"
+  },
+  "lLHBirDQV8R74KwEDh8svI3DdXJ7yVHyClJhJoY7pzw=": {
+   "operator": "Sectigo",
+   "state": "readonly",
+   "description": "Sectigo Mammoth2026h2",
+   "state_since": "2025-09-18"
+  },
+  "lU+RNjI2rVhXzDYVRyLcQOf5ugowsOdS+/DHSylmVrg=": {
+   "operator": "Sectigo",
+   "state": "qualified",
+   "description": "Sectigo Monument2027h1",
+   "state_since": "2026-10-14"
+  },
+  "okkM3NuOM6QAMhdg1tTVGiA2GR6nfZaL4mqKAPb///c=": {
+   "operator": "Sectigo",
+   "state": "usable",
+   "description": "Sectigo Elephant2027h2",
+   "state_since": "2025-07-22"
+  },
+  "ooEAGHNOF24dR+CVQPOBulRml81jqENQcW64CU7a8Q0=": {
+   "operator": "Let's Encrypt",
+   "state": "usable",
+   "description": "Let's Encrypt Willow2027h1",
+   "state_since": "2025-11-27"
+  },
+  "ppWirZJtb5lujvxJAUJX2LvwRqfWJYm4jcLXh2x45S8=": {
+   "operator": "Let's Encrypt",
+   "state": "usable",
+   "description": "Let's Encrypt Willow2027h2",
+   "state_since": "2025-11-27"
+  },
+  "qCbL4wrGNRJGUz/gZfFPGdluGQgTxB3ZbXkAsxI8VSc=": {
+   "operator": "Let's Encrypt",
+   "state": "usable",
+   "description": "Let's Encrypt Willow2026h2",
+   "state_since": "2025-11-27"
+  },
+  "r2eIO1ewTt2Pptl+9i6o64EKx3Fg8CReVdYML+eFhzo=": {
+   "operator": "Sectigo",
+   "state": "usable",
+   "description": "Sectigo Elephant2026h2",
+   "state_since": "2025-07-22"
+  },
+  "rKswcGzr7IQx9BPS9JFfER5CJEOx8qaMTzwrO6ceAsM=": {
+   "operator": "Let's Encrypt",
+   "state": "retired",
+   "description": "Let's Encrypt Oak2026h2",
+   "state_since": "2026-02-28"
+  },
+  "sYdPqlxcQTingZPPo7kk2ImvyDNpOcfp+q0JVhrGpV4=": {
+   "operator": "HARICA",
+   "state": "qualified",
+   "description": "HARICA Selene2027h2",
+   "state_since": "2026-10-13"
+  },
+  "tvzC6p+E49qX4wl/sfIW6R/w154KB0QDJbBvlPXmU8U=": {
+   "operator": "Sectigo",
+   "state": "qualified",
+   "description": "Sectigo Monument2027h2",
+   "state_since": "2026-10-14"
+  },
+  "utuIpG+cr6QJDoLlk1bbbni0pT9YLbCBl5UkLym2jJg=": {
+   "operator": "Google",
+   "state": "usable",
+   "description": "Google ParcelYard2026h2",
+   "state_since": "2026-08-31"
+  },
+  "vey1qmLph0NZ/U7NvnDZ8G8+j71Fo6xrycKFEbx0wJw=": {
+   "operator": "Let's Encrypt",
+   "state": "qualified",
+   "description": "Let's Encrypt Willow2028h2",
+   "state_since": "2026-10-14"
+  },
+  "wjF+V0UZo0XufzjespBB68fCIVoiv3/Vta12mtkOUs0=": {
+   "operator": "DigiCert",
+   "state": "usable",
+   "description": "DigiCert Wyvern2026h2",
+   "state_since": "2024-11-08"
+  },
+  "y6VZ4BSDyZ+U7N2er0ezmWM1bZ/1wShe6un50SqgTMc=": {
+   "operator": "Geomys",
+   "state": "qualified",
+   "description": "Geomys Trastevere2028h2",
+   "state_since": "2026-09-09"
+  },
+  "yKPEf8ezrbk1awE/anoSbeM6TkOlxkb5l605dZkdz5o=": {
+   "operator": "Sectigo",
+   "state": "usable",
+   "description": "Sectigo Tiger2026h2",
+   "state_since": "2025-09-18"
+  },
+  "yMaDuhp5vKPNGyZsbZ6MzSf0hFEMerHyV59nUhBYOgM=": {
+   "operator": "Geomys",
+   "state": "qualified",
+   "description": "Geomys Trastevere2026h2",
+   "state_since": "2026-09-09"
+  },
+  "yzj3FYl8hKFEX1vB3fvJbvKaWc1HCmkFhbDLFMMUWOc=": {
+   "operator": "Cloudflare",
+   "state": "usable",
+   "description": "Cloudflare Nimbus2026",
+   "state_since": "2024-11-08"
+  },
+  "zVMsH8M+555WnWLXjKJmKkfeR5AsQ2zq+JS5GDG0BXw=": {
+   "operator": "TrustAsia",
+   "state": "qualified",
+   "description": "TrustAsia Taiji2028h1",
+   "state_since": "2026-11-03"
+  }
+ }
+}

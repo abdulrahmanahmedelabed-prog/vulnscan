@@ -244,7 +244,7 @@ def _strict_json(body: bytes) -> bool:
         return _json_like(body.lstrip(_WS_BYTES))
     try:
         json.loads(body.decode("utf-8-sig"))
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, RecursionError):   # "[" * 100000 nests deeper than the C decoder allows
         return False
     return True
 
@@ -296,7 +296,17 @@ _WAF_TEXT_CAP = 65536
 def _waf_text(response: Response) -> str:
     if not response.body or _opaque(response):
         return ""
+    if response.is_2xx and not _is_html_body(response):
+        # a challenge or block page served with 2xx is an HTML page; a first-party script or JSON file that merely
+        # contains a marker string (HUMAN's first-party sensor, a WAF SDK) is not
+        return ""
     return _html.unescape(response.text()[:_WAF_TEXT_CAP])
+
+
+# Cloudflare injects /cdn-cgi/challenge-platform/scripts/jsd/main.js (bot detections) into ordinary HTML pages,
+# origin error pages included; only the challenge itself (…/challenge-platform/h/…/orchestrate/…, the
+# #challenge-platform element) counts.
+_CF_CHALLENGE = re.compile(r"challenge-platform(?!/scripts/)")
 
 
 def waf_provider(response: Response) -> str | None:
@@ -321,7 +331,7 @@ def waf_provider(response: Response) -> str | None:
         return "cloudflare"
     if server == "cloudflare" and st in (403, 503):
         b = body()
-        if re.search(r"<title>\s*Just a moment\.\.\.\s*</title>", b, re.I) or "cf-chl-" in b or "challenge-platform" in b:
+        if re.search(r"<title>\s*Just a moment\.\.\.\s*</title>", b, re.I) or "cf-chl-" in b or _CF_CHALLENGE.search(b):
             return "cloudflare"
     # 2 Akamai: AkamaiGHost + 403 + "Reference #"
     if server.startswith("akamaighost") and st == 403 and re.search(r"Reference\s*#\s*[0-9a-f]", body(), re.I):
@@ -425,10 +435,14 @@ def kind_of(response: Response) -> tuple[str, frozenset[str]]:
 
 _LOGIN_ACTION = re.compile(r"/(?:log-?in|sign-?in|auth(?:enticate|orize)?|sessions?|wp-login\.php|j_security_check)"
                            r"(?=$|[/?#.;_-])", re.I)
-_LOGOUT = re.compile(r"log[-_ ]?out|sign[-_ ]?out|log[-_ ]?off|sign[-_ ]?off", re.I)
+# word-bounded: "/catalog-offers" and "/design-outline" contain "log-off" and "sign-out" but are not logout links
+_LOGOUT = re.compile(r"(?<![a-z])(?:log|sign)[-_ ]?(?:out|off)(?![a-z])", re.I)
 _ACCOUNT_MARKERS = frozenset({"user-menu", "usermenu", "account-menu", "accountmenu", "user-dropdown",
-                              "account-dropdown", "logged-in", "is-logged-in", "user-avatar", "wpadminbar"})
-_ADMIN_PATH = re.compile(r"/(?:admin|administrator|wp-admin|manage|dashboard|cpanel)(?=$|[/?#._-])", re.I)
+                              "account-dropdown", "logged-in", "is-logged-in", "wpadminbar"})
+_ADMIN_PATH = re.compile(r"/(?:admin|administrator|wp-admin|manage|dashboard|cpanel)(?=$|[/?#.])", re.I)
+# "/admin-panel", "/admin_login": admin words with a suffix need a login form or admin markup, not just a title
+# ("/dashboard-design-tips" titled "Dashboard design tips" is a blog post)
+_ADMIN_PATH_SUFFIXED = re.compile(r"/(?:admin|administrator|wp-admin|manage|dashboard|cpanel)[_-]", re.I)
 _ADMIN_TEXT = re.compile(r"\badmin\b|administration|administrator|dashboard|control panel|cpanel|phpmyadmin|"
                          r"لوحة التحكم|الإدارة|لوحة الإدارة", re.I)
 _ADMIN_IDS = frozenset({"adminmenu", "wpadminbar", "wpbody", "admin-header", "admin-menu", "pma_navigation",
@@ -443,8 +457,7 @@ _SPA_ATTRS = ("ng-app", "ng-version", "data-reactroot", "data-v-app", "data-serv
 _ERROR_STRONG = re.compile(r"\b(?:404|410)\b|not\s+found|page\s+(?:does\s*n[o']t|doesn't)\s+exist|no\s+such\s+page|"
                            r"page\s+not\s+available|غير\s+موجود|الصفحة\s+غير", re.I)
 _ERROR_WEAK = re.compile(r"\berror\b|\b5\d\d\b|خطأ", re.I)
-_H1 = re.compile(r"<h1\b[^>]*>(.*?)</h1\s*>", re.I | re.S)
-_TAGS = re.compile(r"<[^>]*>")
+_TAGS = re.compile(r"<[^<>]*>")     # linear on "<<<<…" (§0.6)
 
 
 def listing_server(text: str) -> str | None:
@@ -458,20 +471,24 @@ def listing_server(text: str) -> str | None:
     sort = "?c=n;o=d" in low or "?c=m;o=a" in low or "?c=s;o=a" in low
     if "[to parent directory]" in low:
         return "IIS"
-    title = re.search(r"<title\b[^>]*>(.*?)</title", t, re.I | re.S)
-    title_s = _html.unescape(title.group(1)).strip() if title else ""
+    title = _sh.element_inner(t, "title")
+    title_s = " ".join(_html.unescape(_TAGS.sub(" ", title)).split()) if title else ""
+    h1_s = _first_h1(t).lower()
     if title_s.lower().startswith("index of /"):
         if sort:
             return "Apache"
         if '<div class="list">' in low and parent:
             return "lighttpd"
-        if re.search(r"<h1[^>]*>\s*index of /", t, re.I) and parent:
+        if h1_s.startswith("index of /") and parent:
             return "nginx" if not ("apache" in low and "server at" in low) else "Apache"
         if parent:
             return "Apache"
-    if re.search(r"directory listing for /", low) and "<a href" in low:
+    # the signature must be the page's title or h1: an article that mentions "Directory listing for /" is not one
+    # Python: "Directory listing for /x/"; Tomcat: "Directory Listing For /x/" (≤ 8.0) or "… For [/x/]" (8.5+)
+    py_sig = any(s.startswith(("directory listing for /", "directory listing for [/")) for s in (title_s.lower(), h1_s))
+    if py_sig and "<a href" in low and "<table" not in low:
         return "Python"
-    if "directory listing for /" in low and ("tomcat" in low or "<table" in low):
+    if py_sig and ("tomcat" in low or "<table" in low):
         return "Tomcat"
     if title_s.lower().startswith("directory: /") and (parent or "<a href" in low):
         return "Jetty"
@@ -483,8 +500,8 @@ def listing_server(text: str) -> str | None:
 
 
 def _first_h1(text: str) -> str:
-    m = _H1.search(text[:131072])
-    return " ".join(_html.unescape(_TAGS.sub(" ", m.group(1))).split()) if m else ""
+    inner = _sh.element_inner(text, "h1", 131072)
+    return " ".join(_html.unescape(_TAGS.sub(" ", inner)).split()) if inner else ""
 
 
 def _form_role(doc: ParsedHTML, inputs: Sequence[int]) -> set[str]:
@@ -542,9 +559,10 @@ def page_roles(response: Response, doc: ParsedHTML | None) -> frozenset[str]:
     h1 = _first_h1(text)
     # admin: admin path and (login form or admin markers)
     path = response.parsed_url.path or "/"
-    if _ADMIN_PATH.search(path):
+    exact, suffixed = bool(_ADMIN_PATH.search(path)), bool(_ADMIN_PATH_SUFFIXED.search(path))
+    if exact or suffixed:
         ids = {e.attrs.get("id", "").strip().lower() for e in els if e.live}
-        if "login" in roles or _ADMIN_TEXT.search(title) or _ADMIN_TEXT.search(h1) or ids & _ADMIN_IDS:
+        if "login" in roles or ids & _ADMIN_IDS or (exact and (_ADMIN_TEXT.search(title) or _ADMIN_TEXT.search(h1))):
             roles.add("admin")
 
     # api_docs: swagger-ui / redoc / graphiql / openapi viewers
@@ -610,6 +628,7 @@ def classify(response: Response, doc: ParsedHTML | None = None) -> Response:
 # ----------------------------------------------------------------------------------------------- sensitivity (§WEB315)
 
 _SENSITIVE_ROLES = frozenset({"login", "authenticated", "admin"})
+_PASSWORD_ROLES = frozenset({"login", "signup"})     # only set when the page has a live password field
 
 
 def is_sensitive(response: Response, *, cookies: Sequence[CookieFact] = (), doc: ParsedHTML | None = None) -> bool:
@@ -622,7 +641,8 @@ def is_sensitive(response: Response, *, cookies: Sequence[CookieFact] = (), doc:
         return True
     if doc is not None and doc.has_password_field:
         return True
-    if response.roles & _SENSITIVE_ROLES:
+    # without a DOM, the password-field roles stand for the field (a sign-up page has one but no login role)
+    if response.roles & (_SENSITIVE_ROLES | _PASSWORD_ROLES):
         return True
     for v in response.headers.get_all("vary"):
         for tok in v.split(","):
@@ -821,7 +841,8 @@ class Baseline:
     cls: str
     signature: ResponseSignature
     natural: bool = False
-    path: str = ""
+    path: str = ""                       # the requested path (keys the baseline's directory and extension class)
+    final_path: str = ""                 # the path of the final response when the baseline was redirected
 
     @property
     def real_404(self) -> bool:
@@ -882,14 +903,31 @@ class HostSoft404:
                 "real_404_paths": list(self.real_404_paths)}
 
 
+_SECTXT_PATHS = frozenset({"/.well-known/security.txt", "/security.txt"})
+_SECTXT_FIELD = re.compile(rb"(?im)^[ \t]*(?:contact|expires|encryption|policy|canonical)[ \t]*:")
+
+
+def _distinct_resources(a: Response, b: Response) -> bool:
+    """Whether two well-known responses being alike says anything about a catch-all. Not when they are the same
+    resource (same final path, e.g. ``/security.txt`` redirected to ``/.well-known/security.txt``), and not for the two
+    security.txt locations serving the same real security.txt (RFC 9116 allows both; many sites publish one file at
+    both paths)."""
+    pa, pb = a.parsed_url.path or "/", b.parsed_url.path or "/"
+    if pa == pb:
+        return False
+    if {pa, pb} == _SECTXT_PATHS and _SECTXT_FIELD.search(a.body[:65536]):
+        return False
+    return True
+
+
 class Soft404Index:
     """Soft-404 baselines of a scan (§3.2). Pure: it never fetches; feed it the baseline and well-known responses.
 
     * :meth:`add_baseline` registers a deep random-path baseline (``/<dir>/kashif-404-<hex><ext>``);
     * :meth:`add_natural` evaluates the already-fetched well-known files (standard profile, no extra request);
-    * :meth:`match` says whether a response resembles the applicable baseline, most specific first: the same
-      directory and extension class, its parent directories, then the extension-less baselines, then the natural
-      catch-all page. A 404/410 baseline met on the way means "this server returns real 404s here": no match.
+    * :meth:`match` says whether a response resembles the applicable baseline, most specific first: the deepest
+      directory first and, within a directory, the same extension class before the extension-less baseline; then
+      the natural catch-all page. A 404/410 baseline met on the way means "this server returns real 404s here": no match.
     """
 
     def __init__(self) -> None:
@@ -902,10 +940,13 @@ class Soft404Index:
         return self.hosts[h]
 
     def add_baseline(self, response: Response) -> Baseline:
-        path = response.parsed_url.path or "/"
-        b = Baseline(host=response.host, directory=directory_of(path), cls=ext_class(path),
-                     signature=signature(response), path=path)
-        hs = self.host(response.host)
+        # key by the requested URL: "/app/kashif-404-…" redirected to "/login" is the /app/ baseline, not the root's
+        requested = response.chain[0] if response.chain else response
+        path = requested.parsed_url.path or "/"
+        final = response.parsed_url.path or "/"
+        b = Baseline(host=requested.host, directory=directory_of(path), cls=ext_class(path),
+                     signature=signature(response), path=path, final_path=final if final != path else "")
+        hs = self.host(requested.host)
         hs.baselines = [x for x in hs.baselines if (x.directory, x.cls) != (b.directory, b.cls)] + [b]
         return b
 
@@ -932,7 +973,7 @@ class Soft404Index:
             hits: dict[int, Response] = {}
             for i, a in enumerate(html_ok):
                 for b in html_ok[i + 1:]:
-                    if similar(signature(a), signature(b)):
+                    if _distinct_resources(a, b) and similar(signature(a), signature(b)):
                         hits[id(a)], hits[id(b)] = a, b
             if entry is not None and entry.status == 200 and entry.essence in HTML_TYPES and entry.host == host:
                 es = signature(entry)
@@ -941,7 +982,7 @@ class Soft404Index:
                         hits[id(a)] = a
             for i, a in enumerate(ok):
                 for b in ok[i + 1:]:
-                    if a.body == b.body and a.parsed_url.path != b.parsed_url.path:
+                    if a.body == b.body and _distinct_resources(a, b):
                         hits[id(a)], hits[id(b)] = a, b
             for r in hits.values():
                 path = r.parsed_url.path or "/"
@@ -952,15 +993,18 @@ class Soft404Index:
         return proven
 
     def candidates(self, response: Response) -> list[Baseline]:
-        hs = self.hosts.get(response.host)
+        requested = response.chain[0] if response.chain else response      # what was asked for decides the baselines
+        hs = self.hosts.get(requested.host)
         if hs is None:
             return []
-        path = response.parsed_url.path or "/"
+        path = requested.parsed_url.path or "/"
         d, cls = directory_of(path), ext_class(path)
         table = {(b.directory, b.cls): b for b in hs.baselines}
         order: list[Baseline] = []
-        for c in ([cls, "none"] if cls != "none" else ["none"]):
-            for parent in _parents(d):
+        # the deepest directory first (a catch-all under /app/ decides for /app/x.php even when the root's .php
+        # baseline is a real 404), and within a directory the same extension class before the extension-less one
+        for parent in _parents(d):
+            for c in ([cls, "none"] if cls != "none" else ["none"]):
                 b = table.get((parent, c))
                 if b is not None and b not in order:
                     order.append(b)
@@ -968,13 +1012,16 @@ class Soft404Index:
 
     def match(self, response: Response) -> Soft404Match | None:
         """The baseline ``response`` resembles, or ``None`` (see the class docstring for the order)."""
-        hs = self.hosts.get(response.host)
+        hs = self.hosts.get((response.chain[0] if response.chain else response).host)
         if hs is None or response.status is None:
             return None
         sig = signature(response)
         path = response.parsed_url.path or "/"
+        asked = (response.chain[0].parsed_url.path or "/") if response.chain else path
         for b in self.candidates(response):
-            if b.path == path:
+            # skip the baseline itself, and the page a redirected baseline landed on when it is fetched directly
+            # (the real /login page is not a soft 404 because unknown paths redirect to it)
+            if asked == b.path or (not response.chain and path == b.final_path):
                 continue
             reason = _similar_reason(sig, b.signature)
             if reason:

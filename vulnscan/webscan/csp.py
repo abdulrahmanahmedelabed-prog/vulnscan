@@ -68,7 +68,7 @@ FETCH_DIRECTIVES = ("child-src", "connect-src", "default-src", "fenced-frame-src
                     "manifest-src", "media-src", "object-src", "script-src", "script-src-attr", "script-src-elem",
                     "style-src", "style-src-attr", "style-src-elem", "worker-src")
 OTHER_DIRECTIVES = ("base-uri", "form-action", "frame-ancestors", "report-to", "report-uri", "require-trusted-types-for",
-                    "sandbox", "trusted-types", "upgrade-insecure-requests", "webrtc")
+                    "sandbox", "treat-as-public-address", "trusted-types", "upgrade-insecure-requests", "webrtc")
 DEPRECATED_DIRECTIVES = ("block-all-mixed-content", "disown-opener", "navigate-to", "plugin-types", "prefetch-src",
                          "referrer", "reflected-xss", "require-sri-for")
 KNOWN_DIRECTIVES = frozenset(FETCH_DIRECTIVES + OTHER_DIRECTIVES + DEPRECATED_DIRECTIVES)
@@ -127,7 +127,7 @@ _NONCE = re.compile(r"^'nonce-(.*)'$", re.I | re.S)
 _HASH = re.compile(r"^'(sha256|sha384|sha512)-(.*)'$", re.I | re.S)
 _IPV4 = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 _MAX_ERRORS = 40
-_MAX_TOKENS = 400          # per directive: hostile policies cannot make evaluation quadratic
+_MAX_TOKENS = 2000         # per directive: hostile policies cannot make evaluation quadratic
 _RAW_CAP = 2000
 
 # ----------------------------------------------------------------------------------------------- user-facing text
@@ -159,6 +159,9 @@ STR: dict[str, tuple[str, str]] = {
                "القيمة {value} في {directive} عنوان IP، ولا تطابق إلا هذا العنوان الحرفي (معلومة فقط)."),
     "err_non_ascii": ("A directive with non-ASCII characters is ignored by browsers: {value}.",
                       "يتجاهل المتصفح التوجيه الذي يحتوي محارف غير ASCII: {value}."),
+    "err_obs_fold": ("The {header} header was folded over several lines (obsolete line folding); it was read as one "
+                     "line, but some clients may not.",
+                     "طُويت الترويسة {header} على عدة أسطر (طيّ أسطر متقادم)؛ فقُرئت سطرًا واحدًا، لكن بعض العملاء قد لا يقرؤها كذلك."),
     "err_ineffective": ("Because of this error the policy no longer restricts scripts.",
                         "بسبب هذا الخطأ لم تعد السياسة تقيّد السكربتات."),
     # WEB202
@@ -350,6 +353,11 @@ def classify_source(token: str) -> Source:
         host = m.group(2).lower()
         port = m.group(3) or ""
         path = m.group(4) or ""
+        if port and port != "*":
+            digits = port.lstrip("0") or "0"
+            if len(digits) > 5 or int(digits) > 65535:     # never int() a 5000-digit port (3.11+ raises ValueError)
+                return Source(token, "invalid", token, error="invalid_source")
+            port = digits
         norm = (f"{scheme}://" if scheme else "") + host + (f":{port}" if port else "") + path
         err = "ip" if _IPV4.match(host) else ""
         return Source(token, "host", norm, scheme=scheme, host=host, port=port, path=path, error=err)
@@ -406,7 +414,10 @@ def parse_policy(raw: str, origin: str = "header", element: int | None = None) -
         if not token:
             continue
         if not token.isascii():
-            add(_err("non_ascii", "", _short(token, 80)))
+            # the whole directive is ignored (curly quotes pasted from a word processor are the usual cause); keep
+            # its name so a lost script-src/default-src is rated medium like any other error that disables it
+            lost = _WS_SPLIT.split(token, 1)[0].lower()
+            add(_err("non_ascii", "", _short(token, 80), swallowed=lost if lost.isascii() else ""))
             continue
         parts = _WS_SPLIT.split(token)
         name = parts[0].lower()
@@ -470,6 +481,9 @@ def _check_directive(name: str, values: list[str], add) -> None:
         for v in values:
             if v.lower() not in ("'none'", "'allow-duplicates'", "*") and not re.match(r"^[A-Za-z0-9\-#=_/@.%]+$", v):
                 add(_err("invalid_value", name, v))
+    elif name == "treat-as-public-address":     # Chromium (Private Network Access); takes no value
+        for v in values[:1]:
+            add(_err("invalid_value", name, v))
     elif name == "webrtc":
         for v in values:
             if v.lower() not in ("'allow'", "'block'"):
@@ -536,6 +550,14 @@ def effective(p: CspPolicy, directive: str) -> list[Source] | None:
     if strict_dynamic:
         srcs = [s for s in srcs if s.kind not in ("host", "scheme") and s.norm != "'self'"]
     return srcs
+
+
+def _loopback(host: str) -> bool:
+    """``localhost``, ``*.localhost`` and 127/8: "potentially trustworthy" origins (Secure Contexts §3.1), which mixed
+    content does not block and a network attacker cannot intercept; ``http://localhost:3000`` left over from
+    development is not an insecure source (WEB211)."""
+    h = host.lstrip("*.")
+    return h == "localhost" or h.endswith(".localhost") or (bool(_IPV4.match(h)) and h.startswith("127."))
 
 
 def _norms(srcs: list[Source] | None) -> set[str]:
@@ -736,6 +758,15 @@ def _meta_candidate(r: Response) -> bool:
     return bool(r.body) and _is_html(r) and not _opaque(r) and b"content-security-policy" in r.body[:4_000_000].lower()
 
 
+_HEADISH = htmlparse.HEAD_TAGS | {"html", "head"}
+
+
+def _after_head(doc: ParsedHTML, index: int) -> bool:
+    """A ``<meta>`` between ``</head>`` and the body: the HTML tree builder's "after head" mode re-inserts it into
+    ``<head>`` (HTML §13.2.6.4.6), so its policy applies. True when no body-only element precedes it."""
+    return all(el.tag in _HEADISH for el in doc.elements[:index] if el.live)
+
+
 def meta_policies(doc: ParsedHTML | None) -> tuple[list[CspPolicy], list[int]]:
     """``(enforced meta policies, indices of CSP <meta> elements outside <head>)``."""
     if doc is None:
@@ -745,7 +776,7 @@ def meta_policies(doc: ParsedHTML | None) -> tuple[list[CspPolicy], list[int]]:
         content = e.get("content")
         if content is None:
             continue
-        if not e.in_head:
+        if not (e.in_head or _after_head(doc, e.index)):
             outside.append(e.index)
             continue
         pol = parse_policy(content, "meta", element=e.index)
@@ -917,7 +948,7 @@ def _reporting_groups(r: Response) -> frozenset[str] | None:
         seen = True
         try:
             obj = json.loads("[" + v + "]")
-        except ValueError:
+        except (ValueError, RecursionError):   # hostile: "[[[[…" overflows the C decoder's recursion limit
             continue
         for g in obj if isinstance(obj, list) else []:
             if isinstance(g, dict):
@@ -1086,14 +1117,16 @@ def evaluate(policies: list[CspPolicy], info: DocInfo, bypass: BypassData | None
         for d in ACTIVE_TYPES + PASSIVE_TYPES:
             lists = [(p, effective(p, d)) for p in policies]
             insecure = [(p, [s.norm for s in e if (s.kind == "scheme" and s.scheme in ("http", "ftp")) or
-                             (s.kind == "host" and s.scheme in ("http", "ftp"))]) for p, e in lists if e is not None]
+                             (s.kind == "host" and s.scheme in ("http", "ftp") and not _loopback(s.host))])
+                        for p, e in lists if e is not None]
             explicit = [(p, toks) for p, toks in insecure if toks]
             if not explicit:
                 continue
 
             def allows_insecure(e: list[Source] | None) -> bool:
-                return e is None or any((s.kind in ("scheme", "host") and s.scheme in ("http", "ftp")) or
-                                        (s.kind == "host" and s.host == "*") for s in e)
+                return e is None or any((s.kind == "scheme" and s.scheme in ("http", "ftp")) or
+                                        (s.kind == "host" and s.scheme in ("http", "ftp") and not _loopback(s.host))
+                                        or (s.kind == "host" and s.host == "*") for s in e)
             if all(allows_insecure(e) for _p, e in lists):
                 p, toks = explicit[0]
                 name, _v = chain(p, d)
@@ -1174,8 +1207,9 @@ def evaluate(policies: list[CspPolicy], info: DocInfo, bypass: BypassData | None
             allow = [(p, [s.norm for s in e if s.kind in ("host", "scheme") or s.norm == "'self'"])
                      for p, e in elem if e is not None]
             allow = [(p, a) for p, a in allow if a]
+            narrow = [(p, a) for (p, a) in allow if not is_any(effective(p, "script-src-elem"), "script")]
             if allow and not all(is_any(e, "script") for _p, e in elem):
-                p, a = allow[0]
+                p, a = (narrow or allow)[0]
                 name, _v = chain(p, "script-src-elem")
                 shown = " ".join(a[:6]) + (" …" if len(a) > 6 else "")
                 hits.append(Hit("WEB218", value=shown, group="allowlist", policy=p,
@@ -1215,6 +1249,9 @@ _OBS_BROAD = ("ftp:", "http:", "https:", "*", "http://*", "http://*.*", "https:/
 _OBS_UNSAFE = ("'unsafe-inline'", "data:")
 _OBS_NONCE_HASH = ("'sha256-", "'sha384-", "'sha512-", "'nonce-")
 _OBS_DUP = "_observatory_duplicate_key_warnings"
+_OBS_MAX_POLICIES = 32
+_OBS_MAX_SOURCES = 2000          # per directive
+_OBS_TOKEN_BUDGET = 4000         # across the merged policies
 _ICU_PUNCT = "_-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$"
 _ICU_RANK = {c: i for i, c in enumerate(_ICU_PUNCT)}
 _JS_TRIM = re.compile(r"^[\s﻿]+|[\s﻿]+$")
@@ -1282,6 +1319,17 @@ def obs_parse_csp(csp_list: list[str]) -> dict[str, set[str]]:
     for s in clean:
         if not s or _js_len(s) < 6:
             raise _ObsInvalid(s)
+    # Observatory's merge re-sorts the accumulated sources for every further policy, which is quadratic: a hostile
+    # header with thousands of policies (or <meta> tags) would stall the scan. Real sites send a handful of policies
+    # with at most a few hundred sources; beyond the caps the slug is computed on the first policies / sources only
+    # (an approximation that only affects such input). The first policy is always used in full (up to the cap).
+    budget, kept = _OBS_TOKEN_BUDGET, []
+    for i, s in enumerate(clean[:_OBS_MAX_POLICIES]):
+        budget -= s.count(" ") + s.count("\t") + s.count(";") + 1
+        if i and budget < 0:
+            break
+        kept.append(s)
+    clean = kept
     csp: dict[str, list[list]] = {}
     dup: set[str] = set()
     for pi, policy in enumerate(clean):
@@ -1299,7 +1347,7 @@ def obs_parse_csp(csp_list: list[str]) -> dict[str, set[str]]:
             else:
                 seen.add(d)
             keep = pi == 0
-            values = [[_js_trim(v).lower(), pi, keep] for v in parts[1:]]
+            values = [[_js_trim(v).lower(), pi, keep] for v in parts[1:_OBS_MAX_SOURCES + 1]]
             if not parts[1:] and d.endswith("-src"):
                 values = [["'none'", pi, keep]]
             combined = list(values) if pi == 0 else csp.get(d, []) + values
@@ -1450,6 +1498,10 @@ class _Run:
                 self.blocked_hosts[h.host] = reason
         self.bypass = load_bypass(ctx.data)
         self.facts_cache: dict[int, CspFacts] = {}
+
+    def doc_of(self, r: Response) -> ParsedHTML | None:
+        page = self.ctx.page_for(r)
+        return page.doc if page is not None else None
 
     def seen(self, check: str, host: str) -> None:
         self.evaluated.setdefault(check, set()).add(host)
@@ -1617,7 +1669,9 @@ def _missing(st: _Run, r: Response, doc: ParsedHTML | None, conf: str, facts: Cs
     notes: list[tuple[str, str]] = []
     if facts.effective.get("meta_outside_head"):
         notes.append(_note("meta_in_body"))
-    if facts.report_only and not conf:
+    if facts.report_only and conf:
+        return      # WEB200 judges final 2xx documents only (its registry entry has no tentative confidence)
+    if facts.report_only:
         ro_hits = evaluate(facts.report_only, _doc_info(r, doc), st.bypass, st.paranoid)
         weak = [h.rule for h in ro_hits if (h.severity or RULES[h.rule].severity) != "info"]
         if any(p.errors for p in facts.report_only):
@@ -1687,11 +1741,27 @@ def _meta_rules(st: _Run, r: Response, doc: ParsedHTML | None, facts: CspFacts) 
     for e in doc.elements[:first_meta]:
         if not e.live:
             continue
-        if e.tag in ("script", "style") or (e.tag == "link" and "stylesheet" in e.tokens("rel")):
+        if (e.tag == "script" and _classic_or_module(e.get("type"))) or e.tag == "style" or \
+                (e.tag == "link" and "stylesheet" in e.tokens("rel")):
             p = next(m for m in metas if m.element == first_meta)
             st.emit("WEB208", r, _ev(ctx, r, p, doc=doc), notes=[_note("meta_late", element=e.tag, line=e.line)],
                     group_value=e.tag)
             break
+
+
+_JS_MIME = frozenset({"", "module", "importmap", "speculationrules", "text/javascript", "application/javascript",
+                      "application/ecmascript", "application/x-ecmascript", "application/x-javascript",
+                      "text/ecmascript", "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
+                      "text/javascript1.3", "text/javascript1.4", "text/javascript1.5", "text/jscript",
+                      "text/livescript", "text/x-ecmascript", "text/x-javascript"})
+
+
+def _classic_or_module(type_attr: str | None) -> bool:
+    """True for a ``<script>`` the browser runs or interprets (HTML "prepare the script element" step 8); false for
+    data blocks such as JSON-LD, which CSP does not govern."""
+    if type_attr is None:
+        return True
+    return type_attr.strip(_ASCII_WS).lower() in _JS_MIME
 
 
 def _legacy(st: _Run, r: Response, facts: CspFacts) -> None:
@@ -1700,7 +1770,7 @@ def _legacy(st: _Run, r: Response, facts: CspFacts) -> None:
         return
     names = list(dict.fromkeys(n for n, _v in facts.legacy))
     notes = [_note("legacy_header", header=n) for n in names]
-    no_standard = not any(p.origin == "header" for p in facts.enforced)
+    no_standard = not facts.enforced
     if no_standard:
         notes.append(_note("legacy_no_standard"))
     st.emit("WEB217", r, _ev(st.ctx, r, name=names[0], value=facts.legacy[0][1]), severity="low" if no_standard else None,
@@ -1729,14 +1799,20 @@ def _syntax(st: _Run, docs) -> None:
                 continue
             done.add(key)
             doc = doc_by_id.get(id(r))
-            if p.errors:
+            errors = list(p.errors)
+            hname = "content-security-policy-report-only" if p.origin == "report-only" else "content-security-policy"
+            if p.origin != "meta" and f"obs-fold:{hname}" in r.flags:
+                # §0.6: http.py unfolds obs-fold before any check and records the fact; a note, never more than info
+                errors.append(_err("obs_fold", "", "", "info",
+                                   header="Content-Security-Policy" + ("-Report-Only" if p.origin == "report-only" else "")))
+            if errors:
                 rank = {"info": 0, "low": 1, "medium": 2}
-                sev = max((e["severity"] for e in p.errors), key=rank.__getitem__)
-                notes = [_error_note(e) for e in p.errors[:6]]
-                if any(e.get("ineffective") for e in p.errors):
+                sev = max((e["severity"] for e in errors), key=rank.__getitem__)
+                notes = [_error_note(e) for e in errors[:6]]
+                if any(e.get("ineffective") for e in errors):
                     notes.append(_note("err_ineffective"))
                 st.emit("WEB201", r, _ev(ctx, r, p, doc=doc), severity=sev, notes=notes,
-                        group_value=",".join(sorted({e["code"] + ":" + e["directive"] for e in p.errors}))[:200])
+                        group_value=",".join(sorted({e["code"] + ":" + e["directive"] for e in errors}))[:200])
             if p.duplicates:
                 notes = [_note("duplicate", directive=n, value=_short(v, 80) or "(empty)") for n, v in p.duplicates[:6]]
                 st.emit("WEB202", r, _ev(ctx, r, p, doc=doc), notes=notes,
@@ -1772,6 +1848,8 @@ def _error_note(e: dict) -> tuple[str, str]:
         return _note("err_ip", directive=d, value=v)
     if code == "non_ascii":
         return _note("err_non_ascii", value=v)
+    if code == "obs_fold":
+        return _note("err_obs_fold", header=e.get("header", "Content-Security-Policy"))
     if code == "invalid_value":
         return _note("err_invalid_value", directive=d, value=v)
     return _note("err_invalid_source", directive=d, value=v)
@@ -1801,16 +1879,19 @@ def _static_nonces(st: _Run, docs) -> None:
             nonce = _short(shared[0], 40)
             target = a if a.source != "cors" else b
             other = b if target is a else a
-            st.emit("WEB212", target, _ev(ctx, target, next((p for p in fa.enforced if nonce in valid_nonces(p)),
-                                                            fa.enforced[0] if fa.enforced else None)),
+            ft = fa if target is a else fb
+            pol = next((p for p in ft.enforced if shared[0] in valid_nonces(p)), ft.enforced[0] if ft.enforced else None)
+            st.emit("WEB212", target, _ev(ctx, target, pol, doc=st.doc_of(target)),
                     notes=[_note("static_nonce", nonce=nonce, first=_short(target.url, 100),
                                  second=_short(other.url, 100) + f" ({other.source})")], group_value="static")
 
 
 def _inventory_entry(r: Response, facts: CspFacts, bypass: BypassData | None = None) -> dict:
     def pol(p: CspPolicy) -> dict:
+        # unknown directive names and invalid tokens can carry C0 controls / ANSI escapes (§0.6)
         return {"origin": p.origin, "raw": strip_controls(p.raw[:_RAW_CAP]),
-                "directives": {k: v[:50] for k, v in list(p.directives.items())[:60]}}
+                "directives": {strip_controls(k[:100]): [strip_controls(x[:200]) for x in v[:50]]
+                               for k, v in list(p.directives.items())[:60]}}
     hosts: dict[str, list[str]] = {}
     for kind, d in (("script", "script-src-elem"), ("style", "style-src-elem"), ("frame", "frame-src"),
                     ("connect", "connect-src")):

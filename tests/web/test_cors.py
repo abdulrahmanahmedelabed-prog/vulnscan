@@ -232,3 +232,34 @@ def test_bilingual_text_and_catalog():
     assert "2 fields" in i.notes[0][0] and "حقلين" in i.notes[0][1]
     en, ar = cors._note("http_origin", value="http://partner.example")
     assert any(re.sub(rx, repl, ar) == en for rx, repl in patterns if re.match(rx, ar))
+
+
+# ----------------------------------------------------------------------------------------------- adversarial review
+
+@pytest.mark.parametrize("addr, expect", [
+    ("198.18.0.7", "low"),            # fake-IP DNS proxies (Clash, Surge) answer 198.18/15 for every public name
+    ("192.0.2.10", "low"), ("0.0.0.0", "low"), ("::1", "low"), ("2001:db8::1", "low"),
+    ("100.101.102.103", "medium"),    # CGNAT / tailnet: an intranet address
+    ("172.31.255.1", "medium"), ("169.254.10.1", "medium"), ("fe80::1", "medium"), ("::ffff:10.0.0.1", "medium"),
+])
+def test_web321_intranet_ranges_are_explicit(addr, expect):
+    dns = {"app.example.com": DnsRecord(host="app.example.com", status="ok", addresses=(addr,))}
+    got, _ = scan(R(), R(reflect(("Vary", "Origin")), probe=True), dns=dns)
+    assert [sev(i) for i in got["WEB321"]] == [expect]
+
+
+def test_web321_peer_ip_ignored_through_a_proxy():
+    ctx = ScanContext(options=ScanOptions(), target=URL, entry=R(ip="10.0.0.1"),
+                      cors=R(reflect(("Vary", "Origin")), probe=True), coverage=Coverage(), proxied=True)
+    assert cors.private_target(ctx) == ""
+
+
+def test_hostile_acao_values_are_capped():
+    huge = "https://" + "a" * 500_000 + ".example"
+    got, _ = scan(R([(ACAO, huge + ", https://b.example")]), None)
+    (i,) = got["WEB325"]
+    assert len(i.group_value) <= 80 and all(len(n[0]) < 2000 and len(n[1]) < 2000 for n in i.notes)
+    got, _ = scan(R([(ACAO, "http://" + "b" * 500_000)]), None)
+    assert len(got["WEB326"][0].group_value) <= 80
+    got, _ = scan(R([(ACAO, "null\x1b[2J"), (ACAC, "true")]), None)
+    assert got == {} or all("\x1b" not in n[0] for rs in got.values() for i in rs for n in i.notes)

@@ -485,3 +485,114 @@ def test_strings_are_bilingual():
         assert en and ar and en != ar, key
         assert re.search(r"[؀-ۿ]", ar), key
         assert set(re.findall(r"\{(\w+)\}", en)) == set(re.findall(r"\{(\w+)\}", ar)), key
+
+
+# ----------------------------------------------------------------------------------------------- adversarial review
+
+def test_deeply_nested_json_in_html_does_not_crash():
+    """"[" * 200000 served as text/html: json.loads raises RecursionError (not ValueError); classification survives."""
+    resp = R(200, HTML, b"[" * 200_000)
+    k, flags = C.kind_of(resp)
+    assert k == "document" and "ctype-mismatch" not in flags
+    C.classify(resp)
+    C.signature(resp)
+
+
+JSD = ("<script>(function(){var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/"
+       "main.js';document.head.appendChild(a);})();</script>")
+
+
+def test_cloudflare_injected_bot_script_is_not_a_challenge():
+    """Cloudflare's JS detections put /cdn-cgi/challenge-platform/scripts/jsd/main.js in every HTML page, origin
+    error pages included: an application 403/503 behind Cloudflare is an error page, not a WAF challenge."""
+    for status in (403, 503):
+        resp = R(status, [("Server", "cloudflare"), *HTML], page("<h1>Forbidden</h1>" + JSD, title="403"))
+        assert C.waf_provider(resp) is None
+        assert kind(resp) == "error_page"
+    # the challenge itself still matches (orchestrate path, element id, title, cf-mitigated)
+    chl = R(403, [("Server", "cloudflare"), *HTML],
+            page('<script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1?ray=1"></script>' + JSD))
+    assert C.waf_provider(chl) == "cloudflare"
+
+
+@pytest.mark.parametrize("ctype,body", [
+    ("application/javascript", "window._pxCaptcha=function(){};document.getElementById('px-captcha')"),
+    ("text/javascript", "/* The requested URL was rejected. Please consult with your administrator. support ID */"),
+    ("application/json", '{"faq": "What is an Incapsula incident ID?"}'),
+    ("text/plain", "Incapsula incident ID: 1"),
+])
+def test_waf_body_markers_on_2xx_need_an_html_page(ctype, body):
+    """A first-party sensor script, a WAF SDK or a JSON FAQ that contains a marker string is served normally."""
+    resp = R(200, [("Content-Type", ctype)], body)
+    assert C.waf_provider(resp) is None
+    assert kind(resp) != "waf_challenge"
+
+
+def test_waf_body_markers_on_error_status_any_type():
+    # a JSON block response (403) still counts: only 2xx responses need an HTML page
+    resp = R(403, [("Content-Type", "application/json")], '{"blockScript": "/x", "msg": "Incapsula incident ID: 9"}')
+    assert C.waf_provider(resp) == "imperva"
+
+
+def test_listing_signature_must_be_title_or_h1():
+    article = page("<h1>Hardening Python's http.server</h1><p>By default it shows 'Directory listing for /' to "
+                   "everyone.</p><a href='/blog'>Blog</a>", title="Hardening http.server")
+    assert C.listing_server(article) is None
+    assert "listing" not in roles_of(article)
+    tomcat = ('<html><head><title>Directory Listing For [/]</title></head><body><h1>Directory Listing For [/]</h1>'
+              '<table><tr><td><a href="/a.txt">a.txt</a></td></tr></table><h3>Apache Tomcat/9.0</h3></body></html>')
+    assert C.listing_server(tomcat) == "Tomcat"
+    python = ("<!DOCTYPE HTML><html><head><title>Directory listing for /</title></head><body>"
+              "<h1>Directory listing for /</h1><ul><li><a href=\"a.txt\">a.txt</a></li></ul></body></html>")
+    assert C.listing_server(python) == "Python"
+
+
+@pytest.mark.parametrize("href", ["/catalog-offers", "/design-outline", "/blog/dialog-off-canvas", "/backlog-outline"])
+def test_logout_words_inside_other_words_are_not_logout_links(href):
+    roles = roles_of(page(f'<a href="{href}">x</a>'))
+    assert "authenticated" not in roles
+
+
+@pytest.mark.parametrize("href", ["/user/logout", "/sign_out", "/wp-login.php?action=logout", "/LogOff.aspx",
+                                  "/auth/sign-out"])
+def test_logout_links_still_mark_authenticated(href):
+    assert "authenticated" in roles_of(page(f'<a href="{href}">x</a>'))
+
+
+def test_comment_avatars_do_not_mean_logged_in():
+    blog = page('<article><p>Post</p></article><section class="comments"><img class="user-avatar" src="/a.png">'
+                "<p>Nice post!</p></section>")
+    assert "authenticated" not in roles_of(blog)
+
+
+def test_admin_words_with_a_suffix_need_admin_structure():
+    post = page("<h1>Dashboard design tips</h1><p>Ten ideas for clearer dashboards.</p>", title="Dashboard design tips")
+    assert "admin" not in roles_of(post, url="https://example.test/dashboard-design-tips")
+    assert "admin" not in roles_of(post, url="https://example.test/blog/admin_tips")
+    assert "admin" in roles_of(page(LOGIN_FORM), url="https://example.test/admin-panel/")
+    assert "admin" in roles_of(page('<div id="adminmenu"></div>'), url="https://example.test/admin_area/")
+    # the exact admin path keeps the title rule of §3.1
+    assert "admin" in roles_of(page("<p>x</p>", title="Site administration"), url="https://example.test/admin/")
+
+
+def test_signup_page_without_dom_is_sensitive():
+    """mark_sensitive passes doc=None for pages stored without a DOM; a sign-up page (password field, no login role)
+    is still sensitive by §WEB315."""
+    r = R(200, HTML, page('<form method=post action="/join"><input type="password" autocomplete="new-password"></form>'))
+    C.classify(r)
+    assert r.roles == {"signup"}
+    assert C.is_sensitive(r)
+
+
+@pytest.mark.parametrize("body", [
+    "<title>" * 40000, "<h1>" * 40000, "<title>Index of /</title>" + "<h1" * 80000, "<" * 300000,
+    "<a " * 100000, '<a "' * 80000,
+])
+def test_hostile_markup_classifies_in_linear_time(body):
+    import time
+    resp = R(200, HTML, body, url="https://example.test/admin/")
+    t = time.perf_counter()
+    C.listing_server(resp.text())
+    C._first_h1(resp.text())
+    C.signature(resp)
+    assert time.perf_counter() - t < 2.0          # the quadratic regex version took 3–40 s

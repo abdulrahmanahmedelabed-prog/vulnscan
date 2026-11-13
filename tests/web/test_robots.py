@@ -163,3 +163,30 @@ def test_to_dict_and_decision_rule():
     assert ok and rule.pattern == "/a/b" and rule.line == 3
     d = r.to_dict()
     assert d["groups"][0]["agents"] == ["*"] and len(d["groups"][0]["rules"]) == 2
+
+
+def test_hostile_wildcard_patterns_match_in_linear_time():
+    # a regex of ".*" groups backtracks exponentially: 7 stars against 60 characters took ≈ 10 s before the fix
+    import time
+    r = robots.parse("User-agent: *\nDisallow: /" + "*a" * 40 + "*b\nDisallow: /x" + "*" * 500 + "y$\n")
+    t0 = time.monotonic()
+    assert r.allowed("/" + "a" * 3000)
+    assert r.allowed("/x" + "z" * 3000)
+    assert not r.allowed("/x" + "z" * 100 + "y")
+    assert time.monotonic() - t0 < 1.0
+
+
+def test_wildcard_matcher_agrees_with_a_reference_regex():
+    import random
+    import re
+
+    def reference(pattern, text, anchored):
+        rx = ".*".join(re.escape(x) for x in pattern.split("*"))
+        return re.match(rx + (r"\Z" if anchored else ""), text, re.S) is not None
+    rnd = random.Random(7)
+    for _ in range(20000):
+        pattern = "".join(rnd.choice("ab*/") for _ in range(rnd.randint(0, 7)))
+        text = "".join(rnd.choice("ab/") for _ in range(rnd.randint(0, 9)))
+        anchored = rnd.random() < 0.5
+        body, _a = robots._compile(pattern)
+        assert robots._glob_match(body, text, anchored) is reference(pattern, text, anchored), (pattern, text, anchored)

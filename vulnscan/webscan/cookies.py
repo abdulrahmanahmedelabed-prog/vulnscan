@@ -51,6 +51,7 @@ from .types import (
     Issue,
     Response,
     ScanContext,
+    redact_cookie_header,
     redact_secret,
     strip_controls,
 )
@@ -166,6 +167,12 @@ def _clean(value: Any, limit: int = 120) -> str:
     return s if len(s) <= limit else s[: limit - 1] + "…"
 
 
+def _shown_name(f: Any, limit: int = 120) -> str:
+    """The cookie name for titles and evidence; a nameless cookie (``Set-Cookie: token``, 6265bis) is shown as ``""``
+    so the ``{cookie}`` title parameter is never empty."""
+    return _clean(f.name, limit) or '""'
+
+
 _PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 
 
@@ -223,6 +230,7 @@ MAX_NAME_VALUE = 4096        # 6265bis: longer name+value pairs are ignored (WEB
 DAY = 86400
 SESSION_LIFETIME_DAYS = 30   # WEB405 low
 CLAMP_DAYS = 400             # WEB405 info: browsers cap Expires/Max-Age at 400 days
+MAX_LIFETIME = 10 ** 12      # seconds; far above the clamp, small enough for float()
 
 
 def parse_cookie_date(value: str) -> datetime | None:
@@ -232,12 +240,12 @@ def parse_cookie_date(value: str) -> datetime | None:
         if not tok:
             continue
         if hms is None:
-            m = re.fullmatch(r"(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\D.*)?", tok)
+            m = re.fullmatch(r"(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\D.*)?", tok, re.A | re.S)
             if m:
                 hms = tuple(int(x) for x in m.groups())
                 continue
         if day is None:
-            m = re.fullmatch(r"(\d{1,2})(?:\D.*)?", tok)
+            m = re.fullmatch(r"(\d{1,2})(?:\D.*)?", tok, re.A | re.S)
             if m:
                 day = int(m.group(1))
                 continue
@@ -245,7 +253,7 @@ def parse_cookie_date(value: str) -> datetime | None:
             month = _MONTHS[tok[:3].lower()]
             continue
         if year is None:
-            m = re.fullmatch(r"(\d{2,4})(?:\D.*)?", tok)
+            m = re.fullmatch(r"(\d{2,4})(?:\D.*)?", tok, re.A | re.S)
             if m:
                 year = int(m.group(1))
                 if 70 <= year <= 99:
@@ -327,7 +335,8 @@ def cookie_path(fact: CookieFact) -> str:
 def lifetime_seconds(fact: CookieFact, now: datetime) -> float | None:
     """Seconds until the cookie expires (Max-Age wins over Expires); None for a non-persistent cookie."""
     if fact.max_age is not None:
-        return float(fact.max_age)
+        # clamp before float(): a 1024-digit Max-Age would raise OverflowError (hostile input, §0.6)
+        return float(max(-MAX_LIFETIME, min(fact.max_age, MAX_LIFETIME)))
     if fact.expires is not None:
         return (fact.expires - now).total_seconds()
     return None
@@ -402,38 +411,60 @@ def value_class(value: str) -> str | None:
     low = v.lower()
     if low in _PREF_VALUES or re.fullmatch(r"[a-z]{2}", low):
         return "preference"
-    if len(v) >= SECRET_MIN_LENGTH and shannon_entropy(v) >= SECRET_MIN_ENTROPY:
+    if len(v) >= SECRET_MIN_LENGTH and shannon_entropy(v) >= SECRET_MIN_ENTROPY and not _plain_json(v):
         return "unknown_secret"
     return None
 
 
+def _plain_json(value: str) -> bool:
+    """A readable JSON object/array (raw or URL-encoded), e.g. a consent or device-detection cookie: structured data,
+    not a random token, even though percent-escapes push its character entropy above the threshold."""
+    for cand in (value, urllib.parse.unquote(value)) if "%" in value else (value,):
+        c = cand.strip()
+        if c[:1] in ("{", "[") and isinstance(_json_loads(c), (dict, list)):
+            return True
+    return False
+
+
 class ClassTable:
-    """The exact/glob table of ``cookies.json``: exact names first, then globs, most literal characters first."""
+    """The exact/glob table of ``cookies.json``: exact names first, then globs, most literal characters first.
+
+    Imported (non-``kashif``) globs are *weak*: an Open Cookie Database pattern such as ``data-*``, ``partner-*`` or
+    ``recs-*`` (ad-tech vendors) must not turn the site's own ``data-session`` or ``partner-auth-token`` into an
+    analytics cookie, so the name heuristics win over a weak glob for session/auth/csrf (:func:`classify`). Exact
+    imported names were already filtered by the same heuristics when the table was built."""
 
     def __init__(self, entries: Iterable[dict]):
         self.exact: dict[str, str] = {}
-        globs: list[tuple[int, int, re.Pattern, str]] = []
+        globs: list[tuple[int, int, re.Pattern, str, bool]] = []
         for i, e in enumerate(entries):
             name, cls = str(e.get("name", "")), str(e.get("class", ""))
             if not name or not cls:
                 continue
             if e.get("match") == "glob" or "*" in name or "?" in name:
                 literal = len(name.replace("*", "").replace("?", ""))
-                globs.append((-literal, i, re.compile(fnmatch.translate(name.lower()), re.S), cls))
+                weak = str(e.get("source", "kashif")) != "kashif"
+                globs.append((-literal, i, re.compile(fnmatch.translate(name.lower()), re.S), cls, weak))
             else:
                 self.exact.setdefault(name.lower(), cls)
         globs.sort(key=lambda g: (g[0], g[1]))
-        self.globs = [(rx, cls) for _l, _i, rx, cls in globs]
+        self.globs = [(rx, cls) for _l, _i, rx, cls, _w in globs]
+        self._weak = [w for _l, _i, _rx, _c, w in globs]
 
-    def lookup(self, name: str) -> str | None:
+    def match(self, name: str) -> tuple[str, bool] | None:
+        """``(class, weak)`` of the best entry for ``name`` (weak: an imported glob), or None."""
         low = name.lower()
         cls = self.exact.get(low)
         if cls:
-            return cls
-        for rx, c in self.globs:
+            return cls, False
+        for (rx, c), weak in zip(self.globs, self._weak):
             if rx.match(low):
-                return c
+                return c, weak
         return None
+
+    def lookup(self, name: str) -> str | None:
+        hit = self.match(name)
+        return hit[0] if hit else None
 
 
 _TABLES: dict[int, tuple[Any, ClassTable]] = {}
@@ -461,13 +492,16 @@ def classify(name: str, value: str, table: ClassTable | None = None) -> tuple[st
     ignored for the lookup (``__Host-sid`` is ``sid``)."""
     table = table if table is not None else class_table()
     bare = strip_prefix(name)
+    heuristic = heuristic_class(bare) if bare else None
     for candidate in dict.fromkeys((name, bare)):
-        cls = table.lookup(candidate) if candidate else None
-        if cls:
+        hit = table.match(candidate) if candidate else None
+        if hit:
+            cls, weak = hit
+            if weak and heuristic in ("session", "auth", "csrf") and cls not in SESSION_CLASSES:
+                return heuristic, "heuristic"
             return cls, "table"
-    cls = heuristic_class(bare) if bare else None
-    if cls:
-        return cls, "heuristic"
+    if heuristic:
+        return heuristic, "heuristic"
     cls = value_class(value)
     if cls:
         return cls, "value"
@@ -508,10 +542,10 @@ def parse_and_classify(ctx: ScanContext) -> list[CookieFact]:
 
 # ----------------------------------------------------------------------------------------------- value decoders
 
-_BIGIP_V4 = re.compile(r"^(\d{1,10})\.(\d{1,5})\.0000$")
-_BIGIP_RD_V4 = re.compile(r"^rd\d+o0{20}ffff([0-9a-f]{8})o(\d{1,5})$", re.I)
-_BIGIP_V6 = re.compile(r"^vi([0-9a-f]{32})\.(\d{1,5})$", re.I)
-_BIGIP_RD_V6 = re.compile(r"^rd\d+o([0-9a-f]{32})o(\d{1,5})$", re.I)
+_BIGIP_V4 = re.compile(r"^(\d{1,10})\.(\d{1,5})\.0000$", re.A)
+_BIGIP_RD_V4 = re.compile(r"^rd\d+o0{20}ffff([0-9a-f]{8})o(\d{1,5})$", re.I | re.A)
+_BIGIP_V6 = re.compile(r"^vi([0-9a-f]{32})\.(\d{1,5})$", re.I | re.A)
+_BIGIP_RD_V6 = re.compile(r"^rd\d+o([0-9a-f]{32})o(\d{1,5})$", re.I | re.A)
 
 
 def decode_bigip(value: str) -> tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, int] | None:
@@ -541,6 +575,20 @@ def decode_bigip(value: str) -> tuple[ipaddress.IPv4Address | ipaddress.IPv6Addr
     return None
 
 
+MAX_JSON = 8192
+
+
+def _json_loads(text: str) -> Any:
+    """``json.loads`` for site data: None for invalid JSON, over-long text or nesting deep enough to raise
+    RecursionError (``[[[[…`` in a cookie value crashes 3.10/3.11 at ~1000 levels, §0.6)."""
+    if len(text) > MAX_JSON:
+        return None
+    try:
+        return json.loads(text)
+    except (ValueError, RecursionError):
+        return None
+
+
 def _b64json(segment: str) -> Any:
     """base64/base64url → JSON (None when it is not JSON). Decoding only; nothing is verified or altered."""
     s = segment.strip()
@@ -554,8 +602,8 @@ def _b64json(segment: str) -> Any:
     if not raw.startswith((b"{", b"[")):
         return None
     try:
-        return json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError):
+        return _json_loads(raw.decode("utf-8"))
+    except UnicodeDecodeError:
         return None
 
 
@@ -573,10 +621,28 @@ def jwt_parts(value: str) -> tuple[dict, Any] | None:
     return header, _b64json(payload)
 
 
-_PASSWORD_KEY = re.compile(r"(?:.*[_\-.])?(password|passwd|passwort|pwd|pass|passphrase)", re.I)
+_PASSWORD_WORDS = frozenset({"password", "passwd", "passwort", "pwd", "pass", "passphrase"})
 PII_KEYS = frozenset({"email", "email_address", "mail", "phone", "phone_number", "mobile", "msisdn", "address",
                       "street_address", "birthdate", "date_of_birth", "dob", "ssn", "national_id", "passport",
                       "passport_number", "tax_id", "iban", "card_number", "credit_card", "cc_number"})
+
+
+def _password_key(key: str) -> bool:
+    """``password``, ``user_pass``, ``userPassword``, ``login.pwd`` …: the last word of the key names a password
+    (``has_password`` is caught too, so the value decides: :func:`_has_data`)."""
+    words = name_words(key)
+    return bool(words) and words[-1] in _PASSWORD_WORDS
+
+
+def _has_data(value: Any) -> bool:
+    """A field that carries data, not a flag: ``{"has_password": true}`` or ``{"mobile": false}`` are not secrets."""
+    if value is None or isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return abs(value) >= 1000                      # phone numbers, PINs, ids; not 0/1 flags
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "true", "false", "null", "none", "0", "1", "yes", "no")
+    return bool(value)
 
 
 def _walk_keys(obj: Any, depth: int = 0) -> Iterable[tuple[str, Any]]:
@@ -597,10 +663,9 @@ def _json_value(value: str) -> Any:
     for cand in dict.fromkeys((v, urllib.parse.unquote(v))):
         c = cand.strip()
         if c.startswith(("{", "[")):
-            try:
-                return json.loads(c)
-            except ValueError:
-                pass
+            obj = _json_loads(c)
+            if obj is not None:
+                return obj
         first = c.lstrip(".").split(".", 1)[0]
         obj = _b64json(first)
         if obj is not None:
@@ -617,6 +682,9 @@ def sensitive_value(value: str) -> tuple[str, list[tuple[str, str]], str] | None
     severity = group = ""
     if jwt is not None:
         header, payload = jwt
+        if "alg" not in header and "typ" not in header:
+            # itsdangerous (Flask session) "payload.timestamp.signature": the first segment is the data itself
+            header, payload = {}, header
         if str(header.get("alg", "")).strip().lower() == "none":
             severity, group = "medium", "jwt-none"
             notes.append(_note("jwt_none"))
@@ -624,11 +692,11 @@ def sensitive_value(value: str) -> tuple[str, list[tuple[str, str]], str] | None
         payload = _json_value(value)
     if payload is None and not severity:
         return None
-    pw = sorted({k for k, v in _walk_keys(payload) if _PASSWORD_KEY.fullmatch(k) and v not in (None, "", False)})
+    pw = sorted({_clean(k, 60) for k, v in _walk_keys(payload) if _password_key(k) and _has_data(v)})
     if pw:
         severity, group = "medium", group or "password"
         notes.append(_note("password_key", key=", ".join(pw[:5])))
-    pii = sorted({k for k, v in _walk_keys(payload) if k.lower() in PII_KEYS and v not in (None, "", False)})
+    pii = sorted({_clean(k, 60) for k, v in _walk_keys(payload) if k.lower() in PII_KEYS and _has_data(v)})
     if pii:
         severity, group = severity or "low", group or "pii"
         notes.append(_note("pii", claims=", ".join(pii[:8])))
@@ -746,7 +814,7 @@ def observatory_auto(ctx: ScanContext) -> Response | None:
 
 
 def _js_parse_int(s: str) -> int | None:
-    m = re.match(r"\s*([+-]?\d+)", s)
+    m = re.match(r"\s*([+-]?[0-9]+)", s)            # JS: Unicode whitespace, ASCII digits
     return int(m.group(1)) if m else None
 
 
@@ -953,13 +1021,15 @@ class _Run:
         if old is not None and _RANK[old.severity or meta.severity] <= _RANK[sev]:
             return
         if evidence is None:
-            evidence = Evidence.for_response(r, where="cookie", name=_clean(f.name, 200), value=f.redacted(),
-                                             now=self.ctx.now)
+            # redact_cookie_header, not CookieFact.redacted(): the latter splits on the first "=" of the whole field,
+            # so a nameless cookie ("SECRET; Path=/x") would put its value in evidence
+            evidence = Evidence.for_response(r, where="cookie", name=_shown_name(f, 200),
+                                             value=redact_cookie_header(f.raw), now=self.ctx.now)
         all_notes = list(notes or [])
         all_notes.append(_note("class", cls=CLASS_NAMES.get(f.cls, CLASS_NAMES["unknown"]),
                                how=HOW_NAMES.get(f.class_source, HOW_NAMES["default"])))
         self.issues[key] = Issue(rule=rule, url=r.url, confidence=conf, evidence=evidence,
-                                 params={"cookie": _clean(f.name)}, severity=sev,
+                                 params={"cookie": _shown_name(f)}, severity=sev,
                                  group_value=group_value if group_value is not None else f.name.lower(),
                                  notes=all_notes, host=f.host)
         if self.ctx.options.reports(conf):
@@ -1166,6 +1236,23 @@ def _exposure_targets(ctx: ScanContext, own_sites: set[str]) -> list[tuple[Respo
     return [v for v in out.values() if _readable(v[0])]
 
 
+def _masked_excerpt(text: str, off: int, value: str, red: str, width: int = 80) -> str:
+    """``width`` characters around the match with every copy of the value masked, including a copy cut by either
+    edge of the window (``var a="TOKEN", b="TOK`` must not leak the start of the second copy)."""
+    end = off + len(value)
+    before, after = text[max(0, off - width):off], text[end:end + width]
+    before, after = before.replace(value, red), after.replace(value, red)
+    for k in range(min(len(value) - 1, len(after)), 3, -1):         # a prefix of the value cut by the right edge
+        if after.endswith(value[:k]):
+            after = after[:-k] + red
+            break
+    for k in range(min(len(value) - 1, len(before)), 3, -1):        # a suffix of the value cut by the left edge
+        if before.startswith(value[-k:]):
+            before = red + before[k:]
+            break
+    return strip_controls(before + red + after)
+
+
 def _check_exposure(st: _Run, facts: list[CookieFact]) -> None:
     """WEB414: the exact value of a session/auth cookie appears in a document or same-site script served to that
     session (in-memory comparison; evidence shows only the redacted value)."""
@@ -1174,24 +1261,30 @@ def _check_exposure(st: _Run, facts: list[CookieFact]) -> None:
     if not candidates:
         return
     targets = _exposure_targets(ctx, st.own_sites)
+    done: set[tuple[str, str, str]] = set()                 # (host, name, value) already reported
+    searched: set[tuple[int, str]] = set()                  # (response, value) already searched
     for f in candidates:
         st.seen("WEB414", f.host)
         value = _unquote(f.value)
+        if (f.host, f.name, value) in done:                  # a session cookie re-set on every page: report once
+            continue
         for r, script_file in targets:
-            if r.host != f.host or not (r is f.response or _request_has(r, f.name, f.value)):
+            if r.host != f.host or (id(r), value) in searched \
+                    or not (r is f.response or _request_has(r, f.name, f.value)):
                 continue
+            searched.add((id(r), value))
             text = r.text()
             off = text.find(value)
             if off < 0:
                 continue
             where = exposure_context(text, off, script_file=script_file)
             red = redact_secret(value)
-            start = max(0, off - 80)
-            excerpt = strip_controls(text[start:off] + red + text[off + len(value):off + len(value) + 80])
-            ev = Evidence.for_response(r, where="body", name=_clean(f.name, 200), value=red, offset=off,
+            excerpt = _masked_excerpt(text, off, value, red)
+            ev = Evidence.for_response(r, where="body", name=_shown_name(f, 200), value=red, offset=off,
                                        excerpt=excerpt, now=ctx.now)
             st.emit("WEB414", f, response=r, evidence=ev,
                     notes=[_note("echo", where=WHERE_NAMES[where], url=_clean(r.url, 200))])
+            done.add((f.host, f.name, value))
             break
 
 
@@ -1203,7 +1296,7 @@ def _inventory(st: _Run, facts: list[CookieFact]) -> list[dict]:
         key = (f.host, f.name, f.domain or "", cookie_path(f))
         life = lifetime_seconds(f, st.ctx.now)
         rows[key] = {
-            "name": _clean(f.name, 200), "host": f.host, "class": f.cls, "class_source": f.class_source,
+            "name": _shown_name(f, 200), "host": f.host, "class": f.cls, "class_source": f.class_source,
             "secure": f.secure, "httponly": f.httponly, "samesite": f.samesite, "partitioned": f.partitioned,
             "domain": f.domain, "path": cookie_path(f), "prefix": cookie_prefix(f.name),
             "persistent_days": None if life is None else _days(life), "deletion": f.deletion, "ignored": f.ignored,

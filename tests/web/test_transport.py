@@ -734,6 +734,107 @@ def test_engine_shape_entry_none_and_empty_context():
     assert transport.hsts_facts(ctx) == {}
 
 
+# ----------------------------------------------------------------------------------------------- adversarial review
+
+def test_sts_huge_digit_string_is_overflow_not_a_crash():
+    # Python 3.10.7+ raises ValueError on int() of > 4300 digits; the header comes from the scanned site (§0.6)
+    for v in ("max-age=" + "9" * 100_000, 'max-age="' + "1" * 5000 + '"', "max-age=" + "0" * 5000 + "1"):
+        assert not parse_sts(v).valid
+    assert "header.parse.max_age.parse_int_error" in parse_sts("max-age=" + "9" * 100_000).errors
+    assert parse_sts("max-age=18446744073709551615").valid
+    assert parse_sts("max-age=18446744073709551616").errors == ["header.parse.max_age.parse_int_error"]
+    got = issues(ctx_for(R("https://a.example/", headers=[("Strict-Transport-Security", "max-age=" + "9" * 100_000)])))
+    assert "WEB112" in got and "WEB-strict-transport-security" not in got
+
+
+def test_web106_hostile_body_is_linear():
+    import time
+    for body in ("<a " * 200_000, "<a href" * 100_000, "<form " * 100_000):
+        hop = R("https://a.example/", 302, [("Location", "/x")], body=body, kind="redirect")
+        t = time.perf_counter()
+        transport.big_redirect_signals(hop)
+        assert time.perf_counter() - t < 5, body[:10]          # the regex version took minutes on 600 KB
+    # links inside a comment or a template are not page content
+    body = "<html><body><!-- " + '<a href="/a">a</a>' * 5 + " --><template>" + "<form></form><table></table>" + \
+           "</template>" + "x" * 2000 + "</body></html>"
+    hop = R("https://a.example/", 302, [("Location", "/x")], body=body, kind="redirect")
+    assert transport.big_redirect_signals(hop)[0] == ["text"]
+
+
+def test_web104_cookie_check_round_trip_is_not_a_loop():
+    f = chain(redirect("https://a.example/", "https://a.example/cookie-check", 302),
+              redirect("https://a.example/cookie-check", "https://a.example/", 302),
+              R("https://a.example/", headers=[sts()]))
+    assert "WEB104" not in issues(ctx_for(f))
+    # the fetcher's verdict (URL + cookie-jar state repeated) still counts, and so does a chain stopped on a repeat
+    f = chain(redirect("https://a.example/", "https://a.example/x", 302),
+              redirect("https://a.example/x", "https://a.example/", 302, headers=[sts()]))
+    f.flags = frozenset({"redirect-loop"})
+    assert [sev(i) for i in issues(ctx_for(f))["WEB104"]] == ["low"]
+    f = chain(redirect("https://a.example/", "https://a.example/x", 302),
+              redirect("https://a.example/x", "https://a.example/", 302),
+              redirect("https://a.example/", "https://a.example/x", 302))
+    assert [i.group_value for i in issues(ctx_for(f))["WEB104"]] == ["loop"]
+
+
+def test_web117_not_doubled_with_missing_hsts():
+    # a host judged on its own final 2xx is not also reported as a redirecting hop (one cause, one finding)
+    e = R("https://a.example/")
+    login = chain(redirect("https://a.example/login", "https://sso.other.example/x", 302), R("https://sso.other.example/x"))
+    ctx = ctx_for(e)
+    ctx.pages.append(Page(login, None, 1))
+    got = issues(ctx)
+    assert "WEB-strict-transport-security" in got and "WEB117" not in got
+
+
+def test_web117_ignores_subresource_hosts():
+    sub = chain(redirect("https://static.a.example/app.js", "https://cdn.other.example/app.js", 302),
+                R("https://cdn.other.example/app.js", headers=[("Content-Type", "text/javascript")], kind="script"))
+    got = issues(ctx_for(R("https://a.example/", headers=[sts()]), subresources=[sub]))
+    assert "WEB117" not in got
+
+
+def test_hostile_location_values_are_capped():
+    loc = "http://a.example/" + "A" * 200_000
+    f = chain(redirect("https://a.example/", loc), R("http://a.example/x"))
+    got = issues(ctx_for(f))
+    (i,) = got["WEB103"]
+    assert len(i.group_value) <= 200 and all(len(n[0]) < 3000 and len(n[1]) < 3000 for n in i.notes)
+    for loc in ("http://[::1", "http://\x00evil/", "javascript:alert(1)", "\x1b[31mhttp://x/", "https://a b/"):
+        f = chain(redirect("http://a.example/", loc), R("https://a.example/"))
+        for rs in issues(ctx_for(f, "http://a.example/")).values():
+            for i in rs:
+                assert all("\x1b" not in n[0] and "\x00" not in n[1] for n in i.notes)
+
+
+def test_web103_local_variable_named_location():
+    body = '<script>var location = "http://a.example/x"; let  location2 = 1;</script>'
+    assert "WEB103" not in issues(ctx_for(R("https://a.example/", body=body), sensitivity="paranoid"))
+    body = '<script>window.location = "http://a.example/x";</script>'
+    assert "WEB103" in issues(ctx_for(R("https://a.example/", body=body), sensitivity="paranoid"))
+
+
+def test_web000_https_target_with_bad_certificate_is_variant_a():
+    entry = R("https://a.example/", flags=frozenset({"cert-error"}))
+    hp = R("http://a.example/", source="http_probe")
+    (i,) = issues(ctx_for(entry, http_probe=hp))["WEB000"]
+    assert "Variant A" in notes_en(i) and "certificate" in notes_en(i)
+
+
+def test_web113_arabic_agreement_after_preposition():
+    r = R("https://a.example/", headers=[sts("max-age=63072000"), sts("max-age=300")])
+    (i,) = issues(ctx_for(r))["WEB113"]
+    assert "في حقلين" in i.notes[0][1] and "sent in 2 fields" in i.notes[0][0]
+
+
+@pytest.mark.parametrize("body", [bytes(range(256)) * 2000, b"\xff\xfe" + "\u0645".encode("utf-16-le") * 5000,
+                                  b"<html>" + b"\x00" * 100_000])
+def test_binary_and_broken_bodies_do_not_crash(body):
+    hop = R("https://a.example/", 302, [("Location", "/x")], body=body + b"x" * 2000, kind="redirect")
+    f = chain(hop, R("https://a.example/x", body=body, headers=[("Content-Encoding", "gzip")]))
+    issues(ctx_for(f, pages=[Page(f, htmlparse.parse_response(f), 0)]))
+
+
 # ----------------------------------------------------------------------------------------------- corpus groups (§5.2)
 
 BENCH = Path(__file__).resolve().parents[2] / "bench" / "web"

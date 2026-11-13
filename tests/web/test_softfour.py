@@ -524,3 +524,113 @@ def test_waf_and_error_probes_are_not_marked_soft(make_ctx):
     C.classify_context(ctx)
     assert probe.kind == "waf_challenge" and base.kind == "waf_challenge"
     assert "soft404" not in probe.flags
+
+
+# ----------------------------------------------------------------------------------------------- adversarial review
+
+@pytest.mark.parametrize("markup", ["<script>" * 32768, "<style a>x" * 26000, "<" * 262144, "<a" * 131072,
+                                    "<!--" * 65536, "<nav>" * 52000, "<template>" * 26000])
+def test_visible_text_is_linear_on_hostile_markup(markup):
+    """§0.6: the regex version took ≈ 40 s on 256 KB of unclosed <script> tags (quadratic backtracking)."""
+    import time
+    t = time.perf_counter()
+    S.visible_text(markup)
+    S.visible_text(markup, boilerplate=False)
+    S.tag_features(markup)
+    S.title_of(markup)
+    S.html_features(markup)
+    assert time.perf_counter() - t < 2.0          # the quadratic regex version took 3–40 s
+
+
+def test_tag_features_and_title_on_unclosed_markup():
+    assert S.tag_features("<a " * 50000) == []                   # no start tag is ever closed
+    assert S.tag_features("<div id=root><p>x</p>") == ["t:div#root", "t:p"]
+    assert S.title_of("<title>never closed" + "x" * 100) == ""
+    assert S.title_of("<TITLE lang=en>A &amp; B</title >") == "A & B"
+    assert S.element_inner("<h1 class=x>Hi <b>there</b></h1>", "h1") == "Hi <b>there</b>"
+
+
+def test_unclosed_block_semantics():
+    # an unclosed <script> runs to the end (as in a browser); an unclosed layout block keeps the page text
+    assert S.visible_text("<p>before</p><script>var x = 1; <p>after") == "before"
+    assert S.visible_text("<nav><a>Home</a><main>Body text</main>", boilerplate=False) == "Home Body text"
+    assert S.visible_text("<nav><a>Home</a></nav><main>Body</main><footer>(c)</footer>", boilerplate=False) == "Body"
+
+
+def test_template_heavy_site_real_pages_are_not_its_404_page():
+    """A large site template (mega menu, footer) must not make every page a near-duplicate of the not-found page.
+    Before the fix a real page with up to 300 words of its own was within Hamming 2 of the 404 page."""
+    rnd = random.Random(5)
+    vocab = [f"w{i}" for i in range(3000)]
+
+    def words_(n):
+        return " ".join(rnd.choice(vocab) for _ in range(n))
+
+    head = "<header><nav>" + words_(1500) + "</nav></header><main>"
+    foot = "</main><footer>" + words_(1500) + "</footer>"
+    nf_a = page(head + "<h1>Page not found</h1><p>Sorry, /a/b.php does not exist.</p>" + foot)
+    nf_b = page(head + "<h1>Page not found</h1><p>Sorry, /x.env does not exist.</p>" + foot)
+    idx = C.Soft404Index()
+    idx.add_baseline(R("/kashif-404-" + token(), body=nf_a.replace("/a/b.php", "/kashif-404-" + token()),
+                       source="baseline"))
+    assert idx.match(R("/x.env", body=nf_b))
+    for n in (20, 50, 100, 300):
+        real = page(head + "<h1>Article</h1><p>" + words_(n) + "</p>" + foot)
+        assert idx.match(R("/blog/post", body=real, source="crawl")) is None, n
+
+
+def test_redirected_baseline_is_keyed_by_the_requested_path():
+    """/app/kashif-404-… redirected to /login is the /app/ baseline; it must not replace the root's real 404."""
+    idx = C.Soft404Index()
+    idx.add_baseline(R("/kashif-404-" + token(1), status=404, body=page("Not found"), source="baseline"))
+    hop = R("/app/kashif-404-" + token(2), status=302, headers=[("Location", ORIGIN + "/login")], source="baseline")
+    login = R("/login", body=page(LOGIN := "<form action=/login method=post><input type=password name=p></form>",
+                                  title="Sign in"), source="baseline")
+    login.chain = [hop]
+    b = idx.add_baseline(login)
+    assert (b.directory, b.cls, b.path, b.final_path) == ("/app/", "none", hop.parsed_url.path, "/login")
+    hs = idx.hosts["soft.example.test"]
+    assert hs.real_404s is True and not hs.is_catch_all
+    # a probe under /app/ that lands on the same login page is soft; the real /login page itself is not
+    probe_hop = R("/app/.env", status=302, headers=[("Location", ORIGIN + "/login")])
+    probe = R("/login", body=page(LOGIN, title="Sign in"))
+    probe.chain = [probe_hop]
+    assert idx.match(probe)
+    assert idx.match(R("/login", body=page(LOGIN, title="Sign in"), source="crawl")) is None
+
+
+def test_deeper_directory_baseline_wins_over_root_extension_baseline():
+    idx = C.Soft404Index()
+    idx.add_baseline(R("/kashif-404-" + token(1) + ".php", status=404, body=page("No such script"), source="baseline"))
+    shell = page("<div id='app'></div><script src='/app/main.js'></script>", title="App")
+    idx.add_baseline(R("/app/kashif-404-" + token(2), body=shell, source="baseline"))
+    assert [(b.directory, b.cls) for b in idx.candidates(R("/app/x.php", body=shell))] == [("/app/", "none"),
+                                                                                          ("/", "php")]
+    assert idx.match(R("/app/x.php", body=shell))
+    assert idx.match(R("/phpinfo.php", body=page("<h1>PHP Version 8.2</h1>"))) is None
+
+
+def test_same_security_txt_at_both_locations_is_not_a_catch_all():
+    """RFC 9116 sites often publish one file at /.well-known/security.txt and /security.txt (byte-identical)."""
+    body = "Contact: mailto:security@example.test\nExpires: 2027-05-01T00:00:00Z\n"
+    wk = wellknown(R("/robots.txt", headers=TEXT, body="User-agent: *\nDisallow:\n"),
+                   R("/.well-known/security.txt", headers=TEXT, body=body),
+                   legacy=R("/security.txt", headers=TEXT, body=body))
+    idx = C.Soft404Index()
+    assert idx.add_natural(wk) == []
+    assert not idx.hosts["soft.example.test"].is_catch_all
+    # but a catch-all that answers both with the same non-security.txt page is still caught
+    wk2 = wellknown(R("/robots.txt", status=404, headers=TEXT, body="nf"),
+                    R("/.well-known/security.txt", headers=TEXT, body="OK\n"),
+                    legacy=R("/security.txt", headers=TEXT, body="OK\n"))
+    idx2 = C.Soft404Index()
+    assert len(idx2.add_natural(wk2)) == 2
+
+
+def test_one_resource_fetched_twice_proves_nothing():
+    """/security.txt redirected to /.well-known/security.txt: two responses for one resource are not a catch-all."""
+    html_page = page("<h1>Security</h1><p>Report issues to our team.</p>")
+    a = R("/.well-known/security.txt", body=html_page, source="wellknown")
+    b = R("/.well-known/security.txt", body=html_page, source="wellknown")
+    idx = C.Soft404Index()
+    assert idx.add_natural({"/.well-known/security.txt": a, "/security.txt": b}) == []

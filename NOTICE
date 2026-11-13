@@ -1,0 +1,93 @@
+Kashif (vulnscan)
+Copyright (c) 2026 abdulrahmanahmedelabed-prog and vulnscan contributors. MIT License (see LICENSE).
+
+This product bundles data files, under vulnscan/data/web/, derived from the third-party
+works listed below. Each is used under its own licence; the Kashif MIT License does not
+apply to them. Every file records its source, licence and snapshot date in its "meta"
+header (or in a .meta.json file next to it), and vulnscan/data/web/MANIFEST.json lists
+the sha256 of every file. Only data is copied; no third-party program code is included.
+
+--------------------------------------------------------------------------------------------
+Public Suffix List                              vulnscan/data/web/psl.dat.gz
+  Source:  publicsuffix.org (public_suffix_list.dat), Mozilla Foundation and contributors
+  Licence: Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/)
+  The list is redistributed unmodified (gzip-compressed). Its source form is available
+  from publicsuffix.org.
+
+retire.js vulnerability repository             vulnscan/data/web/retire-jsrepository.json.gz
+  Source:  RetireJS project, repository/jsrepository-v4.json (Erlend Oftedal and contributors)
+  Licence: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+  Modifications: none apart from re-serialisation and compression.
+
+CSP Evaluator bypass lists                      vulnscan/data/web/csp-bypass.json
+  Source:  google/csp-evaluator, allowlist_bypasses (Copyright Google LLC)
+  Licence: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+  Modifications: de-duplicated and converted to one JSON file.
+
+ZAP (Zed Attack Proxy) passive scan data       vulnscan/data/web/server-cve.json,
+                                                error-signatures.json, malicious-hosts.json
+  Source:  ZAP zap-extensions, pscanrules (known-vulnerabilities data, application error
+           strings, PolyfillCdnScriptScanRule host names) (Copyright the ZAP Development Team)
+  Licence: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+  Modifications: selected entries normalised into Kashif's schemas and combined with
+           Kashif's own data.
+
+nuclei-templates                                vulnscan/data/web/tech.json, favicons.json,
+                                                takeover.json, malicious-hosts.json
+  Source:  projectdiscovery/nuclei-templates (technology detection, favicon hashes,
+           subdomain-takeover fingerprints, malware signatures) (Copyright ProjectDiscovery, Inc.)
+  Licence: MIT License
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this
+  software and associated documentation files (the "Software"), to deal in the Software
+  without restriction, including without limitation the rights to use, copy, modify,
+  merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to the following
+  conditions: The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS",
+  WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+Open Cookie Database                            vulnscan/data/web/cookies.json
+  Source:  Open Cookie Database (jkwakman and contributors)
+  Licence: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+  Modifications: only analytics, marketing and consent rows imported, mapped to Kashif's
+           cookie classes.
+
+Chromium HSTS preload list and CT log list      vulnscan/data/web/hsts-preload.json.gz,
+                                                ct-logs.json
+  Source:  Chromium net/http/transport_security_state_static.json and
+           components/certificate_transparency/data/log_list.json
+           (Copyright The Chromium Authors)
+  Licence: BSD 3-Clause License
+  Redistribution and use in source and binary forms, with or without modification, are
+  permitted provided that the following conditions are met: (1) redistributions of source
+  code must retain the above copyright notice, this list of conditions and the following
+  disclaimer; (2) redistributions in binary form must reproduce the above copyright
+  notice, this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution; (3) neither the name of Google
+  LLC nor the names of its contributors may be used to endorse or promote products derived
+  from this software without specific prior written permission. THIS SOFTWARE IS PROVIDED
+  BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES
+  ARE DISCLAIMED.
+  Modifications: host names and include_subdomains flags only; log id, operator and state only.
+
+endoflife.date                                  vulnscan/data/web/eol.json
+  Source:  endoflife.date product data (endoflife.date contributors)
+  Licence: MIT License (permission notice as reproduced above for nuclei-templates)
+  Modifications: release cycles normalised into Kashif's schema.
+
+Mozilla Server Side TLS guidelines 6.0          vulnscan/data/web/tls-profiles.json
+  Source:  mozilla/ssl-config-generator, guidelines 6.0 (Mozilla)
+  Licence: Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/)
+  The intermediate and modern profiles are redistributed as data; their source form is
+  available from the Mozilla SSL Configuration Generator.
+
+MDN HTTP Observatory scoring                    vulnscan/data/web/observatory-v6.json
+  Source:  MDN HTTP Observatory (Mozilla), scoring tables
+  Licence: Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/)
+  Only the published test names, modifiers and grade chart (facts) are used; no
+  Observatory code is copied.
+
+--------------------------------------------------------------------------------------------
+References used without copying: OWASP Secure Headers Project (CC BY-SA 4.0) was used only
+as a cross-check for Kashif's own leak-header list; OWASP ASVS and WSTG identifiers are
+cited as mappings.

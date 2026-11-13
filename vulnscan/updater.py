@@ -885,3 +885,325 @@ def cli_main(argv: list[str]) -> int:
     print(f"✔ {m(CLI_TEXT['done'])} {res['from']} → {res['to']}")
     print(f"{m(CLI_TEXT['backup'])} {res['backup']}")
     return 0
+
+
+# ------------------------------------------------------------------------------------- web data (spec §4.4)
+#
+# `kashif update-data --web` (opt-in): the web scanner's data snapshots (retire.js, HSTS preload, PSL, EOL, server CVEs,
+# takeover fingerprints, ...) are refreshed from the latest *Kashif* release, never from the upstreams directly, so a
+# user's machine only ever talks to GitHub and only downloads files the release pipeline validated:
+#
+# * the release asset ``kashif-webdata-<date>.tar.gz`` (built by ``tools/webdata/validate.py --pack``) must be listed
+#   in the same release's ``SHA256SUMS.txt`` and match it; both URLs must be this repository's download URLs for
+#   that tag (the checks of ``apply`` above);
+# * the archive is read in memory, never extracted by tarfile: flat regular files only, plain names, size caps;
+#   its ``MANIFEST.json`` must have this Kashif's data schema version, name the asset's date and list exactly the
+#   archive's files with matching sha256; every known data file must pass its JSON schema;
+# * it is installed atomically into ``<home>/webdata/<date>/`` (a temp directory renamed into place), where
+#   ``webscan/data.py`` prefers it while it is newer than the bundled snapshot and verifies every file again;
+# * any failure changes nothing: the bundled snapshot (or the previously installed one) stays in use, and scans
+#   never need the network for their data (``--offline`` always works).
+
+WEBDATA_ASSET = re.compile(r"^kashif-webdata-(\d{4}-\d{2}-\d{2})\.tar\.gz$")
+MAX_WEBDATA = 32 * 1024 * 1024           # the archive (the snapshot is ≈ 1 MB compressed; budget 1.6 MB)
+MAX_WEBDATA_FILE = 16 * 1024 * 1024      # one member, as stored
+MAX_WEBDATA_TOTAL = 64 * 1024 * 1024     # all members together
+MAX_WEBDATA_MEMBERS = 64
+WEBDATA_KEEP = 2                         # installed snapshots kept: the newest and the one before it
+_WEB_TMP = ".incoming-"                  # in-progress download / unpack inside <home>/webdata (never a dated name)
+_WEB_OLD = ".replaced-"                  # a same-date snapshot being replaced
+_WEB_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+_WEB_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+# code -> (Arabic, English); the {date} placeholder is filled in by update_web_data()
+WEB_DATA_TEXT = {
+    "webdata_missing": ("الإصدار المنشور لا يحتوي على حزمة بيانات الويب؛ تبقى البيانات الحالية مستخدمة.",
+                        "The published release has no web data package; the current data stays in use."),
+    "webdata_schema": ("حزمة بيانات الويب المنشورة تحتاج إصدارًا أحدث من كاشِف؛ حدّث البرنامج أولًا. "
+                       "تبقى البيانات الحالية مستخدمة.",
+                       "The published web data package needs a newer version of Kashif; update the program first. "
+                       "The current data stays in use."),
+    "webdata_invalid": ("حزمة بيانات الويب المنزَّلة غير صالحة؛ لم يتغيّر شيء وتبقى البيانات الحالية مستخدمة.",
+                        "The downloaded web data package is invalid; nothing changed and the current data stays in use."),
+    "webdata_install_failed": ("تعذّر حفظ بيانات الويب في مجلد كاشِف؛ لم يتغيّر شيء.",
+                               "Could not save the web data in Kashif's folder; nothing changed."),
+    "webdata_current": ("بيانات الويب محدّثة (بتاريخ {date}).", "Web data is up to date (as of {date})."),
+    "webdata_available": ("تتوفر بيانات ويب أحدث بتاريخ {date}.", "Newer web data is available (as of {date})."),
+    "webdata_installed": ("ثُبّتت بيانات الويب بتاريخ {date}؛ ستستخدمها الفحوص القادمة.",
+                          "Installed web data as of {date}; the next scans use it."),
+}
+
+
+class WebDataError(UpdateError):
+    """A web data update failure. Same shape as UpdateError; its English comes from WEB_DATA_TEXT."""
+
+    def __init__(self, code: str, detail: str = ""):
+        self.code = code
+        self.detail = detail
+        Exception.__init__(self, WEB_DATA_TEXT[code][0])
+
+    @property
+    def message(self) -> str:
+        return WEB_DATA_TEXT[self.code][0]
+
+    @property
+    def message_en(self) -> str:
+        return WEB_DATA_TEXT[self.code][1]
+
+    def to_dict(self) -> dict:
+        return {"error": self.code, "message": self.message, "message_en": self.message_en, "detail": self.detail}
+
+
+def _webdata():
+    from .webscan import data            # lazy: the web scanner is not needed for a binary update
+    return data
+
+
+def _webdata_known() -> set:
+    d = _webdata()
+    return set(d.DATA_FILES) | set(d.SIDECARS.values())
+
+
+def _webdata_verify_dir(directory: pathlib.Path) -> str | None:
+    """The date of a complete, verified installed snapshot in `directory`, else None."""
+    d = _webdata()
+    try:
+        man = json.loads((directory / d.MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if d.validate(d.MANIFEST_SCHEMA, man) or man["schema_version"] != d.SCHEMA_VERSION:
+        return None
+    for name in set(man["files"]) & _webdata_known():
+        try:
+            raw = (directory / name).read_bytes()
+        except OSError:
+            return None
+        if not hmac.compare_digest(hashlib.sha256(raw).hexdigest(), str(man["files"][name]["sha256"])):
+            return None
+    return man["generated"]
+
+
+def _webdata_installed(root: pathlib.Path) -> tuple[str, pathlib.Path] | None:
+    """The newest verified snapshot under `root` (the same choice the loader makes), else None."""
+    try:
+        dirs = sorted((p for p in root.iterdir() if _WEB_DAY.fullmatch(p.name) and p.is_dir() and not p.is_symlink()),
+                      key=lambda p: p.name, reverse=True)
+    except OSError:
+        return None
+    for p in dirs:
+        day = _webdata_verify_dir(p)
+        if day:
+            return day, p
+    return None
+
+
+def _webdata_read_archive(fileobj) -> dict[str, bytes]:
+    """name -> bytes of a flat tar.gz, read in memory (nothing is extracted to disk by tarfile)."""
+    import tarfile
+    import zlib
+    files: dict[str, bytes] = {}
+    total = 0
+    try:
+        with tarfile.open(fileobj=fileobj, mode="r:gz") as tar:
+            for count, m in enumerate(tar, 1):
+                if count > MAX_WEBDATA_MEMBERS:
+                    raise WebDataError("webdata_invalid", "too many members")
+                if not m.isreg():
+                    raise WebDataError("webdata_invalid", f"not a regular file: {m.name!r}")
+                if not _WEB_NAME.fullmatch(m.name) or m.name in files:
+                    raise WebDataError("webdata_invalid", f"unexpected member name: {m.name!r}")
+                total += m.size
+                if m.size > MAX_WEBDATA_FILE or total > MAX_WEBDATA_TOTAL:
+                    raise WebDataError("webdata_invalid", f"too large: {m.name}")
+                f = tar.extractfile(m)
+                raw = f.read(m.size + 1) if f is not None else b""
+                if len(raw) != m.size:
+                    raise WebDataError("webdata_invalid", f"truncated: {m.name}")
+                files[m.name] = raw
+    except (tarfile.TarError, OSError, EOFError, zlib.error) as e:
+        raise WebDataError("webdata_invalid", str(e)) from e
+    return files
+
+
+def _webdata_check(files: dict[str, bytes], day: str) -> dict:
+    """Verify an archive's content (manifest, schema version, sha256 of every file, JSON schemas). Returns the manifest."""
+    import gzip
+    import io
+    d = _webdata()
+    try:
+        man = json.loads(files[d.MANIFEST].decode("utf-8"))
+    except (KeyError, ValueError) as e:
+        raise WebDataError("webdata_invalid", "no readable MANIFEST.json") from e
+    errs = d.validate(d.MANIFEST_SCHEMA, man)
+    if errs:
+        raise WebDataError("webdata_invalid", "; ".join(errs[:3]))
+    if man["schema_version"] != d.SCHEMA_VERSION:
+        raise WebDataError("webdata_schema", f"schema {man['schema_version']} != {d.SCHEMA_VERSION}")
+    if man["generated"] != day:
+        raise WebDataError("webdata_invalid", f"manifest date {man['generated']} != asset date {day}")
+    listed = set(man["files"])
+    if listed != set(files) - {d.MANIFEST}:
+        raise WebDataError("webdata_invalid", "the manifest does not list exactly the archive's files")
+    for name in sorted(listed):
+        entry, raw = man["files"][name], files[name]
+        if len(raw) != entry["size"] or not hmac.compare_digest(hashlib.sha256(raw).hexdigest(), str(entry["sha256"])):
+            raise WebDataError("webdata_invalid", f"{name}: sha256 does not match the manifest")
+    known = listed & _webdata_known()
+    if not known:
+        raise WebDataError("webdata_invalid", "no known data file")
+    for name in sorted(known & set(d.SCHEMAS)):
+        raw = files[name]
+        try:
+            if name.endswith(".gz"):
+                with gzip.GzipFile(fileobj=io.BytesIO(raw)) as g:
+                    raw = g.read(MAX_WEBDATA_TOTAL + 1)
+                if len(raw) > MAX_WEBDATA_TOTAL:
+                    raise ValueError("decompressed size above the cap")
+            obj = json.loads(raw.decode("utf-8"))
+        except (OSError, ValueError, EOFError) as e:
+            raise WebDataError("webdata_invalid", f"{name}: {e}") from e
+        errs = d.validate_data(name, obj)
+        if errs:
+            raise WebDataError("webdata_invalid", f"{name}: {errs[0]}")
+    for binary, side in d.SIDECARS.items():
+        if (binary in known) != (side in known):
+            raise WebDataError("webdata_invalid", f"{binary} and {side} come together")
+        if binary in known:
+            want = json.loads(files[side].decode("utf-8")).get("sha256", "")
+            if not hmac.compare_digest(hashlib.sha256(files[binary]).hexdigest(), str(want)):
+                raise WebDataError("webdata_invalid", f"{side}: sha256 does not match {binary}")
+    return man
+
+
+def _webdata_install(root: pathlib.Path, day: str, files: dict[str, bytes]) -> pathlib.Path:
+    """Write the snapshot into a temp directory (MANIFEST.json last, fsync-ed), then rename it to <root>/<day>."""
+    import secrets
+    import shutil
+    d = _webdata()
+    names = sorted(set(files) & _webdata_known()) + [d.MANIFEST]
+    try:
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix=_WEB_TMP, dir=root))
+    except OSError as e:
+        raise WebDataError("webdata_install_failed", str(e)) from e
+    final = root / day
+    old = None
+    try:
+        for name in names:
+            with open(tmp / name, "wb") as f:
+                f.write(files[name])
+                f.flush()
+                os.fsync(f.fileno())
+        if final.exists() or final.is_symlink():
+            old = root / f"{_WEB_OLD}{day}-{secrets.token_hex(4)}"
+            os.replace(final, old)
+        try:
+            os.replace(tmp, final)                      # atomic: <day> is either absent, the old or the new snapshot
+        except OSError:
+            if old is not None:
+                os.replace(old, final)
+                old = None
+            raise
+    except OSError as e:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise WebDataError("webdata_install_failed", str(e)) from e
+    if old is not None:
+        shutil.rmtree(old, ignore_errors=True)
+    return final
+
+
+def _webdata_prune(root: pathlib.Path, keep: int = WEBDATA_KEEP) -> None:
+    """Best effort: keep the newest `keep` dated snapshots; drop leftovers of interrupted runs (older than 1 hour)."""
+    import shutil
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return
+    dated = sorted((p for p in entries if _WEB_DAY.fullmatch(p.name) and p.is_dir() and not p.is_symlink()),
+                   key=lambda p: p.name, reverse=True)
+    for p in dated[keep:]:
+        shutil.rmtree(p, ignore_errors=True)
+    for p in entries:
+        if not p.name.startswith((_WEB_TMP, _WEB_OLD)) or p.is_symlink():
+            continue
+        try:
+            if time.time() - p.stat().st_mtime <= 3600:
+                continue
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _webdata_text(code: str, day: str) -> dict:
+    ar, en = WEB_DATA_TEXT[code]
+    return {"message": ar.format(date=day), "message_en": en.format(date=day)}
+
+
+def update_web_data(*, net: Net = NET, root: pathlib.Path | None = None, check_only: bool = False,
+                    progress=None) -> dict:
+    """Update the web scanner's data snapshots from the latest Kashif release (spec §4.4 step 2).
+
+    `root` is the snapshot root (default: ``webscan.data.user_root()``, i.e. ``$KASHIF_HOME``/``$VULNSCAN_HOME``/
+    ``~/.vulnscan`` + ``/webdata``); `check_only` reports without downloading the archive; `progress(phase, done,
+    total)` sees check, download, verify and install. Returns ``{"ok", "status": up_to_date|available|installed,
+    "latest", "current", "bundled", "installed", "release", "asset", "path", "message", "message_en", "notes"}``
+    (``notes``: the staleness notes of the data now in use). Raises UpdateError / WebDataError; nothing changes then.
+    """
+    d = _webdata()
+    root = pathlib.Path(root) if root is not None else d.user_root()
+    if progress:
+        progress("check", 0, 0)
+    release = fetch_release(net)
+    if release.get("prerelease"):
+        raise UpdateError("no_release")
+    by_name = {a["name"]: a for a in release["assets"]}
+    offered = sorted(((m.group(1), n) for n in by_name if (m := WEBDATA_ASSET.fullmatch(n))), reverse=True)
+    if not offered:
+        raise WebDataError("webdata_missing", release["tag"])
+    day, asset = offered[0]
+    bundled = d._bundled_generated()
+    inst = _webdata_installed(root)
+    current = max(bundled, inst[0]) if inst else bundled
+    out = {"ok": True, "latest": day, "current": current, "bundled": bundled, "installed": inst[0] if inst else None,
+           "release": release["version"], "asset": asset, "path": str(inst[1]) if inst else None}
+    if day <= current:
+        return {**out, "status": "up_to_date", **_webdata_text("webdata_current", current),
+                "notes": d.staleness()}
+    if check_only:
+        return {**out, "status": "available", **_webdata_text("webdata_available", day), "notes": d.staleness()}
+    if SUMS_NAME not in by_name:
+        raise UpdateError("checksum_missing", asset)
+    if by_name[asset]["size"] > MAX_WEBDATA:
+        raise UpdateError("too_large", asset)
+    for name in (asset, SUMS_NAME):                # both from this exact release of the official repository
+        _check_asset_url(by_name[name]["url"], release["tag"], name, net)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(prefix=_WEB_TMP, suffix=".tar.gz", dir=root)
+    except OSError as e:
+        raise WebDataError("webdata_install_failed", str(e)) from e
+    tmp = pathlib.Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w+b") as f:
+            expected = parse_sums(_fetch_small(by_name[SUMS_NAME]["url"], net), asset)
+            if not expected:
+                raise UpdateError("checksum_missing", asset)
+            digest = _download(by_name[asset]["url"], f, net, MAX_WEBDATA, progress)
+            if progress:
+                progress("verify", 0, 0)
+            if not hmac.compare_digest(digest, expected):
+                raise UpdateError("checksum_mismatch", f"{digest} != {expected}")
+            f.seek(0)
+            files = _webdata_read_archive(f)
+        _webdata_check(files, day)
+        if progress:
+            progress("install", 0, 0)
+        path = _webdata_install(root, day, files)
+    finally:
+        tmp.unlink(missing_ok=True)
+    _webdata_prune(root)
+    d.clear_cache()
+    return {**out, "status": "installed", "current": day, "installed": day, "path": str(path),
+            **_webdata_text("webdata_installed", day), "notes": d.staleness()}

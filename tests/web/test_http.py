@@ -1168,3 +1168,207 @@ def test_corpus_scan_through_the_proxy(corpus_server):
     assert any(s.startswith("CONNECT ") for s in srv.proxy.seen)
     assert f.lookup("cdn.kashif-gone.test").status == "not_tested" and f.dns == {}
     _traffic_ok(srv, c.id)
+
+
+# ----------------------------------------------------------------------------------------------- adversarial review
+
+def _interim_server(n_requests: int, interim: bytes):
+    """Keep-alive server answering each request with ``interim`` (1xx responses) and then a 200 naming the path."""
+    def handle(c, _i):
+        buf = b""
+        for _ in range(n_requests):
+            while b"\r\n\r\n" not in buf:
+                d = c.recv(4096)
+                if not d:
+                    return
+                buf += d
+            req, _, buf = buf.partition(b"\r\n\r\n")
+            path = req.split(b" ")[1]
+            c.sendall(interim + b"HTTP/1.1 200 OK\r\nContent-Security-Policy: default-src 'self'\r\n"
+                      b"Content-Length: %d\r\n\r\n%s" % (len(path), path))
+    return one_shot_server(handle)
+
+
+def test_early_hints_are_skipped_and_the_keepalive_connection_stays_in_sync():
+    # http.client returns a 103 as the final response and leaves the real 200 in the socket for the next request
+    port, stop, conns = _interim_server(2, b"HTTP/1.1 103 Early Hints\r\nLink: </a.css>; rel=preload\r\n\r\n"
+                                           b"HTTP/1.1 102 Processing\r\n\r\n")
+    try:
+        f = make()
+        one = f.fetch(f"http://127.0.0.1:{port}/one")
+        two = f.fetch(f"http://127.0.0.1:{port}/two")
+    finally:
+        stop.set()
+    assert (one.status, one.body, two.status, two.body) == (200, b"/one", 200, b"/two")
+    assert one.headers.first("content-security-policy") == "default-src 'self'" and not one.headers.has("link")
+    assert {"informational:103", "informational:102"} <= one.flags and len(conns) == 1
+
+
+def test_an_endless_stream_of_interim_responses_is_an_error():
+    port, stop, _ = _interim_server(1, b"HTTP/1.1 103 Early Hints\r\n\r\n" * 50)
+    try:
+        r = make().fetch(f"http://127.0.0.1:{port}/")
+    finally:
+        stop.set()
+    assert r.status is None and wh.error_code(r) == "bad_response" and "informational" in r.error
+
+
+@pytest.mark.parametrize("bad_line", [b"BadLine", b"X-Broken : 1", b": no name", b"X\xe9: latin", b"Na me: v"])
+def test_a_malformed_header_line_does_not_drop_the_headers_after_it(raw_http_server, bad_line):
+    # email.parser (behind http.client) stops at such a line and silently drops CSP/HSTS below it → false "missing"
+    raw_http_server.routes["/"] = (b"HTTP/1.1 200 OK\r\nX-A: 1\r\n" + bad_line + b"\r\n"
+                                   b"Content-Security-Policy: default-src 'self'\r\n"
+                                   b"Strict-Transport-Security: max-age=63072000\r\nContent-Length: 2\r\n\r\nok")
+    f = make()
+    r = f.fetch(raw_http_server.url("/"))
+    assert r.status == 200 and r.body == b"ok" and "malformed-header-line" in r.flags
+    assert r.headers.first("content-security-policy") == "default-src 'self'"
+    assert r.headers.first("strict-transport-security") == "max-age=63072000"
+    if bad_line == b"X-Broken : 1":
+        assert r.headers.first("x-broken") == "1"                      # trimmed name, kept like a browser
+    assert f._pool                                                     # Content-Length framing still honoured
+
+
+def test_a_leading_continuation_line_is_dropped_but_later_folds_are_kept(raw_http_server):
+    raw_http_server.routes["/"] = (b"HTTP/1.1 200 OK\r\n  orphan\r\nX-A: 1\r\nX-B: a,\r\n\tb\r\n"
+                                   b"Content-Length: 2\r\nConnection: close\r\n\r\nok")
+    r = make().fetch(raw_http_server.url("/"))
+    assert r.headers.items[:2] == (("X-A", "1"), ("X-B", "a, b"))
+    assert {"malformed-header-line", "obs-fold", "obs-fold:x-b"} <= r.flags
+
+
+@pytest.mark.parametrize("lines, ok", [(99, True), (100, True), (101, False)])
+def test_header_line_limit_is_exactly_100(raw_http_server, lines, ok):
+    # http.client counts the blank terminator too and so rejected exactly 100 header lines
+    extra = "".join(f"X-H{i}: v\r\n" for i in range(lines - 2))
+    raw_http_server.routes["/"] = (f"HTTP/1.1 200 OK\r\n{extra}Content-Length: 2\r\nConnection: close\r\n\r\nok"
+                                   ).encode("latin-1")
+    r = make().fetch(raw_http_server.url("/"))
+    if ok:
+        assert r.status == 200 and len(r.headers.items) == lines
+    else:
+        assert r.status is None and wh.error_code(r) == "too_many_headers" and wh.TOO_MANY_HEADERS in r.error
+
+
+def test_header_block_over_64kb_of_short_lines_is_an_error(raw_http_server):
+    extra = "".join(f"X-H{i}: {'v' * 900}\r\n" for i in range(80))      # 80 lines, ≈ 72 KB, every line short
+    raw_http_server.routes["/"] = (f"HTTP/1.1 200 OK\r\n{extra}Content-Length: 2\r\n\r\nok").encode("latin-1")
+    r = make().fetch(raw_http_server.url("/"))
+    assert r.status is None and wh.error_code(r) == "header_too_large"
+
+
+def test_body_shorter_than_content_length_is_incomplete_and_not_pooled(raw_http_server):
+    raw_http_server.routes["/"] = b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort"
+    f = make()
+    r = f.fetch(raw_http_server.url("/"))
+    assert r.status == 200 and r.body == b"short" and r.truncated
+    assert {"incomplete-body", "truncated-body"} <= r.flags and not f._pool
+
+
+def test_utf8_location_bytes_are_followed_like_a_browser(raw_http_server, http_reply_builder):
+    # Arabic paths: servers send raw UTF-8 bytes; http.client decodes them as Latin-1 (double encoding before the fix)
+    raw_http_server.routes["/"] = (b"HTTP/1.1 302 Found\r\nLocation: /\xd8\xb9\xd8\xb1\xd8\xa8\xd9\x8a\r\n"
+                                   b"Content-Length: 0\r\nConnection: close\r\n\r\n")
+    raw_http_server.routes["/%D8%B9%D8%B1%D8%A8%D9%8A"] = http_reply_builder("200 OK", [], "arabic")
+    r = make().fetch(raw_http_server.url("/"))
+    assert r.status == 200 and r.body == b"arabic" and r.url.endswith("/%D8%B9%D8%B1%D8%A8%D9%8A")
+
+
+@pytest.mark.parametrize("loc, expected", [
+    ("/\\evil.test/x", "http://evil.test/x"),             # "\" is "/" in http(s) URLs (WHATWG)
+    ("\\\\evil.test", "http://evil.test"),
+    ("/a?q=\\x", "http://a.test/a?q=\\x"),                 # … but not in the query
+    ("https:evil.test/p", "https://evil.test/p"),         # another special scheme without slashes
+    ("http:/same", "http://a.test/same"),                 # same scheme without "//": relative
+    ("/caf\xe9", "http://a.test/caf\xe9"),                # Latin-1 that is not UTF-8 stays as received
+])
+def test_next_url_follows_whatwg_rules(loc, expected):
+    assert wh.next_url("http://a.test/p", loc) == expected
+
+
+@pytest.mark.parametrize("host, literal", [
+    ("2130706433", "127.0.0.1"), ("0x7f.1", "127.0.0.1"), ("127.1", "127.0.0.1"), ("0177.0.0.1", "127.0.0.1"),
+    ("0xa9fea9fe", "169.254.169.254"), ("0251.0376.0251.0376", "169.254.169.254"), ("169.254.43518", "169.254.169.254"),
+    ("example.com", None), ("08.1.1.1", None), ("1.2.3.4.5", None), ("4294967296", None), ("1" * 5000, None),
+])
+def test_numeric_ipv4_forms_are_ip_literals(host, literal):
+    assert wh.ip_literal(host) == literal
+    p = wh._prepare(f"http://{host}/x")
+    if literal:
+        assert p.host == literal and p.host_header == literal    # Host header and connection as a browser sends them
+    elif host != "example.com":
+        assert p == "bad_url"                                   # ends in a number but is not an address: invalid URL
+
+
+def test_numeric_and_named_internal_hosts_are_guarded_through_a_proxy(raw_http_server, http_reply_builder):
+    raw_http_server.routes["/"] = http_reply_builder("200 OK", [], "proxy")
+    proxy = f"http://127.0.0.1:{raw_http_server.port}"
+    f = make("http://site.kashif.test/", proxies={"http": proxy, "https": proxy})
+    for url in ("http://0xa9fea9fe/latest/meta-data/", "http://2852039166/", "http://metadata.google.internal/",
+                "http://[::ffff:a9fe:a9fe]/"):
+        assert f.guard_url(url) == "metadata", url
+        r = f.fetch(url)
+        assert r.status is None and wh.error_code(r) == "ssrf", url
+    for url in ("http://127.1/", "http://localhost/", "http://admin.localhost/"):
+        assert f.guard_url(url) == "ssrf", url
+    assert raw_http_server.requests == []                       # nothing reached the proxy
+
+
+@pytest.mark.parametrize("addr, cat", [
+    ("64:ff9b::a9fe:a9fe", "metadata"), ("64:ff9b::808:808", "public"), ("64:ff9b::a00:1", "private"),
+    ("64:ff9b::7f00:1", "loopback"), ("2002:a9fe:a9fe::1", "metadata"), ("::a9fe:a9fe", "metadata"),
+])
+def test_ipv4_embedded_in_ipv6_is_categorised_by_the_ipv4_address(addr, cat):
+    # on a DNS64/NAT64 network every public site resolves into 64:ff9b::/96, and the gateway connects to the IPv4 inside
+    assert wh.address_category(addr) == cat
+
+
+def test_nat64_target_is_public_and_its_metadata_address_is_still_refused():
+    hooks = hooks_for({"www.kashif.test": {"status": "ok", "addresses": ["64:ff9b::5db8:d822"]},
+                       "evil.kashif.test": {"status": "ok", "addresses": ["64:ff9b::a9fe:a9fe"]}})
+    f = make("http://www.kashif.test/", hooks=hooks)
+    assert f.target_category() == "public" and f.guard_url("http://evil.kashif.test/") == "metadata"
+
+
+@pytest.mark.parametrize("url", ["http://a\x00b.test/", "http://a\x01b.test/", "http://a%00b.test/", "http://a|b.test/",
+                                 "http://[fe80::1%25eth0]/", "http://a.test:0/"])
+def test_forbidden_host_code_points_zone_ids_and_port_zero_are_bad_urls(url):
+    assert wh._prepare(url) == "bad_url"
+    assert wh._prepare("http://%61.kashif.test/").host == "a.kashif.test"   # percent-decoded like a browser
+
+
+def test_robots_txt_is_read_up_to_500_kib(raw_http_server, http_reply_builder):
+    body = ("# " + "x" * 98 + "\n") * 4000 + "User-agent: *\nDisallow: /late\n"    # ≈ 400 KB, rule at the end
+    raw_http_server.routes["/robots.txt"] = http_reply_builder("200 OK", [("Content-Type", "text/plain")], body)
+    raw_http_server.routes["/other.txt"] = http_reply_builder("200 OK", [("Content-Type", "text/plain")], body)
+    f = make()
+    r = f.fetch(raw_http_server.url("/robots.txt"), source="wellknown")
+    assert not r.truncated and not robots.from_response(r).allowed("/late")
+    assert f.fetch(raw_http_server.url("/other.txt"), source="wellknown").truncated    # other probes keep 256 KB
+
+
+def test_the_address_that_answered_is_tried_first_next_time(raw_http_server, http_reply_builder, monkeypatch):
+    raw_http_server.routes["/"] = http_reply_builder("200 OK", [], "ok")
+    hooks = hooks_for({"dual.kashif.test": {"status": "ok", "addresses": ["::1", "127.0.0.1"], "public": True}})
+    attempts = []
+    real = wh.socket.create_connection
+
+    def record(address, *a, **kw):
+        attempts.append(address[0])
+        if address[0] == "::1":
+            raise OSError(101, "Network is unreachable")      # a dead AAAA (deterministic on every OS)
+        return real(address, *a, **kw)
+    monkeypatch.setattr(wh.socket, "create_connection", record)
+    url = f"http://dual.kashif.test:{raw_http_server.port}/"
+    f = make(url, hooks=hooks)
+    assert f.fetch(url).status == 200 and f.fetch(url).status == 200
+    assert attempts == ["::1", "127.0.0.1", "127.0.0.1"]
+
+
+def test_the_cors_source_never_carries_cookies_even_without_an_origin(ka_server):
+    srv = ka_server({"/set": ("200 OK", [("Set-Cookie", "sid=abc")], b"ok"), "/c": ("200 OK", [("Set-Cookie", "x=1")],
+                                                                                      b"c")})
+    f = make(srv.url())
+    f.fetch(srv.url("/set"))
+    f.fetch(srv.url("/c"), source="cors")
+    assert "Cookie" not in dict(request_headers(srv.requests[1][1])[1]) and f.jar.names("127.0.0.1") == ["sid"]

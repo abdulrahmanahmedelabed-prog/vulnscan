@@ -12,11 +12,14 @@ certificates are stored base64-encoded and parsed again by ``tls/assess.py``. Sh
     ctx.tls["host" or "host:port"] = {
         "kind": "kashif-tls-host", "host", "port", "proxied", "proxy", "profile",
         "ips": {"<ip>" or "proxy": <ip report>}, "not_sampled": [ip, …], "error": {code, en, ar} | None,
-        "leaf": {"sigalg", "sha256", …}            # summary of the first IP's leaf (read by transport.py)
+        "leaf": {"sigalg", "sha256", …},           # summary of the first IP's leaf (read by transport.py)
+        "test_ca": {"publicly_trusted", "ct_required"} | None   # test-only CA hook (spec §5.2)
     }
     <ip report> = {"ip", "status": ok|unreachable|refused|not_tested, "reason": code, "detail",
-                   "verified": {ok, verify_code, verify_message, version, cipher, alpn, chain, verified_chain, error},
-                   "unverified": {...} | None, "chain": [b64 DER as sent], "chain_source": ssl|raw|none,
+                   "verified": {ok, verify_code, verify_message, version, cipher, alpn, chain, chain_complete,
+                                verified_chain, error, refused, legacy},
+                   "verified_legacy": {...} | None,   # retry at security level 0 (weak key/digest, old protocol)
+                   "unverified": {...} | None, "chain": [b64 DER as sent], "chain_source": ssl|ssl_leaf|raw|none,
                    "versions": {"TLSv1.3": {"state": yes|no|inconclusive|not_tested, …}, …},
                    "higher_version": [{offered, answered}], "downgrade_sentinel": bool | None,
                    "categories": {name: {"state", "cipher", "version"}}, "category_version": "TLSv1.2" | None,
@@ -91,7 +94,9 @@ def _der_list(items: Any) -> list[bytes]:
         if isinstance(c, (bytes, bytearray)):
             out.append(bytes(c))
         elif hasattr(c, "public_bytes"):
-            out.append(c.public_bytes(getattr(ssl._ssl, "ENCODING_DER", 1)))  # noqa: SLF001 - 3.10–3.12 Certificate
+            der = c.public_bytes(getattr(getattr(ssl, "_ssl", None), "ENCODING_DER", 2))  # 3.10–3.12 Certificate
+            if isinstance(der, (bytes, bytearray)):
+                out.append(bytes(der))
     return out
 
 
@@ -124,10 +129,19 @@ def _legacy_inspection_context(ctx: ssl.SSLContext) -> None:
             pass
 
 
-def ssl_handshake(connector: Any, host: str, port: int, ip: str | None, *, verified: bool, timeout: float) -> dict:
-    """One handshake with Python's ``ssl``: browser-parity verification (connector context) or CERT_NONE inspection."""
+# OpenSSL verify codes caused only by the local security level (key too small, digest too weak): the specific rules
+# WEB707/WEB708 report those facts, so the verified handshake is repeated at security level 0 to judge the rest of the
+# chain (trust, name, dates). Verified empirically on OpenSSL 3.0.13 and 3.5.9: a SHA-1 leaf fails with 68.
+SECLEVEL_CODES = frozenset({66, 67, 68})
+
+
+def ssl_handshake(connector: Any, host: str, port: int, ip: str | None, *, verified: bool, timeout: float,
+                  legacy: bool = False) -> dict:
+    """One handshake with Python's ``ssl``: browser-parity verification (connector context) or CERT_NONE inspection.
+    ``legacy`` relaxes the verifying context to security level 0 and TLS 1.0 (used only to judge trust on old servers)."""
     out: dict = {"ok": None, "verify_code": None, "verify_message": "", "version": None, "cipher": None, "alpn": None,
-                 "chain": [], "verified_chain": None, "error": None, "refused": None}
+                 "chain": [], "chain_complete": False, "verified_chain": None, "error": None, "refused": None,
+                 "legacy": legacy}
     try:
         ctx = connector.tls_context(verified)
     except Exception as e:   # noqa: BLE001 - a broken hook file must not crash the scan
@@ -137,7 +151,7 @@ def ssl_handshake(connector: Any, host: str, port: int, ip: str | None, *, verif
         ctx.set_alpn_protocols(["h2", "http/1.1"])
     except (NotImplementedError, ssl.SSLError):
         pass
-    if not verified:
+    if not verified or legacy:
         _legacy_inspection_context(ctx)
     try:
         sock = connector.open_tcp(host, port, ip=ip, timeout=timeout)
@@ -158,6 +172,7 @@ def ssl_handshake(connector: Any, host: str, port: int, ip: str | None, *, verif
             except (NotImplementedError, ssl.SSLError):
                 pass
             sent = _chain(ss, "unverified")
+            out["chain_complete"] = bool(sent)          # False: only the leaf was available (no chain API)
             if not sent:
                 leaf = ss.getpeercert(binary_form=True)
                 sent = [leaf] if leaf else []
@@ -285,6 +300,7 @@ def probe_ip(connector: Any, host: str, port: int, ip: str | None, *, profile: s
              timeout: float = 10.0) -> dict:
     """Run the profile's handshakes against one IP and return its JSON-safe report."""
     rep: dict = {"ip": ip, "status": "ok", "reason": "", "detail": "", "verified": None, "unverified": None,
+                 "verified_legacy": None,
                  "chain": [], "chain_source": "none", "versions": {}, "higher_version": [], "downgrade_sentinel": None,
                  "categories": {}, "category_version": None, "renegotiation_info": None, "compression": None,
                  "ocsp": {"state": "not_tested", "der": None, "reason": "not_run"}, "tls_scts": [], "chosen": {},
@@ -309,14 +325,25 @@ def probe_ip(connector: Any, host: str, port: int, ip: str | None, *, profile: s
             rep["verified"] = again
             return _finish(rep, sess)
         ver = rep["verified"] = again
+    if (ver.get("ok") is False and ver.get("verify_code") in SECLEVEL_CODES) or (
+            ver.get("ok") is None and ver.get("error") and not ver.get("refused")):
+        # weak key/digest or a protocol the default context refuses: judge trust again at security level 0
+        rep["verified_legacy"] = ssl_handshake(connector, host, port, ip, verified=True, timeout=sess.ssl_timeout,
+                                               legacy=True)
+        sess.handshakes += 1
+        if rep["verified_legacy"].get("ok") and rep["verified_legacy"].get("chain"):
+            ver = rep["verified_legacy"]
     if ver.get("ok"):
         rep["chain"], rep["chain_source"] = list(ver.get("chain") or []), "ssl"
+        if not ver.get("chain_complete"):
+            rep["chain_source"] = "ssl_leaf"
     else:
         unv = ssl_handshake(connector, host, port, ip, verified=False, timeout=sess.ssl_timeout)
         sess.handshakes += 1
         rep["unverified"] = unv
         if unv.get("chain"):
-            rep["chain"], rep["chain_source"] = list(unv["chain"]), "ssl"
+            rep["chain"] = list(unv["chain"])
+            rep["chain_source"] = "ssl" if unv.get("chain_complete") else "ssl_leaf"
 
     # 2. raw version probes, newest first
     flights: dict[str, raw.Flight] = {}
@@ -335,7 +362,7 @@ def probe_ip(connector: Any, host: str, port: int, ip: str | None, *, profile: s
     if rep["downgrade_sentinel"] and rep["versions"]["TLSv1.3"]["state"] != "yes":
         rep["versions"]["TLSv1.3"] = {**rep["versions"]["TLSv1.3"], "state": "yes", "source": "downgrade_sentinel"}
     # a normal handshake is proof of support
-    for hs in (ver, rep.get("unverified") or {}):
+    for hs in (ver, rep.get("unverified") or {}, rep.get("verified_legacy") or {}):
         nv = hs.get("version") if hs else None
         if nv in ("TLSv1.2", "TLSv1.3", "TLSv1.1", "TLSv1") and hs.get("chain"):
             key = "TLSv1.0" if nv == "TLSv1" else nv
@@ -352,7 +379,7 @@ def probe_ip(connector: Any, host: str, port: int, ip: str | None, *, profile: s
     base = flights.get(cat_version) if cat_version else None
     if base is not None and base.result == "hello" and base.version == raw.VERSION_IDS[cat_version]:
         rep["renegotiation_info"] = raw.EXT_RENEG in base.extensions
-        if not rep["chain"] and base.certs:
+        if base.certs and (not rep["chain"] or rep["chain_source"] == "ssl_leaf"):
             rep["chain"], rep["chain_source"] = [_b64(d) for d in base.certs], "raw"
         if base.ocsp:
             rep["ocsp"] = {"state": "stapled", "der": _b64(base.ocsp), "reason": ""}
@@ -514,9 +541,14 @@ def scan_host(connector: Any, host: str, port: int = 443, *, profile: str = "sta
         proxy = connector.proxy_for(f"https://{host}:{port}/")
     except Exception:   # noqa: BLE001 - foreign connector
         proxy = None
+    hooks = getattr(connector, "hooks", None)
     rep: dict = {"kind": HOST_KIND, "host": host, "port": port, "proxied": proxy is not None,
                  "proxy": getattr(proxy, "display", None) or (str(getattr(proxy, "host", "")) if proxy else None),
-                 "profile": profile, "ips": {}, "not_sampled": [], "error": None, "leaf": {}}
+                 "profile": profile, "ips": {}, "not_sampled": [], "error": None, "leaf": {},
+                 # test-only CA hook (spec §5.2): its CA counts as publicly trusted for WEB702/WEB709/WEB713
+                 "test_ca": ({"publicly_trusted": bool(getattr(hooks, "publicly_trusted", False)),
+                              "ct_required": bool(getattr(hooks, "ct_required", True))}
+                             if hooks is not None and getattr(hooks, "cafile", None) else None)}
     if proxy is not None:
         ips: list[str | None] = [None]
     else:

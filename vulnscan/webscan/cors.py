@@ -87,7 +87,7 @@ def _note(key: str, **values: Any) -> tuple[str, str]:
             v = values.get(m.group(1), m.group(0))
             if isinstance(v, tuple):
                 v = v[1] if lang == "ar" else v[0]
-            return strip_controls(str(v))
+            return _short(str(v), 1000)        # a hostile header can be megabytes long (§0.6)
         return _PLACEHOLDER.sub(sub, text)
     return fill(en, "en"), fill(ar, "ar")
 
@@ -140,13 +140,27 @@ def shared_storable(r: Response) -> bool:
     return True
 
 
+# Intranet ranges, listed explicitly: ``ipaddress.is_private`` also covers 198.18.0.0/15, which fake-IP DNS proxies
+# (Clash, Surge, …) hand out for *every* public name, plus documentation and reserved blocks, and its exact set changed
+# in Python 3.12.4/3.13 (one answer on every supported version, Linux/macOS/Windows alike).
+_INTRANET = tuple(ipaddress.ip_network(n) for n in (
+    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",      # RFC 1918
+    "100.64.0.0/10",                                       # RFC 6598 shared space (CGNAT, Tailscale tailnets)
+    "169.254.0.0/16", "fc00::/7", "fe80::/10"))            # link-local, ULA
+
+
+def _intranet(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return any(ip.version == n.version and ip in n for n in _INTRANET)
+
+
 def private_target(ctx: ScanContext) -> str:
-    """The private (RFC 1918 / ULA / link-local) address the target resolves to, "" for public or loopback targets."""
+    """The private (RFC 1918 / CGNAT / ULA / link-local) address the target resolves to, "" for public or loopback
+    targets. Through a proxy (§0.7) nothing is known about the target's address."""
     addrs: list[str] = []
     rec = ctx.dns.get(ctx.target_host) if ctx.dns else None
     if rec is not None and rec.status == "ok":
-        addrs.extend(rec.addresses)
-    if ctx.entry is not None and ctx.entry.ip:
+        addrs.extend(a for a in (rec.addresses or ()) if isinstance(a, str))
+    if ctx.entry is not None and ctx.entry.ip and not ctx.proxied:
         addrs.append(ctx.entry.ip)
     host = ctx.target_host
     try:
@@ -161,9 +175,7 @@ def private_target(ctx: ScanContext) -> str:
             continue
         if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
             ip = ip.ipv4_mapped
-        if ip.is_loopback or ip.is_unspecified:
-            continue
-        if ip.is_private or ip.is_link_local:
+        if _intranet(ip):
             return str(ip)
     return ""
 
@@ -215,7 +227,7 @@ class _Run:
         ev = Evidence.for_response(r, where="header", name="Access-Control-Allow-Origin", value=value, now=self.ctx.now)
         sev = severity if severity in meta.allowed_severities else None
         self.issues.append(Issue(rule=rule, url=r.url, confidence=conf, evidence=ev, severity=sev,
-                                 group_value=group_value or _short(value, 80), notes=list(notes or []), host=r.host))
+                                 group_value=_short(group_value or value, 80), notes=list(notes or []), host=r.host))
         self.seen(meta.check_id, r.host)
         if self.ctx.options.reports(conf):
             self.failed.setdefault(meta.check_id, set()).add(r.host)

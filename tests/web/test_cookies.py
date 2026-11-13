@@ -650,6 +650,89 @@ def test_notes_are_bilingual_and_catalogued():
     assert any(_re.fullmatch(rx, phrase) for rx, _en in pats)
 
 
+# ----------------------------------------------------------------------------------------------- adversarial review
+
+def test_hostile_numbers_and_nesting_do_not_crash():
+    # a 1000-digit Max-Age used to raise OverflowError in float(); deep JSON used to raise RecursionError (3.10/3.11)
+    _c, _i, r = scan("sessionid=" + RAND + "; Secure; HttpOnly; SameSite=Lax; Max-Age=" + "9" * 1000)
+    assert set(r) == {"WEB405"} and r["WEB405"][0].severity == "low"
+    _c, _i, r = scan("sessionid=" + RAND + "; Secure; HttpOnly; SameSite=Lax; Max-Age=-" + "9" * 1000)
+    assert r == {}                                           # deletion cookie
+    _c, _i, r = scan("prefs=" + "[" * 50000 + "]" * 50000 + "; Secure; SameSite=Lax")
+    assert "WEB412" not in r
+    deep = base64.urlsafe_b64encode(b"[" * 3000 + b"]" * 3000).decode()
+    _c, _i, r = scan("prefs=" + deep + "; Secure; SameSite=Lax")
+    assert "WEB412" not in r
+    assert cookies.parse_cookie_date("Wed, ١٢ Nov 2026 10:00:00 GMT") is None    # DIGIT is ASCII only
+
+
+def test_nameless_cookie_keeps_its_value_out_of_evidence():
+    secret = "TOPSECRETVALUE0123456789"
+    _c, issues, r = scan(secret + "; Path=/x")              # no "=" in the first pair: empty name, value = token
+    assert issues and all(i.params["cookie"] == '""' for i in issues)
+    blob = json.dumps([i.evidence.to_dict() for i in issues] + [i.notes for i in issues])
+    assert secret not in blob and "<redacted:24 bytes>; Path=/x" in blob
+
+
+@pytest.mark.parametrize("name,cls", [
+    ("data-session", "session"), ("partner-auth-token", "auth"), ("recs-session", "session"),
+    ("prism_csrf", "csrf"),                                  # imported (Open Cookie Database) globs yield
+    ("recs-foo", "analytics"), ("data-abc", "analytics"),    # ... but still classify vendor names
+    ("_hjSessionUser_123", "analytics"), ("intercom-session-abc", "analytics"),   # Kashif's own globs win
+    ("MATOMO_SESSID", "session"), ("PIWIK_SESSID", "session"),                     # Matomo's login session
+])
+def test_imported_globs_do_not_hide_session_cookies(name, cls):
+    assert cookies.classify(name, "x")[0] == cls
+
+
+def test_web412_flags_and_camel_case_keys():
+    for obj in ({"has_password": True}, {"pass": False}, {"mobile": False, "tablet": False}, {"email": ""},
+                {"password_set": "yes"}, {"phone": 1}):
+        _c, _i, r = scan("prefs=" + _b64(obj) + "; Path=/; Secure; SameSite=Lax")
+        assert "WEB412" not in r, obj
+    _c, _i, r = scan("prefs=" + _b64({"userPassword": "hunter2"}) + "; Path=/; Secure; SameSite=Lax")
+    assert r["WEB412"][0].severity == "medium" and "hunter2" not in json.dumps([i.notes for i in _i])
+    _c, _i, r = scan("prefs=" + _b64({"phone": 4915112345678}) + "; Path=/; Secure; SameSite=Lax")
+    assert r["WEB412"][0].severity == "low"
+    # a Flask (itsdangerous) session "payload.timestamp.signature" looks like a JWT: its first segment is the data
+    flask = _b64({"email": "a@example.com", "_fresh": True}) + ".ZzA1Bg.c2lnbmF0dXJlc2lnbmF0dXJlcw"
+    _c, _i, r = scan(f"session={flask}; Path=/; Secure; HttpOnly; SameSite=Lax")
+    assert r["WEB412"][0].severity == "low"
+    assert "a@example.com" not in json.dumps([i.notes for i in _i] + [i.evidence.to_dict() for i in _i])
+
+
+def test_structured_values_are_not_random_tokens():
+    assert cookies.value_class("%7B%22mobile%22%3Afalse%2C%22tablet%22%3Afalse%7D") is None
+    assert cookies.value_class('{"a":"Zq81","b":[1,2,3],"c":"x9Y"}') is None
+    assert cookies.value_class(RAND) == "unknown_secret"
+
+
+def test_web414_excerpt_masks_every_copy_of_the_value():
+    second = 'var a = "' + RAND + '", b = "' + RAND + '";'
+    cut = 'var a = "' + RAND + '"; ' + "x" * 30 + ' var b = "' + RAND + '";'
+    for script in (second, cut):
+        _c, _i, r = scan("sessionid=" + RAND + "; Path=/; Secure; HttpOnly; SameSite=Lax",
+                         body="<script>" + script + "</script>")
+        ev = r["WEB414"][0].evidence.to_dict()
+        blob = json.dumps(ev)
+        assert RAND not in blob and RAND[:8] not in blob, blob
+    text = RAND + "......" + RAND + "......" + RAND          # both neighbours are cut by the 14-character window
+    out = cookies._masked_excerpt(text, len(RAND) + 6, RAND, "<r>", width=14)
+    assert out == "<r>......<r>......<r>", out
+
+
+def test_web414_session_cookie_reset_on_every_page_is_one_finding():
+    raw = "sessionid=" + RAND + "; Path=/; Secure; HttpOnly; SameSite=Lax"
+    pages = []
+    for i in range(30):
+        r = resp(f"https://www.example.com/p{i}", raw, body=SESSION_PAGE.replace("{v}", RAND),
+                 request_headers=HeaderList.of(("Cookie", "sessionid=" + RAND)))
+        pages.append(Page(r, None, 1))
+    ctx = ctx_for(pages[0].response, pages=pages)
+    r = by_rule(reported(ctx, cookies.run(ctx)))
+    assert set(r) == {"WEB414"} and len(r["WEB414"]) == 1
+
+
 # ----------------------------------------------------------------------------------------------- Observatory slug
 
 def obs(*cookie_values, sts=True, url="https://www.example.com/"):

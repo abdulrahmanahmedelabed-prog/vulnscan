@@ -20,8 +20,12 @@ classify.py, and ``Response.kind``/``roles``. Pure: nothing here touches the net
 
 from __future__ import annotations
 
+import base64
+import ipaddress
+import json
 import re
 import urllib.parse
+import zlib
 from dataclasses import dataclass, field
 from typing import Iterable
 
@@ -141,6 +145,10 @@ STR: dict[str, tuple[str, str]] = {
     "cache_shared_cookie": ("A shared cache may store this response together with its Set-Cookie: Cache-Control: "
                             "{value}.",
                             "يمكن لذاكرة مؤقتة مشتركة تخزين هذه الاستجابة مع ترويسة Set-Cookie فيها: Cache-Control: {value}."),
+    "cache_vary_keyed": ("Caches that honour Vary keep one copy per Cookie/Authorization value, so this alone does not "
+                         "hand one user's page to another; CDNs configured to ignore Vary would.",
+                         "الذاكرات المؤقتة التي تحترم Vary تحفظ نسخة لكل قيمة Cookie أو Authorization، فلا يكفي هذا وحده "
+                         "لتسليم صفحة مستخدم إلى غيره؛ لكن شبكات CDN المضبوطة على تجاهل Vary تفعل ذلك."),
     "cache_no_store": ("Sensitive response without no-store (Cache-Control: {value}).",
                        "استجابة حساسة بلا no-store (Cache-Control: {value})."),
     "cache_why": ("Sensitive because: {why}.", "حساسة لأن: {why}."),
@@ -192,6 +200,11 @@ def _count(n: int, forms: tuple) -> tuple[str, str]:
 def _short(value: str, limit: int = 120) -> str:
     v = " ".join(value.split())
     return v if len(v) <= limit else v[: limit - 1] + "…"
+
+
+def _shown(value: str, limit: int = 120) -> str:
+    """:func:`_short` for a header value quoted in a note; an empty value reads ``""`` instead of vanishing."""
+    return _short(value, limit) or '""'
 
 
 # ----------------------------------------------------------------------------------------------- shared helpers
@@ -246,6 +259,38 @@ def _is_final_2xx(r: Response) -> bool:
 
 def _opaque(r: Response) -> bool:
     return "opaque-coding" in r.flags
+
+
+def _parse(r: Response) -> ParsedHTML | None:
+    """The light DOM of ``r``; ``None`` when the target's bytes or charset label break decoding (§0.6: a hostile
+    response degrades this module's checks, it never aborts the scan)."""
+    try:
+        return htmlparse.parse_response(r)
+    except (ValueError, LookupError, UnicodeError):
+        return None
+
+
+def _charset(label: str | None) -> str | None:
+    """:func:`types.normalise_charset` that treats a label ``codecs.lookup`` rejects (NUL byte) as unknown."""
+    try:
+        return normalise_charset(label)
+    except (ValueError, LookupError, UnicodeError):
+        return None
+
+
+def _secure_context(r: Response) -> bool:
+    """G3: https, or a potentially trustworthy http origin (``localhost``, ``*.localhost``, loopback IPs), where
+    browsers honour COOP, COEP and Clear-Site-Data too, so a developer scanning a local server is not told they are
+    ignored."""
+    if r.is_https:
+        return True
+    h = r.host
+    if h == "localhost" or h.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(h.strip("[]")).is_loopback
+    except ValueError:
+        return False
 
 
 def _ev(ctx: ScanContext, r: Response, *, where: str = "header", name: str = "", value: str = "",
@@ -328,13 +373,17 @@ class XfoVerdict:
 def xfo_verdict(fields: list[str]) -> XfoVerdict:
     if not fields:
         return XfoVerdict(False, (), 0, "absent")
-    values = tuple(v.lower() for v in _split_list(fields))
+    # Empty members (``DENY,``, a stray comma from a template) are dropped as Chromium does (SPLIT_WANT_NONEMPTY):
+    # cross-origin framing is blocked under either reading, and a trailing comma is not "two layers fighting" (WEB301).
+    values = tuple(v.lower() for v in _split_list(fields) if v)
+    if not values:
+        return XfoVerdict(True, ("",), len(fields), "absent", "invalid")
     distinct = set(values)
     if len(distinct) > 1:
         if distinct & {"deny", "allowall", "sameorigin"}:
             return XfoVerdict(True, values, len(fields), "deny", "conflict")
         return XfoVerdict(True, values, len(fields), "absent", "multi-invalid")
-    only = values[0] if values else ""
+    only = values[0]
     identical = len(values) > 1
     if only == "deny":
         return XfoVerdict(True, values, len(fields), "deny", "identical" if identical else "")
@@ -548,15 +597,18 @@ def pp_problems(pp: PermissionsPolicy) -> list[tuple[str, str, tuple[str, str], 
     """``[(rule, severity, note, group value)]`` for WEB305/WEB306 on a parsed policy."""
     out: list[tuple[str, str, tuple[str, str], str]] = []
     if pp.error:
-        return [("WEB305", "medium", _note("pp_parse", error=pp.error), "parse-error")]
+        return [("WEB305", "medium", _note("pp_parse", error=_short(pp.error)), "parse-error")]
     for name, m in pp.members.items():
         text = _member_text(name, m)
         if name not in PP_FEATURES and name not in PP_OBSOLETE:
             known = typo_of(name)
             if known:
-                out.append(("WEB305", "low", _note("pp_typo", feature=name, known=known), f"typo:{name}"))
+                out.append(("WEB305", "low", _note("pp_typo", feature=_short(name, 60), known=known),
+                            f"typo:{_short(name, 60)}"))
             continue
         if isinstance(m, sfv.InnerList):
+            # one finding per member: the worst ignored element (a hostile header may list thousands)
+            worst: tuple[str, str] | None = None
             for it in m.items:
                 v = it.value
                 if isinstance(v, sfv.Token) and v in ("*", "self"):
@@ -564,21 +616,30 @@ def pp_problems(pp: PermissionsPolicy) -> list[tuple[str, str, tuple[str, str], 
                 if isinstance(v, str) and not isinstance(v, sfv.Token) and _origin_of(v):
                     continue
                 shown = v if isinstance(v, sfv.Token) else f'"{v}"' if isinstance(v, str) else str(v)
-                sev = "low" if isinstance(v, str) and not isinstance(v, sfv.Token) else "info"
-                out.append(("WEB305", sev, _note("pp_list_member", member=text, value=shown), f"member:{text}"))
+                # an origin the author meant to allow is lost (a quoted non-origin, or an unquoted origin, which
+                # parses as a Token): low; other junk such as (none) only disables the feature: info
+                meant_origin = isinstance(v, str) and (not isinstance(v, sfv.Token) or _origin_of(v) is not None)
+                sev = "low" if meant_origin else "info"
+                if worst is None or (sev == "low" and worst[0] == "info"):
+                    worst = (sev, shown)
+            if worst is not None:
+                out.append(("WEB305", worst[0], _note("pp_list_member", member=_short(text), value=_short(worst[1])),
+                            f"member:{_short(text)}"))
         else:
             v = m.value
             if isinstance(v, sfv.Token) and v in ("*", "self"):
                 pass
-            elif isinstance(v, str) and not isinstance(v, sfv.Token):
-                out.append(("WEB305", "low", _note("pp_bare_string", member=text, feature=name, value=f'"{v}"'),
-                            f"member:{text}"))
+            elif isinstance(v, str) and (not isinstance(v, sfv.Token) or _origin_of(v) is not None):
+                # a bare string, or an unquoted origin (it parses as a Token): the origin is not added either way
+                out.append(("WEB305", "low", _note("pp_bare_string", member=_short(text), feature=name,
+                                                   value=_short(f'"{v}"')), f"member:{_short(text)}"))
             else:
-                out.append(("WEB305", "info", _note("pp_bare_token", member=text, feature=name), f"member:{text}"))
+                out.append(("WEB305", "info", _note("pp_bare_token", member=_short(text), feature=name),
+                            f"member:{_short(text)}"))
         if name in POWERFUL_FEATURES:
             al = pp.allowlist(name)
             if al and al[0]:
-                out.append(("WEB306", "low", _note("pp_star", feature=name, member=text), f"star:{name}"))
+                out.append(("WEB306", "low", _note("pp_star", feature=name, member=_short(text)), f"star:{name}"))
     return out
 
 
@@ -910,7 +971,7 @@ class _Run:
             seen.add(id(r))
             doc = p.doc
             if doc is None and r.body and not _opaque(r):
-                doc = htmlparse.parse_response(r)
+                doc = _parse(r)
             out.append((r, doc, conf))
         if self.paranoid:
             for r in self.final_responses():
@@ -918,7 +979,7 @@ class _Run:
                     continue
                 if _kind(r) == "error_page" and r.essence in HTML_ESSENCES and r.body and not _opaque(r):
                     seen.add(id(r))
-                    out.append((r, htmlparse.parse_response(r), "tentative"))
+                    out.append((r, _parse(r), "tentative"))
         return out
 
     # -- coverage ---------------------------------------------------------------------------------------------
@@ -967,9 +1028,70 @@ def run(ctx: ScanContext) -> list[Issue]:
     page = ctx.page_for(auto) if auto is not None else None
     auto_doc = page.doc if page is not None else None
     if auto is not None and auto_doc is None and _obs_html(auto) and not _opaque(auto):
-        auto_doc = htmlparse.parse_response(auto)
+        auto_doc = _parse(auto)
     ctx.observatory.update(observatory_slugs(auto, auto_doc))
+    if isinstance(ctx.inventory, dict):
+        ctx.inventory["security_headers"] = header_inventory(ctx, docs)
     return st.issues
+
+
+INVENTORY_MAX_RESPONSES = 20
+_INV_VALUE_CAP = 200
+
+
+def header_inventory(ctx: ScanContext, docs) -> list[dict]:
+    """§3.9 "security headers table (value + verdict)" for the judged documents (at most 20): report data, not
+    findings. ``-Report-Only`` isolation headers land here only (§WEB308)."""
+    out: list[dict] = []
+    for r, doc, _conf in docs[:INVENTORY_MAX_RESPONSES]:
+        h = r.headers
+        rows: dict[str, dict] = {}
+
+        def row(name: str, verdict: str, values: list[str]) -> None:
+            value = strip_controls(_short(", ".join(values), _INV_VALUE_CAP)) if values else None
+            rows[name] = {"value": value, "verdict": verdict}
+
+        xfo = h.get_all("x-frame-options")
+        v = xfo_verdict(xfo)
+        has_fa, fa_protects = _frame_ancestors(ctx, r)
+        if v.blocks:
+            xfo_state = v.effect
+        elif has_fa:
+            xfo_state = "frame-ancestors" if fa_protects else "frame-ancestors-broad"
+        else:
+            xfo_state = v.reason or "missing"
+        row("X-Frame-Options", xfo_state, xfo)
+        xcto = h.get_all("x-content-type-options")
+        first = (_split_list(xcto) or [""])[0].strip().lower() if xcto else ""
+        row("X-Content-Type-Options", "nosniff" if first == "nosniff" else "invalid" if xcto else "missing", xcto)
+        rv = referrer_verdict(r, doc)
+        row("Referrer-Policy", rv.policy or ("unrecognised" if rv.present else "missing"),
+            h.get_all("referrer-policy"))
+        pp_fields = h.get_all("permissions-policy")
+        pp = parse_permissions_policy(pp_fields)
+        row("Permissions-Policy", "invalid" if pp.error else "present" if pp.present else "missing", pp_fields)
+        for name, allowed in (("Cross-Origin-Opener-Policy", COOP_TOKENS), ("Cross-Origin-Embedder-Policy", COEP_TOKENS)):
+            for header in (name, name + "-Report-Only"):
+                fields = h.get_all(header)
+                if not fields and header != name:
+                    continue
+                tok, problem = isolation_token(fields, allowed)
+                verdict = tok or problem
+                if fields and not _secure_context(r):
+                    verdict = "ignored-on-http"
+                elif tok and header != name:
+                    verdict = "report-only:" + tok
+                row(header, verdict, fields)
+        corp = h.get_all("cross-origin-resource-policy")
+        cv, problem = corp_value(corp)
+        row("Cross-Origin-Resource-Policy", cv or problem, corp)
+        for header in ("Feature-Policy", "X-XSS-Protection", "Clear-Site-Data", "X-Permitted-Cross-Domain-Policies",
+                       "Cache-Control"):
+            fields = h.get_all(header)
+            if fields:
+                row(header, "present", fields)
+        out.append({"url": r.url, "status": r.status, "headers": rows})
+    return out
 
 
 # ----------------------------------------------------------------------------------------------- checks
@@ -985,7 +1107,7 @@ def _framing(st: _Run, docs) -> None:
         if not fields:
             continue
         v = xfo_verdict(fields)
-        shown = _short(", ".join(fields))
+        shown = _shown(", ".join(fields))
         ev = _ev(ctx, r, name="X-Frame-Options", value=", ".join(fields))
         _has_fa, fa_protects = _frame_ancestors(ctx, r)
         if v.reason in ("allow-from", "invalid", "multi-invalid"):
@@ -1011,11 +1133,13 @@ def _framing(st: _Run, docs) -> None:
         st.seen("WEB-x-frame-options", r.host)
         st.seen("WEB302", r.host)
         if doc is not None:
-            for m in doc.metas(http_equiv="x-frame-options"):
+            # one finding per document (the first meta): a page repeating the tag is one cause, not N findings
+            for m in doc.metas(http_equiv="x-frame-options")[:1]:
                 content = m.get("content") or ""
                 st.emit("WEB302", r, _ev(ctx, r, where="body", name="meta http-equiv=X-Frame-Options", value=content,
-                                         offset=m.offset, excerpt=f'<meta http-equiv="X-Frame-Options" content="{content}">'),
-                        notes=[_note("xfo_meta", value=_short(content))], group_value=content.strip().lower())
+                                         offset=m.offset,
+                                         excerpt=f'<meta http-equiv="X-Frame-Options" content="{_short(content, 100)}">'),
+                        notes=[_note("xfo_meta", value=_short(content))], group_value=_short(content.strip().lower()))
         has_fa, _protects = _frame_ancestors(ctx, r)
         if has_fa:
             continue                           # frame-ancestors decides (WEB206 judges a broad one)
@@ -1164,7 +1288,7 @@ def _isolation(st: _Run, docs) -> None:
             if not fields:
                 continue
             ev = _ev(ctx, r, name=header, value=", ".join(fields))
-            if not r.is_https:                                     # G3
+            if not _secure_context(r):                             # G3
                 st.emit(rule, r, ev, severity="info", notes=[_note("g3_ignored", header=header)], group_value="http")
                 continue
             tok, problem = isolation_token(fields, allowed)
@@ -1173,7 +1297,7 @@ def _isolation(st: _Run, docs) -> None:
                         notes=[_note("iso_multi", header=header, fields=_count(len(fields), _FIELDS))])
             elif problem == "invalid":
                 st.emit(rule, r, ev, severity="low", group_value=fields[0].strip(),
-                        notes=[_note("iso_invalid", header=header, value=_short(fields[0]))])
+                        notes=[_note("iso_invalid", header=header, value=_shown(fields[0]))])
         # WEB310 CORP: invalid or duplicated, on any response
         fields = r.headers.get_all("cross-origin-resource-policy")
         st.seen("WEB310", r.host)
@@ -1182,7 +1306,7 @@ def _isolation(st: _Run, docs) -> None:
             if problem:
                 ev = _ev(ctx, r, name="Cross-Origin-Resource-Policy", value=", ".join(fields))
                 note = (_note("iso_multi", header="Cross-Origin-Resource-Policy", fields=_count(len(fields), _FIELDS))
-                        if problem == "multi" else _note("corp_invalid", value=_short(fields[0])))
+                        if problem == "multi" else _note("corp_invalid", value=_shown(fields[0])))
                 st.emit("WEB310", r, ev, severity="low", notes=[note], group_value=problem + ":" + fields[0].strip())
         elif (_kind(r) == "api_json" and _is_final_2xx(r) and _session_or_sensitive(ctx, r)
               and not any(n.lower().startswith("access-control-allow-") for n in r.headers.names())):
@@ -1190,7 +1314,7 @@ def _isolation(st: _Run, docs) -> None:
                     confidence="tentative", notes=[_note("corp_missing")], group_value="missing")
     # WEB308 missing on https documents; WEB309 missing at paranoid
     for r, doc, conf in docs:
-        if not r.is_https:
+        if not _secure_context(r):
             continue
         st.seen("WEB308", r.host)
         fields = r.headers.get_all("cross-origin-opener-policy")
@@ -1223,7 +1347,7 @@ def _legacy(st: _Run, docs) -> None:
             first = joined.strip().split(";", 1)[0].split(",", 1)[0].strip()
             if first != "0":
                 st.emit("WEB311", r, _ev(ctx, r, name="X-XSS-Protection", value=joined),
-                        notes=[_note("xxss", value=_short(joined))], group_value=" ".join(joined.lower().split()))
+                        notes=[_note("xxss", value=_shown(joined))], group_value=" ".join(joined.lower().split()))
         for header in ("Public-Key-Pins", "Public-Key-Pins-Report-Only", "Expect-CT"):
             vals = r.headers.get_all(header)
             if vals:
@@ -1267,7 +1391,7 @@ def _content_type(st: _Run, docs) -> None:
         if "ctype-mismatch" in r.flags:
             sniffed = next((f.split(":", 1)[1] for f in r.flags if f.startswith("magic:")), "?")
             st.emit("WEB313", r, _ev(ctx, r, name="Content-Type", value=fields[0]), confidence="firm",
-                    notes=[_note("ct_mismatch", declared=r.essence, sniffed=sniffed)],
+                    notes=[_note("ct_mismatch", declared=_short(r.essence, 60), sniffed=_short(sniffed, 60))],
                     group_value=f"mismatch:{r.essence}>{sniffed}")
     # WEB314 on HTML documents
     for r, _doc, conf in docs:
@@ -1277,13 +1401,13 @@ def _content_type(st: _Run, docs) -> None:
         if bom_encoding(r.body):
             continue
         raw_header = charset_param(r.content_type)
-        header = normalise_charset(raw_header)
+        header = _charset(raw_header)
         raw_meta = meta_charset(r.body)
-        meta = normalise_charset(raw_meta)
+        meta = _charset(raw_meta)
         ev_value = r.content_type or ""
         if header and meta and header != meta:
             st.emit("WEB314", r, _ev(ctx, r, name="Content-Type", value=ev_value),
-                    notes=[_note("cs_conflict", header=raw_header, meta=raw_meta)],
+                    notes=[_note("cs_conflict", header=_short(raw_header, 40), meta=_short(raw_meta, 40))],
                     group_value=f"conflict:{header}>{meta}", confidence=conf or None)
         elif not header and not meta:
             notes = [_note("cs_missing")]
@@ -1291,6 +1415,43 @@ def _content_type(st: _Run, docs) -> None:
                 notes.append(_note("cs_unknown", value=_short(raw_header, 40)))
             st.emit("WEB314", r, _ev(ctx, r, name="Content-Type", value=ev_value), notes=notes,
                     group_value="missing", confidence=conf or None)
+
+
+# base64 JSON (``eyJ``) or zlib-compressed JSON (``eJ``, Flask's leading ``.``), optionally with timestamp/signature parts
+_SELF_CONTAINED = re.compile(r"^\.?(?:eyJ|eJ)[A-Za-z0-9_\-+/=]*(?:\.[A-Za-z0-9_\-+/=]*){0,3}$")
+# keys whose value is random per issuance (Laravel's encryption IV, a JWT id, a CSRF secret kept in the session):
+# two identical payloads carrying one of them were replayed, not re-derived
+_UNIQUE_KEYS = frozenset({"iv", "jti", "nonce", "csrf_token", "_csrf_token", "sid", "session_id"})
+
+
+def _payload_keys(v: str) -> set[str]:
+    """Top-level JSON keys of a base64(-zlib) JSON cookie payload (JWT payload segment, Flask, Laravel); empty when it
+    does not decode. Bounded: at most 8 KB of input and 64 KB decompressed."""
+    segs = v.lstrip(".").split(".")
+    seg = segs[1] if v.startswith("eyJ") and len(segs) >= 3 and segs[1].startswith("eyJ") else segs[0]
+    seg = seg[:8192]
+    try:
+        raw = base64.urlsafe_b64decode(seg.replace("+", "-").replace("/", "_") + "=" * (-len(seg) % 4))
+        if v.startswith(".") or seg.startswith("eJ"):
+            raw = zlib.decompressobj().decompress(raw, 65536)
+        obj = json.loads(raw.decode("utf-8"))
+    except (ValueError, zlib.error, UnicodeDecodeError, RecursionError):
+        return set()
+    return {str(k).lower() for k in obj} if isinstance(obj, dict) else set()
+
+
+def _self_contained_value(name: str, value: str) -> bool:
+    """A client-side session payload rather than a server-side session id: a JWT, a Flask/itsdangerous or Express
+    cookie-session value, or the ``.sig`` cookie signing one. Two anonymous visitors legitimately receive identical
+    bytes when the payload is identical (no per-visitor id, one-second timestamps), so equal values prove nothing.
+    Payloads that carry a per-issuance random field (Laravel's ``iv``, a JWT ``jti``) stay opaque: equal values
+    there mean a cache replayed them."""
+    if name.lower().endswith(".sig"):
+        return True
+    v = urllib.parse.unquote(value.strip().strip('"'))
+    if not _SELF_CONTAINED.match(v):
+        return False
+    return not (_payload_keys(v) & _UNIQUE_KEYS)
 
 
 def _caching(st: _Run, docs) -> None:
@@ -1303,6 +1464,8 @@ def _caching(st: _Run, docs) -> None:
     for c in ctx.cookies:
         if not c.is_session_class or c.deletion or c.ignored or len(c.value) < 8 or not st.own(c.response):
             continue
+        if _self_contained_value(c.name, c.value):
+            continue                         # identical payloads are expected; the cache-hit tiers still apply
         sent = ";".join(c.response.request_headers.get_all("cookie"))
         if re.search(r"(?:^|[;\s])" + re.escape(c.name) + r"=", sent):
             continue
@@ -1351,8 +1514,15 @@ def _caching(st: _Run, docs) -> None:
         hit = cache_hit(r)
         if shared_cacheable(cc):
             key = "cache_shared_cookie" if r.headers.has("set-cookie") else "cache_shared"
-            st.emit("WEB315", r, ev, severity="medium", confidence="firm", group_value="shared",
-                    notes=[_note(key, value=cc_shown), why_note])
+            notes = [_note(key, value=cc_shown), why_note]
+            # ``public`` + ``Vary: Cookie`` (and nothing else sensitive) is the documented way to let a CDN cache the
+            # anonymous variant: caches that honour Vary key it per cookie, so this is only low (CDNs that ignore
+            # Vary would still share it)
+            vary_only = why == ["vary"]
+            if vary_only:
+                notes.append(_note("cache_vary_keyed"))
+            st.emit("WEB315", r, ev, severity="low" if vary_only else "medium", confidence="firm",
+                    group_value="shared-vary" if vary_only else "shared", notes=notes)
         elif hit and sess:
             st.emit("WEB315", r, ev, severity="medium", confidence="firm", group_value="cache-hit",
                     notes=[_note("cache_hit", value=hit, cookie=sess[0].name), why_note],
@@ -1371,16 +1541,17 @@ def _clear_site_data(st: _Run) -> None:
             continue
         joined = ", ".join(fields)
         ev = _ev(ctx, r, name="Clear-Site-Data", value=joined)
-        if not r.is_https:
+        if not _secure_context(r):
             st.emit("WEB317", r, ev, notes=[_note("g3_ignored", header="Clear-Site-Data")], group_value="http")
             continue
         types, valid = clear_site_data_values(fields)
         if not valid:
-            st.emit("WEB317", r, ev, notes=[_note("csd_unquoted", value=_short(joined))], group_value="unquoted")
+            st.emit("WEB317", r, ev, notes=[_note("csd_unquoted", value=_shown(joined))], group_value="unquoted")
             continue
         broad = [t for t in types if t in ("*", "cookies")]
-        path = urllib.parse.urlsplit(r.url).path
-        if broad and r.method == "GET" and not _LOGOUT_PATH.search(path):
+        parts = urllib.parse.urlsplit(r.url)
+        path, query = parts.path, parts.query     # /wp-login.php?action=logout
+        if broad and r.method == "GET" and not _LOGOUT_PATH.search(path) and not _LOGOUT_PATH.search(query):
             st.emit("WEB317", r, ev, notes=[_note("csd_broad", value=", ".join(f'"{t}"' for t in broad))],
                     group_value="broad:" + ",".join(broad))
 
@@ -1474,5 +1645,5 @@ def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
 __all__ = ["CHECKS", "run", "STR", "XfoVerdict", "xfo_verdict", "ReferrerVerdict", "referrer_verdict",
            "PermissionsPolicy", "parse_permissions_policy", "pp_problems", "parse_allow_attribute", "typo_of",
            "isolation_token", "corp_value", "parse_cache_control", "shared_cacheable", "cache_hit",
-           "clear_site_data_values", "observatory_slugs", "observatory_auto", "OBS_TESTS", "PP_FEATURES",
+           "clear_site_data_values", "observatory_slugs", "observatory_auto", "header_inventory", "OBS_TESTS", "PP_FEATURES",
            "POWERFUL_FEATURES", "REFERRER_POLICIES", "i18n_catalog"]

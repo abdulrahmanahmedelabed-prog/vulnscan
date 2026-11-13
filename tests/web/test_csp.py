@@ -966,3 +966,160 @@ def test_corpus_covers_the_c_csp_group():
         fired |= {r for r, want in c.labels.items() if want and r in OWN}
     # every scored CSP rule that the corpus labels positively has a case here (WEB215/WEB219 are info/paranoid)
     assert fired >= OWN - {"WEB215", "WEB219"}
+
+
+# ======================================================================================== adversarial review (WP4)
+
+def test_hostile_report_to_nesting_does_not_crash(make_page, make_ctx):
+    # json's C decoder raises RecursionError (not ValueError) on deep nesting; a header is up to 64 KB
+    ctx = _doc_ctx(make_page, make_ctx, [("Content-Security-Policy", "default-src 'self'; report-to g"),
+                                         ("Report-To", "[" * 60_000)])
+    issues = _run(ctx)
+    assert "WEB215" in {i.rule for i in issues}
+
+
+@pytest.mark.parametrize("make_headers,html", [
+    (lambda: [("Content-Security-Policy", ",".join("script-src 'self' https:" for _ in range(3000)))], None),
+    (lambda: [], "<html><head>" + "<meta http-equiv='Content-Security-Policy' content=\"script-src 'self' https:\">"
+     * 3000 + "</head><body></body></html>"),
+])
+def test_thousands_of_policies_stay_fast(make_page, make_ctx, make_headers, html):
+    # Observatory's merge is quadratic: 400 <meta> policies took 6 s and 3000 never finished before the cap
+    ctx = _doc_ctx(make_page, make_ctx, make_headers(), **({"html": html} if html else {}))
+    t = time.perf_counter()
+    issues = _run(ctx)
+    assert time.perf_counter() - t < 3.0
+    assert "WEB042" in {i.rule for i in issues}
+    assert ctx.observatory["content-security-policy"] == "csp-implemented-with-unsafe-inline"
+
+
+def test_observatory_parser_caps_hostile_sources():
+    pols = ["script-src " + " ".join(f"https://h{j}.e{i}.com/p/" for j in range(2000)) for i in range(40)]
+    t = time.perf_counter()
+    csp.obs_parse_csp(pols)
+    assert time.perf_counter() - t < 2.0
+
+
+def test_long_directive_keeps_late_keywords():
+    # real allowlists can run to hundreds of hosts; a keyword after the 400th source used to be dropped
+    hosts = " ".join(f"https://h{i}.example.com" for i in range(600))
+    hits = _eval(f"script-src {hosts} 'unsafe-inline'; object-src 'none'; base-uri 'none'")
+    assert "WEB040" in _rules(hits)
+
+
+def test_non_ascii_script_src_is_medium_when_it_disables_scripts():
+    (p,) = _pols("script-src ’self’; object-src 'none'")      # curly quotes pasted from a word processor
+    (e,) = [e for e in p.errors if e["code"] == "non_ascii"]
+    assert e["severity"] == "medium" and e.get("ineffective")
+    (p,) = _pols("default-src 'self'; script-src ’self’")    # default-src still restricts scripts
+    (e,) = [e for e in p.errors if e["code"] == "non_ascii"]
+    assert e["severity"] == "low"
+
+
+@pytest.mark.parametrize("source,fires", [
+    ("http://localhost:3000", False), ("http://127.0.0.1:8080", False), ("http://*.localhost", False),
+    ("http://cdn.example.com", True), ("http:", True), ("http://127.example.com", True),
+])
+def test_web211_loopback_sources_are_not_insecure(source, fires):
+    hits = _eval(f"default-src 'self'; connect-src 'self' {source}; object-src 'none'; base-uri 'none'")
+    assert ("WEB211" in _rules(hits)) is fires
+
+
+def test_web218_shows_the_restrictive_policy():
+    hits = _eval("default-src *", "script-src 'self' https://cdn.example.com")
+    assert _hit(hits, "WEB218").value == "'self' https://cdn.example.com"
+
+
+@pytest.mark.parametrize("html", [
+    "<html><head><title>x</title></head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'\">"
+    "<body><script>1</script></body></html>",
+    "<html><head></head>\n<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'\"><body></body></html>",
+])
+def test_meta_between_head_and_body_is_enforced(make_page, make_ctx, html):
+    # the HTML tree builder re-inserts a <meta> found "after head" into <head>, so browsers apply its policy
+    issues = _run(_doc_ctx(make_page, make_ctx, [], html=html))
+    assert "WEB-content-security-policy" not in {i.rule for i in issues}
+
+
+def test_web208_ignores_data_blocks(make_page, make_ctx):
+    meta = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'\">"
+    ld = f"<html><head><script type=\"application/ld+json\">{{}}</script>{meta}</head><body></body></html>"
+    assert "WEB208" not in {i.rule for i in _run(_doc_ctx(make_page, make_ctx, [], html=ld))}
+    mod = f"<html><head><script type=module src=/a.js></script>{meta}</head><body></body></html>"
+    assert "WEB208" in {i.rule for i in _run(_doc_ctx(make_page, make_ctx, [], html=mod))}
+
+
+def test_web217_meta_policy_counts_as_standard_csp(make_page, make_ctx):
+    html = ("<html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'\"></head>"
+            "<body></body></html>")
+    issues = _run(_doc_ctx(make_page, make_ctx, [("X-WebKit-CSP", "default-src 'self'")], html=html))
+    (i,) = [i for i in issues if i.rule == "WEB217"]
+    assert i.severity is None
+    assert not any("no standard" in en for en, _ar in i.notes)
+
+
+def test_paranoid_error_page_with_report_only_is_not_missing_csp(make_response, make_ctx):
+    err = make_response("https://example.test/x", status=404, body="<html><body><script>1</script></body></html>",
+                        headers=[("Content-Security-Policy-Report-Only", "default-src 'self'")],
+                        content_type="text/html", kind="error_page")
+    issues = _run(make_ctx(entry=err, sensitivity="paranoid"))
+    assert "WEB-content-security-policy" not in {i.rule for i in issues}
+
+
+def test_web212_evidence_names_the_targets_policy(make_response, make_ctx):
+    nonce = "N" * 60                                   # longer than the 40-character display cut
+    hdr = f"script-src 'nonce-{nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'none'"
+    a = make_response("https://example.test/", headers=[("Content-Security-Policy", "img-src 'self'"),
+                                                        ("Content-Security-Policy", hdr), ("Cache-Control", "no-store")],
+                      body="<html><body></body></html>", content_type="text/html", kind="document")
+    b = make_response("https://example.test/", headers=[("Content-Security-Policy", hdr)],
+                      body="<html><body></body></html>", content_type="text/html", kind="document", source="cors")
+    ctx = make_ctx(entry=a, cors=b)
+    (i,) = [i for i in _run(ctx) if i.rule == "WEB212"]
+    assert nonce in i.evidence.match["value"]
+
+
+def test_treat_as_public_address_is_a_known_directive():
+    assert _codes("default-src 'self'; treat-as-public-address") == []
+    assert _codes("default-src 'self'; treat-as-public-addres") == ["unknown_typo"]
+
+
+def test_random_policies_never_crash_or_leak_controls(make_response, make_ctx):
+    import random
+    rnd = random.Random(1101)
+    atoms = ["script-src", "default-src", "object-src", "base-uri", "form-action", "frame-ancestors", "report-to",
+             "'self'", "'none'", "'unsafe-inline'", "'unsafe-eval'", "'strict-dynamic'", "'nonce-", "'sha256-", "https:",
+             "http:", "*", "data:", "https://www.google.com", ";", ",", " ", "\r\n ", "'", "\x00", "\x1b[2J", "’",
+             "%E0", "[::1]", "127.0.0.1", ":99999999999999999999", "/p/", "sandbox", "x" * 300, "SCRIPT-SRC",
+             "script-src:", "plugin-types", "http://localhost:*"]
+    for _ in range(150):
+        pol = "".join(rnd.choice(atoms) + rnd.choice(["", " ", ";"]) for _ in range(rnd.randint(0, 25)))
+        meta = pol.replace('"', "")
+        body = (f"<html><head><script>1</script><meta http-equiv=Content-Security-Policy content=\"{meta}\"></head>"
+                "<body><form><input type=password></form></body></html>")
+        hdrs = [(rnd.choice(["Content-Security-Policy", "Content-Security-Policy-Report-Only", "X-WebKit-CSP",
+                             "Report-To", "Reporting-Endpoints", "Cache-Control"]), pol) for _ in range(3)]
+        r = make_response("https://example.test/", headers=hdrs, body=body, content_type="text/html", kind="document")
+        c = make_response("https://example.test/", headers=hdrs, body=body, content_type="text/html", kind="document",
+                          source="cors")
+        for i in _run(make_ctx(entry=r, cors=c, sensitivity=rnd.choice(["default", "paranoid"]))):
+            for en, ar in i.notes:
+                assert "\x1b" not in en + ar and "\x00" not in en + ar
+
+
+def test_folded_csp_header_is_an_info_syntax_note(make_page, make_ctx):
+    page = make_page("<html><body><script>1</script></body></html>",
+                     headers=[("Content-Security-Policy", "default-src 'self'; object-src 'none'; base-uri 'none'")],
+                     flags={"obs-fold", "obs-fold:content-security-policy"})
+    ctx = make_ctx(entry=page)
+    (i,) = [i for i in _run(ctx) if i.rule == "WEB201"]
+    assert i.severity == "info" and any("folded" in en for en, _ar in i.notes)
+
+
+def test_huge_port_does_not_crash():
+    # int() of more than 4300 digits raises ValueError on 3.11+; a port beyond 65535 is an invalid source
+    hits = _eval("script-src https://www.google.com:" + "9" * 5000 + "; object-src 'none'; base-uri 'none'")
+    assert "WEB209" not in _rules(hits)
+    assert "invalid_source" in _codes("script-src a.example:65536")
+    src = csp.classify_source("https://www.google.com:0443")
+    assert src.port == "443" and csp.source_matches_url(src, "https://www.google.com/x", "https://e.test")

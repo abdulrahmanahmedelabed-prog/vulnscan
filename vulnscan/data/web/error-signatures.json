@@ -17,6 +17,36 @@
      {
       "type": "contains",
       "pattern": "Werkzeug"
+     },
+     {
+      "type": "contains",
+      "pattern": "__debugger__"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "class=\"debugger\""
+     },
+     {
+      "type": "regex",
+      "pattern": "<title>[^<]{0,300}// Werkzeug Debugger\\s*</title>"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "critical",
+   "debug_marker": true
+  },
+  {
+   "id": "werkzeug-debugger-error",
+   "rule": "WEB605",
+   "platform": "Werkzeug",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "Werkzeug"
      }
     ],
     "any": [
@@ -38,7 +68,7 @@
      }
     ]
    },
-   "status": "any",
+   "status": "error",
    "severity": "critical",
    "debug_marker": true
   },
@@ -76,7 +106,7 @@
      }
     ]
    },
-   "status": "any",
+   "status": "error",
    "severity": "high",
    "debug_marker": true
   },
@@ -88,7 +118,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "<div[^>]+id=[\"']djDebug[\"']"
+      "pattern": "<div[^>]{1,300}id=[\"']djDebug[\"']"
      }
     ]
    },
@@ -108,15 +138,27 @@
      },
      {
       "type": "regex",
-      "pattern": "(?:facade|spatie)/(?:laravel-)?ignition\\b"
-     },
-     {
-      "type": "regex",
-      "pattern": "<script[^>]+id=[\"']ignition"
+      "pattern": "<script[^>]{1,300}id=[\"']ignition"
      }
     ]
    },
    "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "laravel-ignition-error",
+   "rule": "WEB605",
+   "platform": "Laravel",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "(?:facade|spatie)/(?:laravel-)?ignition\\b"
+     }
+    ]
+   },
+   "status": "error",
    "severity": "high",
    "debug_marker": true
   },
@@ -139,10 +181,42 @@
      {
       "type": "contains",
       "pattern": "id=\"plain-exception\""
-     },
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "php-whoops-error",
+   "rule": "WEB605",
+   "platform": "Whoops (PHP)",
+   "signature": {
+    "all": [
      {
       "type": "contains",
       "pattern": "Whoops\\Handler\\PrettyPageHandler"
+     }
+    ]
+   },
+   "status": "error",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "symfony-toolbar",
+   "rule": "WEB605",
+   "platform": "Symfony",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "<div[^>]{1,300}id=[\"']sfwdt"
+     },
+     {
+      "type": "regex",
+      "pattern": "<div[^>]{1,300}class=[\"']sf-toolbar"
      }
     ]
    },
@@ -172,20 +246,12 @@
       "pattern": "class=\"trace-line"
      },
      {
-      "type": "regex",
-      "pattern": "id=[\"']sfwdt"
-     },
-     {
-      "type": "contains",
-      "pattern": "sf-toolbar"
-     },
-     {
       "type": "contains",
       "pattern": "Symfony\\Component\\ErrorHandler"
      }
     ]
    },
-   "status": "any",
+   "status": "error",
    "severity": "high",
    "debug_marker": true
   },
@@ -227,7 +293,7 @@
      }
     ]
    },
-   "status": "any",
+   "status": "error",
    "severity": "high",
    "debug_marker": true
   },
@@ -247,7 +313,7 @@
      }
     ]
    },
-   "status": "any",
+   "status": "error",
    "severity": "high",
    "debug_marker": true
   },
@@ -273,7 +339,7 @@
      }
     ]
    },
-   "status": "any",
+   "status": "error",
    "severity": "high",
    "debug_marker": true
   },
@@ -638,19 +704,23 @@
      },
      {
       "type": "regex",
-      "pattern": "\\bmysqli?_(?:fetch_\\w+|num_rows|query|connect)\\(\\)"
+      "pattern": "\\bmysqli?_(?:fetch_\\w{1,40}|num_rows|query|connect|real_escape_string|select_db|result)\\(\\)(?::| expects)"
      },
      {
       "type": "regex",
-      "pattern": "\\bcom\\.mysql\\.(?:cj\\.)?jdbc\\.exceptions\\b"
+      "pattern": "\\bcom\\.mysql\\.(?:cj\\.)?jdbc\\.exceptions\\.[\\w.]{1,120}Exception:"
      },
      {
       "type": "regex",
-      "pattern": "\\bMySql(?:Client)?\\.?Data\\.MySqlClient\\.MySqlException\\b"
+      "pattern": "\\bMySql(?:Client)?\\.?Data\\.MySqlClient\\.MySqlException(?: \\(0x[0-9A-Fa-f]{1,8}\\))?:"
      },
      {
       "type": "regex",
       "pattern": "Warning:\\s+mysqli?_"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bmysqli_sql_exception:"
      }
     ]
    },
@@ -678,15 +748,15 @@
     "any": [
      {
       "type": "regex",
-      "pattern": "\\bPG::[A-Z]\\w{1,80}"
+      "pattern": "\\bPG::[A-Z]\\w{1,80}: "
      },
      {
       "type": "regex",
-      "pattern": "\\bpsycopg2?\\.(?:errors\\.)?[A-Z]\\w{1,80}"
+      "pattern": "\\bpsycopg2?\\.(?:errors\\.)?[A-Z]\\w{1,80}[:)]"
      },
      {
       "type": "regex",
-      "pattern": "\\borg\\.postgresql\\.util\\.PSQLException\\b"
+      "pattern": "\\borg\\.postgresql\\.util\\.PSQLException:"
      },
      {
       "type": "regex",
@@ -720,11 +790,11 @@
      },
      {
       "type": "regex",
-      "pattern": "\\bSystem\\.Data\\.SqlClient\\.SqlException\\b"
+      "pattern": "\\b(?:System|Microsoft)\\.Data\\.SqlClient\\.SqlException(?: \\(0x[0-9A-Fa-f]{1,8}\\))?:"
      },
      {
       "type": "regex",
-      "pattern": "\\bMicrosoft\\.Data\\.SqlClient\\.SqlException\\b"
+      "pattern": "\\[SqlException \\(0x[0-9A-Fa-f]{1,8}\\):"
      },
      {
       "type": "regex",
@@ -742,19 +812,19 @@
     "any": [
      {
       "type": "regex",
-      "pattern": "\\bSQLite3::\\w{1,80}"
+      "pattern": "\\bSQLite3::\\w{1,80}: "
      },
      {
       "type": "regex",
-      "pattern": "\\bsqlite3\\.(?:OperationalError|IntegrityError|ProgrammingError)\\b"
+      "pattern": "\\bsqlite3\\.(?:OperationalError|IntegrityError|ProgrammingError)[:)]"
      },
      {
       "type": "regex",
-      "pattern": "\\bSQLITE_ERROR\\b"
+      "pattern": "\\bSQLITE_ERROR\\b[:\\]]"
      },
      {
       "type": "regex",
-      "pattern": "\\bSQLiteException\\b"
+      "pattern": "\\bSQLiteException:"
      }
     ]
    },
@@ -768,15 +838,15 @@
     "any": [
      {
       "type": "regex",
-      "pattern": "\\bjava\\.sql\\.SQL\\w{0,80}Exception\\b"
+      "pattern": "\\bjava\\.sql\\.SQL\\w{0,80}Exception:"
      },
      {
       "type": "regex",
-      "pattern": "\\borg\\.hibernate\\.exception\\.\\w{1,80}Exception\\b"
+      "pattern": "\\borg\\.hibernate\\.exception\\.\\w{1,80}Exception:"
      },
      {
       "type": "regex",
-      "pattern": "\\borg\\.springframework\\.jdbc\\.BadSqlGrammarException\\b"
+      "pattern": "\\borg\\.springframework\\.jdbc\\.BadSqlGrammarException:"
      }
     ]
    },
@@ -808,7 +878,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "\\bsqlalchemy\\.exc\\.\\w{1,80}Error\\b"
+      "pattern": "\\bsqlalchemy\\.exc\\.\\w{1,80}Error[:)]"
      }
     ]
    },
@@ -981,7 +1051,7 @@
      },
      {
       "type": "regex",
-      "pattern": "<img[^>]+src=[\"'](?:/)?iisstart\\.png",
+      "pattern": "<img[^>]{1,300}src=[\"'](?:/)?iisstart\\.png",
       "flags": "i"
      }
     ]

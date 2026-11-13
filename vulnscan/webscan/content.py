@@ -479,20 +479,27 @@ def cdn_pin(url: str) -> list[CdnPin]:
             out.append(_judge("unpkg", spec[0], spec[1]))
     elif host == "esm.sh":
         rest = list(segs)
-        while rest and (re.match(r"^v\d+$", rest[0]) or rest[0] in ("stable", "gh")):
+        while rest and (re.match(r"^v\d+$", rest[0]) or rest[0] == "stable"):
             rest = rest[1:]
+        if rest and rest[0] == "gh":                # /gh/<owner>/<repo>[@ref]/… : the jsDelivr gh/ rule
+            if len(rest) >= 3 and rest[1] and rest[2]:
+                repo, at, ref = rest[2].partition("@")
+                out.append(_judge("esm.sh", f"{rest[1]}/{repo}", ref if at else None, gh=True))
+            return out
         if rest and rest[0].startswith("*"):
             rest[0] = rest[0][1:]
         spec = _npm_spec(rest)
         if spec and not spec[0].startswith("~"):
             out.append(_judge("esm.sh", spec[0], spec[1]))
     elif host == "cdn.skypack.dev":
-        rest = segs[1:] if segs and segs[0] == "-" else segs
+        hashed = bool(segs) and segs[0] in ("-", "pin")
+        rest = segs[1:] if hashed else segs
         spec = _npm_spec(rest)
         if spec:
             ver = spec[1]
-            if segs and segs[0] == "-" and ver:     # /-/pkg@1.2.3-AbCdEf/… : the hash suffix is part of the pin
+            if hashed and ver:      # /pin/pkg@v1.2.3-AbCdEf/… and /-/pkg@v1.2.3-AbCdEf/…: Skypack's immutable URLs
                 ver = ver.split("-", 1)[0]
+                ver = ver[1:] if ver[:1] in "vV" and ver[1:2].isdigit() else ver
             out.append(_judge("skypack", spec[0], ver))
     elif host == "ga.jspm.io":
         if segs and segs[0].startswith("npm:"):
@@ -523,6 +530,8 @@ EVERGREEN: tuple[tuple[str, str, str], ...] = (       # (host, path prefix, prod
     ("static.hotjar.com", "/", "Hotjar"),
     ("script.hotjar.com", "/", "Hotjar"),
     ("connect.facebook.net", "/", "Facebook SDK"),
+    # not a script, but the same situation: the CSS is generated per browser (User-Agent), so no hash can match
+    ("fonts.googleapis.com", "/", "Google Fonts CSS"),
 )
 
 
@@ -578,9 +587,11 @@ class Item:
 
 
 _CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
-_CSS_IMPORT = re.compile(r"""@import\s+(?:url\(\s*(?P<q1>['"]?)(?P<u1>[^'")\s]+)(?P=q1)\s*\)|(?P<q2>['"])(?P<u2>[^'"]+)(?P=q2))""",
+# ``(`` is excluded from the URL characters: an unterminated ``url(`` must stop at the next ``url(``, otherwise every
+# ``url(`` of a hostile stylesheet rescans the rest of the text (quadratic: 1.7 MB of ``url(url(…`` took hours).
+_CSS_IMPORT = re.compile(r"""@import\s+(?:url\(\s*(?P<q1>['"]?)(?P<u1>[^'"()\s]+)(?P=q1)\s*\)|(?P<q2>['"])(?P<u2>[^'"]+)(?P=q2))""",
                          re.I)
-_CSS_URL = re.compile(r"""url\(\s*(?P<q>['"]?)(?P<u>[^'")\s]+)(?P=q)\s*\)""", re.I)
+_CSS_URL = re.compile(r"""url\(\s*(?P<q>['"]?)(?P<u>[^'"()\s]+)(?P=q)\s*\)""", re.I)
 
 
 def css_references(css: str) -> list[tuple[str, bool, int]]:
@@ -749,6 +760,7 @@ class _Run:
         self.pending_mixed: dict[int, tuple[Response, ParsedHTML, list[Item]]] = {}
         self._items: dict[int, list[Item]] = {}
         self._links: dict[int, list[tuple[Element, str]]] = {}
+        self.ref_sites: set[str] | None = None
         if ctx.entry is not None and _kind(ctx.entry) in ("waf_challenge", "rate_limited"):
             self.blocked = "waf" if _kind(ctx.entry) == "waf_challenge" else "rate_limited"
         seen: set[int] = set()
@@ -798,6 +810,10 @@ class _Run:
         for secret in secrets:                      # §3.6: secrets in evidence keep only their first 4 + last 2
             if secret and len(secret) >= 8 and excerpt:
                 excerpt = excerpt.replace(secret, redact_secret(secret))
+        if secrets and excerpt:
+            # the excerpt is raw markup: the value may be written percent-, plus- or entity-encoded there
+            # ("a%40b.com", "Secr3t+Passw0rd"), so every long URL parameter value in it is reduced as well
+            excerpt = _EXCERPT_PARAM.sub(lambda m: m.group(1) + redact_secret(m.group(2)), excerpt)
         return Evidence.for_response(r, where=where, name=name, value=strip_controls(value), offset=offset,
                                      excerpt=strip_controls(excerpt or ""), now=self.ctx.now)
 
@@ -875,6 +891,8 @@ def run(ctx: ScanContext) -> list[Issue]:
     """All §2.6 WEB050–WEB519 checks over the context (pure apart from ctx.observatory / inventory / coverage)."""
     _SITE_CACHE.clear()
     _HOST_CACHE.clear()
+    _SCRIPT_WORDS.clear()
+    _FORMS_BY_ELEMENT.clear()
     st = _Run(ctx)
     for r, doc in st.docs:
         items = st.items(doc)
@@ -1016,11 +1034,23 @@ def _subresource_mixed(st: _Run) -> None:
 
 # ----------------------------------------------------------------------------------------------- WEB051 / WEB052 / WEB504
 
+_FORMS_BY_ELEMENT: dict[int, tuple[ParsedHTML, dict]] = {}
+
+
+def _form_of(doc: ParsedHTML, form_index: int):
+    """The :class:`Form` whose ``<form>`` element is ``form_index`` (indexed once per document: a linear search per
+    form or per file input was quadratic on pages with thousands of forms)."""
+    cached = _FORMS_BY_ELEMENT.get(id(doc))
+    if cached is None or cached[0] is not doc:
+        if len(_FORMS_BY_ELEMENT) > 64:
+            _FORMS_BY_ELEMENT.clear()
+        cached = _FORMS_BY_ELEMENT[id(doc)] = (doc, {f.element: f for f in doc.forms})
+    return cached[1].get(form_index)
+
+
 def _form_has_password(doc: ParsedHTML, form_index: int) -> bool:
-    for f in doc.forms:
-        if f.element == form_index:
-            return bool(_password_inputs(doc, f))
-    return False
+    f = _form_of(doc, form_index)
+    return f is not None and bool(_password_inputs(doc, f))
 
 
 def _forms_transport(st: _Run, r: Response, doc: ParsedHTML, forms: list[tuple[int, Item]]) -> None:
@@ -1139,7 +1169,8 @@ def _sri(st: _Run, r: Response, doc: ParsedHTML) -> None:
         enforced: list[str] = []
         for el, _raw, url in els:
             product = evergreen_product(url)
-            dest = "script" if el.tag == "script" or (el.attrs.get("as") or "").lower() == "script" else "style"
+            dest = ("script" if el.tag == "script" or "modulepreload" in el.tokens("rel")
+                    or (el.attrs.get("as") or "").strip().lower() == "script" else "style")
             if ip.valid and dest in ip.destinations:
                 enforced.append(url)
                 sevs.append("info")
@@ -1176,7 +1207,8 @@ def _sri_verify(st: _Run) -> None:
     for r, doc in st.docs:
         for el, _raw, url in _sri_elements(doc):
             meta = parse_sri(el.attrs.get("integrity"))
-            if meta.has_metadata and _scheme(url) in ("http", "https"):
+            # a strongest-algorithm digest that does not even decode is WEB501's finding, not a changed file
+            if meta.has_metadata and _scheme(url) in ("http", "https") and any(t.well_formed for t in meta.strongest()):
                 wanted.setdefault(_defrag(url), []).append((r, el, meta, url))
     if not wanted:
         return
@@ -1294,7 +1326,10 @@ def _compromise(st: _Run, r: Response, doc: ParsedHTML) -> None:
             if m:
                 hits.append((sid, kind, _why("script_url"), el.offset, url))
     for sid, kind, rx in deface:
-        if doc.title and rx.search(doc.title) and rx.search(doc.visible_text):
+        # the phrase must open the title ("~ Hacked by X ~"): a headline such as "Site hacked by group, says report"
+        # on a news page carries it in the middle and is not a defacement
+        m = rx.search(doc.title) if doc.title else None
+        if m and not any(ch.isalnum() for ch in doc.title[:m.start()]) and rx.search(doc.visible_text):
             hits.append((sid, kind, _why("title_text"), None, doc.title))
     seen: set[str] = set()
     for sid, kind, where, offset, matched in hits:
@@ -1351,28 +1386,50 @@ def _password_fields(st: _Run, r: Response, doc: ParsedHTML) -> None:
             return
 
 
+_SCRIPT_WORD = re.compile(r"[\w$-]+")
+_SCRIPT_WORDS: dict[int, tuple[ParsedHTML, str, frozenset[str]]] = {}
+
+
 def _script_mentions(doc: ParsedHTML, name: str) -> bool:
+    """``name`` appears as a whole word (not inside a longer ``[\\w$-]`` run) in a live inline script. The words of
+    the scripts are collected once per document: one regex scan per form made a page with thousands of forms and a
+    large inline script take minutes."""
     if not name or len(name) < 2:
         return False
-    rx = re.compile(r"(?<![\w$-])" + re.escape(name) + r"(?![\w$-])")
-    return any(sc.live and rx.search(sc.text) for sc in doc.inline_scripts)
+    cached = _SCRIPT_WORDS.get(id(doc))
+    if cached is None or cached[0] is not doc:
+        text = "\n".join(sc.text for sc in doc.inline_scripts if sc.live)
+        if len(_SCRIPT_WORDS) > 64:
+            _SCRIPT_WORDS.clear()
+        cached = _SCRIPT_WORDS[id(doc)] = (doc, text, frozenset(_SCRIPT_WORD.findall(text)))
+    if _SCRIPT_WORD.fullmatch(name):
+        return name in cached[2]
+    if name not in cached[1]:                      # names with other characters (rare): substring prefilter first
+        return False
+    return bool(re.search(r"(?<![\w$-])" + re.escape(name) + r"(?![\w$-])", cached[1]))
 
 
 def _login_get(st: _Run, r: Response, doc: ParsedHTML) -> None:
     st.seen("WEB509", r.host)
+    done: set[tuple[str, str]] = set()          # one issue per (destination, variant) and page
     for form in doc.forms:
         if not form.live or not _password_inputs(doc, form):
             continue
         el = doc.elements[form.element]
         method = form.method
-        submitters = [doc.elements[i] for i in form.inputs if doc.elements[i].tag in ("button", "input")
-                      and (doc.elements[i].attrs.get("type") or "submit").strip().lower() in ("submit", "image")]
+        # submit buttons: <button> defaults to type=submit, <input> to type=text (never a submitter)
+        submitters = [c for c in (doc.elements[i] for i in form.inputs) if c.live and (
+            (c.tag == "button" and (c.attrs.get("type") or "submit").strip().lower() == "submit")
+            or (c.tag == "input" and (c.attrs.get("type") or "").strip().lower() in ("submit", "image")))]
         if any((s.attrs.get("formmethod") or "").strip().lower() == "post" for s in submitters):
             continue
         if method in ("post", "dialog"):
             continue
         gv = _defrag(form.action).split("?", 1)[0]
-        if method:                                   # explicit get (or an invalid value: the browser uses GET)
+        if method:
+            if (gv, "explicit") in done:
+                continue
+            done.add((gv, "explicit"))                                   # explicit get (or an invalid value: the browser uses GET)
             st.emit("WEB509", r, st.evidence(r, name="form[method]", value=method, offset=el.offset),
                     severity="high", confidence="certain", group_value=gv,
                     notes=[_note("login_get_explicit", value=method)])
@@ -1386,6 +1443,9 @@ def _login_get(st: _Run, r: Response, doc: ParsedHTML) -> None:
             why.append(_why("script_ref"))
         if "app" in r.roles:
             why.append(_why("app"))
+        if (gv, "js" if why else "default") in done:
+            continue
+        done.add((gv, "js" if why else "default"))
         if why:
             reason = (", ".join(w[0] for w in why), "، ".join(w[1] for w in why))
             st.emit("WEB509", r, st.evidence(r, name="form", value=form.action, offset=el.offset), severity="low",
@@ -1402,6 +1462,21 @@ SESSION_PARAMS = frozenset({
     "asp.net_sessionid", "aspsessionid", "siteserver", "cfid", "cftoken", "jsessionid", "phpsessid", "sessid", "sid",
     "viewstate", "zenid", "sessionid", "session_id", "session", "laravel_session", "ci_session", "connect.sid",
     "_session_id", "phpsessionid", "sess_id", "s_id", "osessionid", "wt.sessionid"})
+# generic names that sites also use for other things (a conference "session", a numeric "sid" = site id): their value
+# must look like a token, not a slug such as "keynote-2024-day1" or a short number
+_GENERIC_SESSION_PARAMS = frozenset({"session", "sid", "sessionid", "session_id", "sessid", "sess_id", "s_id"})
+_TOKEN_VALUE = re.compile(r"^[A-Za-z0-9+/=.]{9,}$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def _session_value(name: str, value: str) -> bool:
+    """A session-id parameter value that is worth reporting (ZAP: longer than 8 characters)."""
+    if len(value) <= 8 or _TEMPLATE.search(value):
+        return False
+    if name in _GENERIC_SESSION_PARAMS:
+        return bool(_TOKEN_VALUE.match(value)) and not (value.isdigit() and len(value) < 16)
+    return True
+
+
 _PATH_SESSION = re.compile(r";(jsessionid|phpsessid|sessionid|sid)=([0-9A-Za-z._-]{8,})", re.I)
 _ASPNET_COOKIELESS = re.compile(r"/\(S\(([a-z0-9]{24})\)\)/", re.I)
 SENSITIVE_PARAMS = frozenset({"password", "passwd", "pwd", "token", "api_key", "apikey", "secret", "access_token",
@@ -1424,9 +1499,17 @@ def luhn_ok(digits: str) -> bool:
     return total % 10 == 0
 
 
+# issuer prefixes and lengths of the major card schemes (Visa, Mastercard incl. 2-series, Amex, Diners, JCB,
+# Discover/UnionPay/RuPay 6x, Maestro 50/56-69, Mir 2200-2204). A bare Luhn check flags one numeric id in ten, e.g.
+# millisecond timestamps (13 digits starting with 1) used as cache-busters in links.
+_CARD_IIN = re.compile(r"^(?:4\d{12}(?:\d{3}){0,2}|5[1-5]\d{14}|2(?:22[1-9]|2[3-9]\d|[3-6]\d\d|7[01]\d|720)\d{12}"
+                       r"|220[0-4]\d{12}|3[47]\d{13}|3(?:0[0-5]|[689]\d)\d{11,16}|35(?:2[89]|[3-8]\d)\d{12,15}"
+                       r"|6\d{15,18}|5[06-9]\d{11,17})$")
+
+
 def _card(value: str) -> bool:
     d = re.sub(r"[ -]", "", value)
-    return d.isdigit() and 13 <= len(d) <= 19 and len(set(d)) > 1 and luhn_ok(d)
+    return d.isdigit() and 13 <= len(d) <= 19 and len(set(d)) > 1 and bool(_CARD_IIN.match(d)) and luhn_ok(d)
 
 
 def _nontrivial(value: str) -> bool:
@@ -1477,7 +1560,7 @@ def _url_params(st: _Run, r: Response, doc: ParsedHTML) -> None:
         # WEB510: session ids in the URL (query, ;jsessionid= path parameters, ASP.NET cookieless sessions)
         hits: list[tuple[str, str]] = []
         for name, value in _query_pairs(url):
-            if name.strip().lower() in SESSION_PARAMS and len(value) > 8 and not _TEMPLATE.search(value):
+            if name.strip().lower() in SESSION_PARAMS and _session_value(name.strip().lower(), value):
                 hits.append((name, value))
         if ";" in url:
             for m in _PATH_SESSION.finditer(url):
@@ -1521,6 +1604,9 @@ def _url_params(st: _Run, r: Response, doc: ParsedHTML) -> None:
                         group_value=low, notes=[_note("redirect_param", name=name, value=_short(v, 100), url=url)])
 
 
+_EXCERPT_PARAM = re.compile(r"((?:[?&;]|&amp;)[^=&\"'\s<>#]{1,64}=)([^&\"'\s<>#]{8,})")
+
+
 def _redact_url(url: str) -> str:
     """The URL with every query value and ;param value of 8+ characters reduced to first 4 + last 2 (§3.6)."""
     def red(v: str) -> str:
@@ -1543,10 +1629,8 @@ def _upload(st: _Run, r: Response, doc: ParsedHTML) -> None:
     for el in doc.find_all("input"):
         if (el.attrs.get("type") or "").strip().lower() != "file":
             continue
-        action = r.url
-        for f in doc.forms:
-            if f.element == el.form:
-                action = f.action
+        f = _form_of(doc, el.form) if el.form >= 0 else None
+        action = f.action if f is not None else r.url
         key = _defrag(action).split("?", 1)[0]
         if key in done:
             continue
@@ -1555,31 +1639,52 @@ def _upload(st: _Run, r: Response, doc: ParsedHTML) -> None:
                 group_value=key, notes=[_note("upload", name=el.attrs.get("name") or "-", url=action)])
 
 
-_QUIRKS_PUBLIC = ("-//w3c//dtd html 4.01 transitional//", "-//w3c//dtd html 4.01 frameset//",
-                  "-//w3c//dtd html 4.0 transitional//", "-//w3c//dtd html 3.2", "-//ietf//dtd html")
+# HTML §13.2.6.4.1 ("initial" insertion mode): public identifiers that set quirks mode (prefixes, lower-cased)
+_QUIRKS_PUBLIC_PREFIXES = (
+    "+//silmaril//dtd html pro v0r11 19970101//", "-//as//dtd html 3.0 aswedit + extensions//",
+    "-//advasoft ltd//dtd html 3.0 aswedit + extensions//", "-//ietf//dtd html", "-//metrius//dtd metrius presentational//",
+    "-//microsoft//dtd internet explorer 2.0 ", "-//microsoft//dtd internet explorer 3.0 ",
+    "-//netscape comm. corp.//dtd html//", "-//netscape comm. corp.//dtd strict html//",
+    "-//o'reilly and associates//dtd html 2.0//", "-//o'reilly and associates//dtd html extended 1.0//",
+    "-//o'reilly and associates//dtd html extended relaxed 1.0//", "-//sq//dtd html 2.0 hotmetal + extensions//",
+    "-//softquad software//dtd hotmetal pro 6.0::19990601::extensions to html 4.0//",
+    "-//softquad//dtd hotmetal pro 4.0::19971010::extensions to html 4.0//", "-//spyglass//dtd html 2.0 extended//",
+    "-//sun microsystems corp.//dtd hotjava html//", "-//sun microsystems corp.//dtd hotjava strict html//",
+    "-//w3c//dtd html 3 1995-03-24//", "-//w3c//dtd html 3.2 draft//", "-//w3c//dtd html 3.2 final//",
+    "-//w3c//dtd html 3.2//", "-//w3c//dtd html 3.2s draft//", "-//w3c//dtd html 4.0 frameset//",
+    "-//w3c//dtd html 4.0 transitional//", "-//w3c//dtd html experimental 19960712//",
+    "-//w3c//dtd html experimental 970421//", "-//w3c//dtd w3 html//", "-//w3o//dtd w3 html 3.0//",
+    "-//webtechs//dtd mozilla html 2.0//", "-//webtechs//dtd mozilla html//")
+_QUIRKS_PUBLIC_EXACT = ("-//w3o//dtd w3 html strict 3.0//en//", "-/w3c/dtd html 4.0 transitional/en", "html")
+_QUIRKS_IF_NO_SYSTEM = ("-//w3c//dtd html 4.01 frameset//", "-//w3c//dtd html 4.01 transitional//")
+_QUIRKS_SYSTEM = "http://www.ibm.com/data/dtd/v11/ibmxhtml1-transitional.dtd"
+_DOCTYPE = re.compile(r"""^(?P<name>\S+)(?:\s+public\s*(?P<q>["'])(?P<pub>.*?)(?P=q)(?:\s*(?P<q2>["'])(?P<sys>.*?)(?P=q2))?"""
+                      r"""|\s+system\s*(?P<q3>["'])(?P<sys2>.*?)(?P=q3))?""", re.S)
 
 
 def quirks_mode(doctype: str | None) -> bool:
-    """No doctype, a non-html doctype, or a legacy public id that triggers quirks mode (HTML §13.2.6.4.1, subset)."""
+    """No doctype, a doctype whose name is not ``html``, or a legacy public/system identifier that triggers quirks
+    mode (HTML §13.2.6.4.1). ``doctype`` is what follows ``<!DOCTYPE``, lower-cased (htmlparse)."""
     if doctype is None:
         return True
     d = doctype.strip().lower()
-    if not d.startswith("html"):
+    m = _DOCTYPE.match(d)
+    if m is None or m.group("name") != "html":
         return True
-    if "public" in d:
-        m = re.search(r'public\s+["\']([^"\']*)["\'](\s+["\'])?', d)
-        if m:
-            pub = m.group(1)
-            has_system = bool(m.group(2))
-            if pub.startswith("-//w3c//dtd html 4.01 transitional//") or pub.startswith("-//w3c//dtd html 4.01 frameset//"):
-                return not has_system
-            return any(pub.startswith(p) for p in _QUIRKS_PUBLIC[2:])
-    return False
+    pub = m.group("pub")
+    system = m.group("sys") if m.group("sys") is not None else m.group("sys2")
+    if system == _QUIRKS_SYSTEM:
+        return True
+    if pub is None:
+        return False
+    if pub in _QUIRKS_PUBLIC_EXACT or pub.startswith(_QUIRKS_PUBLIC_PREFIXES):
+        return True
+    return system is None and pub.startswith(_QUIRKS_IF_NO_SYSTEM)
 
 
 def _quirks(st: _Run, r: Response, doc: ParsedHTML) -> None:
     st.seen("WEB514", r.host)
-    if not quirks_mode(doc.doctype):
+    if r.essence == "application/xhtml+xml" or not quirks_mode(doc.doctype):    # XML documents are never in quirks
         return
     for el in doc.links("stylesheet"):
         href = (el.attrs.get("href") or "").strip()
@@ -1647,16 +1752,19 @@ def _csrf(st: _Run, r: Response, doc: ParsedHTML) -> None:
 
 # ----------------------------------------------------------------------------------------------- WEB518 / WEB519
 
-def _referenced_sites(st: _Run, exclude: Element | None = None) -> set[str]:
-    out: set[str] = set()
-    for _r, doc in st.docs:
-        for i in st.items(doc):
-            if i.element is not exclude and _host(i.url):
-                out.add(_site(_host(i.url)))
-        for _el, u in st.links(doc):
-            if _host(u):
-                out.add(_site(_host(u)))
-    return out
+def _referenced_sites(st: _Run) -> set[str]:
+    """Sites referenced anywhere on the scanned pages (subresources and links), computed once per run."""
+    if st.ref_sites is None:
+        out: set[str] = set()
+        for _r, doc in st.docs:
+            for i in st.items(doc):
+                if _host(i.url):
+                    out.add(_site(_host(i.url)))
+            for _el, u in st.links(doc):
+                if _host(u):
+                    out.add(_site(_host(u)))
+        st.ref_sites = out
+    return st.ref_sites
 
 
 def _cross_site_password(st: _Run, r: Response, doc: ParsedHTML, forms: list[tuple[int, Item]]) -> None:
@@ -1718,7 +1826,16 @@ KNOWN_REGISTERED = frozenset({
     "cloudflare.com", "jsdelivr.net", "unpkg.com", "googleapis.com", "gstatic.com", "google.com", "jquery.com",
     "googletagmanager.com", "google-analytics.com", "bootstrapcdn.com", "facebook.net", "stripe.com",
     "cloudflareinsights.com", "youtube.com", "twitter.com", "aspnetcdn.com", "microsoft.com", "amazonaws.com",
-    "recaptcha.net", "fontawesome.com", "paypal.com", "hotjar.com", "intercom.io", "akamaihd.net"})
+    "recaptcha.net", "fontawesome.com", "paypal.com", "hotjar.com", "intercom.io", "akamaihd.net",
+    # trackers, ads and consent managers: DNS filters (corporate resolvers, NextDNS/AdGuard in NXDOMAIN mode) answer
+    # "name does not exist" for them, which would otherwise read as "unregistered domain, anyone can take it" (A)
+    "clarity.ms", "hs-scripts.com", "hs-analytics.net", "hsforms.net", "hubspot.com", "segment.com", "licdn.com",
+    "linkedin.com", "bing.com", "ads-twitter.com", "doubleclick.net", "googlesyndication.com", "googleadservices.com",
+    "taboola.com", "outbrain.com", "criteo.com", "criteo.net", "mxpnl.com", "mixpanel.com", "amplitude.com",
+    "newrelic.com", "nr-data.net", "sentry-cdn.com", "cookielaw.org", "onetrust.com", "cookiebot.com", "tiktok.com",
+    "pinimg.com", "yandex.ru", "quantserve.com", "scorecardresearch.com", "adroll.com", "zdassets.com", "tawk.to",
+    "optimizely.com", "fullstory.com", "mouseflow.com", "crazyegg.com", "facebook.com", "adnxs.com",
+    "amazon-adsystem.com", "addthis.com", "sharethis.com", "disqus.com", "typekit.net"})
 _STORAGE_HOST = re.compile(r"(?:^|\.)(?:s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com(?:\.cn)?|storage\.googleapis\.com"
                            r"|blob\.core\.windows\.net|digitaloceanspaces\.com)$")
 _BUCKET_GONE = re.compile(r"<Code>\s*NoSuchBucket\s*</Code>|ContainerNotFound|The specified container does not exist",
@@ -1844,8 +1961,9 @@ def _dangling(st: _Run) -> None:
         if rec.status == "not_tested":
             st.state("WEB517", "not_tested", rec.reason if rec.reason in REASONS else "not_run", host)
             continue
-        if rec.status == "tempfail" or (rec.status == "nxdomain" and rec.registrable_status in ("", "tempfail",
-                                                                                                "not_tested")):
+        intranet = _intranet_name(host)
+        if rec.status == "tempfail" or (rec.status == "nxdomain" and not intranet
+                                        and rec.registrable_status in ("", "tempfail", "not_tested")):
             st.state("WEB517", "not_tested", "network", host)
             continue
         judged = True
@@ -1859,7 +1977,7 @@ def _dangling(st: _Run) -> None:
                                    excerpt=strip_controls(page.text()[item.offset: item.offset + 200])
                                    if item.offset is not None else "", now=ctx.now)
         domain = rec.registrable or psl.registrable_domain(host) or host
-        if _intranet_name(host):
+        if intranet:
             if _public_name(ctx.target_host):
                 st.emit("WEB517", page, ev, severity="info", confidence="firm", group_value=host,
                         notes=[_note("dns_intranet", host=host), ref_list])

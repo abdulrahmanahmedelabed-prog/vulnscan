@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kashif web scanner: what it sends and why — كاشِف</title>
+<meta name="description" content="You saw the User-Agent Kashif/1.x in your logs. What the Kashif passive web scanner checks, every request it can send, why it is only run by a site's owner or with authorization, and how to contact the project.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/scanner.html">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<style>
+:root{color-scheme:dark light;--bg:#070b14;--panel:#0e1524;--line:#2a3956;--text:#e8eef6;--muted:#a3b1c4;--accent:#67e8f9;--btn:#22d3ee;--btn-fg:#03141a}
+@media (prefers-color-scheme: light){:root{--bg:#fff;--panel:#f5f7fb;--line:#d0d8e4;--text:#0b1220;--muted:#3f4a5c;--accent:#0e7490;--btn:#0e7490;--btn-fg:#fff}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,"IBM Plex Sans Arabic",Tahoma,sans-serif}
+header,main,footer{max-width:900px;margin:0 auto;padding:0 20px}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:22px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+header a.home{display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none;font-weight:700}
+header img{width:32px;height:32px}
+nav a{color:var(--accent);margin-inline-start:14px}
+h1{font-size:30px;line-height:1.25;margin:28px 0 10px;letter-spacing:-.01em}
+h2{font-size:21px;margin:32px 0 8px}
+p,li{color:var(--text)}
+.lead{color:var(--muted);font-size:17px}
+a{color:var(--accent)}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+code{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--accent);overflow-wrap:anywhere}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;direction:ltr;text-align:left}
+pre code{color:var(--text)}
+.ua{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:18px 0}
+.table{overflow-x:auto;margin:10px 0}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{border:1px solid var(--line);padding:8px 10px;vertical-align:top;text-align:start}
+th{background:var(--panel)}
+.note{border-inline-start:3px solid var(--accent);padding:4px 14px;color:var(--muted)}
+section.ar{direction:rtl;margin-top:48px;padding-top:12px;border-top:2px solid var(--line)}
+section.ar code,section.ar .ltr{direction:ltr;unicode-bidi:isolate}
+footer{color:var(--muted);font-size:14px;margin-top:48px;padding-top:18px;padding-bottom:40px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header>
+  <a class="home" href="./"><img src="logo.svg" alt="" width="32" height="32"><span>Kashif · كاشِف</span></a>
+  <nav><a href="#ar" hreflang="ar" lang="ar">العربية</a></nav>
+</header>
+<main>
+<section id="en" lang="en">
+  <h1>The Kashif passive web scanner</h1>
+  <p class="lead">If your server logs show a visitor identifying itself as below, someone ran <strong>Kashif</strong>, a
+  free, open-source security scanner, against your site. This page explains what it checks, every request it can send,
+  and who is allowed to run it.</p>
+  <div class="ua"><code>User-Agent: Kashif/1.x.y (+https://abdulrahmanahmedelabed-prog.github.io/vulnscan/scanner.html)</code></div>
+
+  <h2>Who runs it</h2>
+  <p>Kashif is a program that people run on their own computers. The Kashif project operates no scanning service, does
+  not choose targets and never receives scan results: the program has no telemetry, and the report stays with the person
+  who ran it. Kashif refuses to scan a website unless that person confirms they own it or are authorized to test it
+  (<code>--authorized</code> on the command line, or the confirmation box in its interface). Scanning a site without
+  permission may be illegal where you or the operator live.</p>
+
+  <h2>What it checks</h2>
+  <p>It is a <strong>passive</strong> scanner: it reads what any browser would receive and reports configuration
+  weaknesses, for example missing or invalid security headers (HSTS, Content-Security-Policy, X-Frame-Options), cookie
+  attributes, CORS answers, mixed content, outdated JavaScript libraries, information disclosed in headers or error
+  pages, and the TLS protocol and certificate configuration. The owner gets copy-paste fixes for their server.</p>
+
+  <h2>Every request it can send</h2>
+  <p>Only <code>GET</code> requests, plus TLS handshakes. The budget is per scan: <strong>minimal</strong> profile at most
+  10 requests (the page and its redirects), <strong>standard</strong> (the default) at most 45 (typically 15–20),
+  <strong>deep</strong> at most 150. Redirect hops count.</p>
+  <div class="table"><table>
+    <thead><tr><th>Request</th><th>When</th><th>Limit</th></tr></thead>
+    <tbody>
+      <tr><td>The address the operator entered, following redirects like a browser</td><td>always</td><td>≤ 10 hops</td></tr>
+      <tr><td>The same address over the other scheme (<code>http://</code> ↔ <code>https://</code>), to check the HTTPS redirect</td><td>standard and deep</td><td>1 chain, ≤ 10 hops</td></tr>
+      <tr><td>The same page once more, without cookies, with the header <code>Origin: https://kashif-cors-check.invalid</code> (CORS check)</td><td>standard and deep</td><td>1</td></tr>
+      <tr><td>Well-known public files: <code>/robots.txt</code>, <code>/.well-known/security.txt</code> (<code>/security.txt</code> only if that is missing), the icon the page declares or <code>/favicon.ico</code>, <code>/sitemap.xml</code> (only when crawling)</td><td>standard and deep</td><td>≤ 5</td></tr>
+      <tr><td>Scripts and stylesheets the page itself loads (as a browser does)</td><td>standard: same site; deep: also third-party</td><td>≤ 15 same-site, ≤ 10 third-party</td></tr>
+      <tr><td>Source maps a fetched script or stylesheet names; same-site JPEG images (first 128 KB, to check for GPS metadata)</td><td>deep (images also when crawling)</td><td>≤ 5 maps, ≤ 10 images</td></tr>
+      <tr><td>Links of the same origin (<code>&lt;a href&gt;</code>), breadth-first</td><td>only when the operator enables crawling</td><td>20 pages by default, depth 2</td></tr>
+      <tr><td>A fixed list of files that are often exposed by accident (for example <code>/.git/HEAD</code>, <code>/.env</code>, backups), and random paths named <code>/kashif-404-&lt;16 hex digits&gt;</code> to learn what your “not found” page looks like</td><td>deep only (opt-in)</td><td>≤ 70 paths; ≤ 5 random paths per host, ≤ 10 in total</td></tr>
+      <tr><td>TLS handshakes to the site's HTTPS port: one verified, one unverified and short version/cipher probes that read the server's reply and close</td><td>HTTPS sites</td><td>≈ 14 per address (deep ≈ 60), ≤ 5 per second</td></tr>
+      <tr><td>Normal DNS lookups of the site and of the hosts its scripts, styles, frames and forms reference</td><td>always (referenced hosts: standard and deep)</td><td>no packet goes to your servers</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>How it behaves</h2>
+  <ul>
+    <li><strong>One request at a time per host</strong>, with a pause of at least 0.5 s by default (never below 0.2 s). A
+    <code>Crawl-delay</code> in robots.txt raises the pause (up to 10 s).</li>
+    <li><strong>Backs off:</strong> after a <code>429</code> or <code>503</code> it waits for <code>Retry-After</code>
+    (at most 60 s) once; a second one stops the scan of that host. Repeated connection errors also stop it.</li>
+    <li><strong>robots.txt:</strong> crawling obeys <code>Disallow</code> for <code>Kashif</code> or <code>*</code> by
+    default. The well-known files and the deep list above are fetched regardless, because they are the owner's own
+    security check, not a crawl; the operator can also choose to ignore robots.txt for their own site.</li>
+    <li><strong>Honest identification:</strong> it always sends the User-Agent above and only these request headers:
+    <code>User-Agent</code>, <code>Accept</code>, <code>Accept-Encoding: gzip, deflate</code>,
+    <code>Accept-Language: en</code>, and <code>Origin</code> on the single CORS request. Cookies your site sets are kept
+    in memory for that scan only, never written to disk and never sent to another host.</li>
+    <li><strong>Limits:</strong> per-response size and time caps, 50 MB and 10 minutes per scan by default.</li>
+  </ul>
+
+  <h2>What it never does</h2>
+  <ul>
+    <li>No attack payloads, parameter fuzzing, path guessing beyond the fixed deep list, password guessing or form submission.</li>
+    <li>No methods other than <code>GET</code> (no <code>POST</code>, <code>OPTIONS</code>, <code>TRACE</code>, <code>PUT</code>), and no crafted <code>Origin</code> values.</li>
+    <li>No WAF evasion, User-Agent rotation or spoofed headers such as <code>X-Forwarded-For</code>.</li>
+    <li>No malformed TLS records (Heartbleed, ROBOT, padding oracles), no renegotiation tests, no port scanning.</li>
+    <li>No requests that make a server do expensive or state-changing work (heap or thread dumps, profilers, cache purges, installers).</li>
+    <li>No JavaScript execution, and no lookups of your site at third-party services unless the operator explicitly opts in.</li>
+  </ul>
+
+  <h2>If you did not authorize this scan</h2>
+  <p>The person who ran it is responsible for it, and the Kashif project cannot see or stop scans run by others. You can
+  block the scanner by its User-Agent, which it never disguises, for example:</p>
+  <pre><code># nginx (server block)
+if ($http_user_agent ~ "^Kashif/") { return 403; }
+
+# Apache httpd 2.4
+&lt;If "%{HTTP_USER_AGENT} =~ m#^Kashif/#"&gt;
+    Require all denied
+&lt;/If&gt;</code></pre>
+  <p>To report misuse, contact the network that owns the source IP address in your logs (its abuse contact).</p>
+
+  <h2>Contact the project</h2>
+  <p>For questions about the scanner, or to report a problem with how it behaves, use the private reporting channel on
+  the project's <a href="security.html#report">security page</a>. Read more about Kashif on the
+  <a href="./">home page</a>.</p>
+</section>
+
+<section id="ar" class="ar" lang="ar" dir="rtl">
+  <h1>الفحص السلبي للمواقع في كاشِف</h1>
+  <p class="lead">إذا ظهر في سجلات خادمك زائر يعرّف نفسه كما يلي، فهذا يعني أن شخصًا ما شغّل <strong>كاشِف</strong>، وهو
+  أداة فحص أمني مجانية مفتوحة المصدر، على موقعك. تشرح هذه الصفحة ما يفحصه، وكل طلب يمكن أن يرسله، ومن يحق له تشغيله.</p>
+  <div class="ua"><code>User-Agent: Kashif/1.x.y (+https://abdulrahmanahmedelabed-prog.github.io/vulnscan/scanner.html)</code></div>
+
+  <h2>من يشغّله</h2>
+  <p>كاشِف برنامج يشغّله الناس على أجهزتهم. لا يدير مشروع كاشِف أي خدمة فحص، ولا يختار المواقع المفحوصة، ولا تصله نتائج أي
+  فحص: فالبرنامج لا يرسل أي بيانات استخدام، ويبقى التقرير عند من شغّله. ويرفض كاشِف فحص أي موقع ما لم يؤكد المستخدم أنه
+  مالكه أو أنه مخوَّل باختباره (الخيار <code>--authorized</code> في سطر الأوامر، أو مربع التأكيد في الواجهة). وقد يكون فحص
+  موقع دون إذن مخالفًا للقانون في بلدك أو بلد من شغّل الفحص.</p>
+
+  <h2>ما الذي يفحصه</h2>
+  <p>هو فاحص <strong>سلبي</strong>: يقرأ ما يستقبله أي متصفح، ويبلّغ عن نقاط الضعف في الإعدادات، مثل ترويسات الأمان المفقودة أو
+  غير الصالحة (HSTS وContent-Security-Policy وX-Frame-Options)، وسمات الكوكيز، وردود CORS، والمحتوى المختلط، ومكتبات
+  JavaScript القديمة، والمعلومات المكشوفة في الترويسات أو صفحات الأخطاء، وإعدادات بروتوكول TLS والشهادة. ويحصل مالك
+  الموقع على مقتطفات إصلاح جاهزة للنسخ لخادمه.</p>
+
+  <h2>كل الطلبات التي يمكن أن يرسلها</h2>
+  <p>طلبات <code>GET</code> فقط، إضافةً إلى مصافحات TLS. والحد الأقصى لكل فحص: في نمط <strong>minimal</strong> عشرة طلبات
+  على الأكثر (الصفحة وتوجيهاتها)، وفي نمط <strong>standard</strong> (الافتراضي) 45 طلبًا على الأكثر (والمعتاد من 15 إلى 20
+  طلبًا)، وفي نمط <strong>deep</strong> ‏150 طلبًا على الأكثر. وتُحسب قفزات التوجيه ضمن هذا العدد.</p>
+  <div class="table"><table>
+    <thead><tr><th>الطلب</th><th>متى</th><th>الحد</th></tr></thead>
+    <tbody>
+      <tr><td>العنوان الذي أدخله المشغّل، مع اتباع التوجيهات كما يفعل المتصفح</td><td>دائمًا</td><td>10 قفزات على الأكثر</td></tr>
+      <tr><td>العنوان نفسه بالبروتوكول الآخر (<code>http://</code> و<code>https://</code>) للتحقق من التوجيه إلى HTTPS</td><td>نمطا standard وdeep</td><td>سلسلة واحدة، 10 قفزات على الأكثر</td></tr>
+      <tr><td>الصفحة نفسها مرة أخرى، بلا كوكيز، مع الترويسة <code>Origin: https://kashif-cors-check.invalid</code> (فحص CORS)</td><td>نمطا standard وdeep</td><td>طلب واحد</td></tr>
+      <tr><td>الملفات العامة المعروفة: <code>/robots.txt</code> و<code>/.well-known/security.txt</code> (و<code>/security.txt</code> فقط إن لم يوجد الأول)، والأيقونة التي تعلنها الصفحة أو <code>/favicon.ico</code>، و<code>/sitemap.xml</code> (عند الزحف فقط)</td><td>نمطا standard وdeep</td><td>5 طلبات على الأكثر</td></tr>
+      <tr><td>السكربتات وملفات الأنماط التي تحمّلها الصفحة نفسها (كما يفعل المتصفح)</td><td>standard: من الموقع نفسه؛ deep: ومن مواقع خارجية أيضًا</td><td>15 من الموقع نفسه و10 خارجية على الأكثر</td></tr>
+      <tr><td>خرائط المصدر التي يذكرها سكربت أو ملف أنماط، وصور JPEG من الموقع نفسه (أول 128 كيلوبايت فقط، للتحقق من بيانات الموقع الجغرافي)</td><td>نمط deep (والصور عند الزحف أيضًا)</td><td>5 خرائط و10 صور على الأكثر</td></tr>
+      <tr><td>روابط المصدر نفسه (<code>&lt;a href&gt;</code>) بالعرض أولًا</td><td>فقط إذا فعّل المشغّل الزحف</td><td>20 صفحةً افتراضيًا، بعمق 2</td></tr>
+      <tr><td>قائمة ثابتة من الملفات التي تُكشف كثيرًا بالخطأ (مثل <code>/.git/HEAD</code> و<code>/.env</code> والنسخ الاحتياطية)، ومسارات عشوائية باسم <code>/kashif-404-&lt;16 رقمًا ست عشريًا&gt;</code> لمعرفة شكل صفحة «غير موجود» لديك</td><td>نمط deep فقط (باختيار المشغّل)</td><td>70 مسارًا على الأكثر؛ و5 مسارات عشوائية لكل مضيف و10 في المجموع على الأكثر</td></tr>
+      <tr><td>مصافحات TLS مع منفذ HTTPS للموقع: واحدة مع التحقق من الشهادة، وواحدة دونه، وفحوص قصيرة للإصدارات ومجموعات التشفير تقرأ رد الخادم ثم تغلق الاتصال</td><td>مواقع HTTPS</td><td>نحو 14 لكل عنوان (ونحو 60 في deep)، و5 في الثانية على الأكثر</td></tr>
+      <tr><td>استعلامات DNS عادية عن الموقع وعن المضيفين الذين تشير إليهم سكربتاته وأنماطه وإطاراته ونماذجه</td><td>دائمًا (المضيفون المشار إليهم: standard وdeep)</td><td>لا يصل أي طلب إلى خوادمك</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>كيف يتصرف</h2>
+  <ul>
+    <li><strong>طلب واحد في كل مرة لكل مضيف</strong>، مع فاصل نصف ثانية على الأقل افتراضيًا (ولا يقل أبدًا عن 0.2 ثانية).
+    وتزيد قيمة <code>Crawl-delay</code> في robots.txt هذا الفاصل (حتى 10 ثوانٍ).</li>
+    <li><strong>يتراجع عند الضغط:</strong> بعد رد <code>429</code> أو <code>503</code> ينتظر المدة المذكورة في
+    <code>Retry-After</code> (دقيقة واحدة على الأكثر) مرة واحدة، فإن تكرر الرد أوقف فحص ذلك المضيف. وتوقفه كذلك أخطاء
+    الاتصال المتكررة.</li>
+    <li><strong>ملف robots.txt:</strong> يلتزم الزحف افتراضيًا بقواعد <code>Disallow</code> الموجهة إلى <code>Kashif</code>
+    أو إلى <code>*</code>. أما الملفات المعروفة والقائمة العميقة أعلاه فتُطلب في كل الأحوال، لأنها فحص أمني يجريه المالك
+    على موقعه وليست زحفًا؛ ويمكن للمشغّل أيضًا تجاهل robots.txt عند فحص موقعه هو.</li>
+    <li><strong>تعريف صادق بنفسه:</strong> يرسل دائمًا معرّف User-Agent المذكور أعلاه، ولا يرسل من ترويسات الطلب إلا:
+    <code>User-Agent</code> و<code>Accept</code> و<code>Accept-Encoding: gzip, deflate</code> و<code>Accept-Language: en</code>،
+    و<code>Origin</code> في طلب CORS الوحيد. والكوكيز التي يضبطها موقعك تُحفظ في الذاكرة طوال ذلك الفحص فقط، ولا تُكتب على
+    القرص، ولا تُرسل إلى مضيف آخر أبدًا.</li>
+    <li><strong>حدود:</strong> حد لحجم كل استجابة ومدتها، و50 ميغابايت و10 دقائق لكل فحص افتراضيًا.</li>
+  </ul>
+
+  <h2>ما لا يفعله أبدًا</h2>
+  <ul>
+    <li>لا حمولات هجوم، ولا عبث بالمعاملات، ولا تخمين للمسارات خارج القائمة العميقة الثابتة، ولا تخمين لكلمات المرور، ولا إرسال للنماذج.</li>
+    <li>لا طرق غير <code>GET</code> (فلا <code>POST</code> ولا <code>OPTIONS</code> ولا <code>TRACE</code> ولا <code>PUT</code>)، ولا قيم <code>Origin</code> مصطنعة.</li>
+    <li>لا تحايل على جدران الحماية، ولا تبديل لمعرّف User-Agent، ولا ترويسات مزيفة مثل <code>X-Forwarded-For</code>.</li>
+    <li>لا سجلات TLS مشوهة (مثل Heartbleed وROBOT وهجمات padding oracle)، ولا اختبارات لإعادة التفاوض، ولا مسح للمنافذ.</li>
+    <li>لا طلبات تجعل الخادم يؤدي عملًا مكلفًا أو يغيّر حالته (تفريغ الذاكرة أو الخيوط، وأدوات قياس الأداء، ومسح الذاكرة المؤقتة، وخطوات التثبيت).</li>
+    <li>لا تشغيل لشيفرة JavaScript، ولا استعلام عن موقعك لدى خدمات خارجية إلا إذا اختار المشغّل ذلك صراحةً.</li>
+  </ul>
+
+  <h2>إذا لم تأذن بهذا الفحص</h2>
+  <p>المسؤول عن الفحص هو من شغّله، ولا يستطيع مشروع كاشِف رؤية الفحوص التي يجريها الآخرون أو إيقافها. ويمكنك حظر الفاحص بمعرّف
+  User-Agent الخاص به، فهو لا يخفيه أبدًا، مثلًا:</p>
+  <pre><code># nginx (server block)
+if ($http_user_agent ~ "^Kashif/") { return 403; }
+
+# Apache httpd 2.4
+&lt;If "%{HTTP_USER_AGENT} =~ m#^Kashif/#"&gt;
+    Require all denied
+&lt;/If&gt;</code></pre>
+  <p>وللإبلاغ عن إساءة الاستخدام تواصل مع الشبكة المالكة لعنوان IP المصدر الظاهر في سجلاتك (جهة الاتصال الخاصة بالإساءة لديها).</p>
+
+  <h2>التواصل مع المشروع</h2>
+  <p>للأسئلة عن الفاحص أو للإبلاغ عن مشكلة في سلوكه، استخدم قناة الإبلاغ الخاصة الموضحة في <a href="security.html#report">صفحة
+  الأمان</a> للمشروع. ولمعرفة المزيد عن كاشِف زر <a href="./?lang=ar">الصفحة الرئيسية</a>.</p>
+</section>
+</main>
+<footer>
+  <p>Kashif is free and open-source software (MIT licence). It collects no telemetry. ·
+  كاشِف برنامج مجاني مفتوح المصدر (رخصة MIT)، ولا يجمع أي بيانات استخدام.</p>
+</footer>
+</body>
+</html>

@@ -828,3 +828,191 @@ def test_runs_fast_on_a_large_page(make_page, make_ctx):
     t = time.perf_counter()
     _run(make_ctx(entry=page))
     assert time.perf_counter() - t < 2.0
+
+
+# =============================================================================================== adversarial review (WP3)
+
+@pytest.mark.parametrize("fields,effect,reason", [
+    (["DENY,"], "deny", ""),                         # a stray comma is one layer, not a conflict (Chromium drops it)
+    (["SAMEORIGIN, "], "sameorigin", ""),
+    (["", "DENY"], "deny", ""),
+    ([","], "absent", "invalid"),
+    ([""], "absent", "invalid"),
+    (["deny;"], "absent", "invalid"),                # not a token list: browsers ignore it
+])
+def test_xfo_empty_members_are_dropped(fields, effect, reason):
+    v = headers.xfo_verdict(fields)
+    assert (v.effect, v.reason) == (effect, reason)
+
+
+def test_xfo_trailing_comma_is_not_a_finding(make_page, make_ctx):
+    issues = _run(make_ctx(entry=_doc(make_page, headers_=[("X-Frame-Options", "SAMEORIGIN,")])))
+    assert not {"WEB300", "WEB301", "WEB-x-frame-options"} & {i.rule for i in issues}
+
+
+def test_empty_header_values_are_quoted_in_notes(make_page, make_ctx):
+    page = _doc(make_page, headers_=[("X-Frame-Options", ""), ("Cross-Origin-Opener-Policy", ""),
+                                     ("Cross-Origin-Resource-Policy", ""), ("X-XSS-Protection", "")])
+    issues = _run(make_ctx(entry=page))
+    for rule in ("WEB300", "WEB308", "WEB310", "WEB311"):
+        [i] = [x for x in issues if x.rule == rule and x.group_value != "missing"]
+        assert '""' in i.notes[0][0] and '""' in i.notes[0][1], (rule, i.notes)
+
+
+def test_repeated_meta_xfo_is_one_finding(make_page, make_ctx):
+    html = "<head>" + '<meta http-equiv="X-Frame-Options" content="DENY">' * 500 + "</head><body>x</body>"
+    issues = _rules(_run(make_ctx(entry=make_page(html))), "WEB302")
+    assert len(issues) == 1
+
+
+def test_pp_hostile_inner_list_gives_one_finding_per_member():
+    junk = " ".join(f"x{i}" for i in range(3000))
+    probs = headers.pp_problems(headers.parse_permissions_policy([f'camera=({junk} "not an origin")']))
+    assert [(r, s) for r, s, _n, _g in probs] == [("WEB305", "low")]       # the worst element, once
+    assert all(len(n[0]) < 400 and len(g) < 200 for _r, _s, n, g in probs)
+
+
+@pytest.mark.parametrize("value,sev", [
+    ("geolocation=(self https://maps.example)", "low"),     # unquoted origin parses as a Token and is dropped
+    ("geolocation=https://maps.example", "low"),            # bare unquoted origin: same advice as a bare string
+    ("geolocation=(none)", "info"),
+    ("geolocation=none", "info"),
+])
+def test_pp_unquoted_origins_are_low(value, sev):
+    probs = headers.pp_problems(headers.parse_permissions_policy([value]))
+    assert [(r, s) for r, s, _n, _g in probs] == [("WEB305", sev)]
+
+
+def test_pp_real_world_policies_are_silent():
+    policies = [
+        "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), "
+        "display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), "
+        "execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), "
+        "magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), "
+        "publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), "
+        "xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), speaker-selection=(), "
+        "conversion-measurement=(), focus-without-user-activation=(), hid=(), idle-detection=(), "
+        "interest-cohort=(), serial=(), sync-script=(), trust-token-redemption=(), unload=(), window-placement=(), "
+        "vertical-scroll=()",
+        "interest-cohort=()",
+        'fullscreen=(self "https://player.example"), geolocation=(self), browsing-topics=()',
+        "camera=(), microphone=(), notifications=(), push=(), speaker=(), vibrate=(), xr=()",
+    ]
+    for p in policies:
+        assert headers.pp_problems(headers.parse_permissions_policy([p])) == [], p
+
+
+@pytest.mark.parametrize("name,value", [
+    ("session", "eyJ2aXNpdGVkIjp0cnVlfQ=="),                                  # Express cookie-session (base64 JSON)
+    ("session.sig", "kWm3w1kFq2bSx0XqmA8Y4VQe3cQ"),                           # …and its signature cookie
+    ("session", ".eJyrVkrOzytJzSvRS87PKUpVsgJR-ZmJxanFOalqSqUFqUWJpQVKVgA.ZzJ0aA.sig"),   # Flask (zlib)
+    ("auth_token", "eyJhbGciOiJIUzI1NiJ9.eyJndWVzdCI6dHJ1ZX0.c2lnbmF0dXJl"),  # an anonymous JWT
+])
+def test_identical_self_contained_session_payloads_are_not_certain(make_page, make_response, make_ctx, name, value):
+    page = _doc(make_page, headers_=[("Cache-Control", "private, max-age=60")])
+    cors = make_response("https://example.test/", body=page.response.body, headers=page.response.headers,
+                         content_type="text/html", kind="document", source="cors")
+    ctx = make_ctx(entry=page, cors=cors)
+    ctx.cookies = [_session_fact(page.response, name, value), _session_fact(cors, name, value)]
+    issues = _rules(_run(ctx), "WEB315")
+    assert issues and {(i.severity, i.confidence) for i in issues} == {("low", "firm")}
+
+
+def test_public_with_vary_cookie_only_is_low(make_page, make_ctx):
+    page = _doc(make_page, headers_=[("Cache-Control", "public, max-age=600"), ("Vary", "Accept-Encoding, Cookie")])
+    [i] = _rules(_run(make_ctx(entry=page)), "WEB315")
+    assert (i.severity, i.group_value) == ("low", "shared-vary")
+    assert any("Vary" in en for en, _ar in i.notes)
+    # a login page stays medium even with Vary: Cookie
+    login = make_page('<form method="post"><input type="password" name="p"></form>',
+                      headers=[("Cache-Control", "public, max-age=600"), ("Vary", "Cookie")])
+    [i] = _rules(_run(make_ctx(entry=login)), "WEB315")
+    assert i.severity == "medium"
+
+
+def test_clear_site_data_on_logout_query_is_silent(make_response, make_ctx):
+    r = make_response("https://example.test/wp-login.php?action=logout", content_type="text/html", body=b"bye",
+                      headers=[("Clear-Site-Data", '"cookies", "storage"')], kind="document")
+    assert not _rules(_run(make_ctx(entry=r)), "WEB317")
+
+
+@pytest.mark.parametrize("url,sev,group", [
+    ("http://127.0.0.1:8000/", "low", "same-orign"),          # a loopback http origin is a secure context
+    ("http://localhost/", "low", "same-orign"),
+    ("http://app.localhost/", "low", "same-orign"),
+    ("http://example.test/", "info", "http"),                  # G3: ignored on plain http
+])
+def test_g3_treats_loopback_http_as_secure_context(make_page, make_ctx, url, sev, group):
+    page = make_page("<p>x</p>", url=url, headers=[("Cross-Origin-Opener-Policy", "same-orign")])
+    [i] = [x for x in _run(make_ctx(target=url, entry=page)) if x.rule == "WEB308"]
+    assert (i.severity, i.group_value) == (sev, group)
+
+
+def test_nul_in_charset_label_does_not_crash(make_ctx):
+    # http.py decodes header bytes as ISO-8859-1, so a NUL survives into the label; codecs.lookup raises ValueError
+    r = Response("https://example.test/", headers=HeaderList.of(("Content-Type", "text/html; charset=utf\x00-8")),
+                 body=b"<html><body><p>x</p></body></html>", kind="document")
+    issues = _run(make_ctx(entry=r))
+    [i] = _rules(issues, "WEB314")
+    assert i.group_value == "missing" and len(i.notes) == 2
+
+
+def test_fuzzed_headers_never_crash(make_ctx):
+    import random
+    rnd = random.Random(1110)
+    names = ["X-Frame-Options", "Referrer-Policy", "Permissions-Policy", "Feature-Policy", "Cross-Origin-Opener-Policy",
+             "Cross-Origin-Embedder-Policy", "Cross-Origin-Resource-Policy", "X-Content-Type-Options",
+             "X-XSS-Protection", "Clear-Site-Data", "Cache-Control", "Content-Type", "Age", "X-Cache", "Vary",
+             "Pragma", "X-Permitted-Cross-Domain-Policies", "Content-Security-Policy"]
+    atoms = ["", " ", ",", ";", '"', "'", "(", ")", "=", "*", "self", "deny", "SAMEORIGIN", "allow-from", "camera",
+             "nosniff", "public", "s-maxage=", "-1", "9" * 30, "no-store", "\x00", "\x7f", "‮", "é", "\\",
+             "https://a.example", "frame-ancestors", "'none'", "unsafe-url", "text/html", "charset=", "utf8",
+             '"cookies"', "?1", "{value}", "\t"]
+    bodies = [b"", bytes(range(256)) * 4, b"\xef\xbb\xbf<html>",
+              b"<meta charset=x><meta name=referrer content=never><iframe src='http://[::1' allow='camera *'></iframe>"
+              b"<iframe src='//evil.example/' allow='usb'></iframe><form><input type=password></form>"]
+    for _ in range(300):
+        hdrs = [(rnd.choice(names), "".join(rnd.choice(atoms) for _ in range(rnd.randint(0, 6))))
+                for _ in range(rnd.randint(0, 8))]
+        url = rnd.choice(["https://example.test/", "http://example.test/logout", "http://127.0.0.1:1/x"])
+        r = Response(url, status=rnd.choice([200, 301, 404, 500, None]), headers=HeaderList.of(*hdrs),
+                     body=rnd.choice(bodies), kind=rnd.choice(["", "document", "api_json", "error_page", "script"]))
+        ctx = make_ctx(target=url, entry=r, sensitivity=rnd.choice(["default", "paranoid"]))
+        ctx.cookies = [_session_fact(r, value="".join(rnd.choice(atoms) for _ in range(4)) + "0123456789")]
+        _run(ctx)
+
+
+def test_security_header_inventory_lists_report_only_isolation(make_page, make_ctx):
+    page = _doc(make_page, headers_=[("X-Frame-Options", "ALLOW-FROM https://a.example"),
+                                     ("Content-Security-Policy", "frame-ancestors 'self'"),
+                                     ("Cross-Origin-Opener-Policy-Report-Only", "same-origin; report-to=\"coop\""),
+                                     ("Cross-Origin-Embedder-Policy", "require-corp"),
+                                     ("Referrer-Policy", "unsafe-url, no-referrer"),
+                                     ("X-Content-Type-Options", "nosniff\x1b[2J")])
+    ctx = make_ctx(entry=page)
+    _run(ctx)
+    [entry] = ctx.inventory["security_headers"]
+    rows = entry["headers"]
+    assert rows["X-Frame-Options"]["verdict"] == "frame-ancestors"
+    assert rows["Cross-Origin-Opener-Policy"]["verdict"] == "missing"
+    assert rows["Cross-Origin-Opener-Policy-Report-Only"]["verdict"] == "report-only:same-origin"
+    assert rows["Cross-Origin-Embedder-Policy"]["verdict"] == "require-corp"
+    assert rows["Referrer-Policy"]["verdict"] == "no-referrer"
+    assert rows["X-Content-Type-Options"]["verdict"] == "invalid"
+    assert "\x1b" not in rows["X-Content-Type-Options"]["value"]
+    # report-only COOP is never a finding (§WEB308)
+    assert all(i.group_value != "report-only" for i in _rules(_run(ctx), "WEB308"))
+
+
+def test_identical_random_iv_payloads_stay_certain(make_page, make_response, make_ctx):
+    import base64
+    import json
+    # Laravel encrypts with a random IV: an identical value on two cookieless requests was replayed by a cache
+    value = base64.b64encode(json.dumps({"iv": "aXY=", "value": "dmFs", "mac": "0f" * 32}).encode()).decode()
+    page = _doc(make_page, headers_=[("Cache-Control", "private, max-age=60")])
+    cors = make_response("https://example.test/", body=page.response.body, headers=page.response.headers,
+                         content_type="text/html", kind="document", source="cors")
+    ctx = make_ctx(entry=page, cors=cors)
+    ctx.cookies = [_session_fact(page.response, "laravel_session", value), _session_fact(cors, "laravel_session", value)]
+    assert [(i.severity, i.confidence) for i in _rules(_run(ctx), "WEB315")] == [("high", "certain")]
+    assert headers._payload_keys("eyJ" + "A" * 20000) == set()          # bounded, never raises

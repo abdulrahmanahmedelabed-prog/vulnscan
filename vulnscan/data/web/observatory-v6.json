@@ -1,0 +1,141 @@
+{
+ "meta": {
+  "schema_version": 1,
+  "date": "2026-11-13",
+  "source": "https://raw.githubusercontent.com/mdn/mdn-http-observatory/v1.7.2/src/grader/charts.js",
+  "license": "MPL-2.0 (mdn/mdn-http-observatory; numeric scoring facts only)",
+  "generator": "tools/webdata/observatory.py",
+  "upstream_version": "1.7.2",
+  "notes": "read from mdn-http-observatory 1.7.2 (commit 11b909f, ALGORITHM_VERSION 6)"
+ },
+ "algorithm_version": 6,
+ "max_score": 165,
+ "base_score": 100,
+ "extra_credit_threshold": 90,
+ "tests": {
+  "content-security-policy": {
+   "csp-implemented-with-no-unsafe-default-src-none": 10,
+   "csp-implemented-with-no-unsafe": 5,
+   "csp-implemented-but-duplicate-directives": 0,
+   "csp-implemented-with-unsafe-inline-in-style-src-only": 0,
+   "csp-implemented-with-insecure-scheme-in-passive-content-only": -10,
+   "csp-implemented-with-unsafe-eval": -10,
+   "csp-implemented-with-insecure-scheme": -20,
+   "csp-implemented-with-unsafe-inline": -20,
+   "csp-header-invalid": -25,
+   "csp-not-implemented": -25,
+   "csp-not-implemented-but-reporting-enabled": -25
+  },
+  "cookies": {
+   "cookies-secure-with-httponly-sessions-and-samesite": 5,
+   "cookies-not-found": 0,
+   "cookies-secure-with-httponly-sessions": 0,
+   "cookies-without-secure-flag-but-protected-by-hsts": -5,
+   "cookies-session-without-secure-flag-but-protected-by-hsts": -10,
+   "cookies-anticsrf-without-samesite-flag": -20,
+   "cookies-samesite-flag-invalid": -20,
+   "cookies-without-secure-flag": -20,
+   "cookies-session-without-httponly-flag": -30,
+   "cookies-session-without-secure-flag": -40
+  },
+  "cross-origin-embedder-policy": {
+   "coep-implemented-with-credentialless": 10,
+   "coep-implemented-with-require-corp": 10,
+   "coep-implemented-with-unsafe-none": 0,
+   "coep-not-implemented": 0,
+   "coep-header-invalid": -5
+  },
+  "cross-origin-opener-policy": {
+   "coop-implemented-with-noopener-allow-popups": 10,
+   "coop-implemented-with-same-origin": 10,
+   "coop-implemented-with-same-origin-allow-popups": 10,
+   "coop-implemented-with-unsafe-none": 0,
+   "coop-not-implemented": 0,
+   "coop-header-invalid": -5
+  },
+  "cross-origin-resource-policy": {
+   "corp-implemented-with-same-origin": 10,
+   "corp-implemented-with-same-site": 10,
+   "corp-implemented-with-cross-origin": 0,
+   "corp-not-implemented": 0,
+   "corp-header-invalid": -5
+  },
+  "cross-origin-resource-sharing": {
+   "cross-origin-resource-sharing-implemented-with-public-access": 0,
+   "cross-origin-resource-sharing-implemented-with-restricted-access": 0,
+   "cross-origin-resource-sharing-not-implemented": 0,
+   "cross-origin-resource-sharing-implemented-with-universal-access": -50
+  },
+  "redirection": {
+   "redirection-all-redirects-preloaded": 0,
+   "redirection-not-needed-no-http": 0,
+   "redirection-to-https": 0,
+   "redirection-off-host-from-http": -5,
+   "redirection-not-to-https-on-initial-redirection": -10,
+   "redirection-invalid-cert": -20,
+   "redirection-missing": -20,
+   "redirection-not-to-https": -20
+  },
+  "referrer-policy": {
+   "referrer-policy-private": 5,
+   "referrer-policy-not-implemented": 0,
+   "referrer-policy-header-invalid": -5,
+   "referrer-policy-unsafe": -5
+  },
+  "strict-transport-security": {
+   "hsts-preloaded": 5,
+   "hsts-implemented-max-age-at-least-six-months": 0,
+   "hsts-implemented-max-age-less-than-six-months": -10,
+   "hsts-header-invalid": -20,
+   "hsts-invalid-cert": -20,
+   "hsts-not-implemented": -20,
+   "hsts-not-implemented-no-https": -20
+  },
+  "subresource-integrity": {
+   "sri-implemented-and-all-scripts-loaded-securely": 5,
+   "sri-implemented-and-external-scripts-loaded-securely": 5,
+   "sri-not-implemented-but-all-scripts-loaded-from-secure-origin": 0,
+   "sri-not-implemented-but-no-scripts-loaded": 0,
+   "sri-not-implemented-response-not-html": 0,
+   "sri-not-implemented-but-external-scripts-loaded-securely": -5,
+   "html-not-parseable": -20,
+   "sri-implemented-but-external-scripts-not-loaded-securely": -20,
+   "sri-not-implemented-and-external-scripts-not-loaded-securely": -50
+  },
+  "x-content-type-options": {
+   "x-content-type-options-nosniff": 0,
+   "x-content-type-options-header-invalid": -5,
+   "x-content-type-options-not-implemented": -5
+  },
+  "x-frame-options": {
+   "x-frame-options-implemented-via-csp": 5,
+   "x-frame-options-sameorigin-or-deny": 5,
+   "x-frame-options-allow-from-origin": 0,
+   "x-frame-options-header-invalid": -20,
+   "x-frame-options-not-implemented": -20
+  }
+ },
+ "grade_chart": {
+  "100": "A+",
+  "95": "A",
+  "90": "A",
+  "85": "A-",
+  "80": "B+",
+  "75": "B",
+  "70": "B",
+  "65": "B-",
+  "60": "C+",
+  "55": "C",
+  "50": "C",
+  "45": "C-",
+  "40": "D+",
+  "35": "D",
+  "30": "D",
+  "25": "D-",
+  "20": "F",
+  "15": "F",
+  "10": "F",
+  "5": "F",
+  "0": "F"
+ }
+}

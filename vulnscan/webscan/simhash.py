@@ -166,19 +166,72 @@ def normalise_text(text: str, url: str | None = None, *, extra: Sequence[str] = 
 
 # ----------------------------------------------------------------------------------------------- visible text
 
-_DROP_BLOCKS = re.compile(r"<(script|style|template|svg|math)\b[^>]*>.*?</\1\s*>|<!--.*?(?:-->|$)", re.I | re.S)
-_TAG = re.compile(r"<[^>]*>", re.S)
-_START_TAG = re.compile(r"<([a-zA-Z][a-zA-Z0-9-]*)((?:[^>\"']|\"[^\"]*\"|'[^']*')*)>")
+# Every pattern below is linear on hostile input (§0.6): no ``[^>]*>`` or ``.*?</x>`` that a page without the closing
+# token turns into a quadratic scan (``"<script>" * 32768`` used to take 40 s). Closing tokens are searched forward
+# from the opener once; an unclosed block runs to the end of the page, as a browser treats an unclosed ``<script>``.
+_BLOCK_OPEN = re.compile(r"<(script|style|template|svg|math)(?![a-z0-9-])|<!--", re.I)
+_BLOCK_CLOSE = {name: re.compile(rf"</{name}\s*>", re.I)
+                for name in ("script", "style", "template", "svg", "math", "nav", "header", "footer", "aside")}
+_BOILERPLATE_OPEN = re.compile(r"<(script|style|template|svg|math|nav|header|footer|aside)(?![a-z0-9-])|<!--", re.I)
+_TAG = re.compile(r"<[^<>]*>")      # stops at the next "<": linear even for "<<<<…" or "<a<a<a…"
+_TAG_NAME = re.compile(r"<([a-zA-Z][a-zA-Z0-9-]*)")
 _ID_ATTR = re.compile(r"""\bid\s*=\s*["']?([^"'\s>]+)""", re.I)
-_TITLE = re.compile(r"<title\b[^>]*>(.*?)</title\s*>", re.I | re.S)
+_LAYOUT_BLOCKS = frozenset({"nav", "header", "footer", "aside"})
+TAG_ATTR_SCAN = 2048                # characters searched for the ">" that ends a start tag
 
 
-def visible_text(markup: str) -> str:
-    """Approximate rendered text of an HTML string: script, style, template, svg/math and comments removed, tags
-    stripped, entities decoded, whitespace collapsed. Regex-based on purpose (fast on 2 MB pages; similarity only)."""
+def _drop_blocks(markup: str, opener: re.Pattern = _BLOCK_OPEN) -> str:
+    out: list[str] = []
+    unclosed: set[str] = set()
+    pos = 0
+    n = len(markup)
+    while pos < n:
+        m = opener.search(markup, pos)
+        if m is None:
+            out.append(markup[pos:])
+            break
+        out.append(markup[pos:m.start()])
+        out.append(" ")
+        if m.group(1) is None:                       # comment
+            end = markup.find("-->", m.end())
+            pos = n if end < 0 else end + 3
+        else:
+            name = m.group(1).lower()
+            # a close tag missing after one opener is missing after every later one: search for it only once
+            close = None if name in unclosed else _BLOCK_CLOSE[name].search(markup, m.end())
+            if close is None:
+                unclosed.add(name)
+            if close is not None:
+                pos = close.end()
+            elif name in _LAYOUT_BLOCKS:
+                out.append(m.group(0))               # an unclosed <nav>/<header> must not swallow the page text:
+                pos = m.end()                        # keep its tag (stripped later) and its content
+            else:
+                pos = n
+    return "".join(out)
+
+
+def element_inner(markup: str, tag: str, limit: int = 65536) -> str | None:
+    """Raw markup inside the first ``<tag …>…</tag>`` that starts in the first ``limit`` characters (``None`` when
+    there is none or it is not closed within ``limit`` characters). Linear: one forward search per token."""
+    m = re.compile(rf"<{re.escape(tag)}(?![a-z0-9-])", re.I).search(markup, 0, limit)
+    if m is None:
+        return None
+    gt = markup.find(">", m.end(), m.end() + TAG_ATTR_SCAN)
+    if gt < 0:
+        return None
+    close = re.compile(rf"</{re.escape(tag)}\s*>", re.I).search(markup, gt + 1, gt + 1 + limit)
+    return None if close is None else markup[gt + 1:close.start()]
+
+
+def visible_text(markup: str, *, boilerplate: bool = True) -> str:
+    """Approximate rendered text of an HTML string: script, style, template, svg/math and comments removed,
+    tags stripped, entities decoded, whitespace collapsed. With ``boilerplate=False`` the ``<nav>``, ``<header>``,
+    ``<footer>`` and ``<aside>`` blocks are removed too (the site template, which would otherwise dominate the
+    simhash of every page of a template-heavy site). Linear-time on purpose (fast on 2 MB pages; similarity only)."""
     if not markup:
         return ""
-    text = _DROP_BLOCKS.sub(" ", markup)
+    text = _drop_blocks(markup, _BLOCK_OPEN if boilerplate else _BOILERPLATE_OPEN)
     text = _TAG.sub(" ", text)
     return _WS.sub(" ", html.unescape(text)).strip()
 
@@ -186,9 +239,12 @@ def visible_text(markup: str) -> str:
 def tag_features(markup: str, limit: int = 400) -> list[str]:
     """Shingles of the start-tag sequence (``tag#id``), used when a page has little text (§3.2 refinement)."""
     tags: list[str] = []
-    for m in _START_TAG.finditer(markup):
+    for m in _TAG_NAME.finditer(markup):
+        gt = markup.find(">", m.end(), m.end() + TAG_ATTR_SCAN)
+        if gt < 0:
+            continue
         name = m.group(1).lower()
-        idm = _ID_ATTR.search(m.group(2) or "")
+        idm = _ID_ATTR.search(markup, m.end(), gt)
         tags.append(f"{name}#{idm.group(1).lower()}" if idm else name)
         if len(tags) >= limit:
             break
@@ -216,7 +272,7 @@ def html_features(markup: str, url: str | None = None) -> list[str]:
     """Features of an HTML body: word shingles of the normalised visible text (title included); when the text is
     short (< ``SHORT_TEXT_WORDS`` words), also start-tag shingles so two different near-empty shells differ."""
     markup = markup[:SHINGLE_INPUT_CAP]
-    text = normalise_text(visible_text(markup), url)
+    text = normalise_text(visible_text(markup, boilerplate=False), url)
     feats = word_shingles(text)
     if len(text.split()) < SHORT_TEXT_WORDS:
         feats += tag_features(markup)
@@ -232,12 +288,13 @@ def bytes_features(body: bytes, url: str | None = None) -> list[bytes]:
 
 
 def title_of(markup: str) -> str:
-    m = _TITLE.search(markup[:65536])
-    return _WS.sub(" ", html.unescape(_TAG.sub(" ", m.group(1)))).strip() if m else ""
+    """Text of the first ``<title>`` (entities decoded, whitespace collapsed; "" when there is none)."""
+    inner = element_inner(markup, "title")
+    return _WS.sub(" ", html.unescape(_TAG.sub(" ", inner))).strip() if inner else ""
 
 
 __all__ = [
     "MASK64", "SIMILAR_DISTANCE", "WORD_SHINGLE", "BYTE_SHINGLE", "SHINGLE_INPUT_CAP", "BYTES_INPUT_CAP", "simhash64",
     "hamming", "near_duplicate", "to_hex", "normalise_text", "visible_text", "tag_features", "word_shingles", "byte_shingles",
-    "html_features", "bytes_features", "title_of",
+    "html_features", "bytes_features", "title_of", "element_inner",
 ]

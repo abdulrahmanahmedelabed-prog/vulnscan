@@ -11,6 +11,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -504,7 +505,13 @@ def test_web518_cross_site_password_form():
     ("https://esm.sh/react@18", False),
     ("https://cdn.skypack.dev/react", False),
     ("https://cdn.skypack.dev/react@17.0.2", True),
-    ("https://cdn.skypack.dev/-/react@v17.0.1-yH0aYV1FOvoIPeKBbHxg/dist=es2020,mode=imports/optimized/react.js", False),
+    # Skypack's immutable URLs carry a "v" before the version and a build hash after it (review fix: were "unpinned")
+    ("https://cdn.skypack.dev/-/react@v17.0.1-yH0aYV1FOvoIPeKBbHxg/dist=es2020,mode=imports/optimized/react.js", True),
+    ("https://cdn.skypack.dev/pin/react@v17.0.1-yH0aYV1FOvoIPeKBbHxg/mode=imports,min/optimized/react.js", True),
+    ("https://cdn.skypack.dev/pin/react@v17-yH0aYV1FOvoIPeKBbHxg/mode=imports/optimized/react.js", False),
+    ("https://esm.sh/gh/user/repo@v1.0.0/x.js", True),
+    ("https://esm.sh/gh/user/repo@main/x.js", False),
+    ("https://esm.sh/gh/user/repo/x.js", False),
     ("https://cdn.skypack.dev/-/react@17.0.1-yH0aYV1FOvoIPeKBbHxg/dist=es2020/react.js", True),
     ("https://ga.jspm.io/npm:lodash@4.17.21/lodash.js", True),
     ("https://ga.jspm.io/npm:lodash@4/lodash.js", False),
@@ -948,3 +955,153 @@ def test_corpus_has_cases_for_wp7():
     for needed in ("html-script-http", "html-sri-mismatch", "rev-jsdelivr-unpinned", "rev-unregistered-script",
                    "rev-s3-nosuchbucket", "rev-all-nxdomain", "rev-proxied"):
         assert needed in ids
+
+
+# ============================================================================================ adversarial review (WP7)
+
+def test_review_css_references_is_linear_on_unterminated_url():
+    hostile = "a{background:url(" * 100_000          # 1.7 MB without a closing parenthesis: was quadratic (hours)
+    t0 = time.monotonic()
+    assert content.css_references(hostile) == []
+    assert content.css_references("@import url(" * 50_000) == []
+    assert time.monotonic() - t0 < 5
+    assert content.css_references("a{b:url(http://x.test/a.png)}") == [("http://x.test/a.png", False, 4)]
+
+
+def test_review_many_forms_and_big_inline_script_stay_fast():
+    forms = "".join(f'<form id="f{i}"><input type=password></form>' for i in range(3000))
+    html = page(forms + "<script>" + "var x=1;" * 100_000 + "document.getElementById('f7');</script>")
+    t0 = time.monotonic()
+    found = rules(run(ctx_for(html)))["WEB509"]
+    assert time.monotonic() - t0 < 15                  # was ~50 s: one regex scan of the script per form
+    # one issue per (destination, variant): 2999 identical SPA forms do not make 2999 issues
+    assert len(found) == 1 and (sev(found[0]), found[0].confidence) == ("low", "tentative")
+
+
+def test_review_script_mentions_whole_words_only():
+    doc = htmlparse.parse(page("<script>var loginForm2 = 1; $('#login-form').on('x'); a.b.c = 1</script>"),
+                          "https://www.example.com/")
+    assert content._script_mentions(doc, "login-form")
+    assert not content._script_mentions(doc, "loginForm")       # only inside a longer word
+    assert content._script_mentions(doc, "a.b.c")               # fallback for names with other characters
+    assert not content._script_mentions(doc, "b.c.d")
+
+
+def test_review_web509_input_without_type_is_not_a_submit_button():
+    html = page('<form action="/login"><input type=password name=p><input name=x formmethod="post"></form>')
+    (i,) = rules(run(ctx_for(html)))["WEB509"]
+    assert (sev(i), i.confidence) == ("high", "certain")
+    ok = page('<form action="/login"><input type=password name=p><button formmethod="post">go</button></form>')
+    assert "WEB509" not in rules(run(ctx_for(ok)))
+
+
+@pytest.mark.parametrize("value", ["1699999999996", "1700000000004", "1234567890123452"])
+def test_review_web511_numeric_ids_are_not_cards(value):
+    assert content.luhn_ok(value)                       # Luhn alone would call these card numbers
+    assert "WEB511" not in rules(run(ctx_for(page(f'<a href="/x?_={value}">a</a>'))))
+
+
+@pytest.mark.parametrize("value", ["4111111111111111", "5555555555554444", "378282246310005", "2223003122003222"])
+def test_review_web511_real_card_numbers_still_found(value):
+    assert "WEB511" in rules(run(ctx_for(page(f'<a href="/pay?n={value}">a</a>'))))
+
+
+@pytest.mark.parametrize("query,found", [
+    ("session=keynote-2024-day1", False), ("sid=1234567890", False), ("session=morning_workshop", False),
+    ("sid=k3j4h5g6f7d8s9a0q1w2", True), ("session=550e8400-e29b-41d4-a716-446655440000", True),
+    ("PHPSESSID=abc-def-ghi-jkl", True), ("cfid=123456789", True), ("sid=12345678901234567890", True),
+])
+def test_review_web510_generic_names_need_a_token_value(query, found):
+    assert ("WEB510" in rules(run(ctx_for(page(f'<a href="/agenda?{query}">a</a>'))))) is found
+
+
+def test_review_integrity_policy_covers_modulepreload():
+    html = page("", head='<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/a@1.0.0/x.js">')
+    plain = rules(run(ctx_for(html)))["WEB053"]
+    assert sev(plain[0]) == "low"
+    hdrs = (HTML_CT, ("Integrity-Policy", "blocked-destinations=(script)"))
+    (i,) = rules(run(ctx_for(html, headers=hdrs)))["WEB053"]
+    assert sev(i) == "info" and any("Integrity-Policy" in n[0] for n in i.notes)
+
+
+def test_review_google_fonts_is_evergreen_info():
+    html = page("", head='<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto">')
+    (i,) = rules(run(ctx_for(html)))["WEB053"]
+    assert sev(i) == "info" and any("Google Fonts" in n[0] for n in i.notes)
+
+
+def test_review_defacement_needs_the_phrase_to_open_the_title():
+    news = "Company website hacked by group, says report"
+    assert "WEB507" not in rules(run(ctx_for(page(f"<h1>{news}</h1>", title=news))))
+    for title in ("Hacked By Mr.X", "~ HaCkEd by X ~", "[ defaced by team ]"):
+        assert "WEB507" in rules(run(ctx_for(page(f"<h1>{title}</h1>", title=title)))), title
+
+
+@pytest.mark.parametrize("doctype,quirks", [
+    (None, True), ("html", False), ("svg", True), ('html system "about:legacy-compat"', False),
+    ('html public "-//w3c//dtd html 4.01 transitional//en"', True),
+    ('html public "-//w3c//dtd html 4.01 transitional//en" "http://www.w3.org/tr/html4/loose.dtd"', False),
+    ('html public "-//w3c//dtd xhtml 1.0 strict//en" "http://www.w3.org/tr/xhtml1/dtd/xhtml1-strict.dtd"', False),
+    ('html public "-//w3c//dtd html 3.2 final//en"', True), ('html public "-//ietf//dtd html 2.0//en"', True),
+    ("html public \"-//o'reilly and associates//dtd html 2.0//en\"", True), ('html public "html"', True),
+    ('html public "-//w3c//dtd html 4.0 transitional//en" "http://www.w3.org/tr/rec-html40/loose.dtd"', True),
+    ('html system "http://www.ibm.com/data/dtd/v11/ibmxhtml1-transitional.dtd"', True),
+    ('html public "-//w3c//dtd html 4.01//en"', False),
+])
+def test_review_quirks_mode_table(doctype, quirks):
+    assert content.quirks_mode(doctype) is quirks
+
+
+def test_review_web514_never_for_xhtml_documents():
+    html = page("", head='<link rel="stylesheet" href="css/a.css">', doctype=False)
+    assert "WEB514" in rules(run(ctx_for(html)))
+    xhtml = ctx_for(html, headers=(("Content-Type", "application/xhtml+xml"),))
+    assert "WEB514" not in rules(run(xhtml))
+
+
+def test_review_web517_intranet_name_needs_no_registrable_lookup(hooked):
+    html = page('<script src="https://intranet/a.js"></script><script src="https://ok.cdn-z.com/a.js"></script>')
+    ctx = ctx517(html, [dns("www.site.org"), DnsRecord("intranet", "nxdomain"), dns("ok.cdn-z.com")])
+    found = [i for i in run(ctx) if i.rule == "WEB517"]
+    assert [(i.group_value, sev(i)) for i in found] == [("intranet", "info")]
+
+
+@pytest.mark.parametrize("body", [
+    b"\x00\xff" * 50_000, "<script src=http://x.test/a.js>".encode() + bytes(range(256)) * 400,
+    "<form action=http://[::1/><input type=password></form><a href='http://[zz]/?sid=abcdefghijk'>".encode(),
+    ("<div>" * 50_000).encode(), b"<svg><use href='http://x.test/a.svg#i'/></svg>" * 2000,
+    ("<script src='https://cdn.x.test/" + "1." * 100_000 + "x'></script>").encode(),
+])
+def test_review_hostile_bodies_never_crash(body):
+    r = resp("https://www.example.com/", body, kind="")
+    ctx = ctx_for(None, pages=[Page(r, None)])
+    run(ctx)                                            # no exception, every issue valid (checked by run())
+
+
+@pytest.mark.parametrize("href,secret", [
+    ("/x?token=abcd%2Fefgh12345678", "efgh1234"), ("/x?email=john.doe%40corp.com", "doe%40corp"),
+    ("/x?password=Secr3t+Passw0rd", "Secr3t+Pass"), ("/x?a=1&amp;password=Secr3tPassw0rd!", "Secr3tPassw0rd"),
+])
+def test_review_encoded_secrets_are_redacted_in_the_excerpt(href, secret):
+    (i,) = [i for i in run(ctx_for(page(f'<a href="{href}">a</a>'))) if i.rule in ("WEB510", "WEB511")]
+    dump = json.dumps(i.evidence.to_dict()) + json.dumps(i.notes)
+    assert secret not in dump, dump
+
+
+def test_review_web503_not_reported_for_a_malformed_digest():
+    body = b"window.lib = 1;\n"
+    html = page('<script src="https://cdn.third.test/a.js" integrity="sha384-notbase64!!" crossorigin></script>')
+    subs = [resp("https://cdn.third.test/a.js", body, (("Content-Type", "text/javascript"),), kind="script",
+                 source="subresource")]
+    found = rules(run(ctx_for(html, profile="deep", subresources=subs)))
+    assert "WEB501" in found and "WEB503" not in found
+
+
+def test_review_web517_dns_filter_on_a_tracker_means_untrusted_resolver(hooked):
+    # a filtering resolver answers NXDOMAIN for tracker domains: that is not "anyone can register hotjar.com"
+    html = page('<script src="https://static.hotjar.com/c/hotjar.js"></script><script src="https://www.clarity.ms/t.js">'
+                '</script><script src="https://cdn.gone-domain.com/app.js"></script>')
+    ctx = ctx517(html, [dns("www.site.org"), dns("www.clarity.ms", "nxdomain", "nxdomain"),
+                        dns("static.hotjar.com"), dns("cdn.gone-domain.com", "nxdomain", "nxdomain")])
+    assert not [i for i in run(ctx) if i.rule == "WEB517"]
+    assert ctx.coverage.state("WEB517").reasons[0][0] == "resolver"

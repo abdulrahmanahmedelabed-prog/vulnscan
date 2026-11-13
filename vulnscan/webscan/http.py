@@ -29,7 +29,9 @@ Every request Kashif's web scan makes goes through one :class:`Fetcher` per scan
 * **Test-only hooks.** :class:`CorpusHooks` reads ``KASHIF_TEST_RESOLVE_MAP`` (resolver map) and ``KASHIF_TEST_CAFILE``
   (extra trusted CA) **only** when ``KASHIF_TEST_RESOLVE=1``; without it both variables are ignored.
 
-Flags set on responses (``Response.flags``): ``obs-fold``, ``obs-fold:<name>``, ``truncated-body``, ``opaque-coding``,
+Flags set on responses (``Response.flags``): ``obs-fold``, ``obs-fold:<name>``, ``malformed-header-line`` (an invalid
+header line was skipped, or a name had whitespace before its colon), ``informational:<1xx code>`` (an interim response
+such as 103 Early Hints preceded the final one), ``truncated-body``, ``opaque-coding``,
 ``opaque-coding:<coding>``, ``decode-error``, ``incomplete-body``, ``deadline``, ``cert-error``, ``cert-verify:<code>``,
 ``proxied``, ``retried``, ``rate-limited``, ``retry-after-waited``, ``host-stopped``, ``redirect-loop``,
 ``redirect-limit``, ``redirect-blocked:<scheme|ssrf|metadata|offsite|robots|budget|bad-location>`` and, on responses that were
@@ -79,6 +81,7 @@ SOURCE_CLASS = {"entry": "document", "http_probe": "document", "https_probe": "d
                 "crawl": "document", "subresource": "script", "sourcemap": "script", "wellknown": "probe",
                 "probe": "probe", "baseline": "probe", "image": "image"}
 DOCUMENT_SOURCES = frozenset({"entry", "http_probe", "https_probe", "cors", "crawl"})
+ROBOTS_CAP = 500 * 1024             # robots.txt bytes read (RFC 9309 §2.5; robots.MAX_BYTES)
 DECOMPRESS_RATIO = 10                # decoded size ≤ 10 × the encoded size …
 DECOMPRESS_FLOOR = 256_000           # … but never less than this (small pages compress better than 10:1)
 METADATA_ADDRESSES = frozenset({"169.254.169.254", "fd00:ec2::254", "100.100.100.200"})
@@ -151,12 +154,48 @@ def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
 # ----------------------------------------------------------------------------------------------- addresses
 
 def ip_literal(host: str) -> str | None:
-    """The canonical address when ``host`` is an IP literal (brackets and zone id allowed), else None."""
+    """The canonical address when ``host`` is an IP literal (brackets and zone id allowed), else None. IPv4 is parsed
+    as browsers do (WHATWG URL): ``2130706433``, ``0x7f.1`` and ``0177.0.0.1`` are all 127.0.0.1."""
     h = normalise_host(host).split("%", 1)[0]
     try:
         return str(ipaddress.ip_address(h))
     except ValueError:
+        pass
+    v4 = whatwg_ipv4(h)
+    return v4 if isinstance(v4, str) and v4 else None
+
+
+def whatwg_ipv4(host: str) -> str | None | bool:
+    """WHATWG URL IPv4 parser: the dotted address, ``None`` when ``host`` is a name, ``False`` when it ends in a number
+    but is not a valid address (browsers reject such a URL)."""
+    parts = host.split(".")
+    if parts and parts[-1] == "" and len(parts) > 1:
+        parts.pop()
+    last = parts[-1] if parts else ""
+    if not (last.isdigit() and last.isascii() or re.fullmatch(r"0[xX][0-9a-fA-F]*", last)):
         return None
+    if len(parts) > 4:
+        return False
+    if any(len(part) > 40 for part in parts):
+        return False                     # longer than any valid part (and int() of 4300+ digits raises on 3.11+)
+    nums = []
+    for part in parts:
+        if re.fullmatch(r"0[xX][0-9a-fA-F]*", part):
+            nums.append(int(part[2:] or "0", 16))
+        elif len(part) > 1 and part[0] == "0":
+            if not re.fullmatch(r"[0-7]+", part):
+                return False             # "08": an octal part with a non-octal digit
+            nums.append(int(part, 8))
+        elif re.fullmatch(r"[0-9]+", part):
+            nums.append(int(part, 10))
+        else:
+            return False
+    if any(n > 255 for n in nums[:-1]) or nums[-1] >= 256 ** (5 - len(nums)):
+        return False
+    value = nums[-1]
+    for i, n in enumerate(nums[:-1]):
+        value += n * 256 ** (3 - i)
+    return str(ipaddress.IPv4Address(value))
 
 
 def address_category(address: str) -> str:
@@ -165,8 +204,15 @@ def address_category(address: str) -> str:
         ip = ipaddress.ip_address(address.split("%", 1)[0])
     except ValueError:
         return "reserved"
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
+        elif ip in _NAT64:               # DNS64/NAT64: the gateway connects to the embedded IPv4 address
+            ip = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        else:
+            embedded = [ip.sixtofour, ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF) if ip in _V4COMPAT else None]
+            if any(e is not None and str(e) in METADATA_ADDRESSES for e in embedded):
+                return "metadata"
     if str(ip) in METADATA_ADDRESSES:
         return "metadata"
     if ip.is_loopback or ip.is_unspecified or (ip.version == 4 and ip in ipaddress.ip_network("0.0.0.0/8")):
@@ -182,6 +228,25 @@ def address_category(address: str) -> str:
     if ip.is_multicast or ip.is_reserved or ip.is_private or not ip.is_global:
         return "reserved"
     return "public"
+
+
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")             # RFC 6052 well-known prefix
+_V4COMPAT = ipaddress.ip_network("::/96")                 # deprecated IPv4-compatible addresses
+
+
+_LOCAL_NAMES = ("localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback")
+_METADATA_NAMES = ("metadata.google.internal", "metadata.goog", "metadata", "instance-data", "instance-data.ec2.internal")
+
+
+def name_category(host: str) -> str | None:
+    """Category of a *name* that is fixed whatever DNS says (used when a proxy resolves names, §0.7): ``localhost``
+    and ``*.localhost`` are loopback (RFC 6761), the cloud metadata service names are metadata; else None."""
+    h = normalise_host(host)
+    if h in _METADATA_NAMES:
+        return "metadata"
+    if h in _LOCAL_NAMES or h.endswith(".localhost"):
+        return "loopback"
+    return None
 
 
 def _hook_category(category: str, public: bool) -> str:
@@ -711,7 +776,7 @@ def _kill(sock: Any) -> None:
 
 
 def _connect_factory(addresses: tuple[str, ...] | None, port_override: int | None,
-                     on_socket: Callable[[socket.socket], None]):
+                     on_socket: Callable[[socket.socket], None], on_address: Callable[[str], None] | None = None):
     """A replacement for ``HTTPConnection._create_connection``: connects to the pinned addresses (never re-resolving
     the name, so DNS rebinding cannot change the address) and registers the socket with the current watchdog."""
     def create(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None, *args, **kwargs):
@@ -725,6 +790,8 @@ def _connect_factory(addresses: tuple[str, ...] | None, port_override: int | Non
                 last = e
                 continue
             on_socket(sock)
+            if on_address is not None and addresses:
+                on_address(a)
             return sock
         raise last or OSError("no address to connect to")
     return create
@@ -743,6 +810,137 @@ class _HTTPSConnection(http.client.HTTPSConnection):
         if self.on_socket is not None:
             self.on_socket(sock)
         sock.do_handshake()
+
+
+# ----------------------------------------------------------------------------------------------- response parsing
+
+MAX_INTERIM = 10                     # 1xx interim responses (103 Early Hints, 102 Processing) skipped per request
+_FRAMING = frozenset({"transfer-encoding", "content-length", "connection", "keep-alive", "proxy-connection"})
+_NAME_OK = re.compile(r"[\x21-\x39\x3b-\x7e]+")
+
+
+class _Prefixed:
+    """A file object that serves ``prefix`` and then delegates to ``fp`` (what ``http.client`` reads the header
+    block and the body from)."""
+
+    def __init__(self, prefix: bytes, fp: Any):
+        self._buf = prefix
+        self.fp = fp
+
+    @property
+    def drained(self) -> bool:
+        return not self._buf
+
+    def readline(self, limit: int = -1) -> bytes:
+        if self._buf:
+            i = self._buf.find(b"\n")
+            end = len(self._buf) if i < 0 else i + 1
+            if 0 <= limit < end:
+                end = limit
+            out, self._buf = self._buf[:end], self._buf[end:]
+            return out
+        return self.fp.readline(limit)
+
+    def read(self, n: int | None = -1) -> bytes:
+        if self._buf:
+            if n is None or n < 0:
+                out, self._buf = self._buf, b""
+                return out + self.fp.read()
+            out, self._buf = self._buf[:n], self._buf[n:]
+            return out
+        return self.fp.read(n)
+
+    def read1(self, n: int = -1) -> bytes:
+        return self.read(n) if self._buf else self.fp.read1(n)
+
+    def peek(self, n: int = 0) -> bytes:
+        return self._buf if self._buf else self.fp.peek(n)
+
+    def readinto(self, b: Any) -> int:
+        data = self.read(len(b))
+        b[:len(data)] = data
+        return len(data)
+
+    def close(self) -> None:
+        self.fp.close()
+
+    def flush(self) -> None:   # pragma: no cover - read-only stream
+        pass
+
+
+def read_header_block(fp: Any) -> tuple[list[tuple[str, str]], int]:
+    """Read one header block like a browser: ``(headers, malformed line count)``.
+
+    ``http.client`` hands the block to ``email.parser``, which stops at the first line it does not understand (a name
+    with a space before the colon, a line without a colon) and silently drops **every later header**, CSP and HSTS
+    included; and it errors on exactly 100 header lines. Here an invalid line is skipped and counted (browsers skip it
+    too), a name's trailing whitespace is trimmed, continuation lines stay attached with their CRLF (obs-fold is
+    recorded later by :func:`normalise_headers`), and the §0.6 limits apply: more than 100 lines → "too many headers",
+    a line over 64 KiB or a block over 64 KB → header too large. Values are ISO-8859-1 like ``http.client``'s."""
+    items: list[list[str]] = []
+    malformed = lines = total = 0
+    while True:
+        line = fp.readline(65537)
+        if len(line) > 65536:
+            raise http.client.LineTooLong("header line")
+        if line in (b"\r\n", b"\n", b""):
+            return [(k, v) for k, v in items], malformed
+        lines += 1
+        total += len(line)
+        if lines > MAX_HEADER_LINES:
+            raise http.client.HTTPException(f"got more than {MAX_HEADER_LINES} headers")
+        if total > MAX_HEADER_BYTES:
+            raise http.client.LineTooLong("header block larger than 64 KB")
+        text = line.decode("iso-8859-1").rstrip("\r\n")
+        if text[:1] in (" ", "\t"):
+            if items:
+                items[-1][1] += "\r\n" + text
+            else:
+                malformed += 1
+            continue
+        name, colon, value = text.partition(":")
+        if name != name.rstrip(" \t"):
+            malformed += 1               # "Name : value": browsers trim the name and keep the header
+            name = name.rstrip(" \t")
+        elif not colon or not _NAME_OK.fullmatch(name):
+            malformed += 1
+            continue
+        if not colon or not _NAME_OK.fullmatch(name):
+            continue
+        items.append([name, value])
+
+
+class _KashifResponse(http.client.HTTPResponse):
+    """``HTTPResponse`` that (1) skips every 1xx interim response, not only 100 (``http.client`` returns a
+    ``103 Early Hints`` as the final response and leaves the real one in the socket for the next request), and (2)
+    reads the header block with :func:`read_header_block`; ``http.client`` then only sees the framing headers it needs
+    (Content-Length, Transfer-Encoding, Connection, Keep-Alive)."""
+    kashif_headers: list[tuple[str, str]] | None = None
+    kashif_interim: tuple[int, ...] = ()
+    kashif_malformed: int = 0
+
+    def _read_status(self):  # noqa: ANN202 - same signature as http.client
+        interim: list[int] = []
+        while True:
+            version, status, reason = super()._read_status()
+            if 100 <= status < 200 and status != 101:
+                read_header_block(self.fp)
+                interim.append(status)
+                if len(interim) > MAX_INTERIM:
+                    raise http.client.HTTPException("too many informational (1xx) responses")
+                continue
+            break
+        self.kashif_interim = tuple(interim)
+        headers, self.kashif_malformed = read_header_block(self.fp)
+        self.kashif_headers = headers
+        framing = "".join(f"{k}: {_FOLD.sub(' ', v)}\r\n" for k, v in headers if k.lower() in _FRAMING)
+        self.fp = _Prefixed((framing + "\r\n").encode("iso-8859-1"), self.fp)
+        return version, status, reason
+
+    def begin(self) -> None:
+        super().begin()
+        if isinstance(self.fp, _Prefixed) and self.fp.drained:
+            self.fp = self.fp.fp
 
 
 # ----------------------------------------------------------------------------------------------- fetcher
@@ -810,6 +1008,7 @@ class Fetcher:
         self._event_once: set = set()
         self._confirmed: set[str] = set()
         self._tls_last: dict = {}
+        self._preferred: dict[str, str] = {}     # host → pinned address that last accepted a connection
         self._target_category: str | None = None
         self._local = threading.local()
         if target and self.proxied:
@@ -939,7 +1138,7 @@ class Fetcher:
             if lit:
                 self._target_category = address_category(lit)
             elif not host or self.proxied:
-                self._target_category = "public"
+                self._target_category = name_category(host) or "public"
             else:
                 pin = self._pin(host)
                 self._target_category = pin.categories[0] if pin.categories else "public"
@@ -951,9 +1150,9 @@ class Fetcher:
         is_target = bool(self.target_host) and host == self.target_host
         lit = ip_literal(host)
         if proxied:
-            if lit is None:
+            cat = address_category(lit) if lit is not None else name_category(host)
+            if cat is None:
                 return None, "", "public"
-            cat = address_category(lit)
             if not ssrf_allows(cat, self.target_category(), is_target=is_target):
                 return None, ("metadata" if cat == "metadata" else "ssrf"), cat
             return None, "", cat
@@ -1125,13 +1324,15 @@ class Fetcher:
             self.target = url
             self.target_host = psl.normalise(urllib.parse.urlsplit(url).hostname or "")
             self._target_category = None
-        use_jar = cookies and origin is None
+        use_jar = cookies and origin is None and source != "cors"      # the CORS GET is always cookieless (§0.1)
         accept_value = {"document": ACCEPT_DOCUMENT, "probe": ACCEPT_PROBE, None: None}.get(accept, "?")
         if accept_value == "?":
             raise ValueError("accept must be 'document' or 'probe'")
         if accept_value is None:
             accept_value = ACCEPT_DOCUMENT if source in DOCUMENT_SOURCES else ACCEPT_PROBE
         max_hops = max(1, min(int(max_hops), MAX_HOPS))
+        if cap is None and source == "wellknown" and _path_is(url, "/robots.txt"):
+            cap = ROBOTS_CAP             # RFC 9309 §2.5: parse at least 500 KiB (the probe cap is 256 KB)
         same_site_only = same_site_only or source == "crawl"       # §4.3: the crawl never leaves the target's site
         if source == "crawl" and not self.allowed_by_robots(url):
             return self._error(safe_url(url), source, "robots", "disallowed by robots.txt")
@@ -1314,7 +1515,11 @@ class Fetcher:
                 conn.on_socket = on_socket
             else:
                 conn = http.client.HTTPConnection(prep.host, prep.port, timeout=timeout)
-            conn._create_connection = _connect_factory(addrs, None, on_socket)
+            if addrs and len(addrs) > 1 and self._preferred.get(prep.host) in addrs:
+                best = self._preferred[prep.host]          # the address that answered last time goes first, so a
+                addrs = (best,) + tuple(a for a in addrs if a != best)   # dead AAAA costs one timeout per scan
+            conn._create_connection = _connect_factory(addrs, None, on_socket,
+                                                       lambda a, h=prep.host: self._preferred.__setitem__(h, a))
         else:
             if https:
                 conn = _HTTPSConnection(proxy.host, proxy.port, timeout=timeout, context=self.tls_context(verified))
@@ -1363,6 +1568,7 @@ class Fetcher:
                     conn.connect()
                 else:
                     wd.add(conn.sock)
+                conn.response_class = _KashifResponse
                 ip = None
                 if proxy is None:
                     try:
@@ -1435,7 +1641,11 @@ class Fetcher:
               req_headers: HeaderList, cap: int | None, wd: _Watchdog, t0: float, ip: str | None,
               base_flags: set[str]) -> Response:
         flags = set(base_flags)
-        items, folded = normalise_headers(resp.getheaders())
+        pairs = getattr(resp, "kashif_headers", None)
+        items, folded = normalise_headers(list(pairs) if pairs is not None else resp.getheaders())
+        flags |= {f"informational:{c}" for c in getattr(resp, "kashif_interim", ())}
+        if getattr(resp, "kashif_malformed", 0):
+            flags.add("malformed-header-line")
         if folded:
             flags.add("obs-fold")
             flags |= {f"obs-fold:{n}" for n in folded}
@@ -1473,6 +1683,8 @@ class Fetcher:
             incomplete = True
         except (OSError, ValueError, http.client.HTTPException, ssl.SSLError):
             incomplete = True
+        if not raw_truncated and not wd.fired and isinstance(getattr(resp, "length", None), int) and resp.length > 0:
+            incomplete = True            # the connection closed before Content-Length bytes arrived
         raw = b"".join(chunks)
         if len(raw) > raw_limit:
             raw, raw_truncated = raw[:raw_limit], True
@@ -1543,6 +1755,9 @@ def _origin(p: urllib.parse.SplitResult) -> str:
     return f"{scheme}://{shown}:{port}"
 
 
+_FORBIDDEN_HOST = re.compile(r"[\x00-\x20#/<>?@\[\\\]^|\x7f]")
+
+
 def _prepare(url: str) -> "_Prepared | str":
     """Canonical request data for ``url`` or an error code ("scheme", "bad_url"). User info is dropped, the URL is
     re-serialised with unsafe characters percent-encoded, and the fragment is removed."""
@@ -1554,12 +1769,21 @@ def _prepare(url: str) -> "_Prepared | str":
     if scheme not in ("http", "https"):
         return "scheme"
     try:
-        host = psl.normalise(p.hostname or "")
-        port = p.port or (443 if scheme == "https" else 80)
+        name = p.hostname or ""
+        if not name.startswith("[") and ":" not in name:
+            name = urllib.parse.unquote(name)        # WHATWG: a domain is percent-decoded before IDNA
+        host = psl.normalise(name)
+        port = p.port if p.port is not None else (443 if scheme == "https" else 80)
     except (ValueError, UnicodeError):
         return "bad_url"
-    if not host or any(ch in host for ch in " /\\@#?") or not (0 < port < 65536):
-        return "bad_url"
+    if not host or _FORBIDDEN_HOST.search(host) or ("%" in host) or not (0 < port < 65536):
+        return "bad_url"                 # forbidden host code points (and IPv6 zone ids), as browsers reject them
+    if ":" not in host:
+        v4 = whatwg_ipv4(host)
+        if v4 is False:
+            return "bad_url"
+        if v4:
+            host = v4
     shown = f"[{host}]" if ":" in host else host
     default = (scheme, port) in (("http", 80), ("https", 443))
     netloc = shown if default else f"{shown}:{port}"
@@ -1577,12 +1801,32 @@ def next_url(base: str, location: str) -> str | None:
     loc = re.sub(r"[\t\n\r]", "", location.strip(" \t\n\r\f\x00"))
     if not loc:
         return None
+    if not loc.isascii():
+        try:                     # http.client decoded the raw bytes as ISO-8859-1; browsers read them as UTF-8
+            loc = loc.encode("iso-8859-1").decode("utf-8")
+        except UnicodeError:
+            pass
+    m = re.match(r"([A-Za-z][A-Za-z0-9+.\-]*):", loc)
+    scheme = m.group(1).lower() if m else ""
+    if not m or scheme in ("http", "https"):
+        cut = min((i for i in (loc.find("?"), loc.find("#")) if i >= 0), default=len(loc))
+        loc = loc[:cut].replace("\\", "/") + loc[cut:]       # WHATWG: "\" is "/" before the query in http(s)
+        base_scheme = urllib.parse.urlsplit(base).scheme.lower()
+        if scheme in ("http", "https") and scheme != base_scheme and not loc[len(scheme) + 1:].startswith("//"):
+            loc = f"{scheme}://" + loc[len(scheme) + 1:].lstrip("/")
     try:
         joined = urllib.parse.urljoin(base, loc)
         urllib.parse.urlsplit(joined).port      # noqa: B018 - raises ValueError for a bad port
     except ValueError:
         return None
     return urllib.parse.urldefrag(joined)[0]
+
+
+def _path_is(url: str, path: str) -> bool:
+    try:
+        return urllib.parse.urlsplit(url.strip()).path == path
+    except ValueError:
+        return False
 
 
 def _cap_for(source: str, headers: HeaderList) -> int:

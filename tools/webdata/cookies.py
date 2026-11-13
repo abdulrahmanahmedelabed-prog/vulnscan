@@ -9,7 +9,7 @@ The table has two layers:
 
 1. **Kashif's seed** (``SEED`` below, the source of truth for every class that changes a finding's severity): the §3.3
    table, ZAP's default session-token names, Observatory's examples and the vendor cookies whose names *look* like
-   session cookies but are read by analytics JavaScript (``_hjSession_*``, ``matomo_sessid`` …), so the word
+   session cookies but are read by analytics JavaScript (``_hjSession_*``, ``intercom-session-*`` …), so the word
    heuristics of ``webscan/cookies.py`` never turn them into session findings.
 2. **Open Cookie Database** (Apache-2.0, NOTICE): its *Analytics* and *Marketing* rows become ``analytics`` and rows of
    consent-management platforms become ``consent``. A row is **not** imported when its name would be classified as
@@ -59,7 +59,9 @@ _add("session", "kashif",
      "SITESERVER", "zenid", "sid", "sessid", "session", "frontend", "PrestaShop-*", "symfony", "rack.session",
      "_shibsession_*", "AWSELBAuthSessionCookie*", "KEYCLOAK_SESSION", "KEYCLOAK_SESSION_LEGACY", "AUTH_SESSION_ID",
      "AUTH_SESSION_ID_LEGACY", "PLAY_SESSION", "mod_auth_openidc_session", "phpbb3_*_sid", "xf_session",
-     "vbulletin_sessionhash", "bb_sessionhash", "TWIKISID")
+     "vbulletin_sessionhash", "bb_sessionhash", "TWIKISID",
+     # Matomo's own login session (core/Session.php SESSION_NAME): set only by a Matomo server, never by the tracker
+     "MATOMO_SESSID", "PIWIK_SESSID")
 # --- auth
 _add("auth", "kashif",
      "access_token", "refresh_token", "id_token", "remember_*", "remember_user_token", "auth_token", "jwt",
@@ -73,8 +75,7 @@ _add("csrf", "kashif",
 # --- analytics (§3.3) and analytics cookies whose names contain session-like words
 _add("analytics", "kashif",
      "_ga", "_ga_*", "_gid", "_gat*", "_gcl_*", "_fbp", "_fbc", "_hj*", "_clck", "_clsk", "_uetsid", "_uetvid", "mp_*",
-     "ajs_*", "__utm*", "_pk_*", "_ym_*", "amplitude_*", "_hp2_*", "AMP_TOKEN", "AMP_*", "__insp_*", "matomo_sessid",
-     "MATOMO_SESSID", "sbjs_*", "ABTastySession", "ABTasty", "yabs-sid", "DotMetrics.*", "compass_sid", "_zdshared_*",
+     "ajs_*", "__utm*", "_pk_*", "_ym_*", "amplitude_*", "_hp2_*", "AMP_TOKEN", "AMP_*", "__insp_*", "sbjs_*", "ABTastySession", "ABTasty", "yabs-sid", "DotMetrics.*", "compass_sid", "_zdshared_*",
      "rl_session", "rl_auth_token", "rl_*", "QSI_*", "_rd_wa_first_session*", "_sp_wa_first_session*",
      "wisepops_session", "ab.storage.*", "mnet_session_depth", "sqzl_session_id", "taboola_session_id",
      "DotomiSession_*", "intercom-session-*", "intercom-id-*", "intercom-device-id-*", "_dc_gtm_*", "_gac_*",

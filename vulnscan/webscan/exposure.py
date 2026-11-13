@@ -35,10 +35,10 @@ import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from . import classify, htmlparse, sectxt
+from . import classify, htmlparse, psl, sectxt
 from . import data as _data
 from .rules import RULES, checks_for_module
-from .types import (Evidence, Issue, Response, ScanContext, cap, normalise_host, redact_secret, strip_controls,
+from .types import (Evidence, Issue, Response, ScanContext, normalise_host, redact_secret, strip_controls,
                     url_origin)
 
 CHECKS: tuple[str, ...] = checks_for_module("exposure")
@@ -108,6 +108,12 @@ STR: dict[str, tuple[str, str]] = {
                  "(takeover risk).",
                  "الاسم لا يُحَلّ إلى عنوان؛ فإن كان اسمًا مستعارًا CNAME لخدمة سحابية فتحقّق من وجود سجل DNS معلّق (خطر "
                  "الاستيلاء على النطاق)."),
+    "offsite": ("the entry page redirected to another site, which was not deep-probed",
+                "أعادت الصفحة الأولى التوجيه إلى موقع آخر، فلم يُفحص فحصًا عميقًا"),
+    "sectxt_not_sectxt": ("{url} returned a file without any security.txt field.",
+                          "أعاد {url} ملفًا لا يحوي أي حقل من حقول security.txt."),
+    "sectxt_denied": ("{url} answered {status}, so researchers cannot read a security.txt there.",
+                      "أجاب {url} بالرمز {status}، لذا لا يستطيع الباحثون قراءة ملف security.txt هناك."),
     "takeover_mitigated": ("{host} points to {provider} ({cname}), whose unclaimed-name page was seen, but {provider} no "
                            "longer allows claiming a name this way; not reported.",
                            "يشير {host} إلى {provider} ‏({cname})، وظهرت صفحة الاسم غير المُطالَب به، لكن {provider} لم "
@@ -258,10 +264,21 @@ def _probe_origin(ctx: ScanContext) -> tuple[str | None, str]:
         if kind == "rate_limited":
             return None, "rate_limited"
         if entry.status is not None and not entry.error:
+            if not _same_site(entry.host, ctx.target_host):
+                return None, "offsite"           # never deep-probe a site the entry chain merely redirected to
             return url_origin(entry.url), ""
     if ctx.target:
         return url_origin(ctx.target), ""
     return None, "not_run"
+
+
+def _same_site(a: str, b: str) -> bool:
+    if not a or not b or a == b:
+        return True
+    try:
+        return psl.same_site(a, b)
+    except Exception:   # noqa: BLE001 - PSL data missing: compare host names only
+        return a == b
 
 
 def probe(ctx: ScanContext, platforms: Iterable[str] | None = None) -> dict:
@@ -408,8 +425,10 @@ def _orig_kind(r: Response) -> str:
     return classify.kind_of(r)[0]
 
 
+# ``error:<code>`` flags of responses that were never received → coverage reason (mirrors http.ERROR_CODES; check
+# modules do not import http.py, spec §4.2)
 _ERR_REASON = {"budget": "budget", "time_budget": "time_budget", "byte_budget": "byte_budget", "timeout": "timeout",
-               "deadline": "timeout", "robots": "robots"}
+               "deadline": "timeout", "robots": "robots", "host_stopped": "rate_limited", "profile": "profile"}
 
 
 def _error_reason(r: Response) -> str:
@@ -450,9 +469,12 @@ def judge(r: Response, spec: DeepPath, index: classify.Soft404Index, refs: dict[
         return Verdict("clean", f"status {r.status}")
     if "opaque-coding" in r.flags:
         return Verdict("not_tested", "unsupported_coding")
+    text = _text(r)
+    if kind == "document" and spec.signature.get("not_html") and "document" not in spec.kinds \
+            and not looks_html(r.body, text):
+        kind = "text"                     # a text file mislabelled text/html (e.g. a server's default type)
     if spec.kinds and kind not in spec.kinds:
         return Verdict("clean", f"kind {kind}")
-    text = _text(r)
     matches = match_signature(spec.signature, r.body, text)
     if not matches:
         return Verdict("clean", "signature")
@@ -472,9 +494,13 @@ def judge(r: Response, spec: DeepPath, index: classify.Soft404Index, refs: dict[
     if spec.strength == "weak":
         if index.match(r) is not None:
             return Verdict("clean", "similar to the soft-404 baseline")
-        if entry is not None and entry is not r and entry.is_2xx and entry.body and \
-                classify.similar(classify.signature(r), classify.signature(entry)):
-            return Verdict("clean", "similar to the entry document")
+        # SPA shells: without a baseline proving real 404s here, a page like the entry document is the shell
+        real_404_here = bool(candidates) and candidates[0].real_404
+        if not real_404_here and entry is not None and entry is not r and entry.is_2xx and entry.body:
+            if match_signature(spec.signature, entry.body, _text(entry)):
+                return Verdict("clean", "the entry document matches the signature too")
+            if classify.similar(classify.signature(r), classify.signature(entry)):
+                return Verdict("clean", "similar to the entry document")
     base = candidates[0].evidence() if candidates else None
     return Verdict("exposed", "", matches, base)
 
@@ -543,8 +569,10 @@ def _resp_path(r: Response) -> str:
 
 # ----------------------------------------------------------------------------------------------- security.txt
 
-def _presence(r: Response | None, index: classify.Soft404Index) -> tuple[str, str, str]:
-    """(present | absent | unknown, reason code, detail key) for a well-known response."""
+def _presence(r: Response | None, index: classify.Soft404Index,
+              looks_like: Any = sectxt.looks_like_sectxt) -> tuple[str, str, str]:
+    """(present | absent | unknown, reason code, detail key) for a well-known response. ``looks_like(text)`` says
+    whether a 2xx body is that file at all (an HTML page or a bare "OK" from a catch-all is not)."""
     if r is None:
         return "unknown", "not_run", ""
     if r.error or r.status is None:
@@ -556,6 +584,8 @@ def _presence(r: Response | None, index: classify.Soft404Index) -> tuple[str, st
         return "unknown", "rate_limited", ""
     if r.status in (404, 410):
         return "absent", "", "sectxt_absent"
+    if r.status in (401, 403, 451):
+        return "absent", "", "sectxt_denied"
     if not r.is_2xx:
         return "unknown", "network", ""
     if r.kind == "soft404" or "soft404" in r.flags or index.match(r) is not None:
@@ -563,8 +593,10 @@ def _presence(r: Response | None, index: classify.Soft404Index) -> tuple[str, st
     if "opaque-coding" in r.flags:
         return "unknown", "unsupported_coding", ""
     text = _text(r)
-    if (r.essence in classify.HTML_TYPES or looks_html(r.body, text)) and not sectxt.looks_like_sectxt(text):
-        return "absent", "", "sectxt_html"
+    if not looks_like(text):
+        if r.essence in classify.HTML_TYPES or looks_html(r.body, text):
+            return "absent", "", "sectxt_html"
+        return "absent", "", "sectxt_not_sectxt"
     return "present", "", ""
 
 
@@ -706,12 +738,17 @@ def _robots(st: _Run, index: classify.Soft404Index) -> None:
     st.state("WEB061", "fail")
 
 
+_ROBOTS_LINE = re.compile(r"(?im)^\s*(?:user-agent|disallow|allow|sitemap|crawl-delay)\s*:")
+
+
+def looks_like_robots(text: str) -> bool:
+    """True when ``text`` has at least one robots.txt record line and is not an HTML page."""
+    return bool(_ROBOTS_LINE.search(text[:65536])) and not _HTML_START.match(text[:2048])
+
+
 def _presence_text(r: Response | None, index: classify.Soft404Index) -> tuple[str, str, str]:
-    """Like :func:`_presence` for a plain-text well-known file (robots.txt): HTML is never the file."""
-    state, reason, detail = _presence(r, index)
-    if state == "present" and r is not None and (r.essence in classify.HTML_TYPES or looks_html(r.body, _text(r))):
-        return "absent", "", "sectxt_html"
-    return state, reason, detail
+    """Like :func:`_presence` for robots.txt: an HTML page or a body without any record line is not the file."""
+    return _presence(r, index, looks_like_robots)
 
 
 # ----------------------------------------------------------------------------------------------- deep probe
@@ -783,8 +820,12 @@ def _deep(st: _Run, index: classify.Soft404Index) -> None:
     skipped_reason = report.get("skipped_reason") or ""
     if skipped_reason and not ctx.probes:
         state = "inconclusive" if skipped_reason in ("waf", "rate_limited") else "not_tested"
+        detail: dict[str, str] = {}
+        if skipped_reason == "offsite":          # not a coverage.REASONS code: explain it in both languages
+            skipped_reason = "not_run"
+            detail = dict(zip(("detail_en", "detail_ar"), STR["offsite"]))
         for c in DEEP_RULES:
-            st.state(c, state, skipped_reason)
+            st.state(c, state, skipped_reason, **detail)
         return
     if not ctx.probes and not report.get("planned"):
         for c in DEEP_RULES:
@@ -945,7 +986,7 @@ def _takeover(st: _Run) -> None:
             responses.extend(h for h in r.hops() if h.status is not None and not h.error)
     hosts = list(dict.fromkeys([host, *(r.host for r in responses)]))
     judged = False
-    found = False
+    any_found = False
     for h in hosts:
         rec = ctx.dns.get(h)
         if rec is None:
@@ -961,6 +1002,7 @@ def _takeover(st: _Run) -> None:
             st.state("WEB901", "pass", host=h)
             continue
         prov, cname = hit
+        found = False
         inv = ctx.inventory.setdefault("takeover", [])
         entry = {"host": h, "cname": cname, "provider": prov.name, "vulnerable": prov.vulnerable,
                  "fingerprint": False}
@@ -984,11 +1026,11 @@ def _takeover(st: _Run) -> None:
                           notes=[_note("takeover", host=h, cname=cname, provider=prov.name,
                                        fingerprint=_short(fp, 120))]))
             st.state("WEB901", "fail", host=h)
-            found = True
+            found = any_found = True
             break
         if not found:
             st.state("WEB901", "pass", host=h)
-    if not judged and not found:
+    if not judged and not any_found:
         st.state("WEB901", "not_tested", "not_run")
 
 

@@ -121,8 +121,8 @@ STR: dict[str, tuple[str, str]] = {
     "sts_value": ("Header value: {value}", "قيمة الترويسة: {value}"),
     "sts_multi_same": ("The same value is sent in {fields}; browsers use the first.",
                        "تُرسَل القيمة نفسها في {fields}؛ وتستخدم المتصفحات الأولى."),
-    "sts_multi_diff": ("{fields} with different values; browsers use only the first: {value}",
-                       "{fields} بقيم مختلفة؛ ولا تستخدم المتصفحات إلا الأولى: {value}"),
+    "sts_multi_diff": ("The header is sent in {fields} with different values; browsers use only the first: {value}",
+                       "تُرسَل الترويسة في {fields} بقيم مختلفة؛ ولا تستخدم المتصفحات إلا الأولى: {value}"),
     "sts_no_isd": ("Subdomains of {host} are not covered by HSTS.", "النطاقات الفرعية للمضيف {host} لا تغطيها HSTS."),
     "sts_isd_cookie": ("The session cookie {cookie} is sent to every host under {domain}, but HSTS does not cover them.",
                        "الكوكي {cookie} للجلسة يُرسَل إلى كل مضيف تحت {domain}، لكن HSTS لا تغطي هذه المضيفات."),
@@ -196,6 +196,8 @@ CODES: dict[str, tuple[str, str]] = {
 }
 
 _PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+NOTE_VALUE_CAP = 1000                 # one substituted value (a hostile Location can be megabytes long, §0.6)
+GROUP_VALUE_CAP = 200
 _FIELDS_FORMS = ("{n} field", "{n} fields", ("حقل واحد", "حقلين", "{n} حقول", "{n} حقلًا", "{n} حقل"))
 
 
@@ -208,7 +210,8 @@ def _note(key: str, **values: Any) -> tuple[str, str]:
             v = values.get(m.group(1), m.group(0))
             if isinstance(v, tuple):
                 v = v[1] if lang == "ar" else v[0]
-            return strip_controls(str(v))
+            v = strip_controls(str(v))
+            return v if len(v) <= NOTE_VALUE_CAP else v[: NOTE_VALUE_CAP - 1] + "…"
         return _PLACEHOLDER.sub(sub, text)
     return fill(en, "en"), fill(ar, "ar")
 
@@ -435,11 +438,12 @@ def parse_sts(value: str) -> StsHeader:
                 continue
             if len(v) > 1 and v[0] == "0":
                 _add(h.errors, "header.parse.max_age.leading_zero")
-            n = int(v)
-            if n > MAX_AGE_MAX:
+            # never int() a hostile digit string: Python 3.10.7+ refuses > 4300 digits (ValueError), and 2^64 has 20
+            digits = v.lstrip("0") or "0"
+            if len(digits) > 20 or int(digits) > MAX_AGE_MAX:
                 _add(h.errors, "header.parse.max_age.parse_int_error")
                 continue
-            h.max_age = n
+            h.max_age = int(digits)
         elif lname == "includesubdomains":
             if lname in seen:
                 _add(h.errors, "header.parse.repeated.include_sub_domains")
@@ -654,6 +658,7 @@ class _Run:
             return
         self._emitted.add(dedupe)
         sev = severity if severity in meta.allowed_severities else None
+        group_value = group_value[:GROUP_VALUE_CAP]
         self.issues.append(Issue(rule=rule, url=url or r.url, confidence=conf, evidence=evidence,
                                  params=dict(params or {}), severity=sev, group_value=group_value,
                                  notes=list(notes or []), host=host))
@@ -792,6 +797,9 @@ def _plain_http(st: _Run) -> None:
             notes.append(_note("variant_a", reason=reason))
         else:
             notes.append(_note("variant_b", url=hp.url))
+    elif ctx.entry is not None and (any("cert-error" in h.flags for h in ctx.entry.hops())
+                                    or ctx.entry.hops()[0].host in st.cert_hosts):
+        notes.append(_note("variant_a", reason=_note("https_cert")))
     else:
         notes.append(_note("variant_b", url=ctx.entry.url if ctx.entry is not None else ctx.target))
     pre, _isd, entry = st.preload.lookup(host)
@@ -858,6 +866,8 @@ _JS_LOCATION = re.compile(
     r"""|(?:^|[^\w$.])(?:(?:window|self|top|parent|document)\s*\.\s*)?location\s*\.\s*(?:replace|assign)\s*\(\s*"""
     r"""(["'`])(http://[^"'`\s]+)\3""", re.M)
 
+_JS_DECL = re.compile(r"\b(?:var|let|const)\s+$")
+
 
 def _downgrades(st: _Run) -> None:
     ctx = st.ctx
@@ -899,6 +909,8 @@ def _downgrades(st: _Run) -> None:
                 url = mt.group(2) or mt.group(4) or ""
                 if is_loopback_host(_url_host(url)):
                     continue
+                if _JS_DECL.search(s.text, max(0, mt.start() - 16), mt.start() + 1):
+                    continue                     # ``var location = "http://…"`` is a local variable, not navigation
                 line = s.line + s.text.count("\n", 0, mt.start())
                 st.emit(check, r, st.ev(r, where="body", name="script", value=url, offset=s.offset + mt.start(),
                                         excerpt=_short(mt.group(0), 200)),
@@ -923,7 +935,10 @@ def _chain_length(st: _Run) -> None:
         st.seen(check, start.host)
         n = sum(1 for h in hops if h.is_redirect)
         urls = [h.url for h in hops]
-        loop = "redirect-loop" in final.flags or len(set(urls)) < len(urls)
+        # A URL that repeats in a chain which then completes (``/`` → ``/cookie-check`` → ``/`` + cookie → 200) is a
+        # cookie or bot check, not a loop: the fetcher's ``redirect-loop`` flag (URL + cookie-jar state) is the truth;
+        # a repeat counts by itself only when the chain stopped on a redirect.
+        loop = "redirect-loop" in final.flags or (final.is_redirect and len(set(urls)) < len(urls))
         limit = "redirect-limit" in final.flags
         if not (loop or limit or n > PRELOAD_MAX_REDIRECTS):
             continue
@@ -944,27 +959,24 @@ def _chain_length(st: _Run) -> None:
 
 # ----------------------------------------------------------------------------------------------- WEB106
 
-_FORM = re.compile(r"<form\b", re.I)
-_AHREF = re.compile(r"<a\b[^>]*\bhref\s*=", re.I)
-_TABLE = re.compile(r"<table\b", re.I)
-
-
 def big_redirect_signals(r: Response) -> tuple[list[str], str]:
-    """The §WEB106 page signals of a redirect body (``form``, ``links``, ``table``, ``text``) and its first visible text."""
+    """The §WEB106 page signals of a redirect body (``form``, ``links``, ``table``, ``text``) and its first visible text.
+
+    Read from the light DOM (live elements only), not with ``<a\\b[^>]*href`` style regexes: those backtrack
+    quadratically on a hostile body such as ``"<a " * 100000`` (a redirect body may be up to the 2 MB HTML cap, §0.6)."""
     text = r.text()
     signals = []
-    if _FORM.search(text):
-        signals.append("form")
-    if len(_AHREF.findall(text)) >= 3:
-        signals.append("links")
-    if _TABLE.search(text):
-        signals.append("table")
-    visible = ""
     try:
-        visible = htmlparse.parse(text, r.url).visible_text
-    except Exception:      # noqa: BLE001 - malformed bodies only lose the text signal
-        visible = re.sub(r"<[^>]*>", " ", text)
-    visible = " ".join(visible.split())
+        doc = htmlparse.parse(text, r.url)
+    except Exception:      # noqa: BLE001 - parse() never raises by contract; a bug there only loses the signals
+        return [], ""
+    if doc.find_all("form"):
+        signals.append("form")
+    if sum(1 for a in doc.find_all("a") if a.has("href")) >= 3:
+        signals.append("links")
+    if doc.find_all("table"):
+        signals.append("table")
+    visible = " ".join(doc.visible_text.split())
     if len(visible.encode("utf-8")) > 1024:
         signals.append("text")
     return signals, visible[:200]
@@ -1096,6 +1108,8 @@ def _sha1_leaf(ctx: ScanContext, host: str) -> bool:
 def _hsts(st: _Run, verdicts: dict[str, HstsVerdict]) -> None:
     ctx = st.ctx
     by_host = _host_responses(ctx, "https")
+    navigational = {id(h) for f in [ctx.entry, ctx.http_probe, ctx.https_probe] + [p.response for p in ctx.pages]
+                    if f is not None for h in f.hops()}
     for host, rs in by_host.items():
         if not st.own(host):
             continue
@@ -1115,11 +1129,14 @@ def _hsts(st: _Run, verdicts: dict[str, HstsVerdict]) -> None:
         pre, pre_isd, entry = st.preload.lookup(host)
         verdict = verdicts.get(host)
         finals = [r for r in rs if _final_2xx(r) and not r.is_redirect]
-        # -- WEB117: an https hop to another host without HSTS
+        # -- WEB117: an https hop to another host without HSTS. Only for a host seen *only* as a redirecting hop: a
+        # host that also serves a final 2xx is judged there (missing / WEB110 / WEB112), one cause, one finding (§2.1).
+        # Only navigations count (entry, counterparts, crawled pages): a subresource host that redirects is loaded
+        # over https by the page anyway, so HSTS there protects nothing a visitor types or follows.
         st.seen("WEB117", host)
-        if not pre and not (verdict is not None and verdict.effective and verdict.present):
+        if not pre and not finals and not (verdict is not None and verdict.effective and verdict.present):
             for r in rs:
-                if not r.is_redirect or r.headers.has(STS):
+                if id(r) not in navigational or not r.is_redirect or r.headers.has(STS):
                     continue
                 loc = _location(r) or ""
                 if _url_host(loc) and _url_host(loc) != host:
