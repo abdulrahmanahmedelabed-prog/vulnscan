@@ -1635,6 +1635,14 @@ class SecretSet:
 
 
 _SEC_LEVEL = {"SEC001": ("critical", "certain"), "SEC006": ("critical", "firm"), "SEC030": ("high", "firm")}
+# History applies its SEC rules to single lines of ≤ 4000 characters; web bundles are megabytes on one line. These rules
+# have an unbounded run followed by a required character, which is quadratic on hostile input ("mysql://a:" × 50 000),
+# so the web scan uses the same patterns with bounded runs (same matches for any realistic secret).
+_BOUNDED: dict[str, re.Pattern] = {
+    "SEC006": re.compile(r"(?i)\b(postgres(ql)?|mysql|mongodb(\+srv)?|redis|amqp|mssql)://[^:/\s'\"]{1,256}:[^@\s'\"]{3,256}@"),
+    "SEC022": re.compile(r"(?i)(?<![A-Za-z0-9_\-])(HRKU-[A-Za-z0-9_\-]{40,200}(?![A-Za-z0-9_\-])|heroku\w{0,40}(api)?[_-]?"
+                         r"(key|token)['\"]?\s{0,20}[:=]\s{0,20}['\"]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b)"),
+}
 
 
 def secret_set(ctx: ScanContext) -> SecretSet | None:
@@ -1651,7 +1659,7 @@ def secret_set(ctx: ScanContext) -> SecretSet | None:
         if rule.id not in wanted:
             continue
         sev, conf = _SEC_LEVEL.get(rule.id, ("high", "firm"))
-        out.rules.append(SecretRule(rule.id, rule.pattern, sev, conf, rule.title, rule.title_ar))
+        out.rules.append(SecretRule(rule.id, _BOUNDED.get(rule.id, rule.pattern), sev, conf, rule.title, rule.title_ar))
     for e in obj.get("extra", []):
         out.rules.append(SecretRule(e["id"], re.compile(e["pattern"]), e["severity"], e["confidence"], e["title_en"],
                                     e["title_ar"], float(e.get("min_entropy", 3.5)), "extra"))

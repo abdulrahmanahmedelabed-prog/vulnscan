@@ -1,0 +1,924 @@
+{
+ "meta": {
+  "schema_version": 1,
+  "date": "2026-11-13",
+  "generator": "tools/webdata/takeover.py",
+  "source": "Body fingerprints: nuclei-templates http/takeovers (projectdiscovery); CNAME suffixes, status codes and the vulnerable flag: Kashif's provider facts",
+  "license": "nuclei-templates MIT (fingerprint strings, see NOTICE); provider facts Kashif project licence",
+  "notes": "WEB901 needs all three: a CNAME (canonical name or alias) ending in a listed suffix, a body containing a fingerprint, and the listed status (null = any). vulnerable=false providers are never reported; nxdomain providers usually leave a name that no longer resolves."
+ },
+ "providers": [
+  {
+   "name": "AfterShip",
+   "cname": [
+    "aftership.com"
+   ],
+   "fingerprints": [
+    "Oops.</h2><p class=\"text-muted text-tight\">The page you're looking for doesn't exist."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/aftership-takeover.yaml"
+  },
+  {
+   "name": "Agile CRM",
+   "cname": [
+    "agilecrm.com"
+   ],
+   "fingerprints": [
+    "Sorry, this page is no longer available."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/agilecrm-takeover.yaml"
+  },
+  {
+   "name": "Aha!",
+   "cname": [
+    "aha.io"
+   ],
+   "fingerprints": [
+    "There is no portal here ... sending you back to Aha!"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/aha-takeover.yaml"
+  },
+  {
+   "name": "Airee.ru",
+   "cname": [
+    "airee.ru"
+   ],
+   "fingerprints": [
+    "Ошибка 402. Сервис Айри.рф не оплачен"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/airee-takeover.yaml"
+  },
+  {
+   "name": "Anima",
+   "cname": [
+    "animaapp.io"
+   ],
+   "fingerprints": [
+    "If this is your website and you've just created it, try refreshing in a minute"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/anima-takeover.yaml"
+  },
+  {
+   "name": "AnnounceKit",
+   "cname": [
+    "announcekit.app"
+   ],
+   "fingerprints": [
+    "Error 404 - AnnounceKit"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/announcekit-takeover.yaml"
+  },
+  {
+   "name": "AWS S3 bucket",
+   "cname": [
+    "amazonaws.com",
+    "s3.amazonaws.com"
+   ],
+   "fingerprints": [
+    "The specified bucket does not exist"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/aws-bucket-takeover.yaml"
+  },
+  {
+   "name": "Better Stack status page",
+   "cname": [
+    "betterstack.com",
+    "betteruptime.com"
+   ],
+   "fingerprints": [
+    "<html><body>You are being <a href=\"https://uptime.betterstack.com\">redirected</a>.</body></html>"
+   ],
+   "status": 302,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/uptime-takeover.yaml"
+  },
+  {
+   "name": "Big Cartel",
+   "cname": [
+    "bigcartel.com"
+   ],
+   "fingerprints": [
+    "<h1>Oops! We couldn&#8217;t find that page.</h1>"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/bigcartel-takeover.yaml"
+  },
+  {
+   "name": "Bitbucket",
+   "cname": [
+    "bitbucket.io"
+   ],
+   "fingerprints": [
+    "Repository not found"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/bitbucket-takeover.yaml"
+  },
+  {
+   "name": "Campaign Monitor",
+   "cname": [
+    "createsend.com"
+   ],
+   "fingerprints": [
+    "css.createsend1.com"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/campaignmonitor-takeover.yaml"
+  },
+  {
+   "name": "Canny",
+   "cname": [
+    "canny.io"
+   ],
+   "fingerprints": [
+    "There is no such company. Did you enter the right URL?"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/canny-takeover.yaml"
+  },
+  {
+   "name": "Cargo",
+   "cname": [
+    "cargocollective.com"
+   ],
+   "fingerprints": [
+    "If you're moving your domain away from Cargo you must make this configuration through your registrar's DNS control panel."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/cargo-takeover.yaml"
+  },
+  {
+   "name": "Clever Cloud",
+   "cname": [
+    "clever-cloud.com",
+    "cleverapps.io"
+   ],
+   "fingerprints": [
+    "The application you're trying to access doesn't seem to exist"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/clever-takeover.yaml"
+  },
+  {
+   "name": "Fastly",
+   "cname": [
+    "fastly.net"
+   ],
+   "fingerprints": [
+    "Fastly error: unknown domain"
+   ],
+   "status": null,
+   "vulnerable": false
+  },
+  {
+   "name": "Flexbe",
+   "cname": [
+    "flexbe.com"
+   ],
+   "fingerprints": [
+    "Domain not configured"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/flexbe-takeover.yaml"
+  },
+  {
+   "name": "Framer",
+   "cname": [
+    "framer.app",
+    "framer.website",
+    "framercanvas.com"
+   ],
+   "fingerprints": [
+    "Site Not Found | Framer"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/framer-takeover.yaml"
+  },
+  {
+   "name": "Frontify",
+   "cname": [
+    "frontify.com"
+   ],
+   "fingerprints": [
+    "Oops… looks like you got lost"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/frontify-takeover.yaml"
+  },
+  {
+   "name": "GetResponse",
+   "cname": [
+    "getresponse.com",
+    "gr8.com"
+   ],
+   "fingerprints": [
+    "With GetResponse Landing Pages, lead generation has never been easier"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/getresponse-takeover.yaml"
+  },
+  {
+   "name": "GitBook",
+   "cname": [
+    "gitbook.com",
+    "gitbook.io"
+   ],
+   "fingerprints": [
+    "If you need specifics, here's the error"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/gitbook-takeover.yaml"
+  },
+  {
+   "name": "GitHub Pages",
+   "cname": [
+    "github.io"
+   ],
+   "fingerprints": [
+    "There isn't a GitHub Pages site here.",
+    "For root URLs (like http://example.com/) you must provide an index.html file",
+    "The site configured at this address does not contain the requested file.",
+    "For root URLs (like <code>http://example.com/</code>)"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/github-takeover.yaml"
+  },
+  {
+   "name": "GoHire",
+   "cname": [
+    "gohire.io"
+   ],
+   "fingerprints": [
+    "You may have followed an invalid link or the job you are looking for has been archived"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/gohire-takeover.yaml"
+  },
+  {
+   "name": "GreatPages",
+   "cname": [
+    "greatpages.com.br"
+   ],
+   "fingerprints": [
+    "Página não encontrada (Erro 404)"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/greatpages-takeover.yaml"
+  },
+  {
+   "name": "Hatena Blog",
+   "cname": [
+    "hatena.ne.jp",
+    "hatenablog.com"
+   ],
+   "fingerprints": [
+    "404 Blog is not found"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/hatenablog-takeover.yaml"
+  },
+  {
+   "name": "Help Scout Docs",
+   "cname": [
+    "helpscoutdocs.com"
+   ],
+   "fingerprints": [
+    "No settings were found for this company:"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/helpscout-takeover.yaml"
+  },
+  {
+   "name": "HelpDocs",
+   "cname": [
+    "helpdocs.io"
+   ],
+   "fingerprints": [
+    "You've tried to access an account/page that does not exist"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/helpdocs-takeover.yaml"
+  },
+  {
+   "name": "Helpjuice",
+   "cname": [
+    "helpjuice.com"
+   ],
+   "fingerprints": [
+    "We could not find what you're looking for."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/helpjuice-takeover.yaml"
+  },
+  {
+   "name": "Helprace",
+   "cname": [
+    "helprace.com"
+   ],
+   "fingerprints": [
+    "Alias not configured!",
+    "Admin of this Helprace account needs to set up domain alias"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/helprace-takeover.yaml"
+  },
+  {
+   "name": "Heroku",
+   "cname": [
+    "herokuapp.com",
+    "herokudns.com",
+    "herokussl.com"
+   ],
+   "fingerprints": [
+    "No such app",
+    "There's nothing here, yet."
+   ],
+   "status": 404,
+   "vulnerable": false
+  },
+  {
+   "name": "HubSpot",
+   "cname": [
+    "hs-sites.com",
+    "hubspot.net",
+    "hubspotpagebuilder.com"
+   ],
+   "fingerprints": [
+    "does not exist in our system"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/hubspot-takeover.yaml"
+  },
+  {
+   "name": "Intercom",
+   "cname": [
+    "custom.intercom.help",
+    "intercom.help"
+   ],
+   "fingerprints": [
+    "This page is reserved for artistic dogs."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/intercom-takeover.yaml"
+  },
+  {
+   "name": "JazzHR",
+   "cname": [
+    "applytojob.com"
+   ],
+   "fingerprints": [
+    "This account no longer active"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/jazzhr-takeover.yaml"
+  },
+  {
+   "name": "JetBrains YouTrack",
+   "cname": [
+    "myjetbrains.com"
+   ],
+   "fingerprints": [
+    "is not a registered InCloud YouTrack."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/jetbrains-takeover.yaml"
+  },
+  {
+   "name": "Kinsta",
+   "cname": [
+    "kinsta.cloud"
+   ],
+   "fingerprints": [
+    "No Site For Domain"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/kinsta-takeover.yaml"
+  },
+  {
+   "name": "LaunchRock",
+   "cname": [
+    "launchrock.com"
+   ],
+   "fingerprints": [
+    "It looks like you may have taken a wrong turn somewhere. Don't worry...it happens to all of us."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/launchrock-takeover.yaml"
+  },
+  {
+   "name": "Leadpages",
+   "cname": [
+    "lpages.co"
+   ],
+   "fingerprints": [
+    "Double check that you have the right web address and give it another go!"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/leadpages-takeover.yaml"
+  },
+  {
+   "name": "Mashery",
+   "cname": [
+    "mashery.com"
+   ],
+   "fingerprints": [
+    "Unrecognized domain <strong>"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/mashery-takeover.yaml"
+  },
+  {
+   "name": "Meteor",
+   "cname": [
+    "meteor.com",
+    "meteorapp.com"
+   ],
+   "fingerprints": [
+    "404 Not Found: No applications registered for host '"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/meteor-takeover.yaml"
+  },
+  {
+   "name": "Microsoft Azure",
+   "cname": [
+    "azure-api.net",
+    "azureedge.net",
+    "azurefd.net",
+    "azurewebsites.net",
+    "blob.core.windows.net",
+    "cloudapp.azure.com",
+    "cloudapp.net",
+    "trafficmanager.net"
+   ],
+   "fingerprints": [
+    "404 Web Site not found"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "nxdomain": true
+  },
+  {
+   "name": "Netlify",
+   "cname": [
+    "netlify.app",
+    "netlify.com",
+    "netlifyglobalcdn.com"
+   ],
+   "fingerprints": [
+    "Not Found - Request ID:"
+   ],
+   "status": 404,
+   "vulnerable": false
+  },
+  {
+   "name": "ngrok",
+   "cname": [
+    "ngrok-free.app",
+    "ngrok.app",
+    "ngrok.io"
+   ],
+   "fingerprints": [
+    "ngrok.io not found"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/ngrok-takeover.yaml"
+  },
+  {
+   "name": "Pagewiz",
+   "cname": [
+    "pagewiz.com"
+   ],
+   "fingerprints": [
+    "Start Your New Landing Page Now!"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/pagewiz-takeover.yaml"
+  },
+  {
+   "name": "Pantheon",
+   "cname": [
+    "pantheonsite.io"
+   ],
+   "fingerprints": [
+    "The gods are wise, but do not know of the site which you seek."
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/pantheon-takeover.yaml"
+  },
+  {
+   "name": "Pingdom",
+   "cname": [
+    "pingdom.com"
+   ],
+   "fingerprints": [
+    "This public report page has not been activated by the user",
+    "Public Report Not Activated"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/pingdom-takeover.yaml"
+  },
+  {
+   "name": "Proposify",
+   "cname": [
+    "proposify.biz",
+    "proposify.com"
+   ],
+   "fingerprints": [
+    "If you need immediate assistance, please contact <a href=\"mailto:support@proposify.biz"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/proposify-takeover.yaml"
+  },
+  {
+   "name": "Read the Docs",
+   "cname": [
+    "readthedocs.io"
+   ],
+   "fingerprints": [
+    "unknown to Read the Docs"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/readthedocs-takeover.yaml"
+  },
+  {
+   "name": "ReadMe",
+   "cname": [
+    "readme.io",
+    "readmessl.com"
+   ],
+   "fingerprints": [
+    "Project doesnt exist... yet!"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/readme-takeover.yaml"
+  },
+  {
+   "name": "redirect.pizza",
+   "cname": [
+    "redirect.pizza"
+   ],
+   "fingerprints": [
+    "Unable to redirect"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/redirect-pizza-takeover.yaml"
+  },
+  {
+   "name": "Shopify",
+   "cname": [
+    "myshopify.com"
+   ],
+   "fingerprints": [
+    "Sorry, this shop is currently unavailable."
+   ],
+   "status": null,
+   "vulnerable": false
+  },
+  {
+   "name": "Short.io",
+   "cname": [
+    "short.gy",
+    "short.io"
+   ],
+   "fingerprints": [
+    "This domain is not configured on Short.io"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/short-io.yaml"
+  },
+  {
+   "name": "Simplebooklet",
+   "cname": [
+    "simplebooklet.com"
+   ],
+   "fingerprints": [
+    "We can't find this <a href=\"https://simplebooklet.com"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/simplebooklet-takeover.yaml"
+  },
+  {
+   "name": "Smart Job Board",
+   "cname": [
+    "smartjobboard.com"
+   ],
+   "fingerprints": [
+    "This job board website is either expired",
+    "Job Board Is Unavailable"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/smartjob-takeover.yaml"
+  },
+  {
+   "name": "SmugMug",
+   "cname": [
+    "smugmug.com"
+   ],
+   "fingerprints": [
+    "{\"text\":\"Page Not Found\""
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/smugmug-takeover.yaml"
+  },
+  {
+   "name": "Softr",
+   "cname": [
+    "softr.app",
+    "softr.io"
+   ],
+   "fingerprints": [
+    "The application you were looking for was built on Softr"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/softr-takeover.yaml"
+  },
+  {
+   "name": "Sprintful",
+   "cname": [
+    "sprintful.com"
+   ],
+   "fingerprints": [
+    "The user account associated with this calendar has been deactivated.",
+    "This domain name does not have a default page configured."
+   ],
+   "status": 200,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/sprintful-takeover.yaml"
+  },
+  {
+   "name": "Squadcast",
+   "cname": [
+    "squadcast.com",
+    "squadcast.fm"
+   ],
+   "fingerprints": [
+    "There doesn’t seem to be an active status page associated with this URL."
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/squadcast-takeover.yaml"
+  },
+  {
+   "name": "Strikingly",
+   "cname": [
+    "s.strikinglydns.com",
+    "strikinglydns.com"
+   ],
+   "fingerprints": [
+    "But if you're looking to build your own website"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/strikingly-takeover.yaml"
+  },
+  {
+   "name": "Surge.sh",
+   "cname": [
+    "surge.sh"
+   ],
+   "fingerprints": [
+    "project not found"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/surge-takeover.yaml"
+  },
+  {
+   "name": "SurveySparrow",
+   "cname": [
+    "surveysparrow.com"
+   ],
+   "fingerprints": [
+    "Account not found."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/surveysparrow-takeover.yaml"
+  },
+  {
+   "name": "Tave",
+   "cname": [
+    "tave.com"
+   ],
+   "fingerprints": [
+    "<h1>Error 404: Page Not Found</h1>"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/tave-takeover.yaml"
+  },
+  {
+   "name": "Teamwork",
+   "cname": [
+    "teamwork.com"
+   ],
+   "fingerprints": [
+    "Oops - We didn't find your site."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/teamwork-takeover.yaml"
+  },
+  {
+   "name": "Tilda",
+   "cname": [
+    "tilda.ws"
+   ],
+   "fingerprints": [
+    "Please go to the site settings and put the domain name in the Domain tab."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/tilda-takeover.yaml"
+  },
+  {
+   "name": "Tumblr",
+   "cname": [
+    "domains.tumblr.com"
+   ],
+   "fingerprints": [
+    "Whatever you were looking for doesn't currently exist at this address."
+   ],
+   "status": 404,
+   "vulnerable": false
+  },
+  {
+   "name": "Uberflip",
+   "cname": [
+    "uberflip.com"
+   ],
+   "fingerprints": [
+    "Non-hub domain, The URL you've accessed does not provide a hub."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/uberflip-takeover.yaml"
+  },
+  {
+   "name": "UserVoice",
+   "cname": [
+    "uservoice.com"
+   ],
+   "fingerprints": [
+    "This UserVoice subdomain is currently available!"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/uservoice-takeover.yaml"
+  },
+  {
+   "name": "Vend",
+   "cname": [
+    "vendecommerce.com"
+   ],
+   "fingerprints": [
+    "Looks like you've traveled too far into cyberspace."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/vend-takeover.yaml"
+  },
+  {
+   "name": "Wasabi bucket",
+   "cname": [
+    "wasabisys.com"
+   ],
+   "fingerprints": [
+    "The specified bucket does not exist"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/wasabi-bucket-takeover.yaml"
+  },
+  {
+   "name": "Webflow",
+   "cname": [
+    "proxy-ssl.webflow.com",
+    "proxy.webflow.com"
+   ],
+   "fingerprints": [
+    "The page you are looking for doesn't exist or has been moved."
+   ],
+   "status": 404,
+   "vulnerable": false
+  },
+  {
+   "name": "Wishpond",
+   "cname": [
+    "wishpond.com"
+   ],
+   "fingerprints": [
+    "Oops! There isn’t a Wishpond Campaign published to this page.",
+    "https://www.wishpond.com/404?campaign=true"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/wishpond-takeover.yaml"
+  },
+  {
+   "name": "Wix",
+   "cname": [
+    "wixdns.net"
+   ],
+   "fingerprints": [
+    "ConnectYourDomain Error | Wix.com"
+   ],
+   "status": 404,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/wix-takeover.yaml"
+  },
+  {
+   "name": "WordPress.com",
+   "cname": [
+    "wordpress.com"
+   ],
+   "fingerprints": [
+    ".wordpress.com</em> doesn&#8217;t&nbsp;exist"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/wordpress-takeover.yaml"
+  },
+  {
+   "name": "Wufoo",
+   "cname": [
+    "wufoo.com"
+   ],
+   "fingerprints": [
+    "Hmmm....something is not right."
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/wufoo-takeover.yaml"
+  },
+  {
+   "name": "Zendesk",
+   "cname": [
+    "zendesk.com"
+   ],
+   "fingerprints": [
+    "this help centre no longer exists",
+    "Help Centre Closed"
+   ],
+   "status": null,
+   "vulnerable": true,
+   "reference": "nuclei-templates http/takeovers/zendesk-takeover.yaml"
+  }
+ ]
+}

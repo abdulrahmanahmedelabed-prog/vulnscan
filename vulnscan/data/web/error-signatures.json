@@ -265,11 +265,11 @@
     "any": [
      {
       "type": "regex",
-      "pattern": "\\bat (?:org\\.springframework|java\\.|javax\\.|jakarta\\.)[\\w.$]+\\("
+      "pattern": "\\bat (?:org\\.springframework|java\\.|javax\\.|jakarta\\.)[\\w.$]{1,300}\\("
      },
      {
       "type": "regex",
-      "pattern": "\"trace\"\\s*:\\s*\"[\\w.$]+(?:Exception|Error)"
+      "pattern": "\"trace\"\\s*:\\s*\"[\\w.$]{1,300}?(?:Exception|Error)"
      }
     ]
    },
@@ -289,7 +289,7 @@
      },
      {
       "type": "regex",
-      "pattern": "\"trace\"\\s*:\\s*\"(?:[\\w$]+\\.)+[\\w$]*(?:Exception|Error)\\b"
+      "pattern": "\"trace\"\\s*:\\s*\"(?:[\\w$]{1,80}\\.){1,15}[\\w$]{0,80}(?:Exception|Error)\\b"
      }
     ]
    },
@@ -351,14 +351,14 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "\\bat\\s+(?:[\\w$]+\\.)+[\\w$<>]+\\((?:[\\w$]+\\.(?:java|kt|scala|groovy):\\d+|Native Method|Unknown Source)\\)",
+      "pattern": "\\bat\\s+(?:[\\w$]{1,80}\\.){1,15}[\\w$<>]{1,80}\\((?:[\\w$]{1,80}\\.(?:java|kt|scala|groovy):\\d+|Native Method|Unknown Source)\\)",
       "min_count": 2
      }
     ],
     "any": [
      {
       "type": "regex",
-      "pattern": "\\b(?:[\\w$]+\\.)+[\\w$]*(?:Exception|Error)\\b"
+      "pattern": "\\b(?:[\\w$]{1,80}\\.){1,15}[\\w$]{0,80}(?:Exception|Error)\\b"
      },
      {
       "type": "contains",
@@ -376,7 +376,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "(?m)^\\s*at\\s+(?:[\\w`<>\\[\\]]+\\.)*[\\w`<>\\[\\]]+\\([^)\\n]{0,300}\\)",
+      "pattern": "(?m)^\\s*at\\s+(?:[\\w`<>\\[\\]]{1,80}\\.){0,15}[\\w`<>\\[\\]]{1,80}\\([^)\\n]{0,300}\\)",
       "min_count": 2
      }
     ],
@@ -391,7 +391,7 @@
      },
      {
       "type": "regex",
-      "pattern": "\\bSystem\\.(?:[\\w]+\\.)*\\w*Exception\\b"
+      "pattern": "\\bSystem\\.(?:\\w{1,80}\\.){0,10}\\w{0,80}Exception\\b"
      }
     ]
    },
@@ -433,7 +433,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "(?m)^\\s*at\\s+(?:[\\w$.<>\\[\\] ]+\\s+)?\\(?(?:/|[A-Za-z]:\\\\|file://|node:internal)[^\\s()]*:\\d+:\\d+\\)?",
+      "pattern": "(?m)^[ \\t]*at[ \\t]+(?:[\\w$.<>\\[\\]]{1,200}(?: [\\w$.<>\\[\\]]{1,200}){0,3}[ \\t]+)?\\(?(?:/|[A-Za-z]:\\\\|file://|node:internal)[^\\s()]{0,500}:\\d+:\\d+\\)?",
       "min_count": 2
      }
     ],
@@ -454,13 +454,13 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "[\\w./-]+\\.rb:\\d+:in [`'][^'`\\n<]{1,120}'"
+      "pattern": "(?<![\\w./-])[\\w./-]{1,200}?\\.rb:\\d+:in [`'][^'`\\n<]{1,120}'"
      }
     ],
     "any": [
      {
       "type": "regex",
-      "pattern": "\\b(?:\\w+::)*\\w*(?:Error|Exception)\\b"
+      "pattern": "\\b(?:\\w{1,80}::){0,8}\\w{0,80}(?:Error|Exception)\\b"
      }
     ]
    },
@@ -498,7 +498,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "\\bat (?:/[\\w.-]+)+\\.p[lm] line \\d+\\."
+      "pattern": "\\bat (?:/[\\w-]{1,80}){0,15}/[\\w.-]{1,80}?\\.p[lm] line \\d+\\."
      }
     ]
    },
@@ -678,11 +678,11 @@
     "any": [
      {
       "type": "regex",
-      "pattern": "\\bPG::[A-Z]\\w+"
+      "pattern": "\\bPG::[A-Z]\\w{1,80}"
      },
      {
       "type": "regex",
-      "pattern": "\\bpsycopg2?\\.(?:errors\\.)?[A-Z]\\w+"
+      "pattern": "\\bpsycopg2?\\.(?:errors\\.)?[A-Z]\\w{1,80}"
      },
      {
       "type": "regex",
@@ -742,7 +742,7 @@
     "any": [
      {
       "type": "regex",
-      "pattern": "\\bSQLite3::\\w+"
+      "pattern": "\\bSQLite3::\\w{1,80}"
      },
      {
       "type": "regex",
@@ -768,11 +768,11 @@
     "any": [
      {
       "type": "regex",
-      "pattern": "\\bjava\\.sql\\.SQL\\w*Exception\\b"
+      "pattern": "\\bjava\\.sql\\.SQL\\w{0,80}Exception\\b"
      },
      {
       "type": "regex",
-      "pattern": "\\borg\\.hibernate\\.exception\\.\\w+Exception\\b"
+      "pattern": "\\borg\\.hibernate\\.exception\\.\\w{1,80}Exception\\b"
      },
      {
       "type": "regex",
@@ -808,7 +808,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "\\bsqlalchemy\\.exc\\.\\w+Error\\b"
+      "pattern": "\\bsqlalchemy\\.exc\\.\\w{1,80}Error\\b"
      }
     ]
    },

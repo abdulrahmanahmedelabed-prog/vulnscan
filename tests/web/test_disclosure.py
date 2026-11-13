@@ -766,13 +766,13 @@ HOSTILE = [
 
 @pytest.mark.parametrize("n", range(len(HOSTILE)))
 def test_hostile_bodies_are_fast(make_response, make_ctx, n):
-    body = HOSTILE[n].encode()
+    body = HOSTILE[n][:250_000].encode()        # big enough that a quadratic pattern would take minutes
     pages = [Page(make_response(URL, status=500, body=body, content_type="text/html"), None)]
     js = make_response(URL + "x.js", body=body, content_type="text/javascript", source="subresource")
     ctx = make_ctx(entry=pages[0], subresources=[js], sensitivity="paranoid")
     t = time.perf_counter()
     disclosure.run(ctx)
-    assert time.perf_counter() - t < 6.0
+    assert time.perf_counter() - t < 4.0
 
 
 @pytest.mark.parametrize("seed", range(25))

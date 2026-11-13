@@ -1,0 +1,1170 @@
+{
+ "meta": {
+  "schema_version": 1,
+  "date": "2026-11-13",
+  "generator": "Kashif WP11 (hand-curated, spec §2.10 table)",
+  "source": "Kashif: the fixed deep-probe list of spec §2.10 (no wordlists); signatures written for Kashif",
+  "license": "Kashif project licence",
+  "notes": "WEB062 deep probe (--deep only). Every path has a body signature; strong signatures are decisive against a non-matching soft-404 baseline, weak (HTML) ones also need the response to differ from the baseline. Endpoints whose GET does expensive or state-changing work (heap/thread dumps, profilers' CPU capture, cache purges, installers) are never listed. Platform paths live in tech.json (WEB082/WEB083); the two path sets are disjoint."
+ },
+ "paths": [
+  {
+   "path": "/.git/HEAD",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-527",
+   "asvs5": "13.4.1",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\Aref: refs/"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\A[0-9a-f]{40}\\s*\\Z"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed Git repository (.git/HEAD)",
+   "title_ar": "مستودع Git مكشوف (.git/HEAD)",
+   "advice_en": "Deny access to /.git/ on the web server (or deploy without it); the repository can reveal the full source code and its history.",
+   "advice_ar": "امنع الوصول إلى المجلد /.git/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الشيفرة المصدرية كاملة وتاريخها."
+  },
+  {
+   "path": "/.git/config",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-527",
+   "asvs5": "13.4.1",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\A\\s*(?:#[^\\n]*\\n\\s*)*\\[core\\]"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed Git configuration (.git/config)",
+   "title_ar": "إعدادات Git مكشوفة (.git/config)",
+   "advice_en": "Deny access to /.git/ on the web server (or deploy without it); the configuration can reveal remote repository URLs with embedded credentials.",
+   "advice_ar": "امنع الوصول إلى المجلد /.git/ في خادم الويب (أو انشر الموقع بدونه)؛ فالإعدادات قد تكشف عناوين المستودعات البعيدة مع بيانات دخول مضمّنة فيها."
+  },
+  {
+   "path": "/.svn/entries",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-527",
+   "asvs5": "13.4.1",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\A\\d{1,3}[ \\t]*\\r?\\n?\\Z"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\A\\d{1,3}[ \\t]*\\r?\\n(?:[^\\n]*\\n){0,2}dir\\r?$",
+      "flags": "m"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed Subversion metadata (.svn/entries)",
+   "title_ar": "بيانات Subversion الوصفية مكشوفة (.svn/entries)",
+   "advice_en": "Deny access to /.svn/ on the web server (or deploy without it); the repository can reveal the full source code and its history.",
+   "advice_ar": "امنع الوصول إلى المجلد /.svn/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الشيفرة المصدرية كاملة وتاريخها."
+  },
+  {
+   "path": "/.svn/wc.db",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-527",
+   "asvs5": "13.4.1",
+   "kinds": [
+    "download",
+    "other",
+    "text"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "magic",
+      "pattern": "53514c69746520666f726d6174203300"
+     }
+    ]
+   },
+   "strength": "strong",
+   "title_en": "Exposed Subversion working-copy database (.svn/wc.db)",
+   "title_ar": "قاعدة بيانات نسخة العمل في Subversion مكشوفة (.svn/wc.db)",
+   "advice_en": "Deny access to /.svn/ on the web server (or deploy without it); the repository can reveal the full source code and its history.",
+   "advice_ar": "امنع الوصول إلى المجلد /.svn/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الشيفرة المصدرية كاملة وتاريخها."
+  },
+  {
+   "path": "/.hg/requires",
+   "rule": "WEB062",
+   "severity": "medium",
+   "cwe": "CWE-527",
+   "asvs5": "13.4.1",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\A(?:[a-z0-9][a-z0-9-]*\\r?\\n){1,20}\\Z"
+     },
+     {
+      "type": "regex",
+      "pattern": "^(?:revlogv1|store)\\r?$",
+      "flags": "m"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed Mercurial repository (.hg/requires)",
+   "title_ar": "مستودع Mercurial مكشوف (.hg/requires)",
+   "advice_en": "Deny access to /.hg/ on the web server (or deploy without it); the repository can reveal the full source code and its history.",
+   "advice_ar": "امنع الوصول إلى المجلد /.hg/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الشيفرة المصدرية كاملة وتاريخها."
+  },
+  {
+   "path": "/.DS_Store",
+   "rule": "WEB062",
+   "severity": "low",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "download",
+    "other",
+    "text"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "magic",
+      "pattern": "0000000142756431"
+     }
+    ]
+   },
+   "strength": "strong",
+   "title_en": "Exposed .DS_Store file",
+   "title_ar": "ملف .DS_Store مكشوف",
+   "advice_en": "Remove .DS_Store files from the deployment; they list the names of the files and folders in the directory.",
+   "advice_ar": "احذف ملفات .DS_Store من النشر؛ فهي تسرد أسماء الملفات والمجلدات الموجودة في المجلد."
+  },
+  {
+   "path": "/.env",
+   "rule": "WEB062",
+   "severity": "critical",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "^[A-Z][A-Z0-9_]{2,}=",
+      "flags": "m",
+      "min_count": 2
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed environment file (.env)",
+   "title_ar": "ملف متغيرات البيئة مكشوف (.env)",
+   "advice_en": "Remove the file from the web root at once and rotate every secret in it (application keys, database passwords, API tokens).",
+   "advice_ar": "احذف الملف من جذر الموقع فورًا، وغيّر كل سرّ ورد فيه (مفاتيح التطبيق وكلمات مرور قواعد البيانات ورموز واجهات API)."
+  },
+  {
+   "path": "/.env.bak",
+   "rule": "WEB062",
+   "severity": "critical",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "^[A-Z][A-Z0-9_]{2,}=",
+      "flags": "m",
+      "min_count": 2
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed environment file (.env.bak)",
+   "title_ar": "ملف متغيرات البيئة مكشوف (.env.bak)",
+   "advice_en": "Remove the file from the web root at once and rotate every secret in it (application keys, database passwords, API tokens).",
+   "advice_ar": "احذف الملف من جذر الموقع فورًا، وغيّر كل سرّ ورد فيه (مفاتيح التطبيق وكلمات مرور قواعد البيانات ورموز واجهات API)."
+  },
+  {
+   "path": "/.env.local",
+   "rule": "WEB062",
+   "severity": "critical",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "^[A-Z][A-Z0-9_]{2,}=",
+      "flags": "m",
+      "min_count": 2
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed environment file (.env.local)",
+   "title_ar": "ملف متغيرات البيئة مكشوف (.env.local)",
+   "advice_en": "Remove the file from the web root at once and rotate every secret in it (application keys, database passwords, API tokens).",
+   "advice_ar": "احذف الملف من جذر الموقع فورًا، وغيّر كل سرّ ورد فيه (مفاتيح التطبيق وكلمات مرور قواعد البيانات ورموز واجهات API)."
+  },
+  {
+   "path": "/.env.production",
+   "rule": "WEB062",
+   "severity": "critical",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "^[A-Z][A-Z0-9_]{2,}=",
+      "flags": "m",
+      "min_count": 2
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed environment file (.env.production)",
+   "title_ar": "ملف متغيرات البيئة مكشوف (.env.production)",
+   "advice_en": "Remove the file from the web root at once and rotate every secret in it (application keys, database passwords, API tokens).",
+   "advice_ar": "احذف الملف من جذر الموقع فورًا، وغيّر كل سرّ ورد فيه (مفاتيح التطبيق وكلمات مرور قواعد البيانات ورموز واجهات API)."
+  },
+  {
+   "path": "/wp-config.php.bak",
+   "rule": "WEB062",
+   "severity": "critical",
+   "cwe": "CWE-530",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "DB_PASSWORD"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed WordPress configuration backup (wp-config.php.bak)",
+   "title_ar": "نسخة احتياطية مكشوفة من إعدادات WordPress (wp-config.php.bak)",
+   "advice_en": "Delete backup copies of wp-config.php from the server (they are sent as plain text), then change the database password and the WordPress keys and salts.",
+   "advice_ar": "احذف النسخ الاحتياطية من wp-config.php من الخادم (فهي تُرسَل نصًّا عاديًا)، ثم غيّر كلمة مرور قاعدة البيانات ومفاتيح WordPress وقيم salt."
+  },
+  {
+   "path": "/wp-config.php~",
+   "rule": "WEB062",
+   "severity": "critical",
+   "cwe": "CWE-530",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "DB_PASSWORD"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed WordPress configuration backup (wp-config.php~)",
+   "title_ar": "نسخة احتياطية مكشوفة من إعدادات WordPress (wp-config.php~)",
+   "advice_en": "Delete backup copies of wp-config.php from the server (they are sent as plain text), then change the database password and the WordPress keys and salts.",
+   "advice_ar": "احذف النسخ الاحتياطية من wp-config.php من الخادم (فهي تُرسَل نصًّا عاديًا)، ثم غيّر كلمة مرور قاعدة البيانات ومفاتيح WordPress وقيم salt."
+  },
+  {
+   "path": "/wp-config.old",
+   "rule": "WEB062",
+   "severity": "critical",
+   "cwe": "CWE-530",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "DB_PASSWORD"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed WordPress configuration backup (wp-config.old)",
+   "title_ar": "نسخة احتياطية مكشوفة من إعدادات WordPress (wp-config.old)",
+   "advice_en": "Delete backup copies of wp-config.php from the server (they are sent as plain text), then change the database password and the WordPress keys and salts.",
+   "advice_ar": "احذف النسخ الاحتياطية من wp-config.php من الخادم (فهي تُرسَل نصًّا عاديًا)، ثم غيّر كلمة مرور قاعدة البيانات ومفاتيح WordPress وقيم salt."
+  },
+  {
+   "path": "/config.php.bak",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-530",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "(?:\\$[A-Za-z_]\\w*(?:\\[[^\\]\\n]{0,80}\\])*\\s*=|\\bdefine\\s*\\(|\\bconst\\s+[A-Z_]{3,}\\s*=)"
+     },
+     {
+      "type": "regex",
+      "pattern": "password|passwd|db_|secret_key",
+      "flags": "i"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed configuration backup (config.php.bak)",
+   "title_ar": "نسخة احتياطية مكشوفة من ملف الإعدادات (config.php.bak)",
+   "advice_en": "Delete backup files from the web root (the server sends .bak files as plain text instead of running them) and change the secrets they contain.",
+   "advice_ar": "احذف ملفات النسخ الاحتياطي من جذر الموقع (فالخادم يرسل ملفات .bak نصًّا عاديًا بدل تنفيذها)، وغيّر الأسرار الواردة فيها."
+  },
+  {
+   "path": "/backup.sql",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-530",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "^(?:-- MySQL dump|-- MariaDB dump|-- PostgreSQL database dump|CREATE TABLE|INSERT INTO)",
+      "flags": "im",
+      "within": 4096
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed database dump (backup.sql)",
+   "title_ar": "تفريغ قاعدة بيانات مكشوف (backup.sql)",
+   "advice_en": "Remove database dumps from the web root and treat the data in them as leaked (reset the passwords and tokens they contain).",
+   "advice_ar": "أزل ملفات تفريغ قاعدة البيانات من جذر الموقع، وتعامل مع بياناتها على أنها مسرَّبة (أعد تعيين كلمات المرور والرموز الواردة فيها)."
+  },
+  {
+   "path": "/dump.sql",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-530",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "^(?:-- MySQL dump|-- MariaDB dump|-- PostgreSQL database dump|CREATE TABLE|INSERT INTO)",
+      "flags": "im",
+      "within": 4096
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed database dump (dump.sql)",
+   "title_ar": "تفريغ قاعدة بيانات مكشوف (dump.sql)",
+   "advice_en": "Remove database dumps from the web root and treat the data in them as leaked (reset the passwords and tokens they contain).",
+   "advice_ar": "أزل ملفات تفريغ قاعدة البيانات من جذر الموقع، وتعامل مع بياناتها على أنها مسرَّبة (أعد تعيين كلمات المرور والرموز الواردة فيها)."
+  },
+  {
+   "path": "/db.sql",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-530",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "^(?:-- MySQL dump|-- MariaDB dump|-- PostgreSQL database dump|CREATE TABLE|INSERT INTO)",
+      "flags": "im",
+      "within": 4096
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed database dump (db.sql)",
+   "title_ar": "تفريغ قاعدة بيانات مكشوف (db.sql)",
+   "advice_en": "Remove database dumps from the web root and treat the data in them as leaked (reset the passwords and tokens they contain).",
+   "advice_ar": "أزل ملفات تفريغ قاعدة البيانات من جذر الموقع، وتعامل مع بياناتها على أنها مسرَّبة (أعد تعيين كلمات المرور والرموز الواردة فيها)."
+  },
+  {
+   "path": "/.aws/credentials",
+   "rule": "WEB062",
+   "severity": "critical",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "^\\s*aws_access_key_id\\s*=",
+      "flags": "im"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed AWS credentials file (.aws/credentials)",
+   "title_ar": "ملف اعتماديات AWS مكشوف (.aws/credentials)",
+   "advice_en": "Deactivate the access keys in AWS IAM at once, review their recent use in CloudTrail, then remove the file from the web root.",
+   "advice_ar": "عطّل مفاتيح الوصول في AWS IAM فورًا، وراجع استخدامها الأخير في CloudTrail، ثم احذف الملف من جذر الموقع."
+  },
+  {
+   "path": "/.htaccess",
+   "rule": "WEB062",
+   "severity": "medium",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "^\\s*(?:RewriteRule|RewriteEngine|RewriteCond|AuthType|AuthUserFile|Require|Order\\s+(?:allow|deny)|Deny\\s+from|<IfModule)\\b",
+      "flags": "im"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed .htaccess file",
+   "title_ar": "ملف .htaccess مكشوف",
+   "advice_en": "Make the web server refuse to serve files whose names start with .ht (Apache does this by default with <FilesMatch \"^\\.ht\"> Require all denied).",
+   "advice_ar": "اجعل خادم الويب يرفض تقديم الملفات التي تبدأ أسماؤها بـ ‎.ht (يفعل Apache ذلك افتراضيًا بالقاعدة <FilesMatch \"^\\.ht\"> Require all denied)."
+  },
+  {
+   "path": "/.htpasswd",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "^[^:\\s<>]+:(?:\\$(?:apr1|2[aby]|5|6)\\$|\\{SHA\\})",
+      "flags": "m"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed .htpasswd password file",
+   "title_ar": "ملف كلمات المرور .htpasswd مكشوف",
+   "advice_en": "Move the file outside the web root, refuse to serve .ht* files, and change every password it lists (the hashes can be cracked offline).",
+   "advice_ar": "انقل الملف خارج جذر الموقع وامنع تقديم ملفات ‎.ht*، وغيّر كل كلمات المرور المذكورة فيه (إذ يمكن كسر قيمها المجزّأة دون اتصال)."
+  },
+  {
+   "path": "/web.config",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "api_xml",
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "<configuration"
+     },
+     {
+      "type": "contains",
+      "pattern": "<system.web"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed web.config (IIS / ASP.NET configuration)",
+   "title_ar": "ملف web.config مكشوف (إعدادات IIS وASP.NET)",
+   "advice_en": "IIS never serves web.config itself: find the static file server or proxy that does, block the file there and change the connection strings and machine keys it contains.",
+   "advice_ar": "لا يقدّم IIS الملف web.config أبدًا: ابحث عن خادم الملفات الثابتة أو الوكيل الذي يقدّمه وامنع الملف فيه، وغيّر سلاسل الاتصال ومفاتيح الجهاز الواردة فيه."
+  },
+  {
+   "path": "/WEB-INF/web.xml",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "api_xml",
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "<web-app\\b"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed Java deployment descriptor (WEB-INF/web.xml)",
+   "title_ar": "ملف وصف النشر في Java مكشوف (WEB-INF/web.xml)",
+   "advice_en": "WEB-INF must never be reachable: serve the application through its servlet container and fix the static file or proxy rule that exposes it.",
+   "advice_ar": "يجب ألا يكون المجلد WEB-INF متاحًا أبدًا: قدّم التطبيق عبر حاوية servlet، وأصلح قاعدة الملفات الثابتة أو الوكيل التي تكشفه."
+  },
+  {
+   "path": "/.idea/workspace.xml",
+   "rule": "WEB062",
+   "severity": "low",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "api_xml",
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "<project\\s+version="
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed IDE project files (.idea)",
+   "title_ar": "ملفات مشروع بيئة التطوير مكشوفة (.idea)",
+   "advice_en": "Exclude IDE folders such as .idea from the deployment; they reveal file names, paths and sometimes data source settings.",
+   "advice_ar": "استبعد مجلدات بيئة التطوير مثل .idea من النشر؛ فهي تكشف أسماء الملفات والمسارات وأحيانًا إعدادات مصادر البيانات."
+  },
+  {
+   "path": "/.vscode/sftp.json",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "api_json",
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\\"host\\\"\\s*:"
+     }
+    ],
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\\"password\\\"\\s*:"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\\"privateKeyPath\\\"\\s*:"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed VS Code SFTP settings (.vscode/sftp.json)",
+   "title_ar": "إعدادات SFTP في VS Code مكشوفة (.vscode/sftp.json)",
+   "advice_en": "Remove the .vscode folder from the deployment and change the server password or key it names.",
+   "advice_ar": "احذف المجلد .vscode من النشر، وغيّر كلمة مرور الخادم أو المفتاح المذكور فيه."
+  },
+  {
+   "path": "/docker-compose.yml",
+   "rule": "WEB062",
+   "severity": "medium",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "^services:\\s*$",
+      "flags": "m"
+     },
+     {
+      "type": "regex",
+      "pattern": "^\\s+image:\\s*\\S",
+      "flags": "m"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed docker-compose.yml",
+   "title_ar": "ملف docker-compose.yml مكشوف",
+   "advice_en": "Do not deploy docker-compose files into the web root; they reveal the service layout and often passwords in environment entries.",
+   "advice_ar": "لا تنشر ملفات docker-compose في جذر الموقع؛ فهي تكشف بنية الخدمات وغالبًا كلمات مرور في متغيرات البيئة."
+  },
+  {
+   "path": "/.npmrc",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-538",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "_authToken\\s*=\\s*\\S"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed .npmrc with a registry token",
+   "title_ar": "ملف .npmrc مكشوف مع رمز وصول إلى مستودع الحزم",
+   "advice_en": "Revoke the npm token at the registry, then remove .npmrc from the deployment.",
+   "advice_ar": "ألغِ رمز npm لدى مستودع الحزم، ثم احذف الملف .npmrc من النشر."
+  },
+  {
+   "path": "/phpinfo.php",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-200",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "document"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*PHP \\d[^<]*phpinfo\\(\\)\\s*</title>",
+      "flags": "i"
+     },
+     {
+      "type": "regex",
+      "pattern": "PHP Version[\\s\\S]{0,4000}?<td class=\\\"e\\\">[\\s\\S]{0,400}?<td class=\\\"v\\\">"
+     }
+    ]
+   },
+   "strength": "weak",
+   "title_en": "phpinfo() page exposed (phpinfo.php)",
+   "title_ar": "صفحة phpinfo()‎ مكشوفة (phpinfo.php)",
+   "advice_en": "Delete phpinfo() pages from production; they reveal the PHP version, modules, paths and environment variables.",
+   "advice_ar": "احذف صفحات phpinfo()‎ من بيئة الإنتاج؛ فهي تكشف إصدار PHP ووحداته والمسارات ومتغيرات البيئة."
+  },
+  {
+   "path": "/info.php",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-200",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "document"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*PHP \\d[^<]*phpinfo\\(\\)\\s*</title>",
+      "flags": "i"
+     },
+     {
+      "type": "regex",
+      "pattern": "PHP Version[\\s\\S]{0,4000}?<td class=\\\"e\\\">[\\s\\S]{0,400}?<td class=\\\"v\\\">"
+     }
+    ]
+   },
+   "strength": "weak",
+   "title_en": "phpinfo() page exposed (info.php)",
+   "title_ar": "صفحة phpinfo()‎ مكشوفة (info.php)",
+   "advice_en": "Delete phpinfo() pages from production; they reveal the PHP version, modules, paths and environment variables.",
+   "advice_ar": "احذف صفحات phpinfo()‎ من بيئة الإنتاج؛ فهي تكشف إصدار PHP ووحداته والمسارات ومتغيرات البيئة."
+  },
+  {
+   "path": "/server-status",
+   "rule": "WEB062",
+   "severity": "medium",
+   "cwe": "CWE-200",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "document"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*Apache Status\\s*</title>",
+      "flags": "i"
+     },
+     {
+      "type": "contains",
+      "pattern": "Apache Server Status for"
+     }
+    ]
+   },
+   "strength": "weak",
+   "title_en": "Apache server-status page exposed",
+   "title_ar": "صفحة server-status في Apache مكشوفة",
+   "advice_en": "Restrict mod_status to localhost or an administration network (Require local / Require ip); it shows client addresses and the URLs being requested.",
+   "advice_ar": "اقصر mod_status على localhost أو على شبكة الإدارة (Require local أو Require ip)؛ فهو يعرض عناوين العملاء والروابط المطلوبة."
+  },
+  {
+   "path": "/nginx_status",
+   "rule": "WEB062",
+   "severity": "low",
+   "cwe": "CWE-200",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\AActive connections: \\d+"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "nginx stub_status page exposed",
+   "title_ar": "صفحة stub_status في nginx مكشوفة",
+   "advice_en": "Restrict stub_status to localhost or your monitoring network (allow 127.0.0.1; deny all;).",
+   "advice_ar": "اقصر stub_status على localhost أو على شبكة المراقبة لديك (allow 127.0.0.1; deny all;)."
+  },
+  {
+   "path": "/actuator/env",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-200",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "api_json",
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "\"propertySources\""
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Spring Boot Actuator env endpoint exposed",
+   "title_ar": "نقطة env في Spring Boot Actuator مكشوفة",
+   "advice_en": "Expose only the health endpoint publicly (management.endpoints.web.exposure.include=health) and put the others behind authentication; rotate any secret the env endpoint showed.",
+   "advice_ar": "لا تكشف للعموم إلا نقطة health ‏(management.endpoints.web.exposure.include=health)، وضع بقية النقاط خلف المصادقة؛ وغيّر أي سرّ عرضته نقطة env."
+  },
+  {
+   "path": "/actuator",
+   "rule": "WEB062",
+   "severity": "low",
+   "cwe": "CWE-200",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "api_json",
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "\"_links\""
+     },
+     {
+      "type": "regex",
+      "pattern": "\\\"self\\\"\\s*:\\s*\\{\\s*\\\"href\\\"\\s*:\\s*\\\"[^\\\"]*/actuator/?\\\""
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Spring Boot Actuator index exposed",
+   "title_ar": "فهرس Spring Boot Actuator مكشوف",
+   "advice_en": "Expose only the health endpoint publicly (management.endpoints.web.exposure.include=health) and put the others behind authentication.",
+   "advice_ar": "لا تكشف للعموم إلا نقطة health ‏(management.endpoints.web.exposure.include=health)، وضع بقية النقاط خلف المصادقة.",
+   "severity_if": {
+    "actuator_sensitive_links": "high"
+   },
+   "note": "high when the index lists heapdump, threaddump, env, logfile or jolokia; those are never requested"
+  },
+  {
+   "path": "/swagger-ui/index.html",
+   "rule": "WEB062",
+   "severity": "low",
+   "cwe": "CWE-200",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "document"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "swagger-ui(?:-bundle|-standalone-preset)?(?:\\.min)?\\.js"
+     },
+     {
+      "type": "regex",
+      "pattern": "id=[\\\"']swagger-ui[\\\"']"
+     }
+    ]
+   },
+   "strength": "weak",
+   "title_en": "Swagger UI exposed",
+   "title_ar": "واجهة Swagger UI مكشوفة",
+   "advice_en": "If the API is not meant to be public, restrict its documentation to authenticated users or remove it from production.",
+   "advice_ar": "إذا لم تكن واجهة API مخصّصة للعموم، فاقصر توثيقها على المستخدمين المصادَق عليهم أو أزله من بيئة الإنتاج.",
+   "severity_if": {
+    "public_api_docs": "info"
+   },
+   "note": "info when the site links to it (a documented public API)"
+  },
+  {
+   "path": "/v3/api-docs",
+   "rule": "WEB062",
+   "severity": "low",
+   "cwe": "CWE-200",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "api_json",
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\A\\s*\\{[\\s\\S]{0,400}?\\\"(?:openapi|swagger)\\\"\\s*:\\s*\\\"\\d"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "OpenAPI description exposed (/v3/api-docs)",
+   "title_ar": "وصف OpenAPI مكشوف (/v3/api-docs)",
+   "advice_en": "If the API is not meant to be public, restrict its documentation to authenticated users or remove it from production.",
+   "advice_ar": "إذا لم تكن واجهة API مخصّصة للعموم، فاقصر توثيقها على المستخدمين المصادَق عليهم أو أزله من بيئة الإنتاج.",
+   "severity_if": {
+    "public_api_docs": "info"
+   },
+   "note": "info when the site links to it (a documented public API)"
+  },
+  {
+   "path": "/graphql",
+   "rule": "WEB062",
+   "severity": "low",
+   "cwe": "CWE-200",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "document"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "<title>[^<]*GraphiQL",
+      "flags": "i"
+     },
+     {
+      "type": "regex",
+      "pattern": "graphiql(?:\\.min)?\\.(?:js|css)",
+      "flags": "i"
+     },
+     {
+      "type": "regex",
+      "pattern": "id=[\\\"']graphiql[\\\"']",
+      "flags": "i"
+     }
+    ]
+   },
+   "strength": "weak",
+   "title_en": "GraphiQL console exposed (/graphql)",
+   "title_ar": "واجهة GraphiQL مكشوفة (/graphql)",
+   "advice_en": "Disable the GraphiQL console in production (and introspection unless the API is public); no query was sent by Kashif.",
+   "advice_ar": "عطّل واجهة GraphiQL في بيئة الإنتاج (وكذلك الاستبطان introspection ما لم تكن الواجهة عامة)؛ ولم يرسل كاشف أي استعلام.",
+   "severity_if": {
+    "public_api_docs": "info"
+   },
+   "note": "GET of the page only; no GraphQL query is ever sent"
+  },
+  {
+   "path": "/telescope",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-489",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "document"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "window\\.Telescope\\s*="
+     },
+     {
+      "type": "regex",
+      "pattern": "<title>[^<]*Telescope",
+      "flags": "i"
+     }
+    ]
+   },
+   "strength": "weak",
+   "title_en": "Laravel Telescope exposed",
+   "title_ar": "أداة Laravel Telescope مكشوفة",
+   "advice_en": "Disable this debugging tool in production (or restrict it to administrators); it shows requests, queries, session data and secrets.",
+   "advice_ar": "عطّل أداة التنقيح هذه في بيئة الإنتاج (أو اقصرها على المسؤولين)؛ فهي تعرض الطلبات والاستعلامات وبيانات الجلسات والأسرار."
+  },
+  {
+   "path": "/_profiler",
+   "rule": "WEB062",
+   "severity": "high",
+   "cwe": "CWE-489",
+   "asvs5": "13.4.5",
+   "kinds": [
+    "document"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "<title>[^<]*Symfony Profiler",
+      "flags": "i"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bsf-toolbar|class=\\\"sf-reset\\\""
+     }
+    ]
+   },
+   "strength": "weak",
+   "title_en": "Symfony profiler exposed",
+   "title_ar": "أداة Symfony Profiler مكشوفة",
+   "advice_en": "Disable this debugging tool in production (or restrict it to administrators); it shows requests, queries, session data and secrets.",
+   "advice_ar": "عطّل أداة التنقيح هذه في بيئة الإنتاج (أو اقصرها على المسؤولين)؛ فهي تعرض الطلبات والاستعلامات وبيانات الجلسات والأسرار."
+  },
+  {
+   "path": "/storage/logs/laravel.log",
+   "rule": "WEB062",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "^\\[[^\\]\\n]{8,40}\\] PHP (?:Warning|Fatal error|Parse error|Notice|Deprecated)",
+      "flags": "m"
+     },
+     {
+      "type": "regex",
+      "pattern": "^\\[\\d{4}-\\d\\d-\\d\\d[ T]\\d\\d:\\d\\d:\\d\\d[^\\]\\n]{0,16}\\] \\w+\\.(?:EMERGENCY|ALERT|CRITICAL|ERROR|WARNING|NOTICE|INFO|DEBUG):",
+      "flags": "m"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed Laravel log file",
+   "title_ar": "ملف سجل Laravel مكشوف",
+   "advice_en": "Move log files outside the web root (or deny access to them); logs often contain stack traces, paths, personal data and tokens.",
+   "advice_ar": "انقل ملفات السجلات خارج جذر الموقع (أو امنع الوصول إليها)؛ فالسجلات تحوي غالبًا آثار الأخطاء والمسارات والبيانات الشخصية والرموز."
+  },
+  {
+   "path": "/error_log",
+   "rule": "WEB062",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "^\\[[^\\]\\n]{8,40}\\] PHP (?:Warning|Fatal error|Parse error|Notice|Deprecated)",
+      "flags": "m"
+     },
+     {
+      "type": "regex",
+      "pattern": "^\\[\\d{4}-\\d\\d-\\d\\d[ T]\\d\\d:\\d\\d:\\d\\d[^\\]\\n]{0,16}\\] \\w+\\.(?:EMERGENCY|ALERT|CRITICAL|ERROR|WARNING|NOTICE|INFO|DEBUG):",
+      "flags": "m"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed PHP error log (error_log)",
+   "title_ar": "سجل أخطاء PHP مكشوف (error_log)",
+   "advice_en": "Move log files outside the web root (or deny access to them); logs often contain stack traces, paths, personal data and tokens.",
+   "advice_ar": "انقل ملفات السجلات خارج جذر الموقع (أو امنع الوصول إليها)؛ فالسجلات تحوي غالبًا آثار الأخطاء والمسارات والبيانات الشخصية والرموز."
+  },
+  {
+   "path": "/debug.log",
+   "rule": "WEB062",
+   "severity": "medium",
+   "cwe": "CWE-532",
+   "asvs5": "13.4.7",
+   "kinds": [
+    "text",
+    "download",
+    "other"
+   ],
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "^\\[[^\\]\\n]{8,40}\\] PHP (?:Warning|Fatal error|Parse error|Notice|Deprecated)",
+      "flags": "m"
+     },
+     {
+      "type": "regex",
+      "pattern": "^\\[\\d{4}-\\d\\d-\\d\\d[ T]\\d\\d:\\d\\d:\\d\\d[^\\]\\n]{0,16}\\] \\w+\\.(?:EMERGENCY|ALERT|CRITICAL|ERROR|WARNING|NOTICE|INFO|DEBUG):",
+      "flags": "m"
+     }
+    ],
+    "not_html": true
+   },
+   "strength": "strong",
+   "title_en": "Exposed debug log (debug.log)",
+   "title_ar": "سجل التنقيح مكشوف (debug.log)",
+   "advice_en": "Move log files outside the web root (or deny access to them); logs often contain stack traces, paths, personal data and tokens.",
+   "advice_ar": "انقل ملفات السجلات خارج جذر الموقع (أو امنع الوصول إليها)؛ فالسجلات تحوي غالبًا آثار الأخطاء والمسارات والبيانات الشخصية والرموز."
+  }
+ ]
+}
