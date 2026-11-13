@@ -1,0 +1,1195 @@
+{
+ "meta": {
+  "schema_version": 1,
+  "date": "2026-11-13",
+  "generator": "tools/webdata/errors.py",
+  "source": "Kashif original signatures written from the public error formats of each platform",
+  "license": "Kashif project licence",
+  "notes": "rule: WEB056 stack trace, WEB605 debug page (debug_marker), WEB606 database error, WEB607 path in an error (4xx/5xx), WEB616 version banner on an error page, WEB617 default or parked page. status: any | error (4xx/5xx) | 2xx."
+ },
+ "signatures": [
+  {
+   "id": "werkzeug-debugger",
+   "rule": "WEB605",
+   "platform": "Werkzeug",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "Werkzeug"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "__debugger__"
+     },
+     {
+      "type": "contains",
+      "pattern": "Werkzeug Debugger"
+     },
+     {
+      "type": "contains",
+      "pattern": "class=\"debugger\""
+     },
+     {
+      "type": "contains",
+      "pattern": "The debugger caught an exception"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "critical",
+   "debug_marker": true
+  },
+  {
+   "id": "django-debug",
+   "rule": "WEB605",
+   "platform": "Django",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "You(?:'|’|&#39;|&#x27;|&rsquo;)re seeing this error because you have\\s*(?:<code>)?\\s*DEBUG\\s*=\\s*True"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "Django tried these URL patterns"
+     },
+     {
+      "type": "contains",
+      "pattern": "URLconf"
+     },
+     {
+      "type": "contains",
+      "pattern": "Exception Value:"
+     },
+     {
+      "type": "contains",
+      "pattern": "Request Method:"
+     },
+     {
+      "type": "contains",
+      "pattern": "Django Version:"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "django-debug-toolbar",
+   "rule": "WEB605",
+   "platform": "Django",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "<div[^>]+id=[\"']djDebug[\"']"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "laravel-ignition",
+   "rule": "WEB605",
+   "platform": "Laravel",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\bwindow\\.ignite\\s*\\("
+     },
+     {
+      "type": "regex",
+      "pattern": "(?:facade|spatie)/(?:laravel-)?ignition\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "<script[^>]+id=[\"']ignition"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "php-whoops",
+   "rule": "WEB605",
+   "platform": "Whoops (PHP)",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "Whoops"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "class=\"Whoops container\""
+     },
+     {
+      "type": "contains",
+      "pattern": "id=\"plain-exception\""
+     },
+     {
+      "type": "contains",
+      "pattern": "Whoops\\Handler\\PrettyPageHandler"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "symfony-debug",
+   "rule": "WEB605",
+   "platform": "Symfony",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "symfony",
+      "flags": "i"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "class=\"exception-message-wrapper\""
+     },
+     {
+      "type": "contains",
+      "pattern": "class=\"trace-line"
+     },
+     {
+      "type": "regex",
+      "pattern": "id=[\"']sfwdt"
+     },
+     {
+      "type": "contains",
+      "pattern": "sf-toolbar"
+     },
+     {
+      "type": "contains",
+      "pattern": "Symfony\\Component\\ErrorHandler"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "rails-web-console",
+   "rule": "WEB605",
+   "platform": "Ruby on Rails",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "__web_console"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "Action Controller: Exception caught"
+     },
+     {
+      "type": "contains",
+      "pattern": "data-mount-point"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "critical",
+   "debug_marker": true
+  },
+  {
+   "id": "rails-debug",
+   "rule": "WEB605",
+   "platform": "Ruby on Rails",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "Action Controller: Exception caught"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "aspnet-ysod",
+   "rule": "WEB605",
+   "platform": "ASP.NET",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "Server Error in '[^'<]{0,200}' Application"
+     },
+     {
+      "type": "contains",
+      "pattern": "Stack Trace:"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "spring-whitelabel-trace",
+   "rule": "WEB605",
+   "platform": "Spring Boot",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "Whitelabel Error Page"
+     }
+    ],
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\bat (?:org\\.springframework|java\\.|javax\\.|jakarta\\.)[\\w.$]+\\("
+     },
+     {
+      "type": "regex",
+      "pattern": "\"trace\"\\s*:\\s*\"[\\w.$]+(?:Exception|Error)"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "spring-json-trace",
+   "rule": "WEB605",
+   "platform": "Spring Boot",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\"status\"\\s*:\\s*[45]\\d\\d"
+     },
+     {
+      "type": "regex",
+      "pattern": "\"trace\"\\s*:\\s*\"(?:[\\w$]+\\.)+[\\w$]*(?:Exception|Error)\\b"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "bottle-debug",
+   "rule": "WEB605",
+   "platform": "Bottle",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "<h2>Error: 500 Internal Server Error</h2>"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "<h2>Traceback:</h2>"
+     },
+     {
+      "type": "contains",
+      "pattern": "<h2>Exception:</h2>"
+     }
+    ]
+   },
+   "status": "any",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
+   "id": "python-traceback",
+   "rule": "WEB056",
+   "platform": "Python",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "Traceback\\s*(?:<[^>]{1,40}>\\s*)?\\(most recent call last\\)"
+     }
+    ],
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\bFile\\s+(?:<[^>]{1,60}>\\s*)?(?:\"|&quot;|&#34;|&#x22;)[^\\n<>]{1,300}?(?:\"|&quot;|&#34;|&#x22;)(?:\\s*</[a-z]+>)?,\\s+line\\s+(?:<[^>]{1,60}>\\s*)?\\d+"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "java-stack",
+   "rule": "WEB056",
+   "platform": "Java",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bat\\s+(?:[\\w$]+\\.)+[\\w$<>]+\\((?:[\\w$]+\\.(?:java|kt|scala|groovy):\\d+|Native Method|Unknown Source)\\)",
+      "min_count": 2
+     }
+    ],
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\b(?:[\\w$]+\\.)+[\\w$]*(?:Exception|Error)\\b"
+     },
+     {
+      "type": "contains",
+      "pattern": "Exception"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "dotnet-stack",
+   "rule": "WEB056",
+   "platform": ".NET",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "(?m)^\\s*at\\s+(?:[\\w`<>\\[\\]]+\\.)*[\\w`<>\\[\\]]+\\([^)\\n]{0,300}\\)",
+      "min_count": 2
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "--- End of stack trace"
+     },
+     {
+      "type": "regex",
+      "pattern": ":line \\d+"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bSystem\\.(?:[\\w]+\\.)*\\w*Exception\\b"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "php-error-html",
+   "rule": "WEB056",
+   "platform": "PHP",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "<b>\\s*(?:Warning|Fatal error|Parse error|Notice|Deprecated|Catchable fatal error|Recoverable fatal error)\\s*</b>:\\s+[^\\n]{1,600}? on line\\s+<b>\\d+</b>"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "php-error-text",
+   "rule": "WEB056",
+   "platform": "PHP",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bPHP (?:Warning|Fatal error|Parse error|Notice|Deprecated):\\s+[^\\n]{1,600}? on line \\d+"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "node-stack",
+   "rule": "WEB056",
+   "platform": "Node.js",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "(?m)^\\s*at\\s+(?:[\\w$.<>\\[\\] ]+\\s+)?\\(?(?:/|[A-Za-z]:\\\\|file://|node:internal)[^\\s()]*:\\d+:\\d+\\)?",
+      "min_count": 2
+     }
+    ],
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\b(?:Type|Reference|Syntax|Range|URI|Eval)?Error\\b"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "ruby-backtrace",
+   "rule": "WEB056",
+   "platform": "Ruby",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "[\\w./-]+\\.rb:\\d+:in [`'][^'`\\n<]{1,120}'"
+     }
+    ],
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\b(?:\\w+::)*\\w*(?:Error|Exception)\\b"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "go-panic",
+   "rule": "WEB056",
+   "platform": "Go",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "goroutine \\d+ \\[running\\]:"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "panic:"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\.go:\\d+"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "perl-die",
+   "rule": "WEB056",
+   "platform": "Perl",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bat (?:/[\\w.-]+)+\\.p[lm] line \\d+\\."
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "coldfusion-error",
+   "rule": "WEB056",
+   "platform": "ColdFusion",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "Error Occurred While Processing Request"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "The error occurred in"
+     },
+     {
+      "type": "contains",
+      "pattern": "coldfusion."
+     },
+     {
+      "type": "contains",
+      "pattern": "ColdFusion"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "jrun-error",
+   "rule": "WEB056",
+   "platform": "JRun",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "JRun Servlet Error"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "servlet-exception",
+   "rule": "WEB056",
+   "platform": "Java Servlet",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\b(?:javax|jakarta)\\.servlet\\.(?:ServletException|jsp\\.JspException|jsp\\.JasperException)\\b"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "tomcat-exception-report",
+   "rule": "WEB056",
+   "platform": "Apache Tomcat",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "HTTP Status 500"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "Root Cause"
+     },
+     {
+      "type": "contains",
+      "pattern": "Exception Report"
+     },
+     {
+      "type": "contains",
+      "pattern": "<b>Exception</b>"
+     }
+    ]
+   },
+   "status": "error"
+  },
+  {
+   "id": "aspnet-error-details",
+   "rule": "WEB056",
+   "platform": "ASP.NET",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "Exception Details:"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "Source Error:"
+     },
+     {
+      "type": "contains",
+      "pattern": "System."
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "sqlstate",
+   "rule": "WEB606",
+   "platform": "PDO / SQL",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "SQLSTATE\\[[0-9A-Z]{5}\\]"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "mysql-syntax",
+   "rule": "WEB606",
+   "platform": "MySQL",
+   "signature": {
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "You have an error in your SQL syntax"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bmysqli?_(?:fetch_\\w+|num_rows|query|connect)\\(\\)"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bcom\\.mysql\\.(?:cj\\.)?jdbc\\.exceptions\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bMySql(?:Client)?\\.?Data\\.MySqlClient\\.MySqlException\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "Warning:\\s+mysqli?_"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "oracle-ora",
+   "rule": "WEB606",
+   "platform": "Oracle",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bORA-\\d{5}:"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "postgres",
+   "rule": "WEB606",
+   "platform": "PostgreSQL",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\bPG::[A-Z]\\w+"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bpsycopg2?\\.(?:errors\\.)?[A-Z]\\w+"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\borg\\.postgresql\\.util\\.PSQLException\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bERROR:\\s+syntax error at or near\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bpg_(?:query|exec)\\(\\): Query failed"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "mssql",
+   "rule": "WEB606",
+   "platform": "Microsoft SQL Server",
+   "signature": {
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "Microsoft OLE DB Provider for"
+     },
+     {
+      "type": "contains",
+      "pattern": "ODBC SQL Server Driver"
+     },
+     {
+      "type": "contains",
+      "pattern": "Unclosed quotation mark after the character string"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bSystem\\.Data\\.SqlClient\\.SqlException\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bMicrosoft\\.Data\\.SqlClient\\.SqlException\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\[Microsoft\\]\\[ODBC [^\\]]{1,60}\\]"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "sqlite",
+   "rule": "WEB606",
+   "platform": "SQLite",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\bSQLite3::\\w+"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bsqlite3\\.(?:OperationalError|IntegrityError|ProgrammingError)\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bSQLITE_ERROR\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bSQLiteException\\b"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "jdbc-hibernate",
+   "rule": "WEB606",
+   "platform": "Java database",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\bjava\\.sql\\.SQL\\w*Exception\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\borg\\.hibernate\\.exception\\.\\w+Exception\\b"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\borg\\.springframework\\.jdbc\\.BadSqlGrammarException\\b"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "db2",
+   "rule": "WEB606",
+   "platform": "IBM Db2",
+   "signature": {
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "DB2 SQL error"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bSQLCODE=-\\d+"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "sqlalchemy",
+   "rule": "WEB606",
+   "platform": "SQLAlchemy",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bsqlalchemy\\.exc\\.\\w+Error\\b"
+     }
+    ]
+   },
+   "status": "any"
+  },
+  {
+   "id": "unix-path",
+   "rule": "WEB607",
+   "platform": "Unix",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "(?<![\\w/.:\\\"'=%-])(?:/var/www|/home/[a-z_][\\w.-]{0,31}|/srv|/usr/share/nginx|/usr/local/(?:lib|www|apache2?)|/opt)/[\\w./-]{0,200}?\\.[A-Za-z]{1,5}\\b"
+     }
+    ],
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\b(?:[Ee]rror|ERROR|[Ee]xception|[Ww]arning|[Ff]atal|[Ff]ailed|Traceback|No such file|on line|[Ss]tack)\\b"
+     }
+    ]
+   },
+   "status": "error",
+   "confidence": "tentative"
+  },
+  {
+   "id": "windows-path",
+   "rule": "WEB607",
+   "platform": "Windows",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "(?<![\\w\\\\])[A-Za-z]:\\\\(?:inetpub|Users|wwwroot|xampp|wamp\\d*|Program Files(?: \\(x86\\))?)\\\\[^\\s<>\\\"'|?*]{1,200}"
+     }
+    ],
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\b(?:[Ee]rror|ERROR|[Ee]xception|[Ww]arning|[Ff]atal|[Ff]ailed|Traceback|No such file|on line|[Ss]tack)\\b"
+     }
+    ]
+   },
+   "status": "error",
+   "confidence": "tentative"
+  },
+  {
+   "id": "banner-apache",
+   "rule": "WEB616",
+   "platform": "Apache httpd",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bApache/\\d+\\.\\d+\\.\\d+"
+     }
+    ]
+   },
+   "status": "error"
+  },
+  {
+   "id": "banner-nginx",
+   "rule": "WEB616",
+   "platform": "nginx",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bnginx/\\d+\\.\\d+\\.\\d+"
+     }
+    ]
+   },
+   "status": "error"
+  },
+  {
+   "id": "banner-tomcat",
+   "rule": "WEB616",
+   "platform": "Apache Tomcat",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bApache Tomcat/\\d+\\.\\d+(?:\\.\\d+)?"
+     }
+    ]
+   },
+   "status": "error"
+  },
+  {
+   "id": "banner-jetty",
+   "rule": "WEB616",
+   "platform": "Jetty",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bJetty://\\s*\\d+\\.\\d+"
+     }
+    ]
+   },
+   "status": "error"
+  },
+  {
+   "id": "banner-squid",
+   "rule": "WEB616",
+   "platform": "Squid",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bsquid/\\d+\\.\\d+"
+     }
+    ]
+   },
+   "status": "error"
+  },
+  {
+   "id": "banner-iis",
+   "rule": "WEB616",
+   "platform": "Microsoft IIS",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bMicrosoft-IIS/\\d+\\.\\d+"
+     }
+    ]
+   },
+   "status": "error"
+  },
+  {
+   "id": "banner-lighttpd",
+   "rule": "WEB616",
+   "platform": "lighttpd",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\blighttpd/\\d+\\.\\d+\\.\\d+"
+     }
+    ]
+   },
+   "status": "error"
+  },
+  {
+   "id": "banner-openresty",
+   "rule": "WEB616",
+   "platform": "OpenResty",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\bopenresty/\\d+\\.\\d+\\.\\d+"
+     }
+    ]
+   },
+   "status": "error"
+  },
+  {
+   "id": "iis-default",
+   "rule": "WEB617",
+   "platform": "Microsoft IIS",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*(?:IIS Windows(?: Server)?|IIS\\d* Windows Server|Internet Information Services)\\s*</title>",
+      "flags": "i"
+     },
+     {
+      "type": "regex",
+      "pattern": "<img[^>]+src=[\"'](?:/)?iisstart\\.png",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "low"
+  },
+  {
+   "id": "apache-ubuntu-debian-default",
+   "rule": "WEB617",
+   "platform": "Apache httpd",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*Apache2 (?:Ubuntu|Debian) Default Page",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "low"
+  },
+  {
+   "id": "apache-it-works",
+   "rule": "WEB617",
+   "platform": "Apache httpd",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "\\A\\s*(?:<!DOCTYPE[^>]*>\\s*)?<html>\\s*<body>\\s*<h1>\\s*It works!\\s*</h1>",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "low"
+  },
+  {
+   "id": "httpd-test-page",
+   "rule": "WEB617",
+   "platform": "Apache httpd / nginx (RHEL family)",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*Test Page for the (?:Apache|HTTP Server|Nginx HTTP Server)[^<]{0,80}</title>",
+      "flags": "i"
+     },
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*HTTP Server Test Page powered by",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "low"
+  },
+  {
+   "id": "nginx-default",
+   "rule": "WEB617",
+   "platform": "nginx",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*Welcome to nginx!\\s*</title>",
+      "flags": "i"
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "nginx web server is successfully installed"
+     },
+     {
+      "type": "contains",
+      "pattern": "nginx.org"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "low"
+  },
+  {
+   "id": "openresty-default",
+   "rule": "WEB617",
+   "platform": "OpenResty",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*Welcome to OpenResty!\\s*</title>",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "low"
+  },
+  {
+   "id": "tomcat-default",
+   "rule": "WEB617",
+   "platform": "Apache Tomcat",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "If you(?:'|&#39;|’)re seeing this, you(?:'|&#39;|’)ve successfully installed Tomcat"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "low"
+  },
+  {
+   "id": "caddy-default",
+   "rule": "WEB617",
+   "platform": "Caddy",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "<title>\\s*Caddy works!\\s*</title>",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "low"
+  },
+  {
+   "id": "parking-sedo",
+   "rule": "WEB617",
+   "platform": "Sedo parking",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\b(?:img\\.)?sedoparking\\.com\\b",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "info"
+  },
+  {
+   "id": "parking-godaddy",
+   "rule": "WEB617",
+   "platform": "GoDaddy parking",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\bwsimg\\.com/parking-lander\\b",
+      "flags": "i"
+     },
+     {
+      "type": "regex",
+      "pattern": "\\bparkingcrew\\.net/.{0,40}godaddy",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "info"
+  },
+  {
+   "id": "parking-bodis",
+   "rule": "WEB617",
+   "platform": "Bodis parking",
+   "signature": {
+    "all": [
+     {
+      "type": "regex",
+      "pattern": "park|for sale|domain",
+      "flags": "i"
+     }
+    ],
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\b(?:www\\.)?bodis\\.com\\b",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "info"
+  },
+  {
+   "id": "parking-parkingcrew",
+   "rule": "WEB617",
+   "platform": "ParkingCrew",
+   "signature": {
+    "any": [
+     {
+      "type": "regex",
+      "pattern": "\\bparkingcrew\\.net\\b",
+      "flags": "i"
+     }
+    ]
+   },
+   "status": "2xx",
+   "severity": "info"
+  }
+ ]
+}

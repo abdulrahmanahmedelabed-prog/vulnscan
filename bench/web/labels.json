@@ -1,0 +1,5615 @@
+{
+ "schema": 1,
+ "generated_by": "bench/web/corpus.py (python bench/web/corpus.py --write-labels)",
+ "count": 342,
+ "groups": {
+  "C-COOKIE": 31,
+  "C-CORS": 12,
+  "C-CSP": 41,
+  "C-DISC": 33,
+  "C-DOM": 11,
+  "C-EXP": 26,
+  "C-GRADE": 12,
+  "C-HDR": 34,
+  "C-HOSTILE": 12,
+  "C-HSTS": 19,
+  "C-HTML": 32,
+  "C-LIB": 15,
+  "C-RED": 17,
+  "C-REVIEW": 16,
+  "C-TLS": 25,
+  "C-WAF": 6
+ },
+ "cases": {
+  "red-http-200": {
+   "group": "C-RED",
+   "host": "red-http-200.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB000": true
+   },
+   "twin": "red-http-to-https",
+   "note": "plain HTTP serves content (non-default port: no https counterpart probe, reported without a variant)",
+   "zap": true,
+   "legacy": true
+  },
+  "red-http-to-https": {
+   "group": "C-RED",
+   "host": "red-http-to-https.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB000": false,
+    "WEB101": false,
+    "WEB102": false,
+    "WEB103": false,
+    "WEB104": false,
+    "WEB105": false
+   },
+   "twin": "red-http-200",
+   "zap": true,
+   "legacy": true
+  },
+  "red-http-http-https": {
+   "group": "C-RED",
+   "host": "red-http-http-https.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB000": false,
+    "WEB101": true,
+    "WEB102": false
+   },
+   "twin": "red-http-to-https",
+   "note": "http://a -> http://www.a -> https://www.a: the first redirect is not to HTTPS",
+   "zap": true,
+   "legacy": false
+  },
+  "red-http-https-other-host": {
+   "group": "C-RED",
+   "host": "red-http-https-other-host.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB000": false,
+    "WEB101": false,
+    "WEB102": true
+   },
+   "twin": "red-http-to-https",
+   "zap": true,
+   "legacy": false
+  },
+  "red-https-http-hop": {
+   "group": "C-RED",
+   "host": "red-https-http-hop.red.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB103": true
+   },
+   "twin": "red-http-to-https",
+   "zap": true,
+   "legacy": true
+  },
+  "red-meta-refresh-http": {
+   "group": "C-RED",
+   "host": "red-meta-refresh-http.red.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB103": true
+   },
+   "twin": "red-meta-refresh-https",
+   "zap": true,
+   "legacy": true
+  },
+  "red-meta-refresh-https": {
+   "group": "C-RED",
+   "host": "red-meta-refresh-https.red.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB103": false
+   },
+   "twin": "red-meta-refresh-http",
+   "zap": true,
+   "legacy": true
+  },
+  "red-302-upgrade": {
+   "group": "C-RED",
+   "host": "red-302-upgrade.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB000": false,
+    "WEB105": true
+   },
+   "twin": "red-308-upgrade",
+   "zap": true,
+   "legacy": true
+  },
+  "red-308-upgrade": {
+   "group": "C-RED",
+   "host": "red-308-upgrade.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB000": false,
+    "WEB105": false
+   },
+   "twin": "red-302-upgrade",
+   "zap": true,
+   "legacy": true
+  },
+  "red-loop-12": {
+   "group": "C-RED",
+   "host": "red-loop-12.red.kashif.test",
+   "scheme": "https",
+   "path": "/r1",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB104": true
+   },
+   "expect": {
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "twin": "red-short-chain",
+   "note": "12-hop loop; the entry chain stops at 10 hops",
+   "zap": true,
+   "legacy": true
+  },
+  "red-short-chain": {
+   "group": "C-RED",
+   "host": "red-short-chain.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB104": false,
+    "WEB106": false
+   },
+   "twin": "red-loop-12",
+   "zap": true,
+   "legacy": true
+  },
+  "red-301-full-page": {
+   "group": "C-RED",
+   "host": "red-301-full-page.red.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB106": true
+   },
+   "twin": "red-301-boilerplate",
+   "note": "the 3xx renders the whole page (missing exit after header())",
+   "zap": true,
+   "legacy": true
+  },
+  "red-301-boilerplate": {
+   "group": "C-RED",
+   "host": "red-301-boilerplate.red.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB106": false
+   },
+   "twin": "red-301-full-page",
+   "zap": true,
+   "legacy": true
+  },
+  "red-301-home-headers": {
+   "group": "C-RED",
+   "host": "red-301-home-headers.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB-permissions-policy": false,
+    "WEB-referrer-policy": false,
+    "WEB-x-content-type-options": false,
+    "WEB-x-frame-options": false
+   },
+   "defect": [
+    "D1"
+   ],
+   "twin": "red-http-200",
+   "note": "1.0.1 judged the headers of the 301 (5 false positives) and never saw the HTML",
+   "zap": true,
+   "legacy": true
+  },
+  "red-preloaded-dev": {
+   "group": "C-RED",
+   "host": "red-preloaded-dev.red.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB000": true
+   },
+   "expect": {
+    "severity": {
+     "WEB000": "info"
+    }
+   },
+   "twin": "red-http-200",
+   "note": "hosts under a fully preloaded TLD are never fetched over http by browsers: info only",
+   "url_host": "kashif-corpus.dev",
+   "zap": false,
+   "zap_note": "needs the .dev host name",
+   "legacy": false
+  },
+  "red-api-403": {
+   "group": "C-RED",
+   "host": "red-api-403.red.kashif.test",
+   "scheme": "http",
+   "path": "/api/v1/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB000": false
+   },
+   "twin": "red-http-200",
+   "note": "an API that refuses plain HTTP is what ASVS 5.0 4.1.2 asks for",
+   "zap": true,
+   "legacy": true
+  },
+  "red-js-location-http": {
+   "group": "C-RED",
+   "host": "red-js-location-http.red.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB103": true
+   },
+   "twin": "red-meta-refresh-https",
+   "note": "tentative variant (inline script), paranoid only",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-missing": {
+   "group": "C-HSTS",
+   "host": "hsts-missing.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": true
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-max-age-0": {
+   "group": "C-HSTS",
+   "host": "hsts-max-age-0.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false,
+    "WEB110": true
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-max-age-0-quoted": {
+   "group": "C-HSTS",
+   "host": "hsts-max-age-0-quoted.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false,
+    "WEB110": true
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-300s": {
+   "group": "C-HSTS",
+   "host": "hsts-300s.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB111": true
+   },
+   "expect": {
+    "severity": {
+     "WEB111": "medium"
+    }
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-100-days": {
+   "group": "C-HSTS",
+   "host": "hsts-100-days.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB111": true
+   },
+   "expect": {
+    "severity": {
+     "WEB111": "medium"
+    }
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-200-days": {
+   "group": "C-HSTS",
+   "host": "hsts-200-days.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB111": true
+   },
+   "expect": {
+    "severity": {
+     "WEB111": "low"
+    }
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-two-headers": {
+   "group": "C-HSTS",
+   "host": "hsts-two-headers.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB113": true
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-folded": {
+   "group": "C-HSTS",
+   "host": "hsts-folded.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB112": true
+   },
+   "twin": "hsts-two-years",
+   "note": "two values folded into one field with a comma: Chromium rejects it",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-curly-quotes": {
+   "group": "C-HSTS",
+   "host": "hsts-curly-quotes.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB112": true
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-no-max-age": {
+   "group": "C-HSTS",
+   "host": "hsts-no-max-age.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB112": true
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-leading-zero": {
+   "group": "C-HSTS",
+   "host": "hsts-leading-zero.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB112": true
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-preload-no-subdomains": {
+   "group": "C-HSTS",
+   "host": "hsts-preload-no-subdomains.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB114": true,
+    "WEB115": true
+   },
+   "twin": "hsts-two-years",
+   "note": "preload requested but includeSubDomains missing (and the host is a subdomain)",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-meta": {
+   "group": "C-HSTS",
+   "host": "hsts-meta.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false,
+    "WEB116": true
+   },
+   "twin": "hsts-two-years",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-cross-host-hop": {
+   "group": "C-HSTS",
+   "host": "hsts-cross-host-hop.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false,
+    "WEB117": true
+   },
+   "twin": "hsts-same-host-redirect",
+   "zap": true,
+   "legacy": false
+  },
+  "hsts-on-http-only": {
+   "group": "C-HSTS",
+   "host": "hsts-on-http-only.hsts.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false,
+    "WEB116": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB116": "info"
+    }
+   },
+   "twin": "hsts-missing",
+   "note": "HSTS over http is ignored: info, never 'missing'",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-two-years": {
+   "group": "C-HSTS",
+   "host": "hsts-two-years.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false,
+    "WEB110": false,
+    "WEB111": false,
+    "WEB112": false,
+    "WEB113": false,
+    "WEB114": false,
+    "WEB115": false,
+    "WEB116": false,
+    "WEB117": false
+   },
+   "twin": "hsts-missing",
+   "zap": true,
+   "legacy": true
+  },
+  "hsts-ip-literal": {
+   "group": "C-HSTS",
+   "host": "hsts-ip-literal.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false
+   },
+   "twin": "hsts-missing",
+   "note": "RFC 6797 §8.1: an IP-literal host is never a Known HSTS Host (not applicable)",
+   "url_host": "127.0.0.1",
+   "zap": true,
+   "legacy": false
+  },
+  "hsts-cert-invalid": {
+   "group": "C-HSTS",
+   "host": "hsts-cert-invalid.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false,
+    "WEB701": true
+   },
+   "tls": "selfsigned",
+   "twin": "hsts-missing",
+   "note": "HSTS is ignored on an invalid certificate: the certificate rule applies, HSTS is not judged",
+   "zap": false,
+   "legacy": true
+  },
+  "hsts-same-host-redirect": {
+   "group": "C-HSTS",
+   "host": "hsts-same-host-redirect.hsts.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false,
+    "WEB117": false
+   },
+   "twin": "hsts-cross-host-hop",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-missing": {
+   "group": "C-CSP",
+   "host": "csp-missing.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": true
+   },
+   "twin": "csp-meta-only",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-report-only": {
+   "group": "C-CSP",
+   "host": "csp-report-only.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB200": true
+   },
+   "twin": "csp-enforced-and-ro",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-enforced-and-ro": {
+   "group": "C-CSP",
+   "host": "csp-enforced-and-ro.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB200": false
+   },
+   "twin": "csp-report-only",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-unsafe-inline": {
+   "group": "C-CSP",
+   "host": "csp-unsafe-inline.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB040": true
+   },
+   "twin": "csp-nonce-plus-unsafe-inline",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-default-self-script-inline": {
+   "group": "C-CSP",
+   "host": "csp-default-self-script-inline.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB040": true
+   },
+   "defect": [
+    "D8"
+   ],
+   "twin": "csp-script-src-elem",
+   "note": "1.0.1 read default-src first and missed the weaker script-src",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-star": {
+   "group": "C-CSP",
+   "host": "csp-star.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB042": true
+   },
+   "twin": "csp-host-wildcard",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-https-scheme": {
+   "group": "C-CSP",
+   "host": "csp-https-scheme.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB042": true
+   },
+   "twin": "csp-host-wildcard",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-data-script": {
+   "group": "C-CSP",
+   "host": "csp-data-script.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB042": true
+   },
+   "twin": "csp-host-wildcard",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-strict-dynamic-no-nonce": {
+   "group": "C-CSP",
+   "host": "csp-strict-dynamic-no-nonce.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB203": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-nonce-no-base-uri": {
+   "group": "C-CSP",
+   "host": "csp-nonce-no-base-uri.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB204": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-login-no-form-action": {
+   "group": "C-CSP",
+   "host": "csp-login-no-form-action.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB205": true
+   },
+   "expect": {
+    "severity": {
+     "WEB205": "medium"
+    }
+   },
+   "twin": "csp-no-forms",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-no-forms": {
+   "group": "C-CSP",
+   "host": "csp-no-forms.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB205": false
+   },
+   "twin": "csp-login-no-form-action",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-frame-ancestors-star": {
+   "group": "C-CSP",
+   "host": "csp-frame-ancestors-star.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB206": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-meta-frame-ancestors": {
+   "group": "C-CSP",
+   "host": "csp-meta-frame-ancestors.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB207": true
+   },
+   "twin": "csp-meta-only",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-meta-after-script": {
+   "group": "C-CSP",
+   "host": "csp-meta-after-script.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB208": true
+   },
+   "twin": "csp-meta-only",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-google-allowlist": {
+   "group": "C-CSP",
+   "host": "csp-google-allowlist.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB209": true
+   },
+   "twin": "csp-strict-dynamic-allowlist",
+   "note": "www.google.com hosts JSONP endpoints (CSP Evaluator bypass list)",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-strict-dynamic-allowlist": {
+   "group": "C-CSP",
+   "host": "csp-strict-dynamic-allowlist.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB042": false,
+    "WEB209": false
+   },
+   "twin": "csp-google-allowlist",
+   "note": "strict-dynamic with a nonce ignores the host allowlist",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-unsafe-hashes": {
+   "group": "C-CSP",
+   "host": "csp-unsafe-hashes.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB210": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-http-source": {
+   "group": "C-CSP",
+   "host": "csp-http-source.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB211": true
+   },
+   "twin": "csp-allowlist-only",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-static-nonce": {
+   "group": "C-CSP",
+   "host": "csp-static-nonce.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB212": true
+   },
+   "twin": "csp-strict-good",
+   "note": "the entry GET and the anonymous CORS GET carry the same nonce",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-short-nonce": {
+   "group": "C-CSP",
+   "host": "csp-short-nonce.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB213": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-duplicate-directive": {
+   "group": "C-CSP",
+   "host": "csp-duplicate-directive.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB040": false,
+    "WEB202": true
+   },
+   "twin": "csp-strict-good",
+   "note": "the second script-src is ignored (first occurrence wins)",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-unquoted-self": {
+   "group": "C-CSP",
+   "host": "csp-unquoted-self.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB201": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-typo-directive": {
+   "group": "C-CSP",
+   "host": "csp-typo-directive.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB201": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-unsafe-eval": {
+   "group": "C-CSP",
+   "host": "csp-unsafe-eval.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB041": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-no-object-src": {
+   "group": "C-CSP",
+   "host": "csp-no-object-src.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB043": true
+   },
+   "twin": "csp-default-none",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-style-inline": {
+   "group": "C-CSP",
+   "host": "csp-style-inline.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB214": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB214": "info"
+    }
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-x-csp-only": {
+   "group": "C-CSP",
+   "host": "csp-x-csp-only.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": true,
+    "WEB217": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-deprecated-directive": {
+   "group": "C-CSP",
+   "host": "csp-deprecated-directive.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB216": true
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-allowlist-only": {
+   "group": "C-CSP",
+   "host": "csp-allowlist-only.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB209": false,
+    "WEB211": false,
+    "WEB218": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB218": "info"
+    }
+   },
+   "twin": "csp-strict-good",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-nonce-plus-unsafe-inline": {
+   "group": "C-CSP",
+   "host": "csp-nonce-plus-unsafe-inline.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB040": false
+   },
+   "defect": [
+    "D7"
+   ],
+   "twin": "csp-unsafe-inline",
+   "note": "a nonce neutralises 'unsafe-inline' (kept only for old browsers)",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-strict-dynamic-compat": {
+   "group": "C-CSP",
+   "host": "csp-strict-dynamic-compat.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB040": false,
+    "WEB042": false,
+    "WEB209": false
+   },
+   "defect": [
+    "D7"
+   ],
+   "twin": "csp-unsafe-inline",
+   "note": "the recommended backwards-compatible strict CSP",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-host-wildcard": {
+   "group": "C-CSP",
+   "host": "csp-host-wildcard.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB042": false
+   },
+   "defect": [
+    "D9"
+   ],
+   "twin": "csp-star",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-default-none": {
+   "group": "C-CSP",
+   "host": "csp-default-none.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB043": false
+   },
+   "defect": [
+    "D10"
+   ],
+   "twin": "csp-no-object-src",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-meta-only": {
+   "group": "C-CSP",
+   "host": "csp-meta-only.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB207": false
+   },
+   "defect": [
+    "D11"
+   ],
+   "twin": "csp-missing",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-two-policies": {
+   "group": "C-CSP",
+   "host": "csp-two-policies.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB040": false
+   },
+   "twin": "csp-unsafe-inline",
+   "note": "two enforced policies: the second removes 'unsafe-inline' (intersection)",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-api-json": {
+   "group": "C-CSP",
+   "host": "csp-api-json.csp.kashif.test",
+   "scheme": "https",
+   "path": "/api/v1/status",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB-permissions-policy": false,
+    "WEB-referrer-policy": false,
+    "WEB-x-frame-options": false
+   },
+   "defect": [
+    "D2"
+   ],
+   "twin": "csp-missing",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-script-src-elem": {
+   "group": "C-CSP",
+   "host": "csp-script-src-elem.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB040": false,
+    "WEB042": false
+   },
+   "defect": [
+    "D8"
+   ],
+   "twin": "csp-default-self-script-inline",
+   "note": "elements: 'self'; attributes: 'none'; the script-src fallback is never used. 1.0.1 read script-src and fired",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-404-no-csp": {
+   "group": "C-CSP",
+   "host": "csp-404-no-csp.csp.kashif.test",
+   "scheme": "https",
+   "path": "/missing",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB-x-frame-options": false
+   },
+   "twin": "csp-missing",
+   "note": "4xx documents are not judged at default sensitivity (G1)",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-strict-good": {
+   "group": "C-CSP",
+   "host": "csp-strict-good.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB040": false,
+    "WEB041": false,
+    "WEB042": false,
+    "WEB043": false,
+    "WEB200": false,
+    "WEB201": false,
+    "WEB202": false,
+    "WEB203": false,
+    "WEB204": false,
+    "WEB205": false,
+    "WEB206": false,
+    "WEB207": false,
+    "WEB208": false,
+    "WEB209": false,
+    "WEB210": false,
+    "WEB211": false,
+    "WEB212": false,
+    "WEB213": false,
+    "WEB214": false,
+    "WEB216": false,
+    "WEB217": false,
+    "WEB218": false,
+    "WEB509": false,
+    "WEB513": false,
+    "WEB514": false,
+    "WEB611": false,
+    "WEB990": false
+   },
+   "twin": "csp-missing",
+   "zap": true,
+   "legacy": true
+  },
+  "csp-frame-ancestors-only": {
+   "group": "C-CSP",
+   "host": "csp-frame-ancestors-only.csp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB-x-frame-options": false,
+    "WEB040": false,
+    "WEB042": true,
+    "WEB043": false,
+    "WEB204": false
+   },
+   "twin": "csp-strict-good",
+   "note": "non-script policy: one WEB042 with the note 'does not restrict scripts', no restatements",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xfo-missing-login": {
+   "group": "C-HDR",
+   "host": "hdr-xfo-missing-login.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-x-frame-options": true
+   },
+   "twin": "hdr-xfo-missing-fa-none",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xfo-allow-from": {
+   "group": "C-HDR",
+   "host": "hdr-xfo-allow-from.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB300": true
+   },
+   "twin": "hdr-xfo-sameorigin-dup",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xfo-deny-sameorigin": {
+   "group": "C-HDR",
+   "host": "hdr-xfo-deny-sameorigin.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB301": true
+   },
+   "twin": "hdr-xfo-sameorigin-dup",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xfo-meta": {
+   "group": "C-HDR",
+   "host": "hdr-xfo-meta.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-x-frame-options": true,
+    "WEB302": true
+   },
+   "twin": "hdr-xfo-missing-fa-none",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xfo-sameorigin-dup": {
+   "group": "C-HDR",
+   "host": "hdr-xfo-sameorigin-dup.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-x-frame-options": false,
+    "WEB300": false,
+    "WEB301": false
+   },
+   "twin": "hdr-xfo-deny-sameorigin",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xfo-missing-fa-none": {
+   "group": "C-HDR",
+   "host": "hdr-xfo-missing-fa-none.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-x-frame-options": false,
+    "WEB302": false
+   },
+   "twin": "hdr-xfo-missing-login",
+   "note": "CSP frame-ancestors 'none' protects; XFO is not needed",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xcto-missing-js": {
+   "group": "C-HDR",
+   "host": "hdr-xcto-missing-js.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/static/app.js",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-x-content-type-options": true
+   },
+   "twin": "hdr-xcto-missing-png",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xcto-nosnif": {
+   "group": "C-HDR",
+   "host": "hdr-xcto-nosnif.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB303": true
+   },
+   "twin": "hdr-xcto-double",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xcto-double": {
+   "group": "C-HDR",
+   "host": "hdr-xcto-double.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-x-content-type-options": false,
+    "WEB303": false
+   },
+   "twin": "hdr-xcto-nosnif",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xcto-missing-png": {
+   "group": "C-HDR",
+   "host": "hdr-xcto-missing-png.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/img/logo.png",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-x-content-type-options": false
+   },
+   "twin": "hdr-xcto-missing-js",
+   "note": "nosniff matters for script/style/JSON, not images",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xcto-missing-304": {
+   "group": "C-HDR",
+   "host": "hdr-xcto-missing-304.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB-x-content-type-options": false,
+    "WEB-x-frame-options": false
+   },
+   "expect": {
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "twin": "hdr-xcto-missing-js",
+   "note": "a 304 carries a subset of headers (RFC 9110 §15.4.5): never judge absence",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-referrer-unsafe-url": {
+   "group": "C-HDR",
+   "host": "hdr-referrer-unsafe-url.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB304": true
+   },
+   "expect": {
+    "severity": {
+     "WEB304": "medium"
+    }
+   },
+   "twin": "hdr-referrer-missing",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-referrer-missing": {
+   "group": "C-HDR",
+   "host": "hdr-referrer-missing.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-referrer-policy": true,
+    "WEB304": false
+   },
+   "expect": {
+    "max_severity": {
+     "WEB-referrer-policy": "info"
+    }
+   },
+   "twin": "hdr-referrer-unsafe-url",
+   "note": "browsers default to strict-origin-when-cross-origin: info only",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-pp-feature-syntax": {
+   "group": "C-HDR",
+   "host": "hdr-pp-feature-syntax.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB305": true
+   },
+   "twin": "hdr-pp-good",
+   "note": "Feature-Policy syntax in Permissions-Policy: the whole header is ignored",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-pp-geolocation-star": {
+   "group": "C-HDR",
+   "host": "hdr-pp-geolocation-star.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB306": true
+   },
+   "twin": "hdr-pp-good",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-pp-good": {
+   "group": "C-HDR",
+   "host": "hdr-pp-good.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-permissions-policy": false,
+    "WEB305": false,
+    "WEB306": false,
+    "WEB307": false,
+    "WEB308": false
+   },
+   "twin": "hdr-pp-geolocation-star",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-pp-missing": {
+   "group": "C-HDR",
+   "host": "hdr-pp-missing.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-permissions-policy": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB-permissions-policy": "info"
+    }
+   },
+   "twin": "hdr-pp-good",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-feature-policy-only": {
+   "group": "C-HDR",
+   "host": "hdr-feature-policy-only.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB307": true
+   },
+   "twin": "hdr-pp-good",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-coop-typo": {
+   "group": "C-HDR",
+   "host": "hdr-coop-typo.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB308": true
+   },
+   "twin": "hdr-pp-good",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-coep-twice": {
+   "group": "C-HDR",
+   "host": "hdr-coep-twice.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB309": true
+   },
+   "twin": "hdr-coep-missing",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-coep-missing": {
+   "group": "C-HDR",
+   "host": "hdr-coep-missing.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB309": false,
+    "WEB310": false,
+    "WEB312": false,
+    "WEB316": false,
+    "WEB317": false
+   },
+   "twin": "hdr-coep-twice",
+   "note": "missing COEP is never reported",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-corp-case": {
+   "group": "C-HDR",
+   "host": "hdr-corp-case.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB310": true
+   },
+   "twin": "hdr-coep-missing",
+   "note": "CORP tokens are case-sensitive",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xxss-enabled": {
+   "group": "C-HDR",
+   "host": "hdr-xxss-enabled.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB311": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB311": "info"
+    }
+   },
+   "twin": "hdr-xxss-zero",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xxss-zero": {
+   "group": "C-HDR",
+   "host": "hdr-xxss-zero.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB311": false
+   },
+   "twin": "hdr-xxss-enabled",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-hpkp": {
+   "group": "C-HDR",
+   "host": "hdr-hpkp.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB312": true
+   },
+   "twin": "hdr-coep-missing",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-ctype-missing": {
+   "group": "C-HDR",
+   "host": "hdr-ctype-missing.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB313": true
+   },
+   "twin": "hdr-utf8-vs-utf-8",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-json-as-html": {
+   "group": "C-HDR",
+   "host": "hdr-json-as-html.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/api/data",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB313": true
+   },
+   "twin": "hdr-utf8-vs-utf-8",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-charset-conflict": {
+   "group": "C-HDR",
+   "host": "hdr-charset-conflict.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB314": true
+   },
+   "twin": "hdr-utf8-vs-utf-8",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-utf8-vs-utf-8": {
+   "group": "C-HDR",
+   "host": "hdr-utf8-vs-utf-8.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB313": false,
+    "WEB314": false
+   },
+   "twin": "hdr-charset-conflict",
+   "note": "utf8 is a label of UTF-8 (Encoding Standard)",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-cache-public-login": {
+   "group": "C-HDR",
+   "host": "hdr-cache-public-login.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB315": true
+   },
+   "twin": "hdr-static-immutable",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-setcookie-shared-cache": {
+   "group": "C-HDR",
+   "host": "hdr-setcookie-shared-cache.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB315": true
+   },
+   "expect": {
+    "severity": {
+     "WEB315": "medium"
+    }
+   },
+   "twin": "hdr-static-immutable",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-static-immutable": {
+   "group": "C-HDR",
+   "host": "hdr-static-immutable.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/static/app.3f9a1c.css",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB315": false
+   },
+   "twin": "hdr-cache-public-login",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-clear-site-data-unquoted": {
+   "group": "C-HDR",
+   "host": "hdr-clear-site-data-unquoted.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB317": true
+   },
+   "twin": "hdr-coep-missing",
+   "zap": true,
+   "legacy": true
+  },
+  "hdr-xpcdp-all": {
+   "group": "C-HDR",
+   "host": "hdr-xpcdp-all.hdr.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB316": true
+   },
+   "twin": "hdr-coep-missing",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-reflect-creds": {
+   "group": "C-CORS",
+   "host": "cors-reflect-creds.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB320": true
+   },
+   "twin": "cors-fixed-allowlist",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-reflect-no-creds": {
+   "group": "C-CORS",
+   "host": "cors-reflect-no-creds.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB320": false,
+    "WEB321": true
+   },
+   "twin": "cors-fixed-allowlist",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-null": {
+   "group": "C-CORS",
+   "host": "cors-null.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB322": true
+   },
+   "twin": "cors-none",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-star-creds": {
+   "group": "C-CORS",
+   "host": "cors-star-creds.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB323": true
+   },
+   "twin": "cors-star-static",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-reflect-no-vary": {
+   "group": "C-CORS",
+   "host": "cors-reflect-no-vary.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB324": true
+   },
+   "twin": "cors-reflect-vary-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-http-origin": {
+   "group": "C-CORS",
+   "host": "cors-http-origin.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB326": true
+   },
+   "twin": "cors-fixed-allowlist",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-acao-list": {
+   "group": "C-CORS",
+   "host": "cors-acao-list.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB325": true
+   },
+   "twin": "cors-fixed-allowlist",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-star-session": {
+   "group": "C-CORS",
+   "host": "cors-star-session.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB327": true
+   },
+   "twin": "cors-star-static",
+   "note": "WEB327 is tentative: paranoid sensitivity",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-fixed-allowlist": {
+   "group": "C-CORS",
+   "host": "cors-fixed-allowlist.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB320": false,
+    "WEB321": false,
+    "WEB324": false,
+    "WEB325": false,
+    "WEB326": false
+   },
+   "twin": "cors-reflect-creds",
+   "note": "a fixed allowlisted origin that does not match the probe Origin",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-star-static": {
+   "group": "C-CORS",
+   "host": "cors-star-static.cors.kashif.test",
+   "scheme": "https",
+   "path": "/static/lib.js",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB323": false,
+    "WEB327": false
+   },
+   "twin": "cors-star-session",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-none": {
+   "group": "C-CORS",
+   "host": "cors-none.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB320": false,
+    "WEB321": false,
+    "WEB322": false,
+    "WEB323": false,
+    "WEB324": false
+   },
+   "twin": "cors-reflect-creds",
+   "zap": true,
+   "legacy": true
+  },
+  "cors-reflect-vary-ok": {
+   "group": "C-CORS",
+   "host": "cors-reflect-vary-ok.cors.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB321": true,
+    "WEB324": false
+   },
+   "twin": "cors-reflect-no-vary",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-no-secure-no-hsts": {
+   "group": "C-COOKIE",
+   "host": "ck-session-no-secure-no-hsts.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB020": true
+   },
+   "expect": {
+    "severity": {
+     "WEB020": "high"
+    }
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-no-secure-hsts": {
+   "group": "C-COOKIE",
+   "host": "ck-session-no-secure-hsts.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB020": true
+   },
+   "expect": {
+    "severity": {
+     "WEB020": "medium"
+    }
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-secure-pref": {
+   "group": "C-COOKIE",
+   "host": "ck-secure-pref.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB020": true
+   },
+   "defect": [
+    "D3"
+   ],
+   "twin": "ck-session-secure-ok",
+   "note": "the cookie name contains 'secure'; 1.0.1's substring test treated the flag as present",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-secure-prefix-no-secure": {
+   "group": "C-COOKIE",
+   "host": "ck-secure-prefix-no-secure.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB401": true
+   },
+   "twin": "ck-host-correct",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-host-with-domain": {
+   "group": "C-COOKIE",
+   "host": "ck-host-with-domain.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB401": true
+   },
+   "twin": "ck-host-correct",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-samesite-none-no-secure": {
+   "group": "C-COOKIE",
+   "host": "ck-samesite-none-no-secure.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB400": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-samesite-lax2": {
+   "group": "C-COOKIE",
+   "host": "ck-samesite-lax2.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB402": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-partitioned-no-secure": {
+   "group": "C-COOKIE",
+   "host": "ck-partitioned-no-secure.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB403": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-domain-parent-session": {
+   "group": "C-COOKIE",
+   "host": "ck-domain-parent-session.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB404": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": false,
+   "zap_note": "needs the real host name (ZAP column uses 127.0.0.1 URLs)",
+   "legacy": false
+  },
+  "ck-domain-public-suffix": {
+   "group": "C-COOKIE",
+   "host": "ck-domain-public-suffix.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB404": true
+   },
+   "twin": "ck-session-secure-ok",
+   "note": "Domain is a public suffix that does not domain-match the host: rejected",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-90-days": {
+   "group": "C-COOKIE",
+   "host": "ck-session-90-days.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB405": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-duplicate": {
+   "group": "C-COOKIE",
+   "host": "ck-duplicate.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB406": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-5kb": {
+   "group": "C-COOKIE",
+   "host": "ck-5kb.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB408": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-bigip": {
+   "group": "C-COOKIE",
+   "host": "ck-bigip.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB411": true
+   },
+   "twin": "ck-lb-cookie",
+   "note": "decodes to 10.0.0.5:80",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-jwt-alg-none": {
+   "group": "C-COOKIE",
+   "host": "ck-jwt-alg-none.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB412": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-over-http": {
+   "group": "C-COOKIE",
+   "host": "ck-session-over-http.cookie.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB413": true
+   },
+   "twin": "ck-session-secure-ok",
+   "note": "the http->https hop sets the session cookie in clear text",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-secure-over-http": {
+   "group": "C-COOKIE",
+   "host": "ck-secure-over-http.cookie.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB410": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-no-httponly": {
+   "group": "C-COOKIE",
+   "host": "ck-session-no-httponly.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB021": true
+   },
+   "twin": "ck-xsrf-token",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-no-samesite": {
+   "group": "C-COOKIE",
+   "host": "ck-session-no-samesite.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB022": true
+   },
+   "twin": "ck-analytics-no-samesite",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-csrf-no-samesite": {
+   "group": "C-COOKIE",
+   "host": "ck-csrf-no-samesite.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB021": false,
+    "WEB022": true
+   },
+   "twin": "ck-analytics-no-samesite",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-samesite-none": {
+   "group": "C-COOKIE",
+   "host": "ck-session-samesite-none.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB407": true
+   },
+   "twin": "ck-session-secure-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-deletion": {
+   "group": "C-COOKIE",
+   "host": "ck-deletion.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB020": false,
+    "WEB021": false,
+    "WEB022": false
+   },
+   "defect": [
+    "D4"
+   ],
+   "twin": "ck-session-no-secure-no-hsts",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-ga": {
+   "group": "C-COOKIE",
+   "host": "ck-ga.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB021": false,
+    "WEB022": false
+   },
+   "defect": [
+    "D5"
+   ],
+   "twin": "ck-session-no-httponly",
+   "note": "analytics cookies are read by JavaScript; HttpOnly/SameSite are not demanded",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-xsrf-token": {
+   "group": "C-COOKIE",
+   "host": "ck-xsrf-token.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB021": false
+   },
+   "twin": "ck-session-no-httponly",
+   "note": "double-submit CSRF cookies must be readable by JavaScript",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-host-correct": {
+   "group": "C-COOKIE",
+   "host": "ck-host-correct.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB020": false,
+    "WEB021": false,
+    "WEB022": false,
+    "WEB401": false,
+    "WEB404": false
+   },
+   "twin": "ck-host-with-domain",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-analytics-no-samesite": {
+   "group": "C-COOKIE",
+   "host": "ck-analytics-no-samesite.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB022": false
+   },
+   "twin": "ck-session-no-samesite",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-lang": {
+   "group": "C-COOKIE",
+   "host": "ck-lang.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB021": false,
+    "WEB022": false
+   },
+   "twin": "ck-session-no-httponly",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-ignored": {
+   "group": "C-COOKIE",
+   "host": "ck-ignored.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB020": false,
+    "WEB021": false,
+    "WEB022": false
+   },
+   "twin": "ck-session-no-secure-no-hsts",
+   "note": "the cookie is on the user's ignore list",
+   "extra_args": [
+    "--web-cookie-ignore",
+    "legacy_sess"
+   ],
+   "zap": true,
+   "legacy": true
+  },
+  "ck-session-secure-ok": {
+   "group": "C-COOKIE",
+   "host": "ck-session-secure-ok.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB020": false,
+    "WEB021": false,
+    "WEB022": false,
+    "WEB400": false,
+    "WEB402": false,
+    "WEB403": false,
+    "WEB405": false,
+    "WEB406": false,
+    "WEB407": false,
+    "WEB408": false,
+    "WEB410": false,
+    "WEB412": false,
+    "WEB413": false
+   },
+   "twin": "ck-session-no-secure-no-hsts",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-lb-cookie": {
+   "group": "C-COOKIE",
+   "host": "ck-lb-cookie.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB021": false,
+    "WEB022": false,
+    "WEB411": false
+   },
+   "twin": "ck-bigip",
+   "zap": true,
+   "legacy": true
+  },
+  "ck-crawl-page-cookie": {
+   "group": "C-COOKIE",
+   "host": "ck-crawl-page-cookie.cookie.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB020": true
+   },
+   "crawl": true,
+   "defect": [
+    "D23"
+   ],
+   "twin": "ck-session-secure-ok",
+   "note": "the cookie is set by a crawled page; 1.0.1 never checked crawled responses' cookies",
+   "zap": true,
+   "legacy": true
+  },
+  "html-script-http": {
+   "group": "C-HTML",
+   "host": "html-script-http.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB050": true
+   },
+   "expect": {
+    "severity": {
+     "WEB050": "medium"
+    }
+   },
+   "twin": "html-a-href-http",
+   "zap": true,
+   "legacy": true
+  },
+  "html-img-http": {
+   "group": "C-HTML",
+   "host": "html-img-http.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB050": true
+   },
+   "expect": {
+    "severity": {
+     "WEB050": "low"
+    }
+   },
+   "twin": "html-a-href-http",
+   "zap": true,
+   "legacy": true
+  },
+  "html-form-action-http": {
+   "group": "C-HTML",
+   "host": "html-form-action-http.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB051": true
+   },
+   "twin": "html-template-comment",
+   "zap": true,
+   "legacy": true
+  },
+  "html-formaction-http": {
+   "group": "C-HTML",
+   "host": "html-formaction-http.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB051": true
+   },
+   "twin": "html-template-comment",
+   "zap": true,
+   "legacy": true
+  },
+  "html-password-http": {
+   "group": "C-HTML",
+   "host": "html-password-http.html.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB052": true
+   },
+   "twin": "html-template-comment",
+   "zap": true,
+   "legacy": true
+  },
+  "html-cdnjs-no-sri": {
+   "group": "C-HTML",
+   "host": "html-cdnjs-no-sri.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB053": true,
+    "WEB506": false,
+    "WEB507": false
+   },
+   "expect": {
+    "severity": {
+     "WEB053": "low"
+    }
+   },
+   "twin": "html-same-site-cdn",
+   "zap": true,
+   "legacy": true
+  },
+  "html-css-no-sri": {
+   "group": "C-HTML",
+   "host": "html-css-no-sri.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB053": true
+   },
+   "defect": [
+    "D22"
+   ],
+   "twin": "html-same-site-cdn",
+   "note": "1.0.1 only looked at scripts",
+   "zap": true,
+   "legacy": true
+  },
+  "html-sri-no-crossorigin": {
+   "group": "C-HTML",
+   "host": "html-sri-no-crossorigin.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB500": true
+   },
+   "defect": [
+    "D22"
+   ],
+   "twin": "html-sri-good",
+   "zap": true,
+   "legacy": true
+  },
+  "html-sri-good": {
+   "group": "C-HTML",
+   "host": "html-sri-good.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB053": false,
+    "WEB500": false,
+    "WEB501": false,
+    "WEB502": false
+   },
+   "twin": "html-sri-no-crossorigin",
+   "zap": true,
+   "legacy": true
+  },
+  "html-sri-sha1": {
+   "group": "C-HTML",
+   "host": "html-sri-sha1.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB501": true
+   },
+   "twin": "html-sri-good",
+   "zap": true,
+   "legacy": true
+  },
+  "html-sri-over-http": {
+   "group": "C-HTML",
+   "host": "html-sri-over-http.html.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB502": true
+   },
+   "twin": "html-sri-good",
+   "note": "on an https page WEB050 would explain the same element; here the page itself is http",
+   "zap": true,
+   "legacy": true
+  },
+  "html-sri-mismatch": {
+   "group": "C-HTML",
+   "host": "html-sri-mismatch.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB503": true
+   },
+   "twin": "html-sri-match",
+   "zap": false,
+   "zap_note": "needs the deep third-party fetch",
+   "legacy": false
+  },
+  "html-sri-match": {
+   "group": "C-HTML",
+   "host": "html-sri-match.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB503": false
+   },
+   "twin": "html-sri-mismatch",
+   "zap": false,
+   "zap_note": "needs the deep third-party fetch",
+   "legacy": false
+  },
+  "html-rel-opener": {
+   "group": "C-HTML",
+   "host": "html-rel-opener.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB505": true
+   },
+   "twin": "html-blank-no-rel",
+   "zap": true,
+   "legacy": true
+  },
+  "html-blank-no-rel": {
+   "group": "C-HTML",
+   "host": "html-blank-no-rel.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB505": false
+   },
+   "twin": "html-rel-opener",
+   "note": "modern browsers imply noopener for target=_blank",
+   "zap": true,
+   "legacy": true
+  },
+  "html-polyfill-io": {
+   "group": "C-HTML",
+   "host": "html-polyfill-io.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB506": true
+   },
+   "twin": "html-cdnjs-no-sri",
+   "zap": true,
+   "legacy": true
+  },
+  "html-coinhive": {
+   "group": "C-HTML",
+   "host": "html-coinhive.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB507": true
+   },
+   "twin": "html-blank-no-rel",
+   "zap": true,
+   "legacy": true
+  },
+  "html-login-get": {
+   "group": "C-HTML",
+   "host": "html-login-get.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB509": true
+   },
+   "twin": "html-template-comment",
+   "zap": true,
+   "legacy": true
+  },
+  "html-jsessionid-links": {
+   "group": "C-HTML",
+   "host": "html-jsessionid-links.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB510": true
+   },
+   "twin": "html-blank-no-rel",
+   "zap": true,
+   "legacy": true
+  },
+  "html-token-links": {
+   "group": "C-HTML",
+   "host": "html-token-links.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB511": true
+   },
+   "twin": "html-blank-no-rel",
+   "note": "WEB511 is tentative: paranoid sensitivity",
+   "zap": true,
+   "legacy": true
+  },
+  "html-next-param": {
+   "group": "C-HTML",
+   "host": "html-next-param.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB512": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB512": "info"
+    }
+   },
+   "twin": "html-blank-no-rel",
+   "zap": true,
+   "legacy": true
+  },
+  "html-params-benign": {
+   "group": "C-HTML",
+   "host": "html-params-benign.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB510": false,
+    "WEB511": false,
+    "WEB512": false
+   },
+   "twin": "html-token-links",
+   "note": "a 3-character id, an ordinary query and a relative next= are not findings",
+   "zap": true,
+   "legacy": true
+  },
+  "html-upload-form": {
+   "group": "C-HTML",
+   "host": "html-upload-form.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB513": true
+   },
+   "twin": "html-blank-no-rel",
+   "zap": true,
+   "legacy": true
+  },
+  "html-quirks-relative-css": {
+   "group": "C-HTML",
+   "host": "html-quirks-relative-css.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB514": true
+   },
+   "twin": "html-blank-no-rel",
+   "zap": true,
+   "legacy": true
+  },
+  "html-a-href-http": {
+   "group": "C-HTML",
+   "host": "html-a-href-http.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB050": false
+   },
+   "defect": [
+    "D6"
+   ],
+   "twin": "html-script-http",
+   "note": "navigation links are not mixed content",
+   "zap": true,
+   "legacy": true
+  },
+  "html-canonical-http": {
+   "group": "C-HTML",
+   "host": "html-canonical-http.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB050": false
+   },
+   "twin": "html-script-http",
+   "zap": true,
+   "legacy": true
+  },
+  "html-xmlns": {
+   "group": "C-HTML",
+   "host": "html-xmlns.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB050": false
+   },
+   "twin": "html-script-http",
+   "zap": true,
+   "legacy": true
+  },
+  "html-template-comment": {
+   "group": "C-HTML",
+   "host": "html-template-comment.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB050": false,
+    "WEB051": false,
+    "WEB052": false
+   },
+   "twin": "html-script-http",
+   "zap": true,
+   "legacy": true
+  },
+  "html-gtm-no-sri": {
+   "group": "C-HTML",
+   "host": "html-gtm-no-sri.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB053": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB053": "info"
+    }
+   },
+   "twin": "html-cdnjs-no-sri",
+   "note": "evergreen script that cannot carry SRI: info, not low",
+   "zap": true,
+   "legacy": true
+  },
+  "html-same-site-cdn": {
+   "group": "C-HTML",
+   "host": "html-same-site-cdn.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB053": false
+   },
+   "defect": [
+    "D22"
+   ],
+   "twin": "html-cdnjs-no-sri",
+   "note": "same registrable domain (static.* vs the page host): not a third party",
+   "zap": true,
+   "legacy": true
+  },
+  "html-upgrade-insecure": {
+   "group": "C-HTML",
+   "host": "html-upgrade-insecure.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB050": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB050": "info"
+    }
+   },
+   "twin": "html-img-http",
+   "note": "upgrade-insecure-requests: browsers upgrade the request, info only",
+   "zap": true,
+   "legacy": true
+  },
+  "html-crawl-grouping": {
+   "group": "C-HTML",
+   "host": "html-crawl-grouping.html.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB051": true
+   },
+   "crawl": true,
+   "defect": [
+    "D24"
+   ],
+   "expect": {
+    "count": {
+     "WEB051": 1
+    }
+   },
+   "twin": "html-template-comment",
+   "note": "the same form on three crawled pages is one grouped finding; 1.0.1 keyed groups on the snippet",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-innerhtml-hash": {
+   "group": "C-DOM",
+   "host": "dom-innerhtml-hash.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB520": true
+   },
+   "twin": "dom-textcontent",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-document-write-search": {
+   "group": "C-DOM",
+   "host": "dom-document-write-search.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB520": true
+   },
+   "twin": "dom-textcontent",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-location-param": {
+   "group": "C-DOM",
+   "host": "dom-location-param.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB521": true
+   },
+   "twin": "dom-location-constant",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-location-constant": {
+   "group": "C-DOM",
+   "host": "dom-location-constant.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB521": false
+   },
+   "twin": "dom-location-param",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-message-no-origin": {
+   "group": "C-DOM",
+   "host": "dom-message-no-origin.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB522": true
+   },
+   "twin": "dom-message-origin-check",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-message-origin-check": {
+   "group": "C-DOM",
+   "host": "dom-message-origin-check.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB522": false
+   },
+   "twin": "dom-message-no-origin",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-external-file": {
+   "group": "C-DOM",
+   "host": "dom-external-file.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB520": true
+   },
+   "twin": "dom-textcontent",
+   "note": "same-site script fetched as a subresource",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-textcontent": {
+   "group": "C-DOM",
+   "host": "dom-textcontent.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB520": false
+   },
+   "twin": "dom-innerhtml-hash",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-dompurify": {
+   "group": "C-DOM",
+   "host": "dom-dompurify.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB520": false
+   },
+   "twin": "dom-innerhtml-hash",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-jquery-library": {
+   "group": "C-DOM",
+   "host": "dom-jquery-library.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB520": false
+   },
+   "twin": "dom-external-file",
+   "note": "library files are skipped (flows inside libraries are not the site's code)",
+   "zap": true,
+   "legacy": true
+  },
+  "dom-big-bundle": {
+   "group": "C-DOM",
+   "host": "dom-big-bundle.dom.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB520": false
+   },
+   "twin": "dom-external-file",
+   "note": "a 2 MB minified bundle is skipped and noted, never half-analysed",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-server-version": {
+   "group": "C-DISC",
+   "host": "disc-server-version.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB010": true
+   },
+   "twin": "disc-ecs-server",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-powered-by": {
+   "group": "C-DISC",
+   "host": "disc-powered-by.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB011": true
+   },
+   "twin": "disc-nginx-bare",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-aspnet-version": {
+   "group": "C-DISC",
+   "host": "disc-aspnet-version.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB600": true
+   },
+   "twin": "disc-nginx-bare",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-debug-token": {
+   "group": "C-DISC",
+   "host": "disc-debug-token.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB601": true
+   },
+   "twin": "disc-nginx-bare",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-sourcemap-header": {
+   "group": "C-DISC",
+   "host": "disc-sourcemap-header.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB602": true
+   },
+   "twin": "disc-nginx-bare",
+   "note": "referenced only (standard profile): info",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-internal-ip-location": {
+   "group": "C-DISC",
+   "host": "disc-internal-ip-location.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB603": true
+   },
+   "twin": "disc-version-string",
+   "note": "the redirect to a private address is not followed; the header is still a fact",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-etag-inode": {
+   "group": "C-DISC",
+   "host": "disc-etag-inode.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB604": true
+   },
+   "twin": "disc-nginx-bare",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-nginx-autoindex": {
+   "group": "C-DISC",
+   "host": "disc-nginx-autoindex.disc.kashif.test",
+   "scheme": "https",
+   "path": "/files/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB055": true
+   },
+   "twin": "disc-blog-index-of",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-iis-listing": {
+   "group": "C-DISC",
+   "host": "disc-iis-listing.disc.kashif.test",
+   "scheme": "https",
+   "path": "/files/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB055": true
+   },
+   "twin": "disc-blog-index-of",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-blog-index-of": {
+   "group": "C-DISC",
+   "host": "disc-blog-index-of.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB055": false,
+    "WEB617": false
+   },
+   "twin": "disc-nginx-autoindex",
+   "note": "a title without file links is not a listing",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-werkzeug": {
+   "group": "C-DISC",
+   "host": "disc-werkzeug.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB605": true
+   },
+   "expect": {
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "twin": "disc-pre-traceback",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-django-debug-404": {
+   "group": "C-DISC",
+   "host": "disc-django-debug-404.disc.kashif.test",
+   "scheme": "https",
+   "path": "/nope",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB605": true
+   },
+   "twin": "disc-pre-traceback",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-sqlstate-500": {
+   "group": "C-DISC",
+   "host": "disc-sqlstate-500.disc.kashif.test",
+   "scheme": "https",
+   "path": "/search",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB606": true
+   },
+   "twin": "disc-pre-traceback",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-path-500": {
+   "group": "C-DISC",
+   "host": "disc-path-500.disc.kashif.test",
+   "scheme": "https",
+   "path": "/report",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB607": true
+   },
+   "twin": "disc-pre-traceback",
+   "note": "WEB607 is tentative: paranoid",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-php-source": {
+   "group": "C-DISC",
+   "host": "disc-php-source.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB608": true
+   },
+   "twin": "disc-php-escaped",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-php-escaped": {
+   "group": "C-DISC",
+   "host": "disc-php-escaped.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB608": false
+   },
+   "twin": "disc-php-source",
+   "note": "documentation shows escaped PHP",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-stripe-secret-inline": {
+   "group": "C-DISC",
+   "host": "disc-stripe-secret-inline.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB609": true
+   },
+   "twin": "disc-pk-live",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-pem-in-js": {
+   "group": "C-DISC",
+   "host": "disc-pem-in-js.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB609": true
+   },
+   "twin": "disc-pk-live",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-pk-live": {
+   "group": "C-DISC",
+   "host": "disc-pk-live.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB609": false
+   },
+   "twin": "disc-stripe-secret-inline",
+   "note": "publishable keys are meant to be public",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-java-serialized-cookie": {
+   "group": "C-DISC",
+   "host": "disc-java-serialized-cookie.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB610": true
+   },
+   "twin": "disc-version-string",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-viewstate-no-mac": {
+   "group": "C-DISC",
+   "host": "disc-viewstate-no-mac.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB611": true
+   },
+   "twin": "disc-version-string",
+   "note": "ASP.NET ViewState without a MAC heuristic (tentative)",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-bcrypt-json": {
+   "group": "C-DISC",
+   "host": "disc-bcrypt-json.disc.kashif.test",
+   "scheme": "https",
+   "path": "/api/user/7",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB612": true
+   },
+   "twin": "disc-git-sha",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-git-sha": {
+   "group": "C-DISC",
+   "host": "disc-git-sha.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB612": false,
+    "WEB613": false
+   },
+   "twin": "disc-bcrypt-json",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-card-number": {
+   "group": "C-DISC",
+   "host": "disc-card-number.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB613": true
+   },
+   "twin": "disc-test-card",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-test-card": {
+   "group": "C-DISC",
+   "host": "disc-test-card.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB613": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB613": "info"
+    }
+   },
+   "twin": "disc-card-number",
+   "note": "well-known test numbers: info",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-openssl-banner": {
+   "group": "C-DISC",
+   "host": "disc-openssl-banner.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB615": true
+   },
+   "twin": "disc-openssl-fips",
+   "note": "WEB615 is tentative (banner only)",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-openssl-fips": {
+   "group": "C-DISC",
+   "host": "disc-openssl-fips.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB615": false
+   },
+   "twin": "disc-openssl-banner",
+   "note": "RHEL backports fixes into -fips builds",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-apache-default-page": {
+   "group": "C-DISC",
+   "host": "disc-apache-default-page.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB617": true
+   },
+   "twin": "disc-blog-index-of",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-ecs-server": {
+   "group": "C-DISC",
+   "host": "disc-ecs-server.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB010": false
+   },
+   "defect": [
+    "D18"
+   ],
+   "twin": "disc-server-version",
+   "note": "a CDN point-of-presence id, not a version",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-nginx-bare": {
+   "group": "C-DISC",
+   "host": "disc-nginx-bare.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB010": false,
+    "WEB011": false,
+    "WEB600": false,
+    "WEB601": false,
+    "WEB604": false
+   },
+   "twin": "disc-server-version",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-pre-traceback": {
+   "group": "C-DISC",
+   "host": "disc-pre-traceback.disc.kashif.test",
+   "scheme": "https",
+   "path": "/docs/errors",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB056": false,
+    "WEB606": false,
+    "WEB607": false
+   },
+   "defect": [
+    "D16"
+   ],
+   "twin": "disc-werkzeug",
+   "note": "a traceback inside <pre> on a 200 docs page: tentative, not at default",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-version-string": {
+   "group": "C-DISC",
+   "host": "disc-version-string.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB603": false,
+    "WEB610": false
+   },
+   "twin": "disc-internal-ip-location",
+   "zap": true,
+   "legacy": true
+  },
+  "disc-error-in-soft404": {
+   "group": "C-DISC",
+   "host": "disc-error-in-soft404.disc.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB056": true
+   },
+   "expect": {
+    "count": {
+     "WEB056": 1
+    },
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "twin": "disc-pre-traceback",
+   "note": "a catch-all 500 page with a stack trace answers every path: one finding, not one per probe",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-jquery-url": {
+   "group": "C-LIB",
+   "host": "lib-jquery-url.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB054": true,
+    "WEB803": true
+   },
+   "twin": "lib-jquery-371",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-jquery-renamed": {
+   "group": "C-LIB",
+   "host": "lib-jquery-renamed.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB054": true
+   },
+   "twin": "lib-jquery-371",
+   "note": "version from the file banner, not the URL",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-retire-hash": {
+   "group": "C-LIB",
+   "host": "lib-retire-hash.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB054": true
+   },
+   "requires": [
+    "fixture:retire-hash"
+   ],
+   "twin": "lib-jquery-371",
+   "note": "needs an exact library file whose SHA-1 is in retire.js (WP9 fixture); skipped otherwise",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-angular-182": {
+   "group": "C-LIB",
+   "host": "lib-angular-182.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB054": true,
+    "WEB803": true
+   },
+   "twin": "lib-jquery-371",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-lodash-bundle": {
+   "group": "C-LIB",
+   "host": "lib-lodash-bundle.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB054": true
+   },
+   "twin": "lib-jquery-371",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-php-81": {
+   "group": "C-LIB",
+   "host": "lib-php-81.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB800": true
+   },
+   "twin": "lib-php-current",
+   "note": "banner version: tentative",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-php-eol": {
+   "group": "C-LIB",
+   "host": "lib-php-eol.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB801": true
+   },
+   "twin": "lib-php-current",
+   "note": "PHP 5.6 reached end of life in 2018",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-php-current": {
+   "group": "C-LIB",
+   "host": "lib-php-current.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB800": false,
+    "WEB801": false
+   },
+   "twin": "lib-php-81",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-apache-ubuntu": {
+   "group": "C-LIB",
+   "host": "lib-apache-ubuntu.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "paranoid",
+   "labels": {
+    "WEB800": true
+   },
+   "twin": "lib-php-current",
+   "note": "tentative, with the distro-backport note",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-wordpress-49": {
+   "group": "C-LIB",
+   "host": "lib-wordpress-49.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB080": true,
+    "WEB081": true
+   },
+   "twin": "lib-wordpress-prose",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-jquery-371": {
+   "group": "C-LIB",
+   "host": "lib-jquery-371.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB054": false,
+    "WEB602": false,
+    "WEB803": false
+   },
+   "twin": "lib-jquery-url",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-jquery-prose": {
+   "group": "C-LIB",
+   "host": "lib-jquery-prose.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB054": false
+   },
+   "defect": [
+    "D15"
+   ],
+   "twin": "lib-jquery-url",
+   "note": "library names in prose are not libraries",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-administrator-text": {
+   "group": "C-LIB",
+   "host": "lib-administrator-text.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB080": false
+   },
+   "defect": [
+    "D15"
+   ],
+   "twin": "lib-wordpress-49",
+   "note": "'/administrator/' alone is not Joomla",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-wordpress-prose": {
+   "group": "C-LIB",
+   "host": "lib-wordpress-prose.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB080": false,
+    "WEB081": false
+   },
+   "defect": [
+    "D15"
+   ],
+   "twin": "lib-wordpress-49",
+   "zap": true,
+   "legacy": true
+  },
+  "lib-two-platforms": {
+   "group": "C-LIB",
+   "host": "lib-two-platforms.lib.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB080": true
+   },
+   "defect": [
+    "D15"
+   ],
+   "expect": {
+    "min_count": {
+     "WEB080": 2
+    }
+   },
+   "twin": "lib-administrator-text",
+   "note": "two platforms on one page; 1.0.1 reported only the first",
+   "zap": true,
+   "legacy": true
+  },
+  "tls-expired": {
+   "group": "C-TLS",
+   "host": "tls-expired.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB070": true
+   },
+   "tls": "expired",
+   "defect": [
+    "D21"
+   ],
+   "twin": "tls-good-chain",
+   "note": "1.0.1 only read the expiry when the certificate validated",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-not-yet-valid": {
+   "group": "C-TLS",
+   "host": "tls-not-yet-valid.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB720": true
+   },
+   "tls": "notyet",
+   "twin": "tls-good-chain",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-self-signed": {
+   "group": "C-TLS",
+   "host": "tls-self-signed.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB701": true
+   },
+   "tls": "selfsigned",
+   "twin": "tls-good-chain",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-wrong-host": {
+   "group": "C-TLS",
+   "host": "tls-wrong-host.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB700": true
+   },
+   "tls": "wronghost",
+   "twin": "tls-good-chain",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-leaf-only": {
+   "group": "C-TLS",
+   "host": "tls-leaf-only.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB702": true
+   },
+   "tls": "leafonly",
+   "twin": "tls-good-chain",
+   "note": "intermediate not sent",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-wrong-order": {
+   "group": "C-TLS",
+   "host": "tls-wrong-order.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB703": true
+   },
+   "tls": "wrongorder",
+   "twin": "tls-good-chain",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-chain-with-root": {
+   "group": "C-TLS",
+   "host": "tls-chain-with-root.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB703": true
+   },
+   "tls": "withroot",
+   "expect": {
+    "max_severity": {
+     "WEB703": "info"
+    }
+   },
+   "twin": "tls-good-chain",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-sha1-leaf": {
+   "group": "C-TLS",
+   "host": "tls-sha1-leaf.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB708": true
+   },
+   "tls": "sha1",
+   "twin": "tls-good-chain",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-rsa1024": {
+   "group": "C-TLS",
+   "host": "tls-rsa1024.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB707": true
+   },
+   "tls": "rsa1024",
+   "twin": "tls-good-chain",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-roca": {
+   "group": "C-TLS",
+   "host": "tls-roca.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB707": true
+   },
+   "tls": "roca",
+   "requires": [
+    "roca"
+   ],
+   "twin": "tls-good-chain",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-400-days": {
+   "group": "C-TLS",
+   "host": "tls-400-days.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB709": true
+   },
+   "tls": "days400",
+   "twin": "tls-good-chain",
+   "note": "issued after 2026-03-15 with a 400-day lifetime",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-must-staple": {
+   "group": "C-TLS",
+   "host": "tls-must-staple.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB714": true
+   },
+   "tls": "muststaple",
+   "twin": "tls-good-chain",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-expires-soon": {
+   "group": "C-TLS",
+   "host": "tls-expires-soon.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB071": true
+   },
+   "tls": "days90left5",
+   "twin": "rev-cert-90d-25-left",
+   "note": "5 days left of a 90-day certificate (< lifetime/10)",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-wrong-eku": {
+   "group": "C-TLS",
+   "host": "tls-wrong-eku.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB072": true
+   },
+   "tls": "wrongeku",
+   "twin": "tls-good-chain",
+   "note": "client-auth-only certificate: verification fails, no more specific rule applies",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-no-tls13": {
+   "group": "C-TLS",
+   "host": "tls-no-tls13.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB705": true
+   },
+   "tls": "tls12only",
+   "expect": {
+    "severity": {
+     "WEB705": "low"
+    }
+   },
+   "twin": "tls-modern-only",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls10-accepted": {
+   "group": "C-TLS",
+   "host": "tls10-accepted.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB030": true
+   },
+   "tls": "tls10",
+   "defect": [
+    "D17"
+   ],
+   "requires": [
+    "tls10"
+   ],
+   "twin": "tls-modern-only",
+   "note": "1.0.1's OpenSSL refused TLS 1.0 client-side: silent miss",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-stub-sslv3": {
+   "group": "C-TLS",
+   "host": "tls-stub-sslv3.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB704": true
+   },
+   "tls": "stub-sslv3",
+   "requires": [
+    "stub"
+   ],
+   "twin": "tls-modern-only",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-stub-rc4": {
+   "group": "C-TLS",
+   "host": "tls-stub-rc4.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB706": true
+   },
+   "tls": "stub-rc4",
+   "requires": [
+    "stub"
+   ],
+   "twin": "tls-modern-only",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-stub-compression": {
+   "group": "C-TLS",
+   "host": "tls-stub-compression.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB711": true
+   },
+   "tls": "stub-compression",
+   "requires": [
+    "stub"
+   ],
+   "twin": "tls-modern-only",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-stub-no-reneg": {
+   "group": "C-TLS",
+   "host": "tls-stub-no-reneg.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB712": true
+   },
+   "tls": "stub-noreneg",
+   "requires": [
+    "stub"
+   ],
+   "twin": "tls-modern-only",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-two-ips": {
+   "group": "C-TLS",
+   "host": "tls-two-ips.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB715": true
+   },
+   "tls": "twoips",
+   "requires": [
+    "ip2"
+   ],
+   "twin": "tls-good-chain",
+   "note": "127.0.0.2 serves TLS 1.2 only; skipped (never passed) where 127.0.0.2 cannot be bound (default macOS)",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": false
+  },
+  "tls-good-no-aki": {
+   "group": "C-TLS",
+   "host": "tls-good-no-aki.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB072": false,
+    "WEB702": false
+   },
+   "tls": "noaki",
+   "defect": [
+    "D19"
+   ],
+   "twin": "tls-wrong-host",
+   "note": "Python 3.13's VERIFY_X509_STRICT rejects a leaf without AKI that browsers accept",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-modern-only": {
+   "group": "C-TLS",
+   "host": "tls-modern-only.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB030": false,
+    "WEB704": false,
+    "WEB705": false,
+    "WEB706": false,
+    "WEB711": false,
+    "WEB712": false
+   },
+   "tls": "modern",
+   "twin": "tls10-accepted",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-stub-timeout": {
+   "group": "C-TLS",
+   "host": "tls-stub-timeout.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB030": false
+   },
+   "tls": "stub-timeout",
+   "expect": {
+    "states": {
+     "WEB030": "not_tested"
+    }
+   },
+   "requires": [
+    "stub"
+   ],
+   "twin": "tls10-accepted",
+   "note": "raw probes time out: not_tested, never pass",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "tls-good-chain": {
+   "group": "C-TLS",
+   "host": "tls-good-chain.tls.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB070": false,
+    "WEB071": false,
+    "WEB072": false,
+    "WEB700": false,
+    "WEB701": false,
+    "WEB702": false,
+    "WEB703": false,
+    "WEB707": false,
+    "WEB708": false,
+    "WEB709": false,
+    "WEB714": false,
+    "WEB715": false,
+    "WEB720": false
+   },
+   "tls": "good",
+   "defect": [
+    "D20"
+   ],
+   "expect": {
+    "stderr_absent": [
+     "DeprecationWarning"
+    ]
+   },
+   "twin": "tls-expired",
+   "note": "1.0.1 used datetime.utcnow() (deprecated, naive)",
+   "zap": false,
+   "zap_note": "ZAP's passive scanner has no TLS rules",
+   "legacy": true
+  },
+  "exp-git-head": {
+   "group": "C-EXP",
+   "host": "exp-git-head.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "twin": "exp-catchall-text-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-env": {
+   "group": "C-EXP",
+   "host": "exp-env.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "twin": "exp-env-html",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-ds-store": {
+   "group": "C-EXP",
+   "host": "exp-ds-store.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "twin": "exp-catchall-octet",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-svn-entries": {
+   "group": "C-EXP",
+   "host": "exp-svn-entries.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "twin": "exp-catchall-octet",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-phpinfo": {
+   "group": "C-EXP",
+   "host": "exp-phpinfo.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "defect": [
+    "D12"
+   ],
+   "twin": "exp-spa-catchall",
+   "note": "HTML by nature: 1.0.1 rejected every HTML probe response",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-server-status": {
+   "group": "C-EXP",
+   "host": "exp-server-status.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "defect": [
+    "D12"
+   ],
+   "twin": "exp-spa-catchall",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-actuator-env": {
+   "group": "C-EXP",
+   "host": "exp-actuator-env.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "twin": "exp-catchall-text-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-actuator-index": {
+   "group": "C-EXP",
+   "host": "exp-actuator-index.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "expect": {
+    "server_never": [
+     "/actuator/heapdump",
+     "/actuator/threaddump",
+     "/debug/pprof"
+    ]
+   },
+   "twin": "exp-catchall-text-ok",
+   "note": "heapdump/threaddump are listed from the index, never requested (§0.1)",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-swagger": {
+   "group": "C-EXP",
+   "host": "exp-swagger.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "twin": "exp-spa-catchall",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-laravel-log": {
+   "group": "C-EXP",
+   "host": "exp-laravel-log.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "twin": "exp-catchall-text-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-crossdomain": {
+   "group": "C-EXP",
+   "host": "exp-crossdomain.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB903": true
+   },
+   "twin": "exp-catchall-text-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-sectxt-expired": {
+   "group": "C-EXP",
+   "host": "exp-sectxt-expired.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB900": true
+   },
+   "twin": "exp-sectxt-valid",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-sectxt-no-contact": {
+   "group": "C-EXP",
+   "host": "exp-sectxt-no-contact.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB900": true
+   },
+   "twin": "exp-sectxt-valid",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-sectxt-valid": {
+   "group": "C-EXP",
+   "host": "exp-sectxt-valid.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB060": false,
+    "WEB900": false
+   },
+   "twin": "exp-sectxt-expired",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-no-sectxt": {
+   "group": "C-EXP",
+   "host": "exp-no-sectxt.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB060": true
+   },
+   "twin": "exp-sectxt-valid",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-robots-admin": {
+   "group": "C-EXP",
+   "host": "exp-robots-admin.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB061": true
+   },
+   "twin": "exp-robots-admin-guide",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-robots-admin-guide": {
+   "group": "C-EXP",
+   "host": "exp-robots-admin-guide.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB061": false
+   },
+   "twin": "exp-robots-admin",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-takeover": {
+   "group": "C-EXP",
+   "host": "exp-takeover.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB901": true
+   },
+   "twin": "exp-takeover-no-cname",
+   "note": "CNAME to github.io + the provider's 404 fingerprint",
+   "zap": false,
+   "zap_note": "needs the CNAME from the resolver hook",
+   "legacy": false
+  },
+  "exp-takeover-no-cname": {
+   "group": "C-EXP",
+   "host": "exp-takeover-no-cname.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB901": false
+   },
+   "twin": "exp-takeover",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-wp-login": {
+   "group": "C-EXP",
+   "host": "exp-wp-login.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB083": true
+   },
+   "twin": "exp-spa-catchall",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-drupal-changelog": {
+   "group": "C-EXP",
+   "host": "exp-drupal-changelog.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB082": true
+   },
+   "twin": "exp-catchall-text-ok",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-catchall-octet": {
+   "group": "C-EXP",
+   "host": "exp-catchall-octet.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": false,
+    "WEB082": false
+   },
+   "defect": [
+    "D13"
+   ],
+   "twin": "exp-ds-store",
+   "note": "every path answers 200 with the same bytes",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-catchall-text-ok": {
+   "group": "C-EXP",
+   "host": "exp-catchall-text-ok.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": false,
+    "WEB903": false
+   },
+   "twin": "exp-git-head",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-spa-catchall": {
+   "group": "C-EXP",
+   "host": "exp-spa-catchall.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": false,
+    "WEB083": false
+   },
+   "defect": [
+    "D14"
+   ],
+   "twin": "exp-wp-login",
+   "note": "an SPA answers every path with its shell (which says 'Login')",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-env-html": {
+   "group": "C-EXP",
+   "host": "exp-env-html.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": false
+   },
+   "twin": "exp-env",
+   "note": "an HTML page at /.env is not an exposed env file",
+   "zap": true,
+   "legacy": true
+  },
+  "exp-deep-gap": {
+   "group": "C-EXP",
+   "host": "exp-deep-gap.exp.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": false
+   },
+   "defect": [
+    "D25"
+   ],
+   "expect": {
+    "min_gap": 0.18
+   },
+   "twin": "exp-git-head",
+   "note": "every request, deep probes included, honours the global per-host gap",
+   "zap": true,
+   "legacy": true
+  },
+  "waf-cloudflare": {
+   "group": "C-WAF",
+   "host": "waf-cloudflare.waf.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB-permissions-policy": false,
+    "WEB-referrer-policy": false,
+    "WEB-strict-transport-security": false,
+    "WEB-x-content-type-options": false,
+    "WEB-x-frame-options": false,
+    "WEB990": true
+   },
+   "expect": {
+    "grade": "?"
+   },
+   "twin": "waf-deep-probe-only",
+   "zap": true,
+   "legacy": true
+  },
+  "waf-akamai": {
+   "group": "C-WAF",
+   "host": "waf-akamai.waf.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB-permissions-policy": false,
+    "WEB-referrer-policy": false,
+    "WEB-strict-transport-security": false,
+    "WEB-x-content-type-options": false,
+    "WEB-x-frame-options": false,
+    "WEB990": true
+   },
+   "twin": "waf-deep-probe-only",
+   "zap": true,
+   "legacy": true
+  },
+  "waf-aws": {
+   "group": "C-WAF",
+   "host": "waf-aws.waf.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB-permissions-policy": false,
+    "WEB-referrer-policy": false,
+    "WEB-strict-transport-security": false,
+    "WEB-x-content-type-options": false,
+    "WEB-x-frame-options": false,
+    "WEB990": true
+   },
+   "twin": "waf-deep-probe-only",
+   "zap": true,
+   "legacy": true
+  },
+  "waf-429-retry-after": {
+   "group": "C-WAF",
+   "host": "waf-429-retry-after.waf.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "entry_gap": 1.8,
+    "max_requests": 4,
+    "exit": [
+     0,
+     1
+    ]
+   },
+   "note": "429 + Retry-After: 2 → one wait, then 200; the next 429 stops the host (partial, inconclusive)",
+   "zap": true,
+   "legacy": true
+  },
+  "waf-503-twice": {
+   "group": "C-WAF",
+   "host": "waf-503-twice.waf.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": false,
+    "WEB990": true
+   },
+   "expect": {
+    "max_requests": 3,
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "twin": "waf-deep-probe-only",
+   "zap": true,
+   "legacy": true
+  },
+  "waf-deep-probe-only": {
+   "group": "C-WAF",
+   "host": "waf-deep-probe-only.waf.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-x-frame-options": true,
+    "WEB062": false
+   },
+   "twin": "waf-cloudflare",
+   "note": "the WAF only blocks the deep probes; the rest of the scan is normal",
+   "zap": true,
+   "legacy": true
+  },
+  "grade-aplus": {
+   "group": "C-GRADE",
+   "host": "grade-aplus.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "tls": "modern",
+   "expect": {
+    "grade": "A+"
+   },
+   "note": "strict CSP, HSTS 2 y, prefixed SameSite cookie, COOP+CORP, TLS 1.2/1.3 AEAD only",
+   "zap": false,
+   "legacy": true
+  },
+  "grade-a": {
+   "group": "C-GRADE",
+   "host": "grade-a.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB114": true
+   },
+   "tls": "modern",
+   "expect": {
+    "grade": "A"
+   },
+   "note": "as A+ but HSTS without includeSubDomains: cap A",
+   "zap": false,
+   "legacy": true
+  },
+  "grade-b": {
+   "group": "C-GRADE",
+   "host": "grade-b.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": true,
+    "WEB050": true
+   },
+   "tls": "modern",
+   "expect": {
+    "grade": "B"
+   },
+   "note": "browser-policy family at 0 (missing CSP/XFO/XCTO, WEB315, WEB322, WEB316, WEB317, WEB310) and one active mixed item: base ≈ 77-79 (hand-derived from §3.4; confirm in phase D)",
+   "zap": false,
+   "legacy": true
+  },
+  "grade-c": {
+   "group": "C-GRADE",
+   "host": "grade-c.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": true
+   },
+   "tls": "modern",
+   "expect": {
+    "grade": "C"
+   },
+   "note": "adds missing HSTS, weak cookies, banners and a debug header: base ≈ 55-60 (hand-derived; confirm in phase D)",
+   "zap": false,
+   "legacy": false
+  },
+  "grade-f": {
+   "group": "C-GRADE",
+   "host": "grade-f.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB609": true
+   },
+   "expect": {
+    "grade": "F"
+   },
+   "note": "a critical finding caps the grade at F",
+   "zap": true,
+   "legacy": true
+  },
+  "grade-star": {
+   "group": "C-GRADE",
+   "host": "grade-star.grade.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "grade_suffix": "*"
+   },
+   "note": "TLS cannot be tested (http target on a non-default port): the grade is provisional",
+   "zap": true,
+   "legacy": true
+  },
+  "grade-waf": {
+   "group": "C-GRADE",
+   "host": "grade-waf.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB990": true
+   },
+   "expect": {
+    "grade": "?"
+   },
+   "zap": true,
+   "legacy": true
+  },
+  "grade-mono-frame-ancestors": {
+   "group": "C-GRADE",
+   "host": "grade-mono-frame-ancestors.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "grade_at_least_case": "grade-mono-no-csp"
+   },
+   "note": "a clickjacking-only CSP never grades below no CSP",
+   "zap": true,
+   "legacy": true
+  },
+  "grade-mono-no-csp": {
+   "group": "C-GRADE",
+   "host": "grade-mono-no-csp.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-content-security-policy": true
+   },
+   "zap": true,
+   "legacy": true
+  },
+  "grade-obs-165": {
+   "group": "C-GRADE",
+   "host": "grade-obs-165.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "observatory": null
+   },
+   "note": "Observatory fixture; the expected number is recorded with the official @mdn/mdn-http-observatory 1.7.2 scorer (README), never by hand",
+   "zap": true,
+   "legacy": true
+  },
+  "grade-obs-100": {
+   "group": "C-GRADE",
+   "host": "grade-obs-100.grade.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "observatory": null
+   },
+   "note": "Observatory fixture (number pending, see README)",
+   "zap": true,
+   "legacy": true
+  },
+  "grade-obs-0": {
+   "group": "C-GRADE",
+   "host": "grade-obs-0.grade.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "observatory": null
+   },
+   "note": "Observatory fixture (number pending, see README)",
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-markup-ansi": {
+   "group": "C-HOSTILE",
+   "host": "hostile-markup-ansi.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB010": false
+   },
+   "expect": {
+    "output_safe": true
+   },
+   "note": "target text must be escaped in HTML/Markdown and stripped of ANSI in the terminal",
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-curl-injection": {
+   "group": "C-HOSTILE",
+   "host": "hostile-curl-injection.hostile.kashif.test",
+   "scheme": "http",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "curl_quoted": true,
+    "exit": [
+     0,
+     1
+    ]
+   },
+   "note": "every argument of the curl reproduction line is shell-quoted",
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-slow-drip": {
+   "group": "C-HOSTILE",
+   "host": "hostile-slow-drip.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "max_elapsed": 50,
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "requires": [
+    "slow"
+   ],
+   "note": "1 byte every 0.5 s: the 30 s per-response deadline stops it",
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-120-headers": {
+   "group": "C-HOSTILE",
+   "host": "hostile-120-headers.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "json_contains": [
+     "too many headers"
+    ],
+    "exit": [
+     0,
+     1
+    ]
+   },
+   "note": "http.client raises on > 100 header lines: the response is an error 'too many headers', never dropped silently",
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-gzip-bomb": {
+   "group": "C-HOSTILE",
+   "host": "hostile-gzip-bomb.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "max_elapsed": 60,
+    "max_rss_mb": 600,
+    "exit": [
+     0,
+     1
+    ]
+   },
+   "note": "1 MB of gzip inflating to 1 GiB: capped",
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-brotli-body": {
+   "group": "C-HOSTILE",
+   "host": "hostile-brotli-body.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB010": true,
+    "WEB055": false,
+    "WEB605": false
+   },
+   "twin": "disc-nginx-autoindex",
+   "note": "an unrequested coding: header rules run, body rules are not_tested (the bytes are never parsed)",
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-redirect-metadata": {
+   "group": "C-HOSTILE",
+   "host": "hostile-redirect-metadata.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "max_elapsed": 20,
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "note": "cloud metadata addresses are never requested",
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-redirect-ip2": {
+   "group": "C-HOSTILE",
+   "host": "hostile-redirect-ip2.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "no_requests_on_ip2": true,
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "note": "the hook labels the target public; a redirect to loopback 127.0.0.2 is not followed",
+   "zap": true,
+   "legacy": false
+  },
+  "hostile-dns-rebinding": {
+   "group": "C-HOSTILE",
+   "host": "hostile-dns-rebinding.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "min_requests": 2,
+    "max_elapsed": 40,
+    "exit": [
+     0,
+     1
+    ]
+   },
+   "note": "the second lookup answers a private address: the address is pinned per host for the whole scan",
+   "zap": false,
+   "legacy": false
+  },
+  "hostile-redirect-file": {
+   "group": "C-HOSTILE",
+   "host": "hostile-redirect-file.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-redirect-javascript": {
+   "group": "C-HOSTILE",
+   "host": "hostile-redirect-javascript.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {},
+   "expect": {
+    "exit": [
+     0,
+     1,
+     2
+    ]
+   },
+   "zap": true,
+   "legacy": true
+  },
+  "hostile-obs-fold-hsts": {
+   "group": "C-HOSTILE",
+   "host": "hostile-obs-fold-hsts.hostile.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB-strict-transport-security": false
+   },
+   "note": "obsolete line folding: normalised, recorded as a fact, never a crash or a 'missing' finding",
+   "zap": true,
+   "legacy": true
+  },
+  "rev-cn-only": {
+   "group": "C-REVIEW",
+   "host": "rev-cn-only.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB700": true
+   },
+   "tls": "cnonly",
+   "twin": "rev-cert-90d-25-left",
+   "note": "CN-only certificate: browsers ignore the CN (hostname_checks_common_name = False)",
+   "zap": false,
+   "legacy": true
+  },
+  "rev-shared-cache-session": {
+   "group": "C-REVIEW",
+   "host": "rev-shared-cache-session.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB315": true
+   },
+   "expect": {
+    "confidence": {
+     "WEB315": "certain"
+    }
+   },
+   "twin": "hdr-static-immutable",
+   "note": "the entry GET and the cookieless CORS GET receive the same session id: a shared cache leaks it",
+   "zap": true,
+   "legacy": true
+  },
+  "rev-session-echo": {
+   "group": "C-REVIEW",
+   "host": "rev-session-echo.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB414": true
+   },
+   "twin": "ck-xsrf-token",
+   "note": "the HttpOnly session value is printed into the page",
+   "zap": true,
+   "legacy": true
+  },
+  "rev-csrf-echo": {
+   "group": "C-REVIEW",
+   "host": "rev-csrf-echo.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB414": false
+   },
+   "twin": "rev-session-echo",
+   "note": "double-submit CSRF tokens are meant to appear in the page (csrf class excluded)",
+   "zap": true,
+   "legacy": true
+  },
+  "rev-jsdelivr-unpinned": {
+   "group": "C-REVIEW",
+   "host": "rev-jsdelivr-unpinned.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB519": true
+   },
+   "twin": "rev-jsdelivr-pinned",
+   "zap": true,
+   "legacy": true
+  },
+  "rev-jsdelivr-pinned": {
+   "group": "C-REVIEW",
+   "host": "rev-jsdelivr-pinned.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB519": false
+   },
+   "twin": "rev-jsdelivr-unpinned",
+   "zap": true,
+   "legacy": true
+  },
+  "rev-unregistered-script": {
+   "group": "C-REVIEW",
+   "host": "rev-unregistered-script.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB517": true
+   },
+   "twin": "rev-missing-host-live-domain",
+   "note": "variant A: the script's registrable domain is not registered",
+   "zap": false,
+   "zap_note": "needs the resolver hook",
+   "legacy": false
+  },
+  "rev-s3-nosuchbucket": {
+   "group": "C-REVIEW",
+   "host": "rev-s3-nosuchbucket.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB517": true
+   },
+   "twin": "rev-missing-host-live-domain",
+   "note": "variant C: the deep third-party fetch finds a deleted bucket",
+   "zap": false,
+   "legacy": false
+  },
+  "rev-404-drops-headers": {
+   "group": "C-REVIEW",
+   "host": "rev-404-drops-headers.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB318": true
+   },
+   "twin": "rev-404-keeps-headers",
+   "note": "nginx add_header without 'always': the security headers vanish on error pages",
+   "zap": true,
+   "legacy": true
+  },
+  "rev-404-keeps-headers": {
+   "group": "C-REVIEW",
+   "host": "rev-404-keeps-headers.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB318": false
+   },
+   "twin": "rev-404-drops-headers",
+   "zap": true,
+   "legacy": true
+  },
+  "rev-missing-host-live-domain": {
+   "group": "C-REVIEW",
+   "host": "rev-missing-host-live-domain.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB517": false
+   },
+   "twin": "rev-unregistered-script",
+   "note": "variant B (host missing inside a live domain) is low/tentative: not reported at default sensitivity",
+   "zap": false,
+   "legacy": false
+  },
+  "rev-all-nxdomain": {
+   "group": "C-REVIEW",
+   "host": "rev-all-nxdomain.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB517": false
+   },
+   "expect": {
+    "states": {
+     "WEB517": "not_tested"
+    }
+   },
+   "twin": "rev-unregistered-script",
+   "note": "resolver sanity guard: when everything is NXDOMAIN, nothing is concluded",
+   "zap": false,
+   "legacy": false
+  },
+  "rev-proxied": {
+   "group": "C-REVIEW",
+   "host": "rev-proxied.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB517": false
+   },
+   "expect": {
+    "json_contains": [
+     "proxy"
+    ]
+   },
+   "twin": "rev-unregistered-script",
+   "note": "scanning through an HTTPS proxy: DNS-based checks are not_tested (§0.7)",
+   "use_proxy": true,
+   "zap": false,
+   "legacy": false
+  },
+  "rev-cert-90d-25-left": {
+   "group": "C-REVIEW",
+   "host": "rev-cert-90d-25-left.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB071": false
+   },
+   "tls": "days90left25",
+   "twin": "rev-cn-only",
+   "note": "25 days left of a 90-day certificate is normal ACME renewal timing",
+   "zap": false,
+   "legacy": true
+  },
+  "rev-xxss-block": {
+   "group": "C-REVIEW",
+   "host": "rev-xxss-block.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "standard",
+   "sensitivity": "default",
+   "labels": {
+    "WEB311": true
+   },
+   "expect": {
+    "max_severity": {
+     "WEB311": "info"
+    }
+   },
+   "twin": "hdr-xxss-zero",
+   "zap": true,
+   "legacy": true
+  },
+  "rev-git-head-catchall": {
+   "group": "C-REVIEW",
+   "host": "rev-git-head-catchall.review.kashif.test",
+   "scheme": "https",
+   "path": "/",
+   "profile": "deep",
+   "sensitivity": "default",
+   "labels": {
+    "WEB062": true
+   },
+   "twin": "exp-catchall-text-ok",
+   "note": "a strong signature decides against a catch-all baseline of similar length",
+   "zap": true,
+   "legacy": true
+  }
+ }
+}

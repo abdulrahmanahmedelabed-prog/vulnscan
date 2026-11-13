@@ -1,0 +1,145 @@
+{
+ "meta": {
+  "schema_version": 1,
+  "date": "2026-11-13",
+  "generator": "tools/webdata/malicious_hosts.py",
+  "source": "Kashif curated list: ZAP pscanrules PolyfillCdnScriptScanRule (10115) host names; miner, loader and defacement signatures after the nuclei templates crypto-mining-malware, balada-injector-malware and defacement-detect",
+  "license": "Kashif project licence; host names from ZAP (Apache-2.0) and nuclei-templates (MIT) are facts (see NOTICE)",
+  "notes": "WEB506 matches hosts (suffix = the domain and its subdomains); WEB507 uses only exact signatures, never generic obfuscation patterns."
+ },
+ "hosts": [
+  {
+   "host": "bootcdn.net",
+   "match": "suffix",
+   "reason": "polyfill.io supply-chain compromise (June 2024): the CDN served injected redirects to scam sites; the same operator ran these domains",
+   "since": "2024-06-25"
+  },
+  {
+   "host": "bootcss.com",
+   "match": "suffix",
+   "reason": "polyfill.io supply-chain compromise (June 2024): the CDN served injected redirects to scam sites; the same operator ran these domains",
+   "since": "2024-06-25"
+  },
+  {
+   "host": "newcrbpc.com",
+   "match": "suffix",
+   "reason": "malicious redirect domain injected by the compromised polyfill.io CDN",
+   "since": "2024-06-25"
+  },
+  {
+   "host": "polyfill.io",
+   "match": "suffix",
+   "reason": "polyfill.io supply-chain compromise (June 2024): the CDN served injected redirects to scam sites; the same operator ran these domains",
+   "since": "2024-06-25"
+  },
+  {
+   "host": "staticfile.net",
+   "match": "suffix",
+   "reason": "polyfill.io supply-chain compromise (June 2024): the CDN served injected redirects to scam sites; the same operator ran these domains",
+   "since": "2024-06-25"
+  },
+  {
+   "host": "staticfile.org",
+   "match": "suffix",
+   "reason": "polyfill.io supply-chain compromise (June 2024): the CDN served injected redirects to scam sites; the same operator ran these domains",
+   "since": "2024-06-25"
+  },
+  {
+   "host": "union.macoms.la",
+   "match": "suffix",
+   "reason": "malicious redirect domain injected by the compromised polyfill.io CDN",
+   "since": "2024-06-25"
+  },
+  {
+   "host": "unionadjs.com",
+   "match": "suffix",
+   "reason": "malicious ad/redirect domain injected by the compromised polyfill.io CDN",
+   "since": "2024-06-25"
+  },
+  {
+   "host": "xhsbpza.com",
+   "match": "suffix",
+   "reason": "malicious redirect domain injected by the compromised polyfill.io CDN",
+   "since": "2024-06-25"
+  }
+ ],
+ "signatures": [
+  {
+   "id": "defacement-hacked-by",
+   "kind": "defacement",
+   "pattern": "\\b(?:hacked|h4ck3d|defaced)\\s+by\\b",
+   "flags": "i"
+  },
+  {
+   "id": "balada-scriptsplatform",
+   "kind": "loader",
+   "pattern": "\\bstatistic\\.scriptsplatform\\.com\\b",
+   "flags": "i"
+  },
+  {
+   "id": "balada-specialtaskevents",
+   "kind": "loader",
+   "pattern": "\\bcdn\\.specialtaskevents\\.com\\b",
+   "flags": "i"
+  },
+  {
+   "id": "balada-stablelightway",
+   "kind": "loader",
+   "pattern": "\\btrend\\.stablelightway\\.com\\b",
+   "flags": "i"
+  },
+  {
+   "id": "balada-tracker-statistics",
+   "kind": "loader",
+   "pattern": "\\bttt\\.tracker-statistics\\.com\\b",
+   "flags": "i"
+  },
+  {
+   "id": "coinhive-api",
+   "kind": "miner",
+   "pattern": "\\bCoinHive\\.(?:Anonymous|User|Token)\\b"
+  },
+  {
+   "id": "coinhive-host",
+   "kind": "miner",
+   "pattern": "\\b(?:coinhive\\.com|coin-hive\\.com|authedmine\\.com)\\b",
+   "flags": "i"
+  },
+  {
+   "id": "coinhive-lib",
+   "kind": "miner",
+   "pattern": "\\bcoinhive(?:\\.min)?\\.js\\b",
+   "flags": "i"
+  },
+  {
+   "id": "coinimp",
+   "kind": "miner",
+   "pattern": "\\bcoinimp\\.com\\b",
+   "flags": "i"
+  },
+  {
+   "id": "cryptoloot",
+   "kind": "miner",
+   "pattern": "\\b(?:crypto-loot\\.com|cryptoloot\\.pro)\\b|\\bCRLT\\.Anonymous\\b",
+   "flags": "i"
+  },
+  {
+   "id": "jsecoin",
+   "kind": "miner",
+   "pattern": "\\bload\\.jsecoin\\.com\\b",
+   "flags": "i"
+  },
+  {
+   "id": "minero",
+   "kind": "miner",
+   "pattern": "\\bminero\\.cc\\b",
+   "flags": "i"
+  },
+  {
+   "id": "webminepool",
+   "kind": "miner",
+   "pattern": "\\bwebminepool\\.com\\b",
+   "flags": "i"
+  }
+ ]
+}

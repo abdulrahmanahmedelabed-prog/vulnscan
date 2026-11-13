@@ -1,0 +1,310 @@
+{
+ "meta": {
+  "schema_version": 1,
+  "date": "2026-11-13",
+  "generator": "tools/webdata/errors.py",
+  "source": "Kashif's own list, re-derived from vendor documentation (OSHP's list used only as a cross-check)",
+  "license": "Kashif project licence",
+  "notes": "WEB600: low when version_pattern matches the value, else info (or the given severity); WEB601: medium. match: exact | prefix; a name containing * is a case-insensitive glob. Server-Timing entries are judged in code (disclosure.py)."
+ },
+ "headers": [
+  {
+   "name": "X-AspNet-Version",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "ASP.NET runtime version"
+  },
+  {
+   "name": "X-AspNetMvc-Version",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "ASP.NET MVC version"
+  },
+  {
+   "name": "X-Backend-Server",
+   "match": "exact",
+   "rule": "WEB600",
+   "note": "backend host name"
+  },
+  {
+   "name": "X-Backend-Host",
+   "match": "exact",
+   "rule": "WEB600",
+   "note": "backend host name"
+  },
+  {
+   "name": "X-BEServer",
+   "match": "exact",
+   "rule": "WEB600",
+   "note": "Exchange/OWA back-end server name"
+  },
+  {
+   "name": "X-FEServer",
+   "match": "exact",
+   "rule": "WEB600",
+   "note": "Exchange/OWA front-end server name"
+  },
+  {
+   "name": "X-OWA-Version",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "Outlook Web Access build"
+  },
+  {
+   "name": "X-Generator",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "note": "CMS / generator name and version"
+  },
+  {
+   "name": "X-Drupal-Cache",
+   "match": "exact",
+   "rule": "WEB600",
+   "severity": "info",
+   "note": "reveals Drupal"
+  },
+  {
+   "name": "X-Drupal-Dynamic-Cache",
+   "match": "exact",
+   "rule": "WEB600",
+   "severity": "info",
+   "note": "reveals Drupal 8+"
+  },
+  {
+   "name": "X-Php-Version",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "PHP version"
+  },
+  {
+   "name": "X-Joomla-Version",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "Joomla version"
+  },
+  {
+   "name": "X-Umbraco-Version",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "Umbraco version"
+  },
+  {
+   "name": "Liferay-Portal",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "Liferay edition and version"
+  },
+  {
+   "name": "MicrosoftSharePointTeamServices",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "SharePoint build"
+  },
+  {
+   "name": "X-Jenkins",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "Jenkins version"
+  },
+  {
+   "name": "X-Hudson",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "Hudson/Jenkins version"
+  },
+  {
+   "name": "X-Varnish-Backend",
+   "match": "exact",
+   "rule": "WEB600",
+   "note": "Varnish backend name"
+  },
+  {
+   "name": "X-Varnish-Server",
+   "match": "exact",
+   "rule": "WEB600",
+   "note": "Varnish server name"
+  },
+  {
+   "name": "X-Envoy-Upstream-Service-Time",
+   "match": "exact",
+   "rule": "WEB600",
+   "severity": "info",
+   "note": "Envoy proxy and upstream timing"
+  },
+  {
+   "name": "X-Kong-",
+   "match": "prefix",
+   "rule": "WEB600",
+   "severity": "info",
+   "note": "Kong API gateway"
+  },
+  {
+   "name": "X-Nextjs-",
+   "match": "prefix",
+   "rule": "WEB600",
+   "severity": "info",
+   "note": "Next.js"
+  },
+  {
+   "name": "X-Redirect-By",
+   "match": "exact",
+   "rule": "WEB600",
+   "severity": "info",
+   "note": "CMS that issued the redirect (e.g. WordPress)"
+  },
+  {
+   "name": "X-Powered-CMS",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "note": "CMS name"
+  },
+  {
+   "name": "X-Server-Powered-By",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "note": "backend software"
+  },
+  {
+   "name": "X-CF-Powered-By",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "note": "ColdFusion / CF platform"
+  },
+  {
+   "name": "X-Mod-Pagespeed",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "mod_pagespeed version"
+  },
+  {
+   "name": "X-Page-Speed",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)+",
+   "note": "ngx_pagespeed version"
+  },
+  {
+   "name": "X-Turbo-Charged-By",
+   "match": "exact",
+   "rule": "WEB600",
+   "version_pattern": "\\d+(?:\\.\\d+)*",
+   "note": "LiteSpeed"
+  },
+  {
+   "name": "X-Application-Context",
+   "match": "exact",
+   "rule": "WEB600",
+   "severity": "info",
+   "note": "Spring Boot application name, profile and port"
+  },
+  {
+   "name": "X-Runtime",
+   "match": "exact",
+   "rule": "WEB600",
+   "severity": "info",
+   "note": "server processing time (timing side channel)"
+  },
+  {
+   "name": "X-Request-Duration",
+   "match": "exact",
+   "rule": "WEB600",
+   "severity": "info",
+   "note": "server processing time (timing side channel)"
+  },
+  {
+   "name": "X-Debug-Token",
+   "match": "exact",
+   "rule": "WEB601",
+   "note": "Symfony profiler token"
+  },
+  {
+   "name": "X-Debug-Token-Link",
+   "match": "exact",
+   "rule": "WEB601",
+   "note": "Symfony profiler link"
+  },
+  {
+   "name": "X-Debug-",
+   "match": "prefix",
+   "rule": "WEB601",
+   "note": "debug output header"
+  },
+  {
+   "name": "X-ChromeLogger-Data",
+   "match": "exact",
+   "rule": "WEB601",
+   "decode": "base64",
+   "note": "ChromeLogger debug output (base64 JSON)"
+  },
+  {
+   "name": "X-ChromePhp-Data",
+   "match": "exact",
+   "rule": "WEB601",
+   "decode": "base64",
+   "note": "ChromePhp debug output (base64 JSON)"
+  },
+  {
+   "name": "X-SourceFiles",
+   "match": "exact",
+   "rule": "WEB601",
+   "note": "IIS Express source path (development server)"
+  },
+  {
+   "name": "X-Clockwork-Id",
+   "match": "exact",
+   "rule": "WEB601",
+   "note": "Clockwork PHP profiler"
+  },
+  {
+   "name": "X-Clockwork-Version",
+   "match": "exact",
+   "rule": "WEB601",
+   "note": "Clockwork PHP profiler"
+  },
+  {
+   "name": "X-Laravel-*-Debug",
+   "match": "exact",
+   "rule": "WEB601",
+   "note": "Laravel debug header (glob)"
+  },
+  {
+   "name": "phpdebugbar-id",
+   "match": "exact",
+   "rule": "WEB601",
+   "note": "PHP Debug Bar (laravel-debugbar)"
+  },
+  {
+   "name": "X-Wf-",
+   "match": "prefix",
+   "rule": "WEB601",
+   "note": "FirePHP (Wildfire protocol) debug output"
+  },
+  {
+   "name": "X-MiniProfiler-",
+   "match": "prefix",
+   "rule": "WEB601",
+   "note": "MiniProfiler"
+  },
+  {
+   "name": "X-Xdebug-",
+   "match": "prefix",
+   "rule": "WEB601",
+   "note": "Xdebug profiler"
+  }
+ ]
+}

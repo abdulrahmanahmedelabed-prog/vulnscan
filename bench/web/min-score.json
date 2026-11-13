@@ -1,0 +1,17 @@
+{
+ "schema": 1,
+ "note": "Spec §5.4 gate for the passive web corpus. 'targets' are the 1.1.0 release targets; 'rules' holds per-rule precision/recall floors that only go up (python bench/web/score.py RESULTS --min-score bench/web/min-score.json --ratchet). The per-rule floors are recorded in phase D from the first green run of the assembled 1.1 engine.",
+ "targets": {
+  "precision_certain": 1.0,
+  "precision_firm": 0.98,
+  "recall_per_rule": 0.95,
+  "macro_f1": 0.98,
+  "zap_fp_family_trap_failures": 0,
+  "defects_fixed": true,
+  "confidence_monotone": true,
+  "expectations": true,
+  "traffic": true,
+  "max_errors": 0
+ },
+ "rules": {}
+}
