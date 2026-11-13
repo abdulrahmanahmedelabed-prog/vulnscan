@@ -116,6 +116,10 @@ SIGNATURES = [
         all_=[has("Action Controller: Exception caught")]),
     sig("aspnet-ysod", "WEB605", "ASP.NET", status="error", severity="high", debug_marker=True,
         all_=[rx(r"Server Error in '[^'<]{0,200}' Application"), has("Stack Trace:")]),
+    # ASP.NET Core's Developer Exception Page (UseDeveloperExceptionPage / Development environment): the YSOD successor
+    sig("aspnetcore-devpage", "WEB605", "ASP.NET Core", status="error", severity="high", debug_marker=True,
+        all_=[has("An unhandled exception occurred while processing the request.")],
+        any_=[has('class="rawExceptionStackTrace"'), has('id="stackpage"')]),
     sig("spring-whitelabel-trace", "WEB605", "Spring Boot", status="error", severity="high", debug_marker=True,
         all_=[has("Whitelabel Error Page")],
         any_=[rx(r"\bat (?:org\.springframework|java\.|javax\.|jakarta\.)[\w.$]{1,300}\("),
@@ -144,8 +148,10 @@ SIGNATURES = [
     sig("php-error-text", "WEB056", "PHP",
         all_=[rx(r"\bPHP (?:Warning|Fatal error|Parse error|Notice|Deprecated):\s+[^\n]{1,600}? on line \d+")]),
     sig("node-stack", "WEB056", "Node.js",
-        all_=[rx(r"(?m)^[ \t]*at[ \t]+(?:[\w$.<>\[\]]{1,200}(?: [\w$.<>\[\]]{1,200}){0,3}[ \t]+)?\(?(?:/|[A-Za-z]:\\|file://|node:internal)"
-                 r"[^\s()]{0,500}:\d+:\d+\)?",
+        # a frame starts a line, or follows ``<br>`` + ``&nbsp;`` runs: Express/finalhandler's default development error
+        # page (NODE_ENV unset) HTML-escapes the stack and joins it with "<br> &nbsp; &nbsp;at …" on one line
+        all_=[rx(r"(?m)(?:^|<br\s{0,4}/?>)(?:[ \t]|&nbsp;){0,16}at[ \t]+(?:[\w$.<>\[\]]{1,200}(?: [\w$.<>\[\]]{1,200}){0,3}[ \t]+)?"
+                 r"\(?(?:/|[A-Za-z]:\\|file://|node:internal)[^\s()]{0,500}:\d+:\d+\)?",
                  min_count=2)],
         any_=[rx(r"\b(?:Type|Reference|Syntax|Range|URI|Eval)?Error\b")]),
     sig("ruby-backtrace", "WEB056", "Ruby",

@@ -357,7 +357,9 @@ def test_defect_table_and_gate():
     rows = score.defect_table(labels, now, old)
     d7 = next(r for r in rows if r["defect"] == "D7")
     assert d7 == {"defect": "D7", "cases": ["a"], "now": "fixed", "baseline": "wrong"}
-    mins = json.loads((BENCH / "min-score.json").read_text(encoding="utf-8"))
+    # the real targets, without the per-rule floors (a one-case corpus cannot score the other 183 rules; the floors
+    # are checked by test_ratchet_only_goes_up and by the full corpus gate)
+    mins = {**json.loads((BENCH / "min-score.json").read_text(encoding="utf-8")), "rules": {}}
     assert score.gate(now, mins, rows) == []
     assert any("D7 not fixed" in f for f in score.gate(old, mins, score.defect_table(labels, old, None)))
 
@@ -540,3 +542,15 @@ def test_runner_hook_mode_end_to_end_with_a_stub_cli(tmp_path):
     assert s["verdicts"]["hsts-missing"]["WEB-strict-transport-security"] == "tp"
     assert s["verdicts"]["hsts-two-years"]["WEB-strict-transport-security"] == "tn"
     assert s["errors"] == {}
+
+
+def test_min_score_has_a_floor_for_every_registry_rule():
+    """Phase D ratchet (§5.4): every rule is scored on the corpus with at least one true positive, and its floor is
+    recorded, so a rule that silently stops being exercised fails the gate ("no longer scored")."""
+    from vulnscan.webscan import rules as _rules
+    floors = json.loads((BENCH / "min-score.json").read_text(encoding="utf-8"))["rules"]
+    assert set(floors) == set(_rules.RULE_IDS), sorted(set(_rules.RULE_IDS) ^ set(floors))
+    labels = json.loads((BENCH / "labels.json").read_text(encoding="utf-8"))["cases"]
+    tp = {r for c in labels.values() for r, v in c["labels"].items() if v}
+    trap = {r for c in labels.values() for r, v in c["labels"].items() if not v}
+    assert set(_rules.RULE_IDS) <= tp and set(_rules.RULE_IDS) <= trap, sorted(set(_rules.RULE_IDS) - (tp & trap))

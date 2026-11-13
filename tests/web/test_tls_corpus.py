@@ -42,9 +42,9 @@ def results():
             url = srv.url(c)
             cafile = str(srv.material.root)
             hooks = CorpusHooks(resolve_map=srv.resolver_map(c, cafile=cafile), cafile=cafile, publicly_trusted=True,
-                                ct_required=bool(c.expect.get("ct_required")))
+                                ct_required=bool(getattr(c, "ct_required", False) or c.expect.get("ct_required")))
             profile = c.profile if c.profile in ("minimal", "standard", "deep") else "standard"
-            opts = ScanOptions(profile=profile, timeout=2.0, use_proxy=False)
+            opts = ScanOptions(profile=profile, sensitivity=c.sensitivity, timeout=2.0, use_proxy=False)
             ctx = ScanContext(options=opts, target=url, coverage=coverage.Coverage())
             p = urllib.parse.urlsplit(url)
             ctx.tls[p.hostname] = tls.scan_host(Fetcher(opts, url, hooks=hooks), p.hostname, p.port, profile=profile,

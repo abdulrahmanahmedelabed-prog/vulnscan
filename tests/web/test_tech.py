@@ -239,7 +239,7 @@ def test_web081_current_version_is_clean(make_ctx, fixed_now):
 
 
 def test_web081_weak_version_is_tentative(make_ctx):
-    html = ('<html><head><script src="/wp-includes/js/jquery/jquery.min.js?ver=3.9.2"></script>'
+    html = ('<html><head><script src="/wp-includes/js/wp-emoji-release.min.js?ver=3.9.2"></script>'
             '<link rel="stylesheet" href="/wp-content/themes/x/style.css"></head></html>')
     ctx = ctx_for(make_ctx, html)
     w = [i for i in run(ctx) if i.rule == "WEB081"]

@@ -318,6 +318,32 @@
    "debug_marker": true
   },
   {
+   "id": "aspnetcore-devpage",
+   "rule": "WEB605",
+   "platform": "ASP.NET Core",
+   "signature": {
+    "all": [
+     {
+      "type": "contains",
+      "pattern": "An unhandled exception occurred while processing the request."
+     }
+    ],
+    "any": [
+     {
+      "type": "contains",
+      "pattern": "class=\"rawExceptionStackTrace\""
+     },
+     {
+      "type": "contains",
+      "pattern": "id=\"stackpage\""
+     }
+    ]
+   },
+   "status": "error",
+   "severity": "high",
+   "debug_marker": true
+  },
+  {
    "id": "spring-whitelabel-trace",
    "rule": "WEB605",
    "platform": "Spring Boot",
@@ -442,7 +468,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "(?m)^\\s*at\\s+(?:[\\w`<>\\[\\]]{1,80}\\.){0,15}[\\w`<>\\[\\]]{1,80}\\([^)\\n]{0,300}\\)",
+      "pattern": "(?m)^[ \\t]*at[ \\t]+(?:[\\w`<>\\[\\]]{1,80}\\.){0,15}[\\w`<>\\[\\]]{1,80}\\([^)\\n]{0,300}\\)",
       "min_count": 2
      }
     ],
@@ -499,7 +525,7 @@
     "all": [
      {
       "type": "regex",
-      "pattern": "(?m)^[ \\t]*at[ \\t]+(?:[\\w$.<>\\[\\]]{1,200}(?: [\\w$.<>\\[\\]]{1,200}){0,3}[ \\t]+)?\\(?(?:/|[A-Za-z]:\\\\|file://|node:internal)[^\\s()]{0,500}:\\d+:\\d+\\)?",
+      "pattern": "(?m)(?:^|<br\\s{0,4}/?>)(?:[ \\t]|&nbsp;){0,16}at[ \\t]+(?:[\\w$.<>\\[\\]]{1,200}(?: [\\w$.<>\\[\\]]{1,200}){0,3}[ \\t]+)?\\(?(?:/|[A-Za-z]:\\\\|file://|node:internal)[^\\s()]{0,500}:\\d+:\\d+\\)?",
       "min_count": 2
      }
     ],

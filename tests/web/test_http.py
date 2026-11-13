@@ -356,6 +356,21 @@ def test_decode_body_ratio_and_floor():
     assert wh.decode_body(b"abc", ["zstd", "gzip"], 100)[2][0] in ("unsupported", "undecodable")
 
 
+def test_a_deep_stack_of_codings_is_opaque_not_decoded_layer_by_layer():
+    # §0.6: every layer is a full decode of up to the cap, so "gzip, gzip, …" ×10 000 on a 2 MB body would pin the CPU
+    # for minutes; a stack deeper than MAX_CODINGS is left opaque at once
+    data = b"<html>" + bytes(range(256)) * 400
+    for _ in range(wh.MAX_CODINGS):
+        data = gzip.compress(data, 1)
+    body, _t, problem = wh.decode_body(data, ["gzip"] * wh.MAX_CODINGS, 1_000_000)
+    assert problem is None and body.startswith(b"<html>")
+    deep = gzip.compress(data, 1)
+    t = time.monotonic()
+    body, trunc, problem = wh.decode_body(deep, ["gzip"] * 10_000, 1_000_000)
+    assert time.monotonic() - t < 0.5
+    assert body == b"" and not trunc and problem[0] == "unsupported" and len(problem[1]) < 210
+
+
 @pytest.mark.parametrize("coding", ["br", "zstd", "compress", "gzip, br"])
 def test_unknown_codings_leave_the_body_opaque(raw_http_server, http_reply_builder, coding):
     raw_http_server.routes["/"] = http_reply_builder("200 OK", [("Content-Type", "text/html"),
@@ -766,6 +781,32 @@ def test_redirects_from_a_public_target_to_internal_addresses_are_refused(raw_ht
     assert {e["code"] for e in f.events} >= {"metadata", "ssrf"}
 
 
+def test_browser_blocked_ports_are_never_contacted_unless_they_are_the_targets_own(raw_http_server):
+    # §0.1: a hostile page or redirect must not turn the scanner into a cross-protocol client (an HTTP GET to SMTP, SSH,
+    # IRC …); browsers refuse the Fetch-standard bad ports, so a redirect or subresource there is never followed
+    for p in (22, 25, 6667, 10080):
+        assert p in wh.BAD_PORTS
+    assert not {80, 443, 8080, 8443, raw_http_server.port} & wh.BAD_PORTS
+    raw_http_server.routes["/smtp"] = _redirect("http://127.0.0.1:25/")
+    raw_http_server.routes["/irc"] = _redirect("http://127.0.0.1:6667/x")
+    f = make(raw_http_server.url("/"))
+    for path, port in (("/smtp", 25), ("/irc", 6667)):
+        r = f.fetch(raw_http_server.url(path))
+        assert r.status == 302 and "redirect-blocked:port" in r.flags and not r.chain, path
+    direct = f.fetch("http://127.0.0.1:22/", source="subresource")
+    assert direct.status is None and wh.error_code(direct) == "port"
+    assert wh.coverage_reason(direct) == "network"
+    assert f.guard_url("http://127.0.0.1:25/") == "port" and f.guard_url(raw_http_server.url("/")) == ""
+    with pytest.raises(wh.FetchRefused) as exc:
+        f.open_tcp("127.0.0.1", 993)
+    assert exc.value.code == "port"
+    assert len(raw_http_server.requests) == 2 and f.handshakes == 0
+    assert any(e["code"] == "port" and e["port"] == "25" for e in f.events)
+    # the user's own target port is theirs to choose
+    own = make("http://127.0.0.1:6667/")
+    assert not own.port_blocked(6667) and own.port_blocked(25)
+
+
 def test_a_name_resolving_to_a_metadata_address_is_refused_even_if_the_hook_says_public():
     hooks = hooks_for({"evil.kashif.test": {"status": "ok", "addresses": ["169.254.169.254"], "public": True}})
     f = make("http://site.kashif.test/", hooks=hooks)
@@ -999,7 +1040,7 @@ def test_event_texts_have_english_via_the_catalogue():
     _catalog, patterns = wh.i18n_catalog()
     sample = {"host": "a.test", "status": "429", "seconds": "2", "url": "https://a.test/x", "category": "loopback",
               "message": "certificate has expired", "cap": "2000000", "coding": "br", "limit": "45",
-              "proxy": "http://p.test:3128"}
+              "proxy": "http://p.test:3128", "port": "25"}
     for code, (en, ar) in wh.EVENTS.items():
         ar_text, en_text = ar.format(**sample), en.format(**sample)
         assert re.search("[\u0600-\u06ff]", ar_text), code

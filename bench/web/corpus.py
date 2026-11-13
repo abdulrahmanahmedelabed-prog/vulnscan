@@ -2180,10 +2180,10 @@ case("red-basic-auth-http", "C-RED", {"WEB118": True}, {"/": R(401, _BASIC_401, 
      note="WWW-Authenticate: Basic over plain HTTP: the password travels base64-encoded in clear text")
 case("red-basic-auth-https", "C-RED", {"WEB118": False}, {"/": R(401, _BASIC_401, page("<h1>Sign in required</h1>"))},
      twin="red-basic-auth-http")
-case("hdr-breach-token-gzip", "C-HDR", {"WEB119": True}, {"/": _gzip_doc(LOGIN)}, sensitivity="paranoid",
-     twin="hdr-breach-token-plain", note="gzip + a CSRF token in a form: the BREACH precondition (tentative, paranoid only)")
-case("hdr-breach-token-plain", "C-HDR", {"WEB119": False}, {"/": doc(LOGIN)}, sensitivity="paranoid",
-     twin="hdr-breach-token-gzip")
+case("hsts-breach-token-gzip", "C-HSTS", {"WEB119": True}, {"/": _gzip_doc(LOGIN)}, sensitivity="paranoid",
+     twin="hsts-breach-token-plain", note="gzip + a CSRF token in a form: the BREACH precondition (tentative, paranoid only)")
+case("hsts-breach-token-plain", "C-HSTS", {"WEB119": False}, {"/": doc(LOGIN)}, sensitivity="paranoid",
+     twin="hsts-breach-token-gzip")
 
 # C-CSP
 case("csp-no-reporting", "C-CSP", {"WEB215": True}, csp(_NO_REPORT), twin="csp-with-reporting")

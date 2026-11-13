@@ -51,9 +51,9 @@ exactly as declared: duplicates, order, raw bytes, obsolete folding and 120 head
 | Group | Cases | Content |
 |---|---|---|
 | C-RED | 19 | Plain-HTTP content, the first hop not going to HTTPS, a host change, downgrades (Location, meta refresh, script), 302 vs 308, a 12-hop loop, full-page redirects, Basic auth over http, D1 |
-| C-HSTS | 19 | Missing HSTS, `max-age=0` (quoted too), short max-age, duplicates, folding, curly quotes, a leading zero, preload, meta, cross-host hops; traps for http-only, IP literal, invalid certificate and same-host redirect |
+| C-HSTS | 21 | Missing HSTS, `max-age=0` (quoted too), short max-age, duplicates, folding, curly quotes, a leading zero, preload, meta, cross-host hops; traps for http-only, IP literal, invalid certificate and same-host redirect; the BREACH precondition (compression + a CSRF token) |
 | C-CSP | 45 | Every CSP rule plus traps for D2 and D7–D11 (nonce + `unsafe-inline`, strict-dynamic, `*.host`, `default-src 'none'`, meta CSP, intersection, JSON API, `script-src-elem`), reporting, Trusted Types |
-| C-HDR | 36 | XFO, XCTO, Referrer-Policy, Permissions/Feature-Policy, COOP/COEP/CORP, X-XSS-Protection, HPKP, Content-Type, charset, caching, Clear-Site-Data, the BREACH precondition |
+| C-HDR | 34 | XFO, XCTO, Referrer-Policy, Permissions/Feature-Policy, COOP/COEP/CORP, X-XSS-Protection, HPKP, Content-Type, charset, caching, Clear-Site-Data |
 | C-CORS | 12 | Reflection with and without credentials, `null`, `*` + credentials, Vary, `http:` origin, origin lists, `*` with a session |
 | C-COOKIE | 33 | Secure/HttpOnly/SameSite by cookie class and HSTS, prefixes, Partitioned, Domain, lifetime, size, BIG-IP, JWT `alg:none`, cookies over http, `__Host-` prefix, D3–D5, D23 (crawled cookies) |
 | C-HTML | 45 | Mixed content (active and passive), forms, SRI (missing, crossorigin, sha1, over http, mismatch), tabnabbing, malicious CDNs, miners, URL tokens, password forms (http, downgrade, off-site, autocomplete), CSRF tokens, inline handlers, Flash, D6, D22, D24 (grouping) |

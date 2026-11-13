@@ -748,7 +748,7 @@ def _robots(st: _Run, index: classify.Soft404Index) -> None:
         return
     first = hits[0]
     off = -1
-    for m in re.finditer(r"(?im)^\s*(?:dis)?allow\s*:\s*(\S+)", text):
+    for m in re.finditer(r"(?im)^[ \t]*(?:dis)?allow[ \t]*:[ \t]*(\S+)", text):
         if m.group(1) == first:
             off = m.start()
             break
@@ -761,7 +761,8 @@ def _robots(st: _Run, index: classify.Soft404Index) -> None:
     st.state("WEB061", "fail")
 
 
-_ROBOTS_LINE = re.compile(r"(?im)^\s*(?:user-agent|disallow|allow|sitemap|crawl-delay)\s*:")
+# [ \t]*, not \s*: with (?m) a \s* run spans newlines, so a body of blank lines costs O(n²) (§0.6)
+_ROBOTS_LINE = re.compile(r"(?im)^[ \t]*(?:user-agent|disallow|allow|sitemap|crawl-delay)[ \t]*:")
 
 
 def looks_like_robots(text: str) -> bool:

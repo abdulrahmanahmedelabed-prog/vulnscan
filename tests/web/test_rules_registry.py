@@ -8,6 +8,8 @@ and OWASP/ASVS ``4.0/en/*.md`` / ``5.0/en/*.md`` (requirements marked deleted or
 from __future__ import annotations
 
 import inspect
+import json
+import pathlib
 import re
 
 import pytest
@@ -132,13 +134,15 @@ def test_family_sizes_and_existing_rules():
 
 
 def test_every_1_0_rule_id_is_kept():
-    src = (inspect.getsourcefile(model).replace("model.py", "web.py"))
-    with open(src, encoding="utf-8") as fh:
-        text = fh.read()
-    emitted = set(re.findall(r'Finding\(\s*"(WEB\d{3})"', text))
-    emitted |= {"WEB-" + h for h in re.findall(r'\("([a-z-]+)", "(?:high|medium|low|info)", "Missing', text)}
-    assert emitted and emitted <= set(R.RULES), sorted(emitted - set(R.RULES))
-    assert emitted <= EXISTING
+    """Every rule id 1.0.x emitted still exists with the same id (1.x stability). Since 1.1.0 ``web.py`` is a facade
+    over the engine and emits no Finding itself, so the 1.0.x ids come from the recorded run of 1.0.2's ``web.py``
+    on the corpus (bench/web/results/1.0.2-legacy.json) plus the list above."""
+    assert len(EXISTING) == 34 and EXISTING <= set(R.RULES), sorted(EXISTING - set(R.RULES))
+    legacy = pathlib.Path(__file__).resolve().parents[2] / "bench" / "web" / "results" / "1.0.2-legacy.json"
+    if legacy.is_file():
+        doc = json.loads(legacy.read_text(encoding="utf-8"))
+        emitted = {f["rule"] for c in doc["cases"].values() for f in c.get("findings", [])}
+        assert emitted and emitted <= EXISTING, sorted(emitted - EXISTING)
 
 
 # ----------------------------------------------------------------------------------------------- fields

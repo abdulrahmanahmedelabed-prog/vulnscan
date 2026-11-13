@@ -10,9 +10,9 @@
   "C-DOM": 11,
   "C-EXP": 26,
   "C-GRADE": 12,
-  "C-HDR": 36,
+  "C-HDR": 34,
   "C-HOSTILE": 12,
-  "C-HSTS": 19,
+  "C-HSTS": 21,
   "C-HTML": 45,
   "C-LIB": 15,
   "C-RED": 19,
@@ -5668,9 +5668,9 @@
    "zap": true,
    "legacy": true
   },
-  "hdr-breach-token-gzip": {
-   "group": "C-HDR",
-   "host": "hdr-breach-token-gzip.hdr.kashif.test",
+  "hsts-breach-token-gzip": {
+   "group": "C-HSTS",
+   "host": "hsts-breach-token-gzip.hsts.kashif.test",
    "scheme": "https",
    "path": "/",
    "profile": "standard",
@@ -5678,14 +5678,14 @@
    "labels": {
     "WEB119": true
    },
-   "twin": "hdr-breach-token-plain",
+   "twin": "hsts-breach-token-plain",
    "note": "gzip + a CSRF token in a form: the BREACH precondition (tentative, paranoid only)",
    "zap": true,
    "legacy": true
   },
-  "hdr-breach-token-plain": {
-   "group": "C-HDR",
-   "host": "hdr-breach-token-plain.hdr.kashif.test",
+  "hsts-breach-token-plain": {
+   "group": "C-HSTS",
+   "host": "hsts-breach-token-plain.hsts.kashif.test",
    "scheme": "https",
    "path": "/",
    "profile": "standard",
@@ -5693,7 +5693,7 @@
    "labels": {
     "WEB119": false
    },
-   "twin": "hdr-breach-token-gzip",
+   "twin": "hsts-breach-token-gzip",
    "zap": true,
    "legacy": true
   },

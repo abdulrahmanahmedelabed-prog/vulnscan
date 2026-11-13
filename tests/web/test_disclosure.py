@@ -799,6 +799,7 @@ except Exception:                                     # pragma: no cover - bench
 CORPUS_CASES = [c for c in corpus.CASES if set(c.labels) & OWN] if corpus else []
 _DEEP_PROBES = ("/.env", "/.git/HEAD", "/backup.zip")
 _SCRIPT_SRC = __import__("re").compile(r"""<(?:script|link)\b[^>]*(?:src|href)\s*=\s*["']([^"']+)["']""", 2)
+_IMG_SRC = __import__("re").compile(r"""<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']""", 2)
 
 
 class _Sim:
@@ -869,6 +870,10 @@ class _Sim:
                     if urllib.parse.urlsplit(u).hostname == c.host:
                         subs.append(self.get(u, jar=None, source="subresource"))
             kw["subresources"] = subs
+            if (c.crawl or c.profile == "deep") and entry.body and entry.status == 200:
+                kw["images"] = [self.get(urllib.parse.urljoin(entry.url, ref), jar=None, source="image")
+                                for ref in _IMG_SRC.findall(entry.text())
+                                if ref.lower().endswith((".jpg", ".jpeg"))]     # same-site JPEGs, as engine.py does
             if c.profile == "deep":
                 kw["probes"] = [self.get(self.url(p), jar=None, source="probe") for p in _DEEP_PROBES]
                 kw["baselines"] = [self.get(self.url("/kashif-404-0123456789abcdef"), jar=None, source="baseline")]

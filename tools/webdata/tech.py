@@ -40,6 +40,9 @@ SOURCE = "Kashif original signatures + projectdiscovery/nuclei-templates http/te
 LICENSE = "Kashif (project licence) + MIT (nuclei-templates)"
 V = r"(\d+(?:\.\d+)+)"            # a dotted version
 VO = r"(\d+(?:\.\d+)*)?"          # an optional version (major alone allowed)
+WP_CORE_ASSET = (r"/wp-includes/(?:css/(?:dist/block-library/(?:style|theme|common)|dashicons|admin-bar|buttons|editor)"
+                 r"|js/(?:wp-emoji-release|wp-emoji|comment-reply|wp-embed|admin-bar|wp-util|wp-api|wp-lists|quicktags))"
+                 r"(?:\.min)?\.(?:css|js)\?ver=")
 
 
 def S(source: str, pattern: str, conf: int, *, name: str = "", version: str = "", flags: str = "") -> dict:
@@ -138,8 +141,10 @@ OWN: list[dict] = [
         gen(r"^WordPress\s*" + VO),
         S("link", r"/wp-content/(?:themes|plugins|uploads)/", 60),
         S("script", r"/wp-(?:content|includes)/", 60),
-        S("link", r"/wp-includes/[^?#]*\?ver=" + V, 25, version="\\1"),
-        S("script", r"/wp-includes/[^?#]*\?ver=" + V, 25, version="\\1"),
+        # ``?ver=`` is the WordPress version only on core assets: bundled libraries under /wp-includes/js/ carry their
+        # own version (jquery.min.js?ver=3.7.1, jquery-migrate ?ver=3.4.1, mediaelement ?ver=4.2.17 …)
+        S("link", WP_CORE_ASSET + V, 25, version="\\1"),
+        S("script", WP_CORE_ASSET + V, 25, version="\\1"),
         S("html", r"<link\b[^>]+rel=[\"']https://api\.w\.org/[\"']", 70),
         S("header", r"rel=\"?https://api\.w\.org/", 80, name="link"),
         S("header", r"/xmlrpc\.php", 40, name="x-pingback"),

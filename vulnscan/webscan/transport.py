@@ -544,8 +544,21 @@ def _host_responses(ctx: ScanContext, scheme: str = "https") -> dict[str, list[R
     return out
 
 
-def _judged_response(rs: list[Response]) -> Response:
-    """The response that represents a host: its first final 2xx, else the first carrying HSTS, else the first."""
+def _entry_error_sts(rs: list[Response], entry: Response | None) -> Response | None:
+    """The entry when the entry chain ended on this host with a final non-2xx response that carries HSTS (a 500 or 404
+    page). Browsers note HSTS from any https response whatever its status, so a later 2xx side fetch without the header
+    (``/robots.txt`` served by another handler) does not make the host's HSTS "missing"."""
+    if entry is None or entry.is_redirect or not entry.headers.has(STS) or _final_2xx(entry):
+        return None
+    return entry if any(r is entry for r in rs) else None
+
+
+def _judged_response(rs: list[Response], entry: Response | None = None) -> Response:
+    """The response that represents a host: the entry's error page when it carries HSTS (:func:`_entry_error_sts`), else
+    its first final 2xx, else the first carrying HSTS, else the first."""
+    err = _entry_error_sts(rs, entry)
+    if err is not None:
+        return err
     for r in rs:
         if _final_2xx(r):
             return r
@@ -555,8 +568,9 @@ def _judged_response(rs: list[Response]) -> Response:
     return rs[0]
 
 
-def _verdict(host: str, rs: list[Response], preload: Preload, cert_hosts: set[str]) -> HstsVerdict:
-    r = _judged_response(rs)
+def _verdict(host: str, rs: list[Response], preload: Preload, cert_hosts: set[str],
+             entry: Response | None = None) -> HstsVerdict:
+    r = _judged_response(rs, entry)
     fields = r.headers.get_all(STS)
     pre, pre_isd, _entry = preload.lookup(host)
     cert = host in cert_hosts
@@ -597,7 +611,7 @@ def hsts_facts(ctx: ScanContext) -> dict[str, HstsVerdict]:
     cert_hosts = _cert_error_hosts(ctx)
     out: dict[str, HstsVerdict] = {}
     for host, rs in _host_responses(ctx, "https").items():
-        out[host] = _verdict(host, rs, preload, cert_hosts)
+        out[host] = _verdict(host, rs, preload, cert_hosts, ctx.entry)
     hosts = {r.host for r in ctx.all_responses() if r.host} | {ctx.target_host} - {""}
     for host in sorted(hosts):
         if host not in out:
@@ -1147,7 +1161,7 @@ def _hsts(st: _Run, verdicts: dict[str, HstsVerdict]) -> None:
         if finals:
             r0 = finals[0]
             st.seen("WEB-strict-transport-security", host)
-            if not r0.headers.has(STS):
+            if not r0.headers.has(STS) and _entry_error_sts(rs, ctx.entry) is None:
                 notes = [_note("sts_missing", url=r0.url)]
                 sev = None
                 if pre:

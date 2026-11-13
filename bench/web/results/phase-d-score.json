@@ -3818,10 +3818,10 @@
   "red-basic-auth-https": {
    "WEB118": "tn"
   },
-  "hdr-breach-token-gzip": {
+  "hsts-breach-token-gzip": {
    "WEB119": "tp"
   },
-  "hdr-breach-token-plain": {
+  "hsts-breach-token-plain": {
    "WEB119": "tn"
   },
   "csp-no-reporting": {

@@ -34,7 +34,7 @@ header line was skipped, or a name had whitespace before its colon), ``informati
 such as 103 Early Hints preceded the final one), ``truncated-body``, ``opaque-coding``,
 ``opaque-coding:<coding>``, ``decode-error``, ``incomplete-body``, ``deadline``, ``cert-error``, ``cert-verify:<code>``,
 ``proxied``, ``retried``, ``rate-limited``, ``retry-after-waited``, ``host-stopped``, ``redirect-loop``,
-``redirect-limit``, ``redirect-blocked:<scheme|ssrf|metadata|offsite|robots|budget|bad-location>`` and, on responses that were
+``redirect-limit``, ``redirect-blocked:<scheme|ssrf|metadata|port|offsite|robots|budget|bad-location>`` and, on responses that were
 never received, ``error:<code>`` (codes in :data:`ERROR_CODES`). :func:`coverage_reason` maps them to coverage reasons.
 """
 
@@ -84,8 +84,19 @@ DOCUMENT_SOURCES = frozenset({"entry", "http_probe", "https_probe", "cors", "cra
 ROBOTS_CAP = 500 * 1024             # robots.txt bytes read (RFC 9309 §2.5; robots.MAX_BYTES)
 DECOMPRESS_RATIO = 10                # decoded size ≤ 10 × the encoded size …
 DECOMPRESS_FLOOR = 256_000           # … but never less than this (small pages compress better than 10:1)
+MAX_CODINGS = 4                      # stacked content-codings decoded; a deeper stack is opaque (§0.6: each
+                                     # layer costs a full decode, so 10 000 "gzip" tokens would pin the CPU)
 METADATA_ADDRESSES = frozenset({"169.254.169.254", "fd00:ec2::254", "100.100.100.200"})
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+# Fetch standard "bad ports" (fetch.spec.whatwg.org/#port-blocking): browsers never connect to them, whatever a link,
+# script or redirect says, because an HTTP request there talks to SMTP, SSH, IRC … (cross-protocol requests). §0.1
+# never contacts another port: a hostile page or redirect cannot point the scanner at one; only the target URL's own
+# port is exempt (the user chose it).
+BAD_PORTS = frozenset({1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102,
+                       103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465,
+                       512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993,
+                       995, 1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668,
+                       6669, 6679, 6697, 10080})
 DNS_REFERENCED_CAP = 30              # referenced hosts looked up per scan (§0.1)
 DNS_REGISTRABLE_CAP = 10             # registrable-domain lookups per scan (§0.1, WEB517)
 NXDOMAIN_RECHECK = 2.0               # WEB517: a missing name is confirmed once, ≥ 2 s later
@@ -100,7 +111,7 @@ ERROR_CODES = {
     "refused": "network", "reset": "network", "unreachable": "network", "network": "network", "tls": "network",
     "proxy": "network", "too_many_headers": "network", "header_too_large": "network", "bad_response": "network",
     "ssrf": "network", "budget": "budget", "time_budget": "time_budget", "byte_budget": "byte_budget",
-    "host_stopped": "rate_limited", "profile": "profile", "robots": "robots",
+    "host_stopped": "rate_limited", "profile": "profile", "robots": "robots", "port": "network",
 }
 TOO_MANY_HEADERS = "too many headers"
 
@@ -119,6 +130,9 @@ EVENTS: dict[str, tuple[str, str]] = {
              "لم يُطلب {url} لأنه يشير إلى عنوان من نوع {category} والهدف ليس على شبكة كهذه (حماية الفاحص)."),
     "metadata": ("Not requested: {url} is a cloud-metadata address (scanner safety guard).",
                  "لم يُطلب {url} لأنه عنوان بيانات وصفية سحابية (حماية الفاحص)."),
+    "port": ("Not requested: {url} uses port {port}, which browsers block and Kashif never contacts (scanner safety "
+             "guard).",
+             "لم يُطلب {url} لأنه يستخدم المنفذ {port} الذي تحظره المتصفحات ولا يتصل به كاشف (حماية الفاحص)."),
     "scheme": ("A redirect to a non-HTTP(S) address was not followed: {url}",
                "لم يُتبَع توجيه إلى عنوان ليس HTTP أو HTTPS: {url}"),
     "cert_error": ("The TLS certificate of {host} did not validate ({message}); its responses were read over an "
@@ -662,6 +676,8 @@ def decode_body(raw: bytes, codings: list[str], limit: int) -> tuple[bytes, bool
     Returns ``(body, truncated, problem)``; ``problem`` is ``("unsupported", coding)`` or ``("undecodable", coding)``
     and then ``body`` is empty: compressed bytes are never handed to body rules (§0.6)."""
     data, truncated = raw, False
+    if len(codings) > MAX_CODINGS:                       # never requested; bounded work whatever the header says
+        return b"", False, ("unsupported", ", ".join(codings[:MAX_CODINGS])[:200] + ", …")
     for coding in reversed(codings):
         if coding in ("gzip", "x-gzip"):
             attempts: tuple[int, ...] = (47, -15)        # gzip or zlib header (auto), raw deflate as a last resort
@@ -1144,6 +1160,17 @@ class Fetcher:
                 self._target_category = pin.categories[0] if pin.categories else "public"
         return self._target_category
 
+    def port_blocked(self, port: int) -> bool:
+        """True for a Fetch-standard bad port other than the target URL's own port (§0.1: no other port is contacted)."""
+        if port not in BAD_PORTS:
+            return False
+        try:
+            p = urllib.parse.urlsplit(self.target)
+            own = p.port or {"http": 80, "https": 443}.get(p.scheme.lower())
+        except ValueError:
+            own = None
+        return port != own
+
     def _guard(self, host: str, *, proxied: bool) -> tuple[tuple[str, ...] | None, str, str]:
         """``(addresses or None when proxied, refusal code, category)``; refusal code is "" when allowed (for "dns" the
         third item is the resolver's message)."""
@@ -1167,10 +1194,12 @@ class Fetcher:
         return allowed, "", pin.categories[pin.addresses.index(allowed[0])]
 
     def guard_url(self, url: str) -> str:
-        """"" when ``url`` may be requested, else the refusal code (scheme, bad_url, dns, ssrf, metadata)."""
+        """"" when ``url`` may be requested, else the refusal code (scheme, bad_url, port, dns, ssrf, metadata)."""
         prep = _prepare(url)
         if isinstance(prep, str):
             return prep
+        if self.port_blocked(prep.port):
+            return "port"
         _addrs, code, _cat = self._guard(prep.host, proxied=self.proxy_for(prep.url) is not None)
         return code
 
@@ -1271,6 +1300,8 @@ class Fetcher:
         if self.remaining_time() <= 0:
             raise FetchRefused("time_budget", "time budget reached")
         timeout = float(timeout or self.options.timeout)
+        if self.port_blocked(int(port)):
+            raise FetchRefused("port", f"port {port} is never contacted (scanner safety guard)")
         proxy = self.proxy_for(f"https://{host}:{port}/")
         addrs, code, _cat = self._guard(host, proxied=proxy is not None)
         if code:
@@ -1384,6 +1415,9 @@ class Fetcher:
             return "redirect-blocked:offsite"
         if source == "crawl" and not self.allowed_by_robots(prep.url):
             return "redirect-blocked:robots"
+        if self.port_blocked(prep.port):
+            self._event("port", once=prep.url, url=prep.url[:300], port=prep.port)
+            return "redirect-blocked:port"
         _addrs, code, cat = self._guard(prep.host, proxied=self.proxy_for(prep.url) is not None)
         if code in ("ssrf", "metadata"):
             if code == "metadata":
@@ -1429,6 +1463,10 @@ class Fetcher:
         refused = self._precheck(source, prep.host)
         if refused:
             return self._error(prep.url, source, *refused)
+        if self.port_blocked(prep.port):
+            self._event("port", once=prep.url, url=prep.url[:300], port=prep.port)
+            return self._error(prep.url, source, "port", f"blocked: port {prep.port} is never contacted "
+                               "(browsers block it; scanner safety guard)")
         proxy = self.proxy_for(prep.url)
         addrs, code, cat = self._guard(prep.host, proxied=proxy is not None)
         if code:
@@ -1912,7 +1950,7 @@ def coverage_reason(response: Response | None) -> str | None:
 
 
 __all__ = ["MIN_DELAY", "MAX_CRAWL_DELAY", "MAX_HOPS", "PROFILE_BUDGETS", "CRAWL_HARD_CAP", "CAPS", "SOURCE_CLASS",
-           "METADATA_ADDRESSES", "ERROR_CODES", "EVENTS", "TOO_MANY_HEADERS", "CorpusHooks", "Resolver", "Resolution",
+           "METADATA_ADDRESSES", "BAD_PORTS", "ERROR_CODES", "EVENTS", "TOO_MANY_HEADERS", "CorpusHooks", "Resolver", "Resolution",
            "Proxy", "parse_proxy", "CookieJar", "parse_cookie_date", "HostLimiter", "FetchRefused", "Fetcher",
            "address_category", "ssrf_allows", "ip_literal", "gai_status", "content_codings", "decode_body",
            "parse_retry_after", "normalise_headers", "next_url", "classify_error", "error_code", "coverage_reason",

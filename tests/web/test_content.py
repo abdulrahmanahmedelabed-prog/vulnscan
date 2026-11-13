@@ -930,6 +930,10 @@ def test_corpus_case(case, monkeypatch):
     for rule, must in case.labels.items():
         if rule not in MY_RULES:
             continue
+        if rule in ("WEB052", "WEB504") and not must and case.labels.get("WEB000"):
+            # WEB000 suppresses these in group.py (§3.5), after the modules: content.py itself still reports them
+            assert rule in shown, (case.id, rule)
+            continue
         assert (rule in shown) is must, (case.id, rule, must, [(i.rule, i.severity, i.confidence) for i in issues])
     exp = case.expect
     for rule, want in exp.get("severity", {}).items():
