@@ -1,0 +1,166 @@
+{
+ "files": {
+  "cookies.json": {
+   "date": "2026-11-13",
+   "license": "Kashif seed: project licence; Open Cookie Database rows: Apache-2.0 (see NOTICE)",
+   "schema_version": 1,
+   "sha256": "490d24be191023868e3a2590978df647784e926d9333d600ddb377c4e9806282",
+   "size": 137393,
+   "source": "Kashif seed (spec §3.3: ZAP default session tokens, MDN Observatory heuristics, framework defaults) + Open Cookie Database (jkwakman/Open-Cookie-Database), Apache-2.0",
+   "version": "csv-sha256:ed4836ea285719d7"
+  },
+  "csp-bypass.json": {
+   "date": "2026-11-13",
+   "license": "Apache-2.0",
+   "schema_version": 1,
+   "sha256": "43c093041d00b02195c79fba82a42b2ea7f7905fe8e11045f475cdf33a3b1ae8",
+   "size": 8864,
+   "source": "google/csp-evaluator, allowlist_bypasses/json",
+   "version": "ad530f3ae5473f9e03c8bf500ee0ada8d9e9b822"
+  },
+  "ct-logs.json": {
+   "date": "2026-11-12",
+   "license": "BSD-3-Clause (Chromium)",
+   "schema_version": 1,
+   "sha256": "0a1241c27e8b69053e41fc5de2ed2a9eea0698964cd521cd372aaaef539af2f5",
+   "size": 16722,
+   "source": "https://raw.githubusercontent.com/chromium/chromium/main/components/certificate_transparency/data/log_list.json",
+   "version": "96.8"
+  },
+  "eol.json": {
+   "date": "2026-11-13",
+   "license": "MIT",
+   "schema_version": 1,
+   "sha256": "c0c0b128654e08cbd61f2cedc10b21a264b24ad172a1e79b14cedaafc2495e1c",
+   "size": 85754,
+   "source": "endoflife-date/endoflife.date, products/*.md"
+  },
+  "error-signatures.json": {
+   "date": "2026-11-13",
+   "license": "Kashif project licence",
+   "schema_version": 1,
+   "sha256": "0d75ecdafe7a0ac8c3e24691269a1d2c3f2ee15cc7e38549a30b61b906ccd57e",
+   "size": 25355,
+   "source": "Kashif original signatures written from the public error formats of each platform"
+  },
+  "exposed-paths.json": {
+   "date": "2026-11-13",
+   "license": "Kashif project licence",
+   "schema_version": 1,
+   "sha256": "d26ae2482701d1ad9d38a1490f1aa8c16c5266bf57b664f6e0a63b6ddc634ae4",
+   "size": 38689,
+   "source": "Kashif: the fixed deep-probe list of spec §2.10 (no wordlists); signatures written for Kashif"
+  },
+  "favicons.json": {
+   "date": "2026-11-12",
+   "license": "MIT",
+   "schema_version": 1,
+   "sha256": "b264b260bcf9604720e7ffa90c878cb007bcb54a36fb5e35f0dfa650b3a1afb5",
+   "size": 53017,
+   "source": "projectdiscovery/nuclei-templates, http/technologies/favicon-detect.yaml",
+   "version": "f99ca476bb7e82e6de3c15834584e16eeff29d88"
+  },
+  "hsts-preload.json.gz": {
+   "date": "2026-11-13",
+   "license": "BSD-3-Clause",
+   "schema_version": 1,
+   "sha256": "30c1beed97e24a50838e55a3b90696016ad1f8f1e39351371b7bd2b7520644e3",
+   "size": 590588,
+   "source": "Chromium net/http/transport_security_state_static.json (https://raw.githubusercontent.com/chromium/chromium/main/net/http/transport_security_state_static.json)"
+  },
+  "leak-headers.json": {
+   "date": "2026-11-13",
+   "license": "Kashif project licence",
+   "schema_version": 1,
+   "sha256": "7c59ccdd14080372b33503c7bbf70bbc185dd9f038df6a64a8ec0905d25b102e",
+   "size": 7135,
+   "source": "Kashif's own list, re-derived from vendor documentation (OSHP's list used only as a cross-check)"
+  },
+  "malicious-hosts.json": {
+   "date": "2026-11-13",
+   "license": "Kashif project licence; host names from ZAP (Apache-2.0) and nuclei-templates (MIT) are facts (see NOTICE)",
+   "schema_version": 1,
+   "sha256": "024846bb9fefb0d2154337ae8bd0e55a6d83b79d0577323df5f885f316c6bfa3",
+   "size": 4133,
+   "source": "Kashif curated list: ZAP pscanrules PolyfillCdnScriptScanRule (10115) host names; miner, loader and defacement signatures after the nuclei templates crypto-mining-malware, balada-injector-malware and defacement-detect"
+  },
+  "observatory-v6.json": {
+   "date": "2026-11-13",
+   "license": "MPL-2.0 (mdn/mdn-http-observatory; numeric scoring facts only)",
+   "schema_version": 1,
+   "sha256": "7d6589bf9e3dec32aa1baee109cc26edb44f71dca88c4645e736ff6b3841e47e",
+   "size": 4770,
+   "source": "https://raw.githubusercontent.com/mdn/mdn-http-observatory/v1.7.2/src/grader/charts.js",
+   "version": "1.7.2"
+  },
+  "psl.dat.gz": {
+   "date": "2026-11-13",
+   "license": "MPL-2.0",
+   "schema_version": 1,
+   "sha256": "95bb3b5142e4b2bd5cb367cf4dfa70bfdd992a00265a7c928608a4f76bd2369e",
+   "size": 90857,
+   "source": "https://publicsuffix.org/list/public_suffix_list.dat"
+  },
+  "psl.dat.meta.json": {
+   "date": "2026-11-13",
+   "license": "MPL-2.0",
+   "schema_version": 1,
+   "sha256": "47ce2ef4fb56d09b668b5d1cd03e33b4e75afb6f66e9e4822a716e027730b0a3",
+   "size": 485,
+   "source": "https://publicsuffix.org/list/public_suffix_list.dat"
+  },
+  "retire-jsrepository.json.gz": {
+   "date": "2026-11-12",
+   "license": "Apache-2.0",
+   "schema_version": 1,
+   "sha256": "71583e1aff5276df2fdf502023dce82feabdc43906e860e01164c06136f1801b",
+   "size": 72448,
+   "source": "RetireJS/retire.js, repository/jsrepository-v4.json",
+   "version": "0a997046b9a38c073dea8c864b015e515fc677ec"
+  },
+  "secret-rules.json": {
+   "date": "2026-11-13",
+   "license": "Kashif project licence",
+   "schema_version": 1,
+   "sha256": "85d9302c8821f602b1a0c2b61e8e463036399287789d44c82fb381712bc86243",
+   "size": 2539,
+   "source": "Kashif: ids of history.secret_rules() applied to client-side code, plus web-only patterns"
+  },
+  "server-cve.json": {
+   "date": "2026-11-13",
+   "license": "Apache-2.0 (ZAP data); vendor advisories (facts)",
+   "schema_version": 1,
+   "sha256": "cc16b9b5b6be50136aa6ac9c18d6808b2598bc5b5bb14e7df776e82831018f9a",
+   "size": 137390,
+   "source": "ZAP pscanrules known-vulnerabilities (PHP, Apache httpd); nginx.org security advisories; Apache Tomcat security pages; OpenSSL and lighttpd vendor advisories (hand-maintained)"
+  },
+  "takeover.json": {
+   "date": "2026-11-13",
+   "license": "nuclei-templates MIT (fingerprint strings, see NOTICE); provider facts Kashif project licence",
+   "schema_version": 1,
+   "sha256": "0b096dddfe495ec67396f2f893172764fa786217b98d5e74da1dd78bfbd55481",
+   "size": 20094,
+   "source": "Body fingerprints: nuclei-templates http/takeovers (projectdiscovery); CNAME suffixes, status codes and the vulnerable flag: Kashif's provider facts"
+  },
+  "tech.json": {
+   "date": "2026-11-12",
+   "license": "Kashif (project licence) + MIT (nuclei-templates)",
+   "schema_version": 1,
+   "sha256": "c0e4a202599cbb59ddfb8783b19ad9507a04b9ffad94c6f4d09c560c668724a0",
+   "size": 106234,
+   "source": "Kashif original signatures + projectdiscovery/nuclei-templates http/technologies/tech-detect.yaml (scoped matchers)",
+   "version": "f99ca476bb7e82e6de3c15834584e16eeff29d88"
+  },
+  "tls-profiles.json": {
+   "date": "2026-11-13",
+   "license": "MPL-2.0 (mozilla/ssl-config-generator data)",
+   "schema_version": 1,
+   "sha256": "a237b861f2f3d026ad7c8461b95bbbae38f626d4494884e83f190975e95d7962",
+   "size": 2537,
+   "source": "https://raw.githubusercontent.com/mozilla/ssl-config-generator/master/docs/guidelines/6.0.json",
+   "version": "6.0"
+  }
+ },
+ "generated": "2026-11-13",
+ "schema_version": 1
+}
