@@ -907,6 +907,8 @@ class _Run:
     def _fetched_but_not_script(self, url: str) -> bool:
         for r in self.ctx.subresources:
             if url in _requested_urls(r):
+                if r.status is None:
+                    return False      # no answer (DNS, proxy, timeout): unknown, so the URL evidence still counts
                 return not _is_script_response(r)
         return False
 

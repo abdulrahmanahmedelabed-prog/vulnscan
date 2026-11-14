@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0
+
+- Released with Kashif 1.1.0 (the extension follows the Kashif version). The extension itself is unchanged: Kashif 1.1.0
+  rebuilds the passive web scanner, and code scans, their diagnostics and fingerprints are the same as in 1.0.2.
+
 ## 1.0.2
 
 - Released with Kashif 1.0.2 (the extension follows the Kashif version).

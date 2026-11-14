@@ -2102,7 +2102,7 @@ def _inventory(st: _Run) -> None:
             ctls = [doc.elements[i] for i in f.inputs]
             types = {(c.attrs.get("type") or "").strip().lower() for c in ctls if c.tag == "input"}
             forms.append({"page": r.url, "method": f.effective_method(), "action": f.action,
-                          "password": "password" in types, "file": "file" in types,
+                          "password": "password" in types, "file": "file" in types,  # nosec - field-type test
                           "cross_site": bool(_host(f.action)) and _site(_host(f.action)) != site})
         for i in st.items(doc):
             h = _host(i.url)

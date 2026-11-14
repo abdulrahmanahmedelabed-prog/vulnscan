@@ -57,7 +57,7 @@ COMMON_DH_PRIMES = {
 COMMON_DH_SHA256 = {hashlib.sha256(p.to_bytes((p.bit_length() + 7) // 8, "big")).hexdigest(): name
                     for name, p in COMMON_DH_PRIMES.items()}
 
-VERSION_LABEL = {"SSLv2": "SSLv2", "SSLv3": "SSLv3", "TLSv1.0": "TLS 1.0", "TLSv1.1": "TLS 1.1", "TLSv1.2": "TLS 1.2",
+VERSION_LABEL = {"SSLv2": "SSLv2", "SSLv3": "SSLv3", "TLSv1.0": "TLS 1.0", "TLSv1.1": "TLS 1.1", "TLSv1.2": "TLS 1.2",  # nosec
                  "TLSv1.3": "TLS 1.3"}
 CATEGORY_RULE = {  # WEB706: probe category → (severity, English label, Arabic label)
     "null": ("high", "NULL encryption", "بلا تشفير (NULL)"),
@@ -735,14 +735,14 @@ def _protocols(out: _Ip, iprep: dict, opts) -> None:
         for c in ("WEB030", "WEB704", "WEB705", "WEB716"):
             out.state(c, "not_tested", _inconclusive_reason(iprep, raw.PROBE_VERSIONS), detail)
         return
-    flags = {"TLSv1.0": "-tls1", "TLSv1.1": "-tls1_1", "SSLv3": "-ssl3", "SSLv2": "-ssl2"}
+    flags = {"TLSv1.0": "-tls1", "TLSv1.1": "-tls1_1", "SSLv3": "-ssl3", "SSLv2": "-ssl2"}  # nosec - protocol name
     # WEB704 SSLv2 / SSLv3, WEB030 TLS 1.0 / 1.1: one finding per version (1.0.1 fingerprint continuity)
-    for rule, names in (("WEB704", ("SSLv2", "SSLv3")), ("WEB030", ("TLSv1.0", "TLSv1.1"))):
+    for rule, names in (("WEB704", ("SSLv2", "SSLv3")), ("WEB030", ("TLSv1.0", "TLSv1.1"))):  # nosec - protocol name
         undecided = []
         for n in names:
             st = _version_state(iprep, n)
             if st == "yes":
-                sev = {"SSLv2": "critical", "SSLv3": "high"}.get(n, "medium")
+                sev = {"SSLv2": "critical", "SSLv3": "high"}.get(n, "medium")  # nosec - protocol name
                 v = versions.get(n, {})
                 out.fail(rule, sev, group=n, params={"versions": VERSION_LABEL[n]}, name="protocol",
                          value=f"{VERSION_LABEL[n]} accepted" + (f" ({v.get('cipher')})" if v.get("cipher") else ""),
@@ -774,7 +774,7 @@ def _protocols(out: _Ip, iprep: dict, opts) -> None:
         out.fail("WEB716", "low", group="higher", notes=notes, name="protocol",
                  value="; ".join(f"{h.get('offered')}→{h.get('answered')}" for h in hv))
     elif any(v.get("state") in ("inconclusive", "not_tested") for k, v in versions.items() if k != "TLSv1.3"):
-        out.state("WEB716", "not_tested", _inconclusive_reason(iprep, ("TLSv1.2", "TLSv1.1", "TLSv1.0", "SSLv3")))
+        out.state("WEB716", "not_tested", _inconclusive_reason(iprep, ("TLSv1.2", "TLSv1.1", "TLSv1.0", "SSLv3")))  # nosec
     else:
         out.state("WEB716", "pass")
 
@@ -800,13 +800,13 @@ def _ciphers(out: _Ip, iprep: dict, opts) -> None:
             continue
         sev, en, ar = CATEGORY_RULE[cat]
         out.fail("WEB706", sev, group=cat, notes=[(en, ar)], name="cipher", value=f"{res.get('cipher')} ({res.get('version')})",
-                 flag={"TLSv1.0": "-tls1", "TLSv1.1": "-tls1_1", "TLSv1.2": "-tls1_2"}.get(res.get("version") or "", ""))
+                 flag={"TLSv1.0": "-tls1", "TLSv1.1": "-tls1_1", "TLSv1.2": "-tls1_2"}.get(res.get("version") or "", ""))  # nosec
         any_fail = True
     tls13 = _version_state(iprep, "TLSv1.3") == "yes"
     if cats.get("aead", {}).get("state") == "no" and not tls13:
         out.fail("WEB706", "medium", group="no_aead", notes=[STR["no_aead"]], name="cipher", value="no AEAD suite")
         any_fail = True
-    v10 = (iprep.get("versions") or {}).get("TLSv1.0", {})
+    v10 = (iprep.get("versions") or {}).get("TLSv1.0", {})  # nosec - protocol name
     cid10 = _suite_id(v10.get("cipher")) if v10.get("state") == "yes" else None
     if cid10 is not None and raw.suite_category(cid10) in ("cbc", "krsa", "3des"):
         out.fail("WEB706", "low", group="cbc_tls10", notes=[STR["beast"]], name="cipher", value=f"{v10.get('cipher')} (TLS 1.0)",
@@ -860,7 +860,7 @@ def _options(out: _Ip, iprep: dict, opts) -> None:
         out.state("WEB712", "not_applicable", "", STR["tls13_only"])
     elif reneg is False:
         out.fail("WEB712", "low", group="no_reneg_info", name="extension", value="renegotiation_info (0xff01) missing",
-                 flag={"TLSv1.0": "-tls1", "TLSv1.1": "-tls1_1"}.get(iprep.get("category_version") or "", "-tls1_2"))
+                 flag={"TLSv1.0": "-tls1", "TLSv1.1": "-tls1_1"}.get(iprep.get("category_version") or "", "-tls1_2"))  # nosec
     elif reneg is True:
         out.state("WEB712", "pass")
     else:
@@ -1004,7 +1004,7 @@ def _mozilla(out: _Ip, iprep: dict, leaf: x509.Certificate | None, profiles: dic
 
 # ----------------------------------------------------------------------------------------------- SSL Labs-compatible
 
-_PROTO_SCORE = {"SSLv2": 0, "SSLv3": 80, "TLSv1.0": 90, "TLSv1.1": 95, "TLSv1.2": 100, "TLSv1.3": 100}
+_PROTO_SCORE = {"SSLv2": 0, "SSLv3": 80, "TLSv1.0": 90, "TLSv1.1": 95, "TLSv1.2": 100, "TLSv1.3": 100}  # nosec - protocol name
 
 
 def _kex_score(bits: int | None) -> int:
@@ -1078,8 +1078,8 @@ def ssllabs_ip(iprep: dict, now, *, hsts: Any = None, host: str = "") -> dict:
 
     if "SSLv2" in yes:
         cap("F", "SSLv2 supported", "يدعم SSLv2")
-    if yes[0] == "SSLv3":
-        cap("F", "SSLv3 is the best protocol", "SSLv3 أفضل بروتوكول مدعوم")
+    if yes[0] == "SSLv3":  # nosec - protocol name
+        cap("F", "SSLv3 is the best protocol", "SSLv3 أفضل بروتوكول مدعوم")  # nosec - protocol name
     if "export_des" in yes_cats and "EXPORT" in str(cats["export_des"].get("cipher")):
         cap("F", "export cipher suites", "مجموعات EXPORT")
     if kbits is not None and kbits < 1024:
@@ -1093,15 +1093,15 @@ def ssllabs_ip(iprep: dict, now, *, hsts: Any = None, host: str = "") -> dict:
         cap("F", "NULL or anonymous suites", "مجموعات NULL أو مجهولة الهوية")
     if "TLSv1.2" not in yes and "TLSv1.3" not in yes:
         cap("C", "no TLS 1.2", "لا يدعم TLS 1.2")
-    if "rc4" in yes_cats and any(v in yes for v in ("TLSv1.1", "TLSv1.2", "TLSv1.3")):
+    if "rc4" in yes_cats and any(v in yes for v in ("TLSv1.1", "TLSv1.2", "TLSv1.3")):  # nosec - protocol name
         cap("C", "RC4 with TLS 1.1 or newer", "RC4 مع TLS 1.1 أو أحدث")
-    if "3des" in yes_cats and any(v in yes for v in ("TLSv1.1", "TLSv1.2", "TLSv1.3")):
+    if "3des" in yes_cats and any(v in yes for v in ("TLSv1.1", "TLSv1.2", "TLSv1.3")):  # nosec - protocol name
         cap("C", "3DES with TLS 1.1 or newer", "3DES مع TLS 1.1 أو أحدث")
     if iprep.get("compression") is True:
         cap("C", "TLS compression (CRIME)", "ضغط TLS (CRIME)")
-    if "SSLv3" in yes:
-        cap("B", "SSLv3 supported", "يدعم SSLv3")
-    if "TLSv1.0" in yes or "TLSv1.1" in yes:
+    if "SSLv3" in yes:  # nosec - protocol name
+        cap("B", "SSLv3 supported", "يدعم SSLv3")  # nosec - protocol name
+    if "TLSv1.0" in yes or "TLSv1.1" in yes:  # nosec - protocol name
         cap("B", "TLS 1.0 or 1.1 supported", "يدعم TLS 1.0 أو 1.1")
     if "rc4" in yes_cats:
         cap("B", "RC4", "RC4")

@@ -91,7 +91,7 @@ STR: dict[str, tuple[str, str]] = {
     "cap_http_login": ("the site is served over plain HTTP and has a login page (WEB000)",
                        "الموقع يُقدَّم عبر HTTP غير مشفّر وفيه صفحة تسجيل دخول (WEB000)"),
     "cap_sslv2": ("SSLv2 accepted (WEB704)", "الخادم يقبل SSLv2 (WEB704)"),
-    "cap_sslv3": ("SSLv3 accepted (WEB704)", "الخادم يقبل SSLv3 (WEB704)"),
+    "cap_sslv3": ("SSLv3 accepted (WEB704)", "الخادم يقبل SSLv3 (WEB704)"),  # nosec - protocol name
     "cap_no_csp": ("no enforced Content-Security-Policy on the scanned page", "لا توجد سياسة CSP مفروضة على الصفحة المفحوصة"),
     "cap_medium_core": ("a medium-severity finding in {family}", "وجود اكتشاف متوسط الخطورة في مجموعة {family}"),
     "cap_low_core": ("a low-severity finding in {family}", "وجود اكتشاف منخفض الخطورة في مجموعة {family}"),
@@ -521,7 +521,7 @@ def tls_modern_only(ctx: Any) -> bool | None:
             cats = {k: (v or {}).get("state") for k, v in (ip.get("categories") or {}).items()}
             if "yes" not in (versions.get("TLSv1.2"), versions.get("TLSv1.3")):
                 return False        # (a TLS 1.3-only server qualifies; a missing TLS 1.3 is capped at A- by WEB705)
-            if any(versions.get(v) == "yes" for v in ("SSLv2", "SSLv3", "TLSv1.0", "TLSv1.1")):
+            if any(versions.get(v) == "yes" for v in ("SSLv2", "SSLv3", "TLSv1.0", "TLSv1.1")):  # nosec - protocol name
                 return False
             if any(cats.get(c) == "yes" for c in ("null_anon", "export_des", "rc4", "3des", "krsa", "cbc")):
                 return False

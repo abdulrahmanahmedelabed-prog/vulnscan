@@ -254,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         text = Path(args.ocd).read_text(encoding="utf-8")
     else:
         text = fetch()
-    obj, stats = build(text, date)
+    obj, stats = build(text, date)  # nosec - maintainer tool
     sys.path.insert(0, str(ROOT))
     from vulnscan.webscan import data
     errs = data.validate_data("cookies.json", obj)

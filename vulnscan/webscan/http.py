@@ -1313,7 +1313,7 @@ class Fetcher:
         else:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
+            ctx.verify_mode = ssl.CERT_NONE  # nosec - unverified probe only
         try:
             ctx.set_alpn_protocols(["http/1.1"])
         except (NotImplementedError, ssl.SSLError):   # pragma: no cover

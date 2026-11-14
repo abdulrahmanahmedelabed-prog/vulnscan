@@ -43,7 +43,7 @@ _CSP_SENSITIVE = ("default-src", "script-src", "script-src-elem", "script-src-at
                   "frame-ancestors", "form-action", "style-src", "connect-src", "frame-src", "child-src", "worker-src")
 _THIRD_PARTY_DIRECTIVES = {"script-src": "script", "script-src-elem": "script", "style-src": "style",
                            "style-src-elem": "style", "frame-src": "frame", "child-src": "frame", "connect-src": "connect"}
-_OLD_PROTOCOLS = ("SSLv2", "SSLv3", "TLSv1.0", "TLSv1.1")
+_OLD_PROTOCOLS = ("SSLv2", "SSLv3", "TLSv1.0", "TLSv1.1")  # nosec - protocol name
 _WEAK_SUITES = ("null_anon", "export_des", "rc4", "3des", "krsa", "cbc")
 _COOKIE_FLAGS = ("secure", "httponly", "partitioned")
 SECTXT_SOON_DAYS = 30

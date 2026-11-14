@@ -45,8 +45,8 @@ TEMPLATE_CAP = 3
 STR: dict[str, tuple[str, str]] = {
     "by_web000": ("explained by WEB000: the whole origin is served over plain HTTP",
                   "يفسّره WEB000: الموقع كله يُقدَّم عبر HTTP غير مشفّر"),
-    "by_web704": ("explained by WEB704 on the same address (SSLv2/SSLv3 is the larger problem)",
-                  "يفسّره WEB704 على العنوان نفسه (قبول SSLv2/SSLv3 هو المشكلة الأكبر)"),
+    "by_web704": ("explained by WEB704 on the same address (SSLv2/SSLv3 is the larger problem)",  # nosec - protocol name
+                  "يفسّره WEB704 على العنوان نفسه (قبول SSLv2/SSLv3 هو المشكلة الأكبر)"),  # nosec - protocol name
     "by_web200": ("judged inside WEB200: the policy is report-only and enforces nothing",
                   "قُيّم ضمن WEB200: السياسة في وضع التقرير فقط ولا تفرض شيئًا"),
     "by_cert": ("HSTS is not judged on a host whose certificate is expired or invalid (WEB070/WEB072)",

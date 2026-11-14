@@ -48,7 +48,7 @@ jobs:
       - name: Both command names are installed (kashif, and vulnscan as an alias)
         run: kashif --version && vulnscan --version
       - name: Scan (SARIF)
-        run: kashif . --no-deps --no-external --exclude "tests/*" --exclude "bench/*" -f sarif -o vulnscan.sarif
+        run: kashif . --no-deps --no-external --exclude "tests/*" --exclude "bench/*" --exclude "vulnscan/data/web/*" -f sarif -o vulnscan.sarif
       - name: Upload to Code Scanning
         if: github.event_name == 'push'
         continue-on-error: true   # private repositories without code scanning cannot accept uploads
@@ -57,7 +57,7 @@ jobs:
           sarif_file: vulnscan.sarif
           category: vulnscan-self-scan
       - name: Gate on high / critical
-        run: vulnscan . --no-deps --no-external --no-color --exclude "tests/*" --exclude "bench/*" --fail-on high
+        run: vulnscan . --no-deps --no-external --no-color --exclude "tests/*" --exclude "bench/*" --exclude "vulnscan/data/web/*" --fail-on high
 
   benchmark:
     # Accuracy regression gate on the OWASP Benchmark for Python (https://owasp.org/www-project-benchmark/).

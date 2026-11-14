@@ -96,7 +96,7 @@ def test_web_panel_shows_site_text_only_as_escaped_text():
     raw = [m for m in re.findall(r"\$\{([a-z]+\.[A-Za-z_]+)\b(?!\()", sec) if m != "tb.body" and not m.endswith(".length")]
     assert not raw, raw
     # bidi() escapes too: engine text with Latin runs (grade labels, caps, posture) is isolated in Arabic (ux-i18n)
-    assert "esc(g.grade" in sec and "esc(sn.caveat)" in sec and "esc(b.code)" in sec and "bidi(p.text)" in sec
+    assert "esc(g.grade" in sec and "bidi(sn.caveat)" in sec and "esc(b.code)" in sec and "bidi(p.text)" in sec
 
 
 NODE = shutil.which("node")

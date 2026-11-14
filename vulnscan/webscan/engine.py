@@ -891,6 +891,20 @@ def _finding(g) -> Any:
                    meta.cwe, source="web", extra=extra)
 
 
+def _legacy_web000_url(findings: list, target: str) -> None:
+    """1.0.1 fingerprinted WEB000 on the http:// URL exactly as the user typed it (``http://host`` without the ``/`` the
+    fetcher adds): keep it in ``extra["fp_url"]`` so ``model.Finding.base_fingerprint`` still matches a 1.0.x baseline."""
+    try:
+        http_target = urllib.parse.urlsplit(target).scheme.lower() == "http"
+    except ValueError:
+        http_target = False
+    if not http_target:
+        return                        # 1.0.1 reported WEB000 for http:// targets only
+    for f in findings:
+        if f.rule_id == "WEB000":
+            f.extra["fp_url"] = cap(strip_controls(target), 2000)
+
+
 def to_findings(groups: Iterable[Any]) -> list:
     """Grouped issues (``group.Group``) → ``model.Finding``, most severe first, then registry order."""
     gs = [g for g in groups if g.rule in RULES]
@@ -1051,6 +1065,7 @@ def _pipeline(run: _Run, step: Callable[[str], None], *, previous: dict | None, 
     issues.extend(_meta_issues(run))
     result = group.process(issues, ctx)
     findings = to_findings(result.groups)
+    _legacy_web000_url(findings, ctx.target)
     grades = grade.grades(ctx, result, _grade_states(ctx.coverage), sensitivity=opts.sensitivity)
     snapshot = _diff.snapshot(ctx, findings, grades, ctx.coverage, scan_id=scan_id)
     diff_out = _diff.diff(previous, snapshot) if previous is not None else None

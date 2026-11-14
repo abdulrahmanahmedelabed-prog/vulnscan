@@ -250,7 +250,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.0.2`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.1.0`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `kashif . --diff-base origin/main` reports only what the branch introduces
@@ -1161,7 +1161,8 @@ python -m pytest -q
 - النماذج أقل من الأدوات التجارية الكبرى (نحو 6,350 واجهة مكتبة و153 قاعدة نمطية)، والضبط على الكود الحقيقي أقل (ضُبط
   الإصدار 1.0 على 38 مشروعًا مفتوح المصدر).
 - بدون jadx تُفحص محتويات APK/JAR النصية فقط؛ ومع jadx يُفحص الكود المفكوك وهو كود مُعاد توليده قد يختلف عن المصدر الأصلي.
-- فحص الويب سلبي بالكامل (طلب واحد) ولا يُجري أي اختبار نشط.
+- فحص الويب سلبي بالكامل (طلبات GET عادية فقط، ضمن حدّ معلَن لكل ملف فحص: `minimal` طلب واحد بتوجيهاته كما في 1.0)
+  ولا يُجري أي اختبار نشط.
 
 ## حول كاشِف
 

@@ -26,12 +26,12 @@ from typing import NamedTuple
 # ----------------------------------------------------------------------------------------------- versions
 
 SSL2, SSL3, TLS10, TLS11, TLS12, TLS13 = 0x0002, 0x0300, 0x0301, 0x0302, 0x0303, 0x0304
-VERSION_NAMES = {SSL2: "SSLv2", SSL3: "SSLv3", TLS10: "TLSv1.0", TLS11: "TLSv1.1", TLS12: "TLSv1.2", TLS13: "TLSv1.3"}
+VERSION_NAMES = {SSL2: "SSLv2", SSL3: "SSLv3", TLS10: "TLSv1.0", TLS11: "TLSv1.1", TLS12: "TLSv1.2", TLS13: "TLSv1.3"}  # nosec
 VERSION_IDS = {v: k for k, v in VERSION_NAMES.items()}
 # probe order: newest first (a server that answers the modern hellos is healthy before any legacy hello is sent)
-PROBE_VERSIONS = ("TLSv1.3", "TLSv1.2", "TLSv1.1", "TLSv1.0", "SSLv3", "SSLv2")
+PROBE_VERSIONS = ("TLSv1.3", "TLSv1.2", "TLSv1.1", "TLSv1.0", "SSLv3", "SSLv2")  # nosec - protocol name
 # openssl s_client flag reproducing a version probe (§3.6 evidence)
-OPENSSL_FLAGS = {"SSLv3": "-ssl3", "TLSv1.0": "-tls1", "TLSv1.1": "-tls1_1", "TLSv1.2": "-tls1_2", "TLSv1.3": "-tls1_3"}
+OPENSSL_FLAGS = {"SSLv3": "-ssl3", "TLSv1.0": "-tls1", "TLSv1.1": "-tls1_1", "TLSv1.2": "-tls1_2", "TLSv1.3": "-tls1_3"}  # nosec
 
 HRR_RANDOM = bytes.fromhex("CF21AD74E59A6111BE1D8C021E65B891C2A211167ABB8C5E079E09E2C8A8339C")
 DOWNGRADE_TLS12 = b"DOWNGRD\x01"     # RFC 8446 §4.1.3: a TLS 1.3 server answering a TLS 1.2 hello

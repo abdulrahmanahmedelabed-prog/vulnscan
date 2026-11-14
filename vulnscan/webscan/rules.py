@@ -869,9 +869,9 @@ _tls("WEB703", "info", "info low", "certain", "CWE-295", "—", "—",
      ("Send leaf then intermediates in order, without the root.", "أرسل الشهادة ثم الوسيطة بالترتيب ومن دون شهادة الجذر."),
      confs="certain tentative")
 _tls("WEB704", "critical", "critical high", "certain", "CWE-327", "9.1.3", "12.1.1",
-     ("SSLv2 or SSLv3 accepted", "الخادم يقبل SSLv2 أو SSLv3"),
-     ("Disable SSLv2/SSLv3 everywhere (also on other services sharing the key).",
-      "عطّل SSLv2 وSSLv3 في كل مكان (وكذلك في الخدمات الأخرى التي تستخدم المفتاح نفسه)."),
+     ("SSLv2 or SSLv3 accepted", "الخادم يقبل SSLv2 أو SSLv3"),  # nosec - protocol name
+     ("Disable SSLv2/SSLv3 everywhere (also on other services sharing the key).",  # nosec - protocol name
+      "عطّل SSLv2 وSSLv3 في كل مكان (وكذلك في الخدمات الأخرى التي تستخدم المفتاح نفسه)."),  # nosec - protocol name
      title=("Server accepts {versions}", "الخادم يقبل {versions}"))
 _tls("WEB705", "high", "high low", "certain", "CWE-327", "9.1.3", "12.1.1",
      ("TLS 1.2 not supported / TLS 1.3 not supported", "لا دعم لـ TLS 1.2 أو 1.3"),

@@ -183,6 +183,18 @@ process.stdout.write(JSON.stringify([%s].map((s) => bidi(s))));
 def test_ui_panel_isolates_engine_text_and_tab_names():
     sec = JS[JS.index("/* ------------------------------------------------------- web scan (1.1.0) */"):
              JS.index("/* -------------------------------------------------------------- triage */")]
-    for needle in ("bidi(g.label)", "bidi(c)", "bidi(n)", "strList(g.notes)", "bidi(g)}</bdi>",
+    for needle in ("bidi(g.label)", "bidi(c)", "bidi(n)", "strList(g.notes)", "bidi(g)}</bdi>", "bidi(sn.summary)",
+                   "bidi(sn.caveat)", "bidi(b.note)",
                    '<bdi dir="auto">${esc(tb.label)}</bdi>'):
         assert needle in sec, needle
+    # .snip h3 and .caveat are flex boxes: the isolates of bidi() must sit in one span, or every word becomes a flex
+    # item on one line (an Arabic page at 360 px scrolled sideways to 819 px)
+    assert "<span>${bidi(sn.title)}</span></h3>" in sec
+    assert "<span><b>${esc(t('web.caution'))}:</b> ${bidi(sn.caveat)}</span></p>" in sec
+
+
+@pytest.mark.parametrize("lang,head", [("en", "| Algorithm | Grade | Score | Details |"),
+                                       ("ar", "| الخوارزمية | الدرجة | النقاط | التفاصيل |")])
+def test_markdown_grade_table_has_column_names(lang, head):
+    md = report.render_markdown([], "x", 1, [], lang=lang, web=_web())
+    assert head in md and "|  |  |  |  |" not in md

@@ -34,7 +34,7 @@ _LEGACY_WEB_SNIPPETS = {
     # page and probe rules whose 1.0.1 snippet was a constant
     "WEB052": "<input type=password>", "WEB055": "Index of /", "WEB056": "stack trace",
     "WEB060": "/.well-known/security.txt",
-    "WEB000": "",                                       # the 1.0.1 snippet was the scanned http:// URL (extra["url"])
+    "WEB000": "",                    # the 1.0.1 snippet was the http:// URL as typed (extra["fp_url"], engine)
 }
 _LEGACY_COOKIE_RULES = frozenset({"WEB020", "WEB021", "WEB022"})   # 1.0.1 snippet: the title (names the cookie)
 
@@ -77,7 +77,7 @@ class Finding:
                                                            or self.rule_id in _LEGACY_COOKIE_RULES):
                 title = fp_title                          # the 1.0.1 title: a 1.0.x baseline still matches
                 if self.rule_id == "WEB000":
-                    snippet = str(self.extra.get("url") or snippet)
+                    snippet = str(self.extra.get("fp_url") or self.extra.get("url") or snippet)
                 else:
                     snippet = _LEGACY_WEB_SNIPPETS.get(self.rule_id) or snippet
             elif isinstance(fp_key, str) and fp_key:      # 1.1.0 grouping key: stable across reruns (spec §3.5)

@@ -421,6 +421,29 @@ def test_unchanged_1_0_header_findings_keep_their_fingerprints(bare_site, csp_si
         assert got2[rule].base_fingerprint() == fingerprint_102(rule, title, label2, snippet), rule
 
 
+def test_plain_http_finding_keeps_its_1_0_fingerprint(bare_site):
+    """1.0.1 fingerprinted WEB000 on its title and the scanned http:// URL; the 1.1.0 finding must match it."""
+    label = bare_site.split("//")[1].rstrip("/")
+    for typed in (bare_site, bare_site.rstrip("/")):           # as typed: the fetcher requests "/" for both
+        res, _ = _scan(typed, profile="minimal")
+        web000 = next(f for f in res.findings if f.rule_id == "WEB000")
+        assert web000.base_fingerprint() == fingerprint_102("WEB000", "Site served over plain HTTP", label, typed)
+
+
+@pytest.mark.parametrize("rule, title_1_0, snippet_1_0", [
+    ("WEB052", "Password field on non-HTTPS page", "<input type=password>"),
+    ("WEB055", "Directory listing enabled", "Index of /"),
+    ("WEB056", "Stack trace / debug output in response", "stack trace"),
+    ("WEB060", "No security.txt", "/.well-known/security.txt"),
+])
+def test_constant_snippet_rules_keep_their_1_0_fingerprints(rule, title_1_0, snippet_1_0):
+    """1.0.1 gave these rules a constant snippet, so their 1.0.1 fingerprint can be rebuilt whatever 1.1.0 shows."""
+    extra = {"fp_key": f"{rule}|shop.example.test|document|x", "fp_title": title_1_0, "url": "http://shop.example.test/"}
+    f = Finding(rule, "medium", "a 1.1.0 title", "عنوان", "shop.example.test", 0, "1.1.0 evidence 2026-11-13", "نصيحة",
+                "CWE-200", "web", extra)
+    assert f.base_fingerprint() == fingerprint_102(rule, title_1_0, "shop.example.test", snippet_1_0)
+
+
 def test_new_web_findings_fingerprint_on_fp_key_and_survive_reruns(csp_site):
     a, _ = _scan(csp_site)
     b, _ = _scan(csp_site)              # a fresh nonce on every response

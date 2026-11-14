@@ -601,6 +601,8 @@ _WEB_LABELS = {
     "g_ssllabs": ("متوافقة مع SSL Labs", "SSL Labs-compatible"),
     "g_none": ("لم تُحسب", "not computed"),
     "g_caps": ("حدود الدرجة", "Grade caps"),
+    "g_algorithm": ("الخوارزمية", "Algorithm"), "g_grade": ("الدرجة", "Grade"), "g_score": ("النقاط", "Score"),
+    "g_details": ("التفاصيل", "Details"),
     "g_provisional": ("درجة مؤقتة (*): بعض المجموعات لم تُفحص فلم تُحسب", "Provisional grade (*): some families were not tested and do not count"),
     "coverage": ("تغطية الفحوص", "Check coverage"),
     "cov_state": ("الحالة", "State"), "cov_count": ("العدد", "Count"), "cov_check": ("الفحص", "Check"),
@@ -1096,11 +1098,11 @@ def _web_html_bottom(findings: list[Finding], web: dict, L: "_Lang") -> str:
             tabs = []
             for b in blocks:
                 body = (f"<pre><code>{e(str(b.get('code') or ''))}</code></pre>" if b.get("code") else "") \
-                    + (f"<p>{e(str(b.get('note') or ''))}</p>" if b.get("note") else "")
+                    + (f"<p>{_bidi_html(L, str(b.get('note') or ''))}</p>" if b.get("note") else "")
                 tabs.append((str(b.get("name") or b.get("platform") or ""), body))
-            out.append(f"<div class='snip'><h3><code>{e(str(sn.get('id')))}</code> {e(str(sn.get('title') or ''))}</h3>"
-                       f"<p>{e(str(sn.get('summary') or ''))}</p>"
-                       + (f"<p class='caveat'><b>{e(str(sn.get('caveat_label') or ''))}:</b> {e(str(sn.get('caveat') or ''))}</p>" if sn.get("caveat") else "")
+            out.append(f"<div class='snip'><h3><code>{e(str(sn.get('id')))}</code> {_bidi_html(L, str(sn.get('title') or ''))}</h3>"
+                       f"<p>{_bidi_html(L, str(sn.get('summary') or ''))}</p>"
+                       + (f"<p class='caveat'><b>{e(str(sn.get('caveat_label') or ''))}:</b> {_bidi_html(L, str(sn.get('caveat') or ''))}</p>" if sn.get("caveat") else "")
                        + (_html_tabs(f"rem{i}", tabs) if tabs else "") + "</div>")
     out.append("</section>")
     return "".join(out)
@@ -1129,7 +1131,7 @@ def _web_markdown(findings: list[Finding], web: dict, L: "_Lang", part: str = "t
     for g in _grade_rows(web, L):
         score = "" if g["score"] is None else f"{g['score']:g}" + (f"/{g['max']:g}" if g["max"] else "")
         rows.append([g["name"], g["grade"] or "—", score, ("; " if L.en else "؛ ").join((g["notes"] + g["caps"])[:6]) or g["label"]])
-    md += _md_table(["", "", "", ""], rows, L)
+    md += _md_table([_wl(L, "g_algorithm"), _wl(L, "g_grade"), _wl(L, "g_score"), _wl(L, "g_details")], rows, L)
     counts = _coverage_counts(web)
     md += [f"### {_wl(L, 'coverage')}", "",
            " · ".join(f"{_wl(L, 's_' + s)}: **{counts[s]}**" for s in _STATE_ORDER), "", f"_{_wl(L, 'cov_never_pass')}_", ""]

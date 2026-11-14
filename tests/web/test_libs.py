@@ -320,6 +320,17 @@ def test_script_that_is_not_served_is_not_reported(make_ctx, make_page):
     assert libs.run(ctx) == []
 
 
+def test_unreachable_script_keeps_the_url_detection(make_ctx, make_page):
+    # deep mode fetches third-party scripts; a network failure (DNS, proxy, timeout) says nothing about what a browser
+    # gets, so the URL-based WEB054 of the standard profile (and of 1.0.1) must not disappear
+    url = "https://code.jquery.com/jquery-1.12.4.min.js"
+    page = make_page(f'<script src="{url}"></script>', url="https://shop.example.test/")
+    failed = Response(url=url, status=None, headers=HeaderList(()), body=b"", error="name resolution failed",
+                      source="subresource")
+    ctx = make_ctx(target="https://shop.example.test/", entry=page, subresources=[failed])
+    assert "WEB054" in _rules(libs.run(ctx))
+
+
 def test_one_finding_per_library_version_per_site(make_ctx, make_page):
     p1 = make_page('<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>',
                    url="https://shop.example.test/")

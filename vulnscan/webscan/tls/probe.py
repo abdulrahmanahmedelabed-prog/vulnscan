@@ -290,7 +290,7 @@ def version_state(fl: raw.Flight, offered: int) -> dict:
 def _hello_for(host: str, name: str, **kw: Any) -> bytes:
     if name == "SSLv2":
         return raw.sslv2_client_hello()
-    if name == "SSLv3":
+    if name == "SSLv3":  # nosec - protocol name
         return raw.sslv3_client_hello()
     v = raw.VERSION_IDS[name]
     if v == raw.TLS13:
@@ -374,8 +374,8 @@ def probe_ip(connector: Any, host: str, port: int, ip: str | None, *, profile: s
     # a normal handshake is proof of support
     for hs in (ver, rep.get("unverified") or {}, rep.get("verified_legacy") or {}):
         nv = hs.get("version") if hs else None
-        if nv in ("TLSv1.2", "TLSv1.3", "TLSv1.1", "TLSv1") and hs.get("chain"):
-            key = "TLSv1.0" if nv == "TLSv1" else nv
+        if nv in ("TLSv1.2", "TLSv1.3", "TLSv1.1", "TLSv1") and hs.get("chain"):  # nosec - protocol name
+            key = "TLSv1.0" if nv == "TLSv1" else nv  # nosec - protocol name
             prev = rep["versions"].get(key, {})
             if prev.get("state") != "yes":
                 note = STR["raw_disagrees"] if prev.get("state") == "no" else STR["ssl_proof"]
@@ -383,8 +383,8 @@ def probe_ip(connector: Any, host: str, port: int, ip: str | None, *, profile: s
     del v12
 
     # 3. the plaintext TLS ≤ 1.2 flight: certificates, OCSP staple, TLS SCTs, renegotiation_info
-    cat_version = next((n for n in ("TLSv1.2", "TLSv1.1", "TLSv1.0") if rep["versions"].get(n, {}).get("state") == "yes"),
-                       None)
+    plain = ("TLSv1.2", "TLSv1.1", "TLSv1.0")  # nosec - protocol names
+    cat_version = next((n for n in plain if rep["versions"].get(n, {}).get("state") == "yes"), None)
     rep["category_version"] = cat_version
     base = flights.get(cat_version) if cat_version else None
     if base is not None and base.result == "hello" and base.version == raw.VERSION_IDS[cat_version]:
@@ -403,7 +403,7 @@ def probe_ip(connector: Any, host: str, port: int, ip: str | None, *, profile: s
     else:
         rep["ocsp"] = {"state": "not_tested", "der": None, "reason": "timeout" if sess.backed_off else "no_legacy"}
     if not rep["chain"]:
-        for name in ("TLSv1.0", "TLSv1.1", "SSLv3"):
+        for name in ("TLSv1.0", "TLSv1.1", "SSLv3"):  # nosec - protocol name
             fl = flights.get(name)
             if fl is not None and fl.certs:
                 rep["chain"], rep["chain_source"] = [_b64(d) for d in fl.certs], "raw"
@@ -469,7 +469,7 @@ def _ssl_ciphers(rep: dict) -> list[str]:
     out = []
     for key in ("verified", "verified_legacy", "unverified"):
         hs = rep.get(key) or {}
-        if hs.get("cipher") and hs.get("version") in ("TLSv1.2", "TLSv1.1", "TLSv1"):
+        if hs.get("cipher") and hs.get("version") in ("TLSv1.2", "TLSv1.1", "TLSv1"):  # nosec - protocol name
             out.append(str(hs["cipher"]))
     return out
 
@@ -525,7 +525,7 @@ def _deep(rep: dict, sess: IpSession, host: str, cat_version: str | None) -> Non
             if ske:
                 deep["ecdhe_group"] = ske["group"]
         # TLS_FALLBACK_SCSV: a lower version offered with the SCSV must get alert 86 from a server that supports more
-        lower = next((n for n in ("TLSv1.1", "TLSv1.0") if rep["versions"].get(n, {}).get("state") == "yes"
+        lower = next((n for n in ("TLSv1.1", "TLSv1.0") if rep["versions"].get(n, {}).get("state") == "yes"  # nosec
                       and raw.VERSION_IDS[n] < v), None)
         if lower is not None:
             fl = sess.send(raw.client_hello(host, raw.VERSION_IDS[lower], raw.LEGACY_SUITES,

@@ -1167,9 +1167,9 @@ function webPanelHTML(v) {
     html += `<h2 class="web-h">${ic('wrench')}${esc(t('web.remediation'))}</h2><p class="muted small">${esc(t('web.remHint'))}</p>`;
     html += rem.map((sn, i) => {
       const blocks = [...(Array.isArray(sn.detected) ? sn.detected : []), ...(Array.isArray(sn.other) ? sn.other : [])];
-      return `<div class="snip"><h3><code dir="ltr">${esc(sn.id)}</code> ${esc(sn.title)}</h3><p>${esc(sn.summary)}</p>`
-        + (sn.caveat ? `<p class="caveat">${ic('warning', 'sm')}<b>${esc(t('web.caution'))}:</b> ${esc(sn.caveat)}</p>` : '')
-        + webTabs('rem' + i, blocks.map((b) => ({label: b.name || b.platform || '', body: (b.code ? `<div class="code"><div class="code-head"><span class="p" dir="ltr">${esc(b.lang || '')}</span>${copyBtn(b.code)}</div><pre tabindex="0" dir="ltr"><code>${esc(b.code)}</code></pre></div>` : '') + (b.note ? `<p class="muted small">${esc(b.note)}</p>` : '')}))) + '</div>';
+      return `<div class="snip"><h3><code dir="ltr">${esc(sn.id)}</code> <span>${bidi(sn.title)}</span></h3><p>${bidi(sn.summary)}</p>`
+        + (sn.caveat ? `<p class="caveat">${ic('warning', 'sm')}<span><b>${esc(t('web.caution'))}:</b> ${bidi(sn.caveat)}</span></p>` : '')
+        + webTabs('rem' + i, blocks.map((b) => ({label: b.name || b.platform || '', body: (b.code ? `<div class="code"><div class="code-head"><span class="p" dir="ltr">${esc(b.lang || '')}</span>${copyBtn(b.code)}</div><pre tabindex="0" dir="ltr"><code>${esc(b.code)}</code></pre></div>` : '') + (b.note ? `<p class="muted small">${bidi(b.note)}</p>` : '')}))) + '</div>';
     }).join('');
   }
   return html + '</div>';
