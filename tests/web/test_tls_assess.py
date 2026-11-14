@@ -219,10 +219,18 @@ def test_weak_digest_code_68_is_judged_again_at_security_level_0():
     legacy = {"ok": True, "verify_code": None, "verify_message": "", "version": "TLSv1.3", "cipher": "x", "alpn": None,
               "chain": chain("sha1leaf.pem", "int.pem"), "chain_complete": True,
               "verified_chain": chain("sha1leaf.pem", "int.pem", "root.pem"), "error": None, "refused": None}
-    issues, _ = run(ip_report(sent=("sha1leaf.pem", "int.pem"), verified=False, code=68, legacy=legacy))
-    assert not fired(issues, "WEB072")
+    issues, ctx = run(ip_report(sent=("sha1leaf.pem", "int.pem"), verified=False, code=68, legacy=legacy))
+    # the security-level-0 retry judges only the rest of the chain (trusted, so no WEB701/WEB702); browsers still
+    # reject the SHA-1 chain, so WEB072 is high with the reason, and the SSL Labs-compatible grade is T
+    f = fired(issues, "WEB072")
+    assert len(f) == 1 and f[0].severity == "high"
+    assert f[0].evidence.match["value"].startswith("rejected by browsers: SHA-1 or weak key in chain")
+    assert any("verify code 68" in n[0] and "ترفضها المتصفحات" in n[1] for n in f[0].notes)
+    assert not fired(issues, "WEB701") and not fired(issues, "WEB702")
     f = fired(issues, "WEB708")
     assert len(f) == 1 and f[0].severity == "medium"
+    g = ctx.inventory["tls"]["localhost"]["ips"]["192.0.2.1"]["ssllabs"]
+    assert g["grade"] == "T" and g["caps"][0]["cap"] == "T" and "certificate not trusted" in g["caps"][0]["en"]
 
 
 def test_verification_impossible_is_not_tested_never_pass():
@@ -369,7 +377,7 @@ def test_every_hello_refused_is_not_tested():
 
 
 @pytest.mark.parametrize("v12,v13,sev,versions", [
-    ("no", "no", "high", "TLS 1.2, TLS 1.3"), ("yes", "no", "low", "TLS 1.3"), ("no", "yes", None, None),
+    ("no", "no", "high", ["TLS 1.2", "TLS 1.3"]), ("yes", "no", "low", ["TLS 1.3"]), ("no", "yes", None, None),
     ("yes", "yes", None, None),
 ])
 def test_web705(v12, v13, sev, versions):
@@ -380,6 +388,14 @@ def test_web705(v12, v13, sev, versions):
         assert not f
     else:
         assert f[0].severity == sev and f[0].params["versions"] == versions
+        # a list parameter: each language joins it ("TLS 1.2 and TLS 1.3" / "TLS 1.2 ولا TLS 1.3")
+        meta = rules.RULES["WEB705"]
+        if len(versions) == 2:
+            assert f[0].params["variant"] == "no12no13"
+            assert meta.title("en", **f[0].params) == "TLS 1.2 and TLS 1.3 not supported"
+            assert meta.title("ar", **f[0].params) == "لا دعم لـ TLS 1.2 ولا TLS 1.3"
+        else:
+            assert "variant" not in f[0].params and meta.title("en", **f[0].params) == "TLS 1.3 not supported"
 
 
 def test_web704_sslv2_critical_sslv3_high():

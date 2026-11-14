@@ -322,7 +322,7 @@ def test_plural_agreement_in_titles():
 
 def test_formatting_params_variants_and_fallbacks():
     assert R.RULES["WEB020"].title("en", cookie="sid") == "Cookie without Secure flag: sid"
-    assert R.RULES["WEB020"].title("ar", cookie="sid") == "كوكي بدون علامة Secure: sid"
+    assert R.RULES["WEB020"].title("ar", cookie="sid") == "كوكي بلا علامة Secure: sid"
     assert R.RULES["WEB020"].title("en") == "Cookie without Secure flag"          # missing parameter → plain name
     assert R.RULES["WEB054"].advice("ar", library="jquery", fixed="3.5.0") == "حدّث jquery إلى الإصدار 3.5.0 أو أحدث."
     assert R.RULES["WEB000"].advice("en", variant="api").startswith("Refuse plain HTTP")
@@ -363,7 +363,7 @@ def test_i18n_catalogue_translates_every_rendered_text():
         re.compile(rx)
     samples = {"cookie": "sid", "value": "Apache/2.4.1", "versions": "TLS 1.0", "days": 7, "library": "jquery",
                "version": "1.8.3", "fixed": "3.5.0", "platform": "WordPress", "branch": "5.9", "date": "2024-01-01",
-               "latest": "6.4.5", "product": "nginx", "path": "/.env", "header": "X-AspNet-Version"}
+               "latest": "6.4.5", "product": "nginx", "path": "/.env", "header": "X-AspNet-Version", "supported": "1.26"}
     for rid, m in R.RULES.items():
         variants = [None, *m.variants]
         for v in variants:

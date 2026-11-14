@@ -265,10 +265,15 @@ def _entry_urls(ctx: Any) -> set[str]:
 def adjust(issues: Sequence[Issue], ctx: Any = None) -> list[Issue]:
     """Cross-module adjustments of §3.5 (copies, never mutates): WEB304 low → medium when same-site URLs carry
     session/token parameters (WEB510/WEB511) and the policy sends full URLs to other sites; WEB114 info → low when a
-    session/auth cookie has ``Domain=`` of a parent domain (``ctx.cookies``)."""
+    session/auth cookie has ``Domain=`` of a parent domain (``ctx.cookies``); and the §2.2 CSP severity ceiling: a
+    CSP-weakness finding is never more severe than WEB-content-security-policy would be on the same document (low on a
+    static page), whatever severity the registry allows."""
     token_hosts = {_site(issue_host(i)) for i in issues if i.rule in ("WEB510", "WEB511")}
     out: list[Issue] = []
+    docs: list[Any] = []
     for i in issues:
+        if i.rule in _CSP_CEILING and ctx is not None:
+            i = _csp_ceiling(i, ctx, docs)
         if i.rule == "WEB304" and token_hosts and severity_of(i) == "low" and _site(issue_host(i)) in token_hosts:
             policy = str((i.params or {}).get("policy") or i.group_value or "").lower()
             if policy in _FULL_URL_POLICIES:
@@ -280,6 +285,25 @@ def adjust(issues: Sequence[Issue], ctx: Any = None) -> list[Issue]:
                     note("esc_web114", cookie=cookie[0], domain=cookie[1])])
         out.append(i)
     return out
+
+
+_CSP_CEILING = frozenset(("WEB040", "WEB041", "WEB042", "WEB043") + tuple(f"WEB{n}" for n in range(200, 220)))
+
+
+def _csp_ceiling(i: Issue, ctx: Any, cache: list[Any]) -> Issue:
+    from . import grade
+    sev = severity_of(i)
+    if SEV_RANK[sev] >= SEV_RANK["low"]:
+        return i
+    if not cache:
+        cache.append(grade._page_docs(ctx))
+    ceiling = grade.would_be_severity("csp", issue_host(i), [i], ctx, docs=cache[0])
+    if SEV_RANK[sev] >= SEV_RANK[ceiling]:
+        return i
+    from .csp import ceiling_note
+    n = ceiling_note(ceiling)
+    notes = list(i.notes) + ([n] if n not in [tuple(x) for x in i.notes] else [])
+    return dataclasses.replace(i, severity=ceiling, notes=notes)
 
 
 def _site(host: str) -> str:

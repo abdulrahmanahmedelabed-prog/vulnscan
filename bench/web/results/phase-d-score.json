@@ -1,7 +1,7 @@
 {
  "tool": "kashif",
  "mode": "hook",
- "version": "vulnscan 1.0.2",
+ "version": "vulnscan 1.1.0",
  "cases_scored": 380,
  "cases_ran": 380,
  "skipped": {},
@@ -24,7 +24,7 @@
  },
  "confidence_monotone": true,
  "noise_ratio": 1.031,
- "findings_per_case": 3.61,
+ "findings_per_case": 3.6,
  "zap_fp_family_trap_failures": 0,
  "rules": {
   "WEB-content-security-policy": {

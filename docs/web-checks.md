@@ -17,7 +17,7 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 - [C. Framing, MIME, referrer, permissions, isolation, caching and other headers](#family-c) · التضمين ونوع المحتوى والإحالة والصلاحيات والعزل والتخزين المؤقت وترويسات أخرى
 - [D. CORS](#family-d) · مشاركة الموارد بين المصادر (CORS)
 - [E. Cookies](#family-e) · الكوكيز
-- [F. Page content and client-side code](#family-f) · محتوى الصفحة والشيفرة في المتصفح
+- [F. Page content and client-side code](#family-f) · محتوى الصفحة والكود في المتصفح
 - [G. Information disclosure](#family-g) · كشف المعلومات
 - [H. TLS and certificates](#family-h) · TLS والشهادات
 - [I. Components and technologies](#family-i) · المكونات والتقنيات
@@ -154,7 +154,7 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 
 <a id="family-f"></a>
 
-## F. Page content and client-side code · محتوى الصفحة والشيفرة في المتصفح
+## F. Page content and client-side code · محتوى الصفحة والكود في المتصفح
 
 | Id | Check | الفحص | Severity | Confidence | CWE | WSTG | ASVS 4.0.3 | ASVS 5.0.0 | Fix |
 |---|---|---|---|---|---|---|---|---|---|
@@ -179,7 +179,7 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 | `WEB514` | Quirks mode with relative stylesheet (path-relative style import precondition) | وضع quirks مع ملف أنماط نسبي | Info | firm | CWE-436 | — | — | — | [S-HTML](#s-html) |
 | `WEB515` | Inline event handlers or javascript: URLs block a strict CSP *(paranoid only)* | معالجات أحداث مضمّنة تعيق CSP صارمة | Info | certain | CWE-693 | WSTG-CONF-12 | — | — | [S-CSP](#s-csp) |
 | `WEB516` | State-changing form without an anti-CSRF token (paranoid only) *(paranoid only)* | نموذج بلا رمز مضاد لـ CSRF | Info | tentative | CWE-352 | WSTG-SESS-05 | 4.2.2 | 3.5.1 | [S-COOKIE](#s-cookie) |
-| `WEB517` | Page loads code from a host or bucket that does not exist (hijackable) | الصفحة تحمّل شيفرة من مضيف أو حاوية تخزين غير موجودة (قابلة للاستيلاء) | High (Medium, Low, Info) | firm (tentative) | CWE-829 | WSTG-CONF-10 | 14.2.3 | 15.2.4 | [S-SRI](#s-sri) |
+| `WEB517` | Page loads code from a host or bucket that does not exist (hijackable) | الصفحة تحمّل كودًا من مضيف أو حاوية تخزين غير موجودة (قابلة للاستيلاء) | High (Medium, Low, Info) | firm (tentative) | CWE-829 | WSTG-CONF-10 | 14.2.3 | 15.2.4 | [S-SRI](#s-sri) |
 | `WEB518` | Password form submits to another site | نموذج كلمة المرور يُرسَل إلى موقع آخر | Low (Medium) | firm | CWE-201 | WSTG-ATHN-01 | — | 14.2.1 | [S-HTML](#s-html) |
 | `WEB519` | Third-party script from a mutable (unpinned) package-CDN URL | سكربت خارجي من رابط CDN غير مثبّت الإصدار | Low | certain | CWE-829 | WSTG-CONF-14 | 14.2.3 | 15.2.4 | [S-SRI](#s-sri) |
 | `WEB520` | DOM-based XSS flow in page script | تدفق DOM XSS في سكربت الصفحة | Medium | firm (tentative) | CWE-79 | WSTG-CLNT-01 | 5.3.3 | 3.2.2 | [S-HTML](#s-html) |
@@ -204,8 +204,8 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 | `WEB605` | Framework debug mode enabled | وضع التصحيح للإطار مفعّل | High (Critical) | certain | CWE-489 | WSTG-ERRH-02 | 14.3.2 | 13.4.2 | [S-ERR](#s-err) |
 | `WEB606` | Database error message disclosed | كشف رسالة خطأ قاعدة البيانات | Medium | firm | CWE-209 | WSTG-ERRH-01 | 7.4.1 | 16.5.1 | [S-ERR](#s-err) |
 | `WEB607` | Server file path disclosed in an error | كشف مسار ملف في الخادم ضمن رسالة خطأ | Low | tentative | CWE-209 | WSTG-ERRH-01 | 7.4.1 | 16.5.1 | [S-ERR](#s-err) |
-| `WEB608` | Server-side source code disclosed | كشف شيفرة المصدر من جهة الخادم | Medium | firm | CWE-540 | WSTG-CONF-03 | 12.5.1 | 13.4.7 | [S-DOTFILES](#s-dotfiles) |
-| `WEB609` | Secret or private key in client-side code | سرّ أو مفتاح خاص في الشيفرة المقدَّمة للمتصفح | Critical (High, Low) | firm (certain, tentative) | CWE-798 | WSTG-INFO-05 | 2.10.4 | 13.3.1 | [S-SECRET](#s-secret) |
+| `WEB608` | Server-side source code disclosed | كشف الكود المصدري من جهة الخادم | Medium | firm | CWE-540 | WSTG-CONF-03 | 12.5.1 | 13.4.7 | [S-DOTFILES](#s-dotfiles) |
+| `WEB609` | Secret or private key in client-side code | سرّ أو مفتاح خاص في الكود المقدَّم للمتصفح | Critical (High, Low) | firm (certain, tentative) | CWE-798 | WSTG-INFO-05 | 2.10.4 | 13.3.1 | [S-SECRET](#s-secret) |
 | `WEB610` | Serialized object in a response or cookie | كائن مُسلسَل في استجابة أو كوكي | Medium | firm | CWE-502 | — | 1.5.2 | 1.5.2 | [S-SECRET](#s-secret) |
 | `WEB611` | ViewState without integrity protection | ViewState بلا حماية سلامة | High (Medium) | firm (tentative) | CWE-642 | — | — | — | [S-ERR](#s-err) |
 | `WEB612` | Password hash disclosed | كشف تجزئة كلمة مرور | Medium | firm | CWE-200 | WSTG-INFO-05 | — | — | [S-SECRET](#s-secret) |
@@ -1720,7 +1720,7 @@ Used by: `WEB119`
 
 <a id="s-html"></a>
 
-### S-HTML · Fix the page markup or script · إصلاح شيفرة الصفحة أو السكربت
+### S-HTML · Fix the page markup or script · إصلاح كود الصفحة أو السكربت
 
 Change the markup or script named in the evidence: add rel="noopener" to target=_blank links, send forms with POST to your own HTTPS origin, keep secrets out of URLs and treat location/postMessage data as untrusted.
 

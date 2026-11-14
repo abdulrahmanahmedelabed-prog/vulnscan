@@ -111,7 +111,7 @@ STR: dict[str, tuple[str, str]] = {
                     "تبدأ القيمة كمحدِّد (selector)، ولا تفسّره jQuery 1.9 وما بعدها على أنه HTML: لا يُستغل إلا مع إصدار أقدم "
                     "من jQuery."),
     "static": ("Found by static analysis of the served code; Kashif does not run JavaScript.",
-               "اكتُشف بتحليل ثابت للشيفرة المقدَّمة؛ لا يشغّل كاشف شيفرة JavaScript."),
+               "اكتُشف بتحليل ثابت للكود المقدَّم؛ لا يشغّل كاشف كود JavaScript."),
     # coverage details
     "skip_size": ("{url} is larger than 1.5 MB (minified bundle), not analysed",
                   "الملف {url} أكبر من 1.5 ميغابايت (حزمة مصغّرة)، لم يُحلَّل"),
@@ -120,8 +120,8 @@ STR: dict[str, tuple[str, str]] = {
     "skip_coding": ("{url} uses the content-coding {coding}", "يستخدم الملف {url} ترميز المحتوى {coding}"),
     "skip_limit": ("{url}: more than 15 script files", "{url}: أكثر من 15 ملف سكربت"),
     "skip_time": ("{url}: time budget of the DOM analysis reached", "{url}: بلغ تحليل DOM حدّه الزمني"),
-    "skip_total": ("{url}: total JavaScript size limit reached", "{url}: بلغ الحجم الكلي لشيفرة JavaScript حدّه"),
-    "skip_parse": ("{url} could not be parsed as JavaScript", "تعذّر تحليل {url} بوصفه شيفرة JavaScript"),
+    "skip_total": ("{url}: total JavaScript size limit reached", "{url}: بلغ الحجم الكلي لكود JavaScript حدّه"),
+    "skip_parse": ("{url} could not be parsed as JavaScript", "تعذّر تحليل {url} بوصفه كود JavaScript"),
     "engine_error": ("the JavaScript analyser failed: {error}", "فشل محلل JavaScript: {error}"),
 }
 
@@ -154,7 +154,7 @@ _SINKS: tuple[tuple[str, re.Pattern], ...] = tuple((n, re.compile(p)) for n, p i
     ("location.href", r"\.href\s*=(?!=)"), ("location", r"\blocation\s*=(?!=)"), ("jQuery $()", r"(?:\$|jQuery)\s*\("),
 ))
 _NOT_REDIRECT = re.compile(r"\b(?:pushState|replaceState)\s*\(|\brouter\s*\.\s*(?:push|replace)\s*\(")
-_GENERIC_SINK = {"WEB520": ("an HTML/script sink", "نقطة إدراج HTML أو تنفيذ شيفرة"),
+_GENERIC_SINK = {"WEB520": ("an HTML/script sink", "نقطة إدراج HTML أو تنفيذ كود"),
                  "WEB521": ("a navigation sink", "نقطة توجيه")}
 
 

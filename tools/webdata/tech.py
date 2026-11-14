@@ -125,7 +125,7 @@ OWN: list[dict] = [
               admin("/admin/", "Moodle", [r"moodle", PASSWORD]),
               sensitive("/config-dist.php", "Moodle", {"all": [_sig("regex", r"\$CFG->(?:dbtype|dbhost|wwwroot)")]},
                         cwe="CWE-530", what_en="The Moodle configuration template is served as source code.",
-                        what_ar="قالب إعدادات Moodle يُقدَّم كشيفرة مصدرية.")]),
+                        what_ar="قالب إعدادات Moodle يُقدَّم بوصفه كودًا مصدريًا.")]),
     T("oracle-apex", "Oracle APEX", ["low-code"], [
         S("script", r"/i/(?:libraries/apex/|apex_)|/apex_[a-z_]+(?:\.min)?\.js", 60),
         S("script", r"/i/libraries/apex/[^?#]*\?v=" + V, 30, version="\\1"),
@@ -170,7 +170,7 @@ OWN: list[dict] = [
         deep=[admin("/administrator/", "Joomla!", [r"joomla|com_login|mod-login-username", PASSWORD]),
               sensitive("/configuration.php-dist", "Joomla!", {"all": [_sig("regex", r"class\s+JConfig")]},
                         cwe="CWE-530", what_en="The Joomla configuration template is served as source code.",
-                        what_ar="قالب إعدادات Joomla يُقدَّم كشيفرة مصدرية."),
+                        what_ar="قالب إعدادات Joomla يُقدَّم بوصفه كودًا مصدريًا."),
               sensitive("/README.txt", "Joomla!", {"all": [_sig("regex", r"Joomla!?.{0,40}\d+\.\d+", within=4096)],
                                                    "not_html": True},
                         cwe="CWE-200", what_en="The file reveals the exact Joomla version.",

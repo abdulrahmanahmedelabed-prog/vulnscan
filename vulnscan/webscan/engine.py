@@ -78,8 +78,8 @@ _PLATFORM_RULES = frozenset({"WEB080", "WEB081"})
 STR: dict[str, tuple[str, str]] = {
     "profile": ("Passive web scan, profile {profile}: {requests} sent, no active test.",
                 "فحص ويب سلبي بالملف {profile}: أُرسل {requests}، بلا أي اختبار نشط."),
-    "crawl": ("Crawled {pages} of the same site ({delay} s or more between requests to a host).",
-              "زحف الفحص على {pages} من الموقع نفسه (بفاصل {delay} ثانية على الأقل بين الطلبات إلى المضيف الواحد)."),
+    "crawl": ("Crawled {pages} of the same site ({delay} or more between requests to a host).",
+              "زحف الفحص على {pages} من الموقع نفسه (بفاصل {delay} على الأقل بين الطلبات إلى المضيف الواحد)."),
     "crawl_failed": ("{pages} could not be fetched during the crawl and were not checked: {paths}",
                      "تعذّر جلب {pages} أثناء الزحف فلم تُفحص: {paths}"),
     "coverage": ("Coverage: {summary}", "التغطية: {summary}"),
@@ -108,20 +108,40 @@ STR: dict[str, tuple[str, str]] = {
                    "لم يُفحص HTTPS: يستخدم الهدف منفذًا غير افتراضي، ولا يتصل كاشف بأي منفذ آخر"),
     "proxied": ("Scanning through a proxy: DNS checks are not tested and TLS is seen through the proxy.",
                 "يمر الفحص عبر وكيل (proxy): لم تُجرَ فحوص DNS، ويُرى TLS عبر الوكيل."),
+    "hidden": ("{findings} hidden at the {sensitivity} sensitivity ({by}); show them with --web-sensitivity paranoid",
+               "{findings} بحساسية {sensitivity} ({by})؛ لعرضها شغّل --web-sensitivity paranoid"),
+    "hidden_tls_proxied": ("{findings} of them are TLS findings made tentative because the scan went through a proxy",
+                           "منها {findings} عن TLS صارت مبدئية لأن الفحص مرّ عبر وكيل"),
+    "unreachable_tls": ("No page could be fetched, but the TLS handshake probes of {host} ran: {rules}",
+                        "تعذّر جلب أي صفحة، لكن مجسّات مصافحة TLS على {host} أُجريت: {rules}"),
 }
+_SEV_EN_AR = {"critical": ("critical", "حرجة"), "high": ("high", "عالية"), "medium": ("medium", "متوسطة"),
+              "low": ("low", "منخفضة"), "info": ("info", "معلوماتية")}
 # count phrases: key → (English singular, English plural, Arabic five forms)
 COUNT_FORMS: dict[str, tuple[str, str, tuple[str, str, str, str, str]]] = {
     "requests": ("{n} request", "{n} requests", ("طلب واحد", "طلبان", "{n} طلبات", "{n} طلبًا", "{n} طلب")),
     "pages": ("{n} page", "{n} pages", ("صفحة واحدة", "صفحتين", "{n} صفحات", "{n} صفحةً", "{n} صفحة")),
+    # after a preposition ("بفاصل …"): genitive dual
+    "seconds": ("{n} s", "{n} s", ("ثانية واحدة", "ثانيتين", "{n} ثوانٍ", "{n} ثانيةً", "{n} ثانية")),
+    "hidden": ("{n} finding", "{n} findings", ("نتيجة واحدة مخفية", "نتيجتان مخفيتان", "{n} نتائج مخفية",
+                                               "{n} نتيجةً مخفيةً", "{n} نتيجة مخفية")),
+    "hidden_tentative": ("{n} tentative finding", "{n} tentative findings",
+                         ("نتيجة مبدئية واحدة مخفية", "نتيجتان مبدئيتان مخفيتان", "{n} نتائج مبدئية مخفية",
+                          "{n} نتيجةً مبدئيةً مخفيةً", "{n} نتيجة مبدئية مخفية")),
 }
 
 
-def _count(key: str, n: int, lang: str) -> str:
+def _count(key: str, n: Any, lang: str) -> str:
+    """``n`` with the noun that agrees with it. A fractional ``n`` (a delay of 0.5 s) takes the Arabic singular
+    ("0.5 ثانية"), as :func:`vulnscan.i18n.plural.ar_count` does for any non-integer."""
     one, many, forms = COUNT_FORMS[key]
     if lang == "ar":
         from ..i18n.plural import ar_count   # lazy: vulnscan.i18n imports webscan modules through cat_web2
-        return ar_count(n, forms)
-    return (one if n == 1 else many).replace("{n}", str(n))
+        if isinstance(n, float) and n != int(n):
+            return forms[4].replace("{n}", f"{n:g}")
+        return ar_count(int(n) if isinstance(n, float) else n, forms)
+    shown = f"{n:g}" if isinstance(n, float) else str(n)
+    return (one if n == 1 else many).replace("{n}", shown)
 
 
 def text(key: str, lang: str = "en", **params: Any) -> str:
@@ -139,7 +159,26 @@ def pair(key: str, **params: Any) -> tuple[str, str]:
 # ----------------------------------------------------------------------------------------------- errors
 
 class WebUnreachable(Exception):
-    """The entry URL could not be fetched, so nothing was scanned. Never reported as a clean result."""
+    """The entry URL could not be fetched, so nothing was scanned. Never reported as a clean result.
+
+    Structured facts for the callers (so no caller parses the message): ``code`` (the fetcher's error code, e.g.
+    ``tls``, ``timeout``, ``proxy_refused``, ``proxy_unreachable``, ``proxy_reset``), ``proxy`` (the display of the proxy
+    the request went through, "" when none), ``proxy_status`` (the HTTP status a proxy refused the tunnel with),
+    ``error`` (the raw error text), and for an https target whose handshake failed even as a legacy client:
+    ``findings`` (the TLS findings of the raw ClientHello probes, ``model.Finding``), ``tls`` (their inventory) and
+    ``notes`` (``[(en, ar)]``)."""
+
+    def __init__(self, message: str = "", *, code: str = "", proxy: str = "", proxy_status: int | None = None,
+                 error: str = "", url: str = ""):
+        super().__init__(message)
+        self.code = code
+        self.proxy = proxy
+        self.proxy_status = proxy_status
+        self.error = error
+        self.url = url
+        self.findings: list = []
+        self.tls: dict = {}
+        self.notes: list[tuple[str, str]] = []
 
 
 def _explain(err: str, url: str, timeout: float) -> str:
@@ -504,6 +543,16 @@ def _resolve_referenced(run: _Run) -> None:
             fetcher.lookup_registrable(h, purpose="referenced")
 
 
+def crawl_pages(max_pages: Any) -> int:
+    """``--max-pages`` clamped to the crawl's hard cap (``http.CRAWL_HARD_CAP``): what the crawl and every note use."""
+    from .http import CRAWL_HARD_CAP
+    try:
+        n = int(max_pages)
+    except (TypeError, ValueError):
+        n = 20
+    return max(1, min(n, CRAWL_HARD_CAP))
+
+
 def _crawl(run: _Run, seeds: Iterable[str]) -> None:
     from . import classify
     from .group import CrawlPlanner
@@ -514,7 +563,7 @@ def _crawl(run: _Run, seeds: Iterable[str]) -> None:
     if not _received(entry):
         return
     origin = url_origin(entry.url)
-    limit = max(0, min(int(opts.max_pages), 500) - 1)        # the entry page counts as one page (1.0.1 semantics)
+    limit = max(0, crawl_pages(opts.max_pages) - 1)        # the entry page counts as one page (1.0.1 semantics)
     planner = CrawlPlanner()
     seen = {urllib.parse.urldefrag(entry.url)[0], urllib.parse.urldefrag(ctx.target)[0]}
     for h in entry.hops():
@@ -985,7 +1034,7 @@ def _pipeline(run: _Run, step: Callable[[str], None], *, previous: dict | None, 
     step("entry")
     entry = fetcher.fetch(ctx.target, source="entry")
     if not any(h.status is not None for h in entry.hops()):
-        raise WebUnreachable(_explain(entry.error or "no response", ctx.target, opts.timeout))
+        raise _unreachable(run, entry)
     ctx.entry = entry
     first = _page(entry, 0)
     if first.doc is not None:
@@ -997,8 +1046,9 @@ def _pipeline(run: _Run, step: Callable[[str], None], *, previous: dict | None, 
         run.note("blocked", what=what)
     if _received(entry) and not _same_site(entry.host, ctx.target_host):
         run.note("offsite", host=entry.host)
-    if ctx.proxied:
-        run.note("proxied")
+    if ctx.proxied and not any(isinstance(ev, dict) and ev.get("code") == "proxied"
+                               for ev in getattr(fetcher, "events", None) or []):
+        run.note("proxied")          # the fetcher's own note (with the proxy's address) is shown otherwise: once only
     crawl_seed: list[str] = []
     # -- step 3: standard and deep
     if opts.profile != "minimal" and not run.blocked:
@@ -1072,6 +1122,65 @@ def _pipeline(run: _Run, step: Callable[[str], None], *, previous: dict | None, 
     return _result(run, findings, result, grades, snapshot, diff_out)
 
 
+def _unreachable(run: _Run, entry: Response) -> WebUnreachable:
+    """The exception for an entry chain that never got a response. When an https handshake failed even as a legacy
+    client, the raw ClientHello probes of tls/ still run first (they only send ClientHellos, like any client), so the
+    findings that explain the failure (TLS 1.0 only, NULL suites only …) are not lost."""
+    from . import group
+    from . import tls as _tls
+    from .http import error_code, proxy_of, proxy_status
+    ctx, opts = run.ctx, run.ctx.options
+    last = entry.hops()[-1] if entry.hops() else entry
+    code = error_code(last)
+    exc = WebUnreachable(_explain(last.error or entry.error or "no response", ctx.target, opts.timeout), code=code,
+                         proxy=proxy_of(last), proxy_status=proxy_status(last), error=cap(last.error or "", 500),
+                         url=last.url)
+    if code != "tls" or not last.url.lower().startswith("https://") or proxy_of(last):
+        return exc
+    ctx.entry = entry
+    try:
+        _tls.collect(ctx)
+        issues = [i for i in (_coerce(run, i) for i in _tls.run(ctx)) if i is not None]
+        res = group.process(issues, ctx)
+        exc.findings = to_findings(res.groups)
+        exc.tls = dict(ctx.inventory.get("tls") or {}) if isinstance(ctx.inventory, dict) else {}
+    except Exception:   # noqa: BLE001 - the probes are a bonus here; the scan is unreachable either way
+        if _debug():
+            raise
+        return exc
+    if exc.findings:
+        host = urllib.parse.urlsplit(last.url).hostname or ""
+        ids = list(dict.fromkeys(f.rule_id for f in exc.findings))
+        exc.notes.append(pair("unreachable_tls", host=host, rules=(", ".join(ids), "، ".join(ids))))
+    return exc
+
+
+def hidden_by_sensitivity(gres: Any, ctx: ScanContext) -> dict:
+    """Groups hidden by the sensitivity filter (all instances below it), per severity, with the bilingual line the CLI
+    and the report show ("3 tentative findings hidden at the default sensitivity (1 medium); show them with
+    --web-sensitivity paranoid"). ``tls_proxied``: how many of them are TLS findings made tentative by a proxy."""
+    hidden = list(getattr(gres, "hidden", None) or [])
+    by: dict[str, int] = {}
+    for g in hidden:
+        by[g.severity] = by.get(g.severity, 0) + 1
+    by = {s: by[s] for s in SEVERITIES if s in by}
+    tls_proxied = sum(1 for g in hidden if RULES.get(g.rule) is not None and RULES[g.rule].module == "tls") \
+        if getattr(ctx, "proxied", False) else 0
+    out: dict[str, Any] = {"total": len(hidden), "by_severity": by, "tls_proxied": tls_proxied}
+    if hidden:
+        sens = ctx.options.sensitivity
+        key = "hidden_tentative" if sens == "default" else "hidden"
+        parts_en = ", ".join(f"{n} {_SEV_EN_AR[s][0]}" for s, n in by.items())
+        parts_ar = "، ".join(f"{_SEV_EN_AR[s][1]}: {n}" for s, n in by.items())
+        en, ar = pair("hidden", findings=(_count(key, len(hidden), "en"), _count(key, len(hidden), "ar")),
+                      sensitivity=sens, by=(parts_en, parts_ar))
+        if tls_proxied:
+            en2, ar2 = pair("hidden_tls_proxied", findings=(str(tls_proxied), str(tls_proxied)))
+            en, ar = f"{en}. {en2}", f"{ar}. {ar2}"
+        out["en"], out["ar"] = en, ar
+    return out
+
+
 _UNREADABLE = frozenset({"too_many_headers", "header_too_large", "bad_response"})
 
 
@@ -1117,9 +1226,11 @@ def _result(run: _Run, findings: list, gres: Any, grades: dict, snapshot: dict, 
                                      text("profile", "ar", profile=opts.profile,
                                           requests=_count("requests", requests, "ar")))]
     if opts.crawl:
-        pages = 1 + run.crawl_fetched
-        notes.append((text("crawl", "en", pages=_count("pages", pages, "en"), delay=f"{max(opts.delay, 0.2):g}"),
-                      text("crawl", "ar", pages=_count("pages", pages, "ar"), delay=f"{max(opts.delay, 0.2):g}")))
+        pages = min(1 + run.crawl_fetched, crawl_pages(opts.max_pages))
+        delay = max(float(opts.delay), 0.2)
+        delay_n: Any = int(delay) if delay == int(delay) else delay
+        notes.append((text("crawl", "en", pages=_count("pages", pages, "en"), delay=_count("seconds", delay_n, "en")),
+                      text("crawl", "ar", pages=_count("pages", pages, "ar"), delay=_count("seconds", delay_n, "ar"))))
     notes.extend(run.notes)
     notes.extend(_unreadable_notes(ctx))
     for ev in getattr(fetcher, "events", None) or []:
@@ -1152,6 +1263,7 @@ def _result(run: _Run, findings: list, gres: Any, grades: dict, snapshot: dict, 
     inv["crawl_fetched"] = run.crawl_fetched
     inv["crawl_failed"] = [cap(u, 2000) for u in run.crawl_failed]
     inv["hidden_groups"] = len(gres.hidden)
+    inv["hidden_by_sensitivity"] = hidden_by_sensitivity(gres, ctx)
     inv["coverage_summary"] = {"en": cov.summary("en"), "ar": cov.summary("ar")}
     inv["coverage_reasons"] = {"en": cov.reasons("en"), "ar": cov.reasons("ar")}
     inv["redirect_chain"] = [{"url": h.url, "status": h.status, "location": cap(h.headers.first("location"), 2000)}
@@ -1168,7 +1280,8 @@ def _result(run: _Run, findings: list, gres: Any, grades: dict, snapshot: dict, 
     return WebScanResult(target=ctx.target, findings=findings, grades=grades, coverage=cov.to_dict(), inventory=inv,
                          notes=[ar for _en, ar in notes], snapshot=snapshot, diff=diff_out,
                          final_url=ctx.entry.url if ctx.entry is not None else "", profile=opts.profile,
-                         requests=requests, bytes_received=int(stats.get("bytes", 0) or 0), data_date=data_date)
+                         requests=requests, bytes_received=int(stats.get("bytes", 0) or 0), data_date=data_date,
+                         hidden_by_sensitivity=inv["hidden_by_sensitivity"])
 
 
 # ----------------------------------------------------------------------------------------------- offline analysis
@@ -1236,4 +1349,5 @@ def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
 
 
 __all__ = ["CHECK_MODULES", "SKIP_LINK", "STR", "COUNT_FORMS", "WebUnreachable", "scan", "to_findings",
+           "hidden_by_sensitivity", "crawl_pages",
            "analyze_responses", "i18n_catalog", "text", "pair"]

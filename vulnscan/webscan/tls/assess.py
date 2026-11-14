@@ -41,7 +41,9 @@ NOT_ANCHORED = frozenset({2, 18, 19, 20, 21})
 SECLEVEL_CODES = frozenset({66, 67, 68})
 # failures that only VERIFY_X509_STRICT raises (Kashif clears that flag for browser parity, D19): informational
 STRICT_ONLY = frozenset({79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92})
-MAPPED = frozenset({CODE_HOSTNAME, CODE_EXPIRED, CODE_NOT_YET}) | NOT_ANCHORED | SECLEVEL_CODES | STRICT_ONLY
+# verify codes another rule reports (WEB700, WEB070, WEB720, WEB701/WEB702): WEB072 is not raised for them. The security-
+# level codes are not here: a SHA-1 or weak-key chain is rejected by browsers, so it is a WEB072 failure (§2.8, T grade)
+MAPPED = frozenset({CODE_HOSTNAME, CODE_EXPIRED, CODE_NOT_YET}) | NOT_ANCHORED | STRICT_ONLY
 
 CLOCK_SKEW = timedelta(minutes=5)
 CT_STALE_DAYS = 120
@@ -76,6 +78,13 @@ STR: dict[str, tuple[str, str]] = {
     "no_verify": ("the verified handshake did not complete", "لم تكتمل المصافحة مع التحقق"),
     "seclevel": ("trust judged with weak keys and digests allowed (they are reported by WEB707/WEB708)",
                  "قُيّمت الثقة مع السماح بالمفاتيح والخوارزميات الضعيفة (يُبلَّغ عنها في WEB707 وWEB708)"),
+    "browser_reject": ("rejected by browsers: SHA-1 or weak key in chain (verify code {code}); the chain itself is "
+                       "otherwise trusted",
+                       "ترفضها المتصفحات: SHA-1 أو مفتاح ضعيف في السلسلة (رمز التحقق {code})؛ والسلسلة موثوقة فيما عدا ذلك"),
+    "dh_unmeasured": ("key exchange strength not measured (DHE offered; run --web-profile deep)",
+                      "لم تُقَس قوة تبادل المفاتيح (الخادم يعرض DHE؛ شغّل --web-profile deep)"),
+    "trust_cap": ("certificate not trusted: {why}", "الشهادة غير موثوقة: {why}"),
+    "mismatch_cap": ("certificate does not match the host name (WEB700)", "الشهادة لا تطابق اسم المضيف (WEB700)"),
     "strict_only": ("only Python's strict X.509 mode rejects this certificate (code {code}: {message}); browsers accept it",
                     "يرفض وضع X.509 الصارم في Python وحده هذه الشهادة (الرمز {code}: {message})؛ والمتصفحات تقبلها"),
     "no_handshake": ("no protocol version could be confirmed (every hello was refused)",
@@ -161,10 +170,10 @@ STR: dict[str, tuple[str, str]] = {
     "modern_ok": ("conforms to the Mozilla modern profile", "مطابق لملف Mozilla الحديث"),
     "intermediate_ok": ("conforms to the Mozilla intermediate profile", "مطابق لملف Mozilla المتوسط"),
     "pq_missing": ("X25519MLKEM768 is not accepted", "لا يُقبل X25519MLKEM768"),
-    "ssllabs_label": ("SSL Labs-compatible, excluding attack-only tests (Heartbleed, ROBOT, padding oracles, …), which "
-                      "Kashif does not perform",
-                      "متوافق مع SSL Labs، باستثناء اختبارات الهجوم (Heartbleed وROBOT وpadding oracles وغيرها) التي لا "
-                      "يجريها كاشف"),
+    "ssllabs_label": ("SSL Labs-compatible, excluding attack-only tests (Heartbleed, ROBOT, padding oracles, …) and "
+                      "certificate revocation (CRL/OCSP), which Kashif does not perform",
+                      "متوافق مع SSL Labs، باستثناء اختبارات الهجوم (Heartbleed وROBOT وpadding oracles وغيرها) والتحقق "
+                      "من إلغاء الشهادة (CRL/OCSP)، وهي لا يجريها كاشف"),
 }
 
 DIFF_WHAT = {"protocols": ("protocol versions", "إصدارات البروتوكول"), "suites": ("cipher-suite categories", "فئات مجموعات التشفير"),
@@ -243,13 +252,26 @@ class _Ip:
 
 
 def _trust(iprep: dict) -> dict:
-    """The verified-handshake result that decides trust (the security-level-0 retry when the first one failed only
-    because of a weak key or digest, or could not negotiate a protocol)."""
+    """The verified-handshake result that decides *chain* trust (the security-level-0 retry when the first one failed
+    only because of a weak key or digest, or could not negotiate a protocol). ``_browser_code`` keeps the security-level
+    code of the default handshake: browsers reject that chain, whatever the retry says (WEB072, SSL Labs T)."""
     ver = iprep.get("verified") or {}
     leg = iprep.get("verified_legacy") or {}
     if leg and leg.get("ok") is not None and (ver.get("verify_code") in SECLEVEL_CODES or ver.get("ok") is None):
-        return {**leg, "_seclevel": True}
+        out = {**leg, "_seclevel": True}
+        if ver.get("verify_code") in SECLEVEL_CODES:
+            out["_browser_code"] = ver.get("verify_code")
+            out["_browser_message"] = ver.get("verify_message") or ""
+        return out
+    if ver.get("verify_code") in SECLEVEL_CODES:
+        return {**ver, "_browser_code": ver.get("verify_code"), "_browser_message": ver.get("verify_message") or ""}
     return ver
+
+
+def browser_rejection(trust: dict) -> int | None:
+    """The OpenSSL security-level code (66/67/68) for which browsers reject this chain, or None."""
+    code = trust.get("_browser_code")
+    return code if code in SECLEVEL_CODES else None
 
 
 def _chain(iprep: dict) -> list[x509.Certificate]:
@@ -498,6 +520,7 @@ def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificat
     leaf = chain[0]
     tentative = "tentative" if proxied else None
     msg = str(trust.get("verify_message") or "")[:200]
+    rejected = browser_rejection(trust)
     if ok is None:
         detail = _t("no_verify")
         if leaf.self_issued:
@@ -508,8 +531,14 @@ def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificat
         out.state("WEB702", "not_tested", "network", detail)
         out.state("WEB072", "not_tested", "network", detail)
         return
-    # WEB072: verify failures that no specific rule explains
-    if ok is True:
+    # WEB072: verify failures that no specific rule explains, and chains browsers reject for a SHA-1 or weak key
+    # (the security-level-0 retry decides only whether the rest of the chain is trusted)
+    from ..http import verify_text
+    if rejected is not None:
+        bmsg = str(trust.get("_browser_message") or "")[:200]
+        out.fail("WEB072", "high", group=f"code{rejected}", name="verify", value=verify_text(rejected, bmsg)[0],
+                 notes=[_t("browser_reject", code=rejected)] + seclevel_note)
+    elif ok is True:
         out.state("WEB072", "pass")
     elif code in STRICT_ONLY:
         out.state("WEB072", "pass")
@@ -517,7 +546,9 @@ def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificat
     elif code in MAPPED:
         out.state("WEB072", "pass")
     else:
-        out.fail("WEB072", "high", group=f"code{code}", name="verify", value=f"{code}: {msg}", notes=seclevel_note)
+        text = verify_text(code, msg)
+        out.fail("WEB072", "high", group=f"code{code}", name="verify", value=text[0],
+                 notes=[text] + seclevel_note)
     # WEB701: not publicly trusted
     sent_ca = [c for c in chain[1:] if c.is_ca and not c.self_issued]
     if code in (CODE_SELF_SIGNED, CODE_SELF_SIGNED_IN_CHAIN):
@@ -531,11 +562,11 @@ def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificat
         out.fail("WEB701", "high", confidence="tentative", group="unknown_issuer", name="issuer", value=leaf.issuer,
                  notes=[_t("incomplete_or_private", issuer=leaf.issuer), STR["private_policy"]] + seclevel_note)
     elif code in CODE_NO_ISSUER:
-        out.state("WEB701", "not_tested", "network", _t("chain_unknown"))
+        out.state("WEB701", "not_tested", "precondition", _t("chain_unknown"))
     elif anchored:
         out.state("WEB701", "pass")
     else:
-        out.state("WEB701", "not_tested", "network", _t("chain_unknown"))
+        out.state("WEB701", "not_tested", "precondition", _t("chain_unknown"))
     # WEB702: incomplete chain
     conf702 = "tentative" if proxied else "firm"
     if code in CODE_NO_ISSUER and not sent_ca and not leaf.self_issued and not private_hint:
@@ -563,9 +594,10 @@ def _trust_rules(out: _Ip, iprep: dict, trust: dict, chain: list[x509.Certificat
             else:
                 out.state("WEB702", "pass")
     elif code in CODE_NO_ISSUER:
-        out.state("WEB702", "not_tested", "network", _t("chain_unknown"))
+        out.state("WEB702", "not_tested", "precondition", _t("chain_unknown"))
     else:
-        out.state("WEB702", "not_tested", "network", _t("chain_unknown"))
+        # another certificate check failed first (expired, name, signature …): completeness cannot be judged
+        out.state("WEB702", "not_tested", "precondition", _t("chain_unknown"))
 
 
 _WS = re.compile(r"\s+")
@@ -693,9 +725,21 @@ def _ct(out: _Ip, iprep: dict, leaf: x509.Certificate, public: bool, test_ca: di
                        need=_count(need, "scts"))] + notes)
 
 
+# coverage pseudo-check for revocation: a passive scan never contacts the CA (CRL/OCSP), so revocation is known
+# only from a stapled OCSP response; without one it is recorded as not checked (never as a pass)
+REVOCATION_CHECK = "WEB714-revocation"
+
+
+def _variant(rule: str, name: str) -> dict:
+    """``{"variant": name}`` when the registry knows that variant of ``rule`` (else no variant: the base title)."""
+    return {"variant": name} if name in (rules.RULES[rule].variants or {}) else {}
+
+
 def _ocsp(out: _Ip, iprep: dict, leaf: x509.Certificate, now) -> None:
     o = iprep.get("ocsp") or {}
     state = o.get("state")
+    if not (state == "stapled" and o.get("der")):
+        out.state(REVOCATION_CHECK, "not_tested", "revocation")
     if state == "stapled" and o.get("der"):
         try:
             resp = x509.parse_ocsp_response(_b64d(o["der"]))
@@ -703,10 +747,11 @@ def _ocsp(out: _Ip, iprep: dict, leaf: x509.Certificate, now) -> None:
             out.state("WEB714", "not_tested", "error")      # an unreadable staple proves nothing either way
             return
         if resp.status == 0 and resp.cert_status == "revoked":
-            out.fail("WEB714", "high", group="revoked", notes=[STR["revoked"]], name="ocsp", value="revoked")
+            out.fail("WEB714", "high", group="revoked", notes=[STR["revoked"]], name="ocsp", value="revoked",
+                     params=_variant("WEB714", "revoked"))
         elif resp.next_update is not None and resp.next_update < now:
             out.fail("WEB714", "medium", group="expired", notes=[_t("staple_expired", date=x509._iso(resp.next_update))],
-                     name="ocsp", value=x509._iso(resp.next_update) or "")
+                     name="ocsp", value=x509._iso(resp.next_update) or "", params=_variant("WEB714", "expired"))
         else:
             out.state("WEB714", "pass")
         return
@@ -757,11 +802,12 @@ def _protocols(out: _Ip, iprep: dict, opts) -> None:
     # WEB705 missing TLS 1.2 / 1.3
     s12, s13 = _version_state(iprep, "TLSv1.2"), _version_state(iprep, "TLSv1.3")
     if s12 == "no" and s13 == "no":
-        out.fail("WEB705", "high", group="no12no13", params={"versions": "TLS 1.2, TLS 1.3"}, name="protocol",
-                 value="TLS 1.2 and TLS 1.3 refused")
+        out.fail("WEB705", "high", group="no12no13", params={"versions": ["TLS 1.2", "TLS 1.3"],
+                                                             **_variant("WEB705", "no12no13")},
+                 name="protocol", value="TLS 1.2 and TLS 1.3 refused")
     elif s13 == "no" and s12 == "yes":
-        out.fail("WEB705", "low", group="no13", params={"versions": "TLS 1.3"}, name="protocol", value="TLS 1.3 refused",
-                 flag="-tls1_3")
+        out.fail("WEB705", "low", group="no13", params={"versions": ["TLS 1.3"]}, name="protocol",
+                 value="TLS 1.3 refused", flag="-tls1_3")
     elif "yes" in (s12, s13) and s13 == "yes":
         out.state("WEB705", "pass")
     else:
@@ -996,6 +1042,8 @@ def _mozilla(out: _Ip, iprep: dict, leaf: x509.Certificate | None, profiles: dic
     if devs:
         out.fail("WEB718", "info", group="intermediate", notes=devs, name="mozilla",
                  value="; ".join(d[0] for d in devs)[:300])
+    elif dh_unmeasured(iprep):
+        out.state("WEB718", "not_tested", "dh_unmeasured")     # the DH size decides conformance and was not read
     elif complete:
         out.state("WEB718", "pass")
     else:
@@ -1024,6 +1072,57 @@ def _cipher_score(bits: int) -> int:
     if bits < 256:
         return 80
     return 100
+
+
+def dhe_offered(iprep: dict) -> bool:
+    """True when a DHE suite was negotiated by any handshake or probe of this IP."""
+    names = list((iprep.get("chosen") or {}).values()) + [r.get("cipher") for r in (iprep.get("categories") or {}).values()
+                                                          if r.get("state") == "yes"]
+    for key in ("verified", "verified_legacy", "unverified"):
+        names.append((iprep.get(key) or {}).get("cipher"))
+    for n in names:
+        if not n:
+            continue
+        s = str(n)
+        if s.startswith(("DHE-", "EDH-")) or "_DHE_" in s:
+            return True
+        cid = _suite_id(s)
+        if cid is not None and cid in raw.SUITES and raw.SUITES[cid].kex == "DHE":
+            return True
+    return False
+
+
+def dh_unmeasured(iprep: dict) -> bool:
+    """A DHE suite is accepted but its group size was not read (standard profile: only --web-profile deep sends the
+    DHE-only probe whose ServerKeyExchange carries the prime)."""
+    return dhe_offered(iprep) and not (iprep.get("deep") or {}).get("dh_bits")
+
+
+def _trust_failure(leaf: x509.Certificate, trust: dict, now, host: str) -> tuple[str, tuple[str, str]] | None:
+    """``(T or M, (en, ar) reason)`` when the certificate makes SSL Labs grade the server T (not trusted) or M (name
+    mismatch), else None."""
+    from ..http import verify_text
+    code, ok = trust.get("verify_code"), trust.get("ok")
+    rejected = browser_rejection(trust)
+    if leaf.not_after < now:
+        why = verify_text(CODE_EXPIRED)
+        return "T", (f"{why[0]} (WEB070)", f"{why[1]} (WEB070)")
+    if leaf.not_before > now + CLOCK_SKEW:
+        why = verify_text(CODE_NOT_YET)
+        return "T", (f"{why[0]} (WEB720)", f"{why[1]} (WEB720)")
+    if rejected is not None:
+        why = verify_text(rejected)
+        return "T", (f"{why[0]} (WEB072)", f"{why[1]} (WEB072)")
+    if leaf.sig_hash == "sha1":
+        return "T", ("SHA-1 certificate signature (WEB708)", "توقيع الشهادة بـ SHA-1 (WEB708)")
+    if ok is False and code not in (CODE_HOSTNAME,) and code not in STRICT_ONLY:
+        why = verify_text(code)
+        rule = "WEB701" if code in NOT_ANCHORED else "WEB072"
+        return "T", (f"{why[0]} ({rule})", f"{why[1]} ({rule})")
+    mismatch = code == CODE_HOSTNAME if ok is False else (ok is not True and not x509.host_matches(leaf, host))
+    if mismatch:
+        return "M", STR["mismatch_cap"]
+    return None
 
 
 def ssllabs_ip(iprep: dict, now, *, hsts: Any = None, host: str = "") -> dict:
@@ -1119,30 +1218,34 @@ def ssllabs_ip(iprep: dict, now, *, hsts: Any = None, host: str = "") -> dict:
         cap("B", "no AEAD suites", "لا مجموعات AEAD")
     if "TLSv1.3" not in yes:
         cap("A-", "no TLS 1.3", "لا يدعم TLS 1.3")
-    if hsts is not None and not getattr(hsts, "effective", False):
+    # certificate problems: SSL Labs' T (trust) or M (mismatch), named first among the caps
+    failure = _trust_failure(leaf, trust, now, host) if leaf is not None else None
+    special = failure[0] if failure else None
+    # HSTS is judged only on a host whose certificate is valid (browsers ignore it otherwise, group.by_cert)
+    hsts_judged = hsts is not None and not getattr(hsts, "cert_error", False) and special is None
+    if hsts_judged and not getattr(hsts, "effective", False):
         cap("A-", "HSTS missing or invalid", "HSTS مفقود أو غير صالح")
     order = ["F", "E", "D", "C", "B", "A-", "A", "A+"]
     final = letter
     for lim, _en, _ar in caps:
         if order.index(lim) < order.index(final):
             final = lim
-    # certificate problems: score 0 and SSL Labs' T (trust) or M (mismatch)
-    special = None
-    if leaf is not None:
-        code, ok = trust.get("verify_code"), trust.get("ok")
-        if leaf.sig_hash == "sha1" or (ok is False and code not in (CODE_HOSTNAME,) and code not in STRICT_ONLY):
-            special = "T"
-        if leaf.not_after < now or leaf.not_before > now + CLOCK_SKEW:
-            special = "T"
-        mismatch = code == CODE_HOSTNAME if ok is False else (ok is not True and not x509.host_matches(leaf, host))
-        if special is None and mismatch:
-            special = "M"
-    if special is None and final == "A" and not caps and hsts is not None and \
+    notes: list[list[str]] = []
+    if dh_unmeasured(iprep):
+        provisional = True
+        notes.append(list(STR["dh_unmeasured"]))
+    if failure is not None:
+        en, ar = _t("trust_cap", why=failure[1]) if special == "T" else failure[1]
+        caps.insert(0, (special, en, ar))
+    if special is None and final == "A" and not caps and hsts_judged and \
             (getattr(hsts, "max_age", 0) or 0) >= 15_552_000 and getattr(hsts, "effective", False):
         final = "A+"
-    return {"grade": special or final, "grade_if_trusted": final, "score": score,
-            "subscores": {"protocol": proto, "key_exchange": kex, "cipher": cipher}, "provisional": provisional,
-            "caps": [{"cap": c[0], "en": c[1], "ar": c[2]} for c in caps], "label": list(STR["ssllabs_label"])}
+    out = {"grade": special or final, "grade_if_trusted": final, "score": score,
+           "subscores": {"protocol": proto, "key_exchange": kex, "cipher": cipher}, "provisional": provisional,
+           "caps": [{"cap": c[0], "en": c[1], "ar": c[2]} for c in caps], "label": list(STR["ssllabs_label"])}
+    if notes:
+        out["notes"] = [{"en": n[0], "ar": n[1]} for n in notes]
+    return out
 
 
 def ssllabs_grade(ctx: Any) -> dict | None:

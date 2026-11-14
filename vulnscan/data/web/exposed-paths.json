@@ -36,7 +36,7 @@
    "title_en": "Exposed Git repository (.git/HEAD)",
    "title_ar": "مستودع Git مكشوف (.git/HEAD)",
    "advice_en": "Deny access to /.git/ on the web server (or deploy without it); the repository can reveal the full source code and its history.",
-   "advice_ar": "امنع الوصول إلى المجلد /.git/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الشيفرة المصدرية كاملة وتاريخها."
+   "advice_ar": "امنع الوصول إلى المجلد /.git/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الكود المصدري كاملًا وتاريخه."
   },
   {
    "path": "/.git/config",
@@ -93,7 +93,7 @@
    "title_en": "Exposed Subversion metadata (.svn/entries)",
    "title_ar": "بيانات Subversion الوصفية مكشوفة (.svn/entries)",
    "advice_en": "Deny access to /.svn/ on the web server (or deploy without it); the repository can reveal the full source code and its history.",
-   "advice_ar": "امنع الوصول إلى المجلد /.svn/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الشيفرة المصدرية كاملة وتاريخها."
+   "advice_ar": "امنع الوصول إلى المجلد /.svn/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الكود المصدري كاملًا وتاريخه."
   },
   {
    "path": "/.svn/wc.db",
@@ -118,7 +118,7 @@
    "title_en": "Exposed Subversion working-copy database (.svn/wc.db)",
    "title_ar": "قاعدة بيانات نسخة العمل في Subversion مكشوفة (.svn/wc.db)",
    "advice_en": "Deny access to /.svn/ on the web server (or deploy without it); the repository can reveal the full source code and its history.",
-   "advice_ar": "امنع الوصول إلى المجلد /.svn/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الشيفرة المصدرية كاملة وتاريخها."
+   "advice_ar": "امنع الوصول إلى المجلد /.svn/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الكود المصدري كاملًا وتاريخه."
   },
   {
    "path": "/.hg/requires",
@@ -149,7 +149,7 @@
    "title_en": "Exposed Mercurial repository (.hg/requires)",
    "title_ar": "مستودع Mercurial مكشوف (.hg/requires)",
    "advice_en": "Deny access to /.hg/ on the web server (or deploy without it); the repository can reveal the full source code and its history.",
-   "advice_ar": "امنع الوصول إلى المجلد /.hg/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الشيفرة المصدرية كاملة وتاريخها."
+   "advice_ar": "امنع الوصول إلى المجلد /.hg/ في خادم الويب (أو انشر الموقع بدونه)؛ فالمستودع قد يكشف الكود المصدري كاملًا وتاريخه."
   },
   {
    "path": "/.DS_Store",

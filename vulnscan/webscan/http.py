@@ -55,6 +55,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+import warnings
 import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -62,7 +63,7 @@ from typing import Any, Callable
 
 from . import psl
 from .types import (ACCEPT_DOCUMENT, ACCEPT_ENCODING, ACCEPT_LANGUAGE, ACCEPT_PROBE, CORS_PROBE_ORIGIN, PROFILES,
-                    DnsRecord, HeaderList, Response, ScanOptions, normalise_host, safe_url, user_agent)
+                    DnsRecord, HeaderList, Response, ScanOptions, normalise_host, safe_url, strip_controls, user_agent)
 
 # ----------------------------------------------------------------------------------------------- constants
 
@@ -109,7 +110,8 @@ ENV_CAFILE = "KASHIF_TEST_CAFILE"
 ERROR_CODES = {
     "scheme": "network", "bad_url": "network", "dns": "network", "timeout": "timeout", "deadline": "timeout",
     "refused": "network", "reset": "network", "unreachable": "network", "network": "network", "tls": "network",
-    "proxy": "network", "too_many_headers": "network", "header_too_large": "network", "bad_response": "network",
+    "proxy": "network", "proxy_refused": "network", "proxy_unreachable": "network", "proxy_reset": "network",
+    "too_many_headers": "network", "header_too_large": "network", "bad_response": "network",
     "ssrf": "network", "budget": "budget", "time_budget": "time_budget", "byte_budget": "byte_budget",
     "host_stopped": "rate_limited", "profile": "profile", "robots": "robots", "port": "network",
 }
@@ -138,6 +140,10 @@ EVENTS: dict[str, tuple[str, str]] = {
     "cert_error": ("The TLS certificate of {host} did not validate ({message}); its responses were read over an "
                    "unverified connection, as evidence only.",
                    "لم تجتز شهادة TLS الخاصة بـ {host} التحقق ({message})؛ فقُرئت استجاباته عبر اتصال غير موثَّق للاستدلال فقط."),
+    "legacy_tls": ("{host} completed no TLS handshake with a modern client ({message}); its responses were read over a "
+                   "legacy, unverified TLS connection (the same handshake an old browser sends), as evidence only.",
+                   "لم يُتمّ {host} مصافحة TLS مع عميل حديث ({message})؛ فقُرئت استجاباته عبر اتصال TLS قديم غير موثَّق "
+                   "(المصافحة نفسها التي يرسلها متصفح قديم) للاستدلال فقط."),
     "truncated": ("The response from {url} was larger than the size cap ({cap} bytes) and was cut.",
                   "الاستجابة من {url} أكبر من الحد المسموح ({cap} بايت) فقُطعت."),
     "deadline": ("{url} did not finish within the per-response deadline ({seconds} s); the response was cut.",
@@ -154,6 +160,53 @@ EVENTS: dict[str, tuple[str, str]] = {
     "proxied": ("Scanning through the proxy {proxy}; DNS checks are not tested and TLS is seen through the proxy.",
                 "يمر الفحص عبر الوكيل {proxy}؛ فلم تُجرَ فحوص DNS، ويُرى TLS عبر الوكيل."),
 }
+
+
+# common OpenSSL X509 verify codes -> (English, Arabic); the raw OpenSSL wording follows in an LTR isolate
+VERIFY_TEXT: dict[int, tuple[str, str]] = {
+    9: ("the certificate is not yet valid", "الشهادة لم تدخل فترة صلاحيتها بعد"),
+    10: ("the certificate has expired", "الشهادة منتهية الصلاحية"),
+    18: ("self-signed certificate", "شهادة موقَّعة ذاتيًا"),
+    19: ("self-signed certificate in the chain (untrusted root)", "شهادة موقَّعة ذاتيًا في السلسلة (جذر غير موثوق)"),
+    20: ("the issuer is unknown (incomplete chain or untrusted CA)",
+         "جهة الإصدار غير معروفة (سلسلة ناقصة أو جهة إصدار غير موثوقة)"),
+    21: ("the certificate chain cannot be verified (incomplete chain)", "تعذّر التحقق من سلسلة الشهادات (سلسلة ناقصة)"),
+    62: ("the certificate does not match the host name", "الشهادة لا تطابق اسم المضيف"),
+    66: ("the certificate key is too weak for browsers", "مفتاح الشهادة أضعف مما تقبله المتصفحات"),
+    67: ("a CA key in the chain is too weak for browsers", "مفتاح إحدى جهات الإصدار في السلسلة أضعف مما تقبله المتصفحات"),
+    68: ("rejected by browsers: SHA-1 or weak key in chain", "ترفضها المتصفحات: SHA-1 أو مفتاح ضعيف في السلسلة"),
+}
+
+
+def verify_text(code: "int | None", raw: str = "") -> tuple[str, str]:
+    """``(en, ar)`` description of an OpenSSL verify result: the plain-language meaning of a common code, then the
+    raw OpenSSL message and code, which in Arabic sits inside an LTR isolate so its words keep their order."""
+    from .types import LRI, PDI
+    raw = strip_controls(str(raw or "")).strip()[:160]
+    if raw and code is not None:
+        tail = f"{raw}, verify code {code}"
+    else:
+        tail = raw or (f"verify code {code}" if code is not None else "")
+    known = VERIFY_TEXT.get(code) if isinstance(code, int) else None
+    if known is None:
+        return (tail or "verification failed", (LRI + tail + PDI) if tail else "فشل التحقق")
+    if not tail:
+        return known
+    return f"{known[0]} ({tail})", f"{known[1]} ({LRI}{tail}{PDI})"
+
+
+# OpenSSL reasons of a first handshake that only a legacy client can complete (old protocol, old ciphers, small DH):
+# nothing was sent yet, so one retry with a legacy context is the same handshake an old browser would send (§0.1)
+LEGACY_TLS_REASONS = ("TLSV1_ALERT_PROTOCOL_VERSION", "UNSUPPORTED_PROTOCOL", "NO_PROTOCOLS_AVAILABLE",
+                      "SSLV3_ALERT_HANDSHAKE_FAILURE", "NO_SHARED_CIPHER", "NO_CIPHERS_AVAILABLE", "DH_KEY_TOO_SMALL")
+
+
+def legacy_tls_reason(e: BaseException) -> str:
+    """The :data:`LEGACY_TLS_REASONS` entry of a handshake error ("" when the error is anything else)."""
+    if not isinstance(e, ssl.SSLError) or isinstance(e, ssl.SSLCertVerificationError):
+        return ""
+    text = (str(getattr(e, "reason", None) or "") + " " + str(e)).upper()
+    return next((r for r in LEGACY_TLS_REASONS if r in text), "")
 
 
 def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
@@ -1051,6 +1104,8 @@ class Fetcher:
         self.counts: dict[str, int] = {}
         self.dns: dict[str, DnsRecord] = {}
         self.cert_errors: dict[str, tuple[int | None, str]] = {}
+        self.legacy_errors: dict[str, str] = {}  # host -> OpenSSL reason of the modern handshake that failed
+        self.proxy_used: dict[str, str] = {}     # host -> display of the proxy its requests went through
         self.events: list[dict] = []
         self.robots: dict[str, Any] = {}         # origin → robots.Robots
         self._pins: dict[str, _Pin] = {}
@@ -1158,8 +1213,9 @@ class Fetcher:
                 return
             self._event_once.add(key)
         en_t, ar_t = EVENTS[code]
-        clean = {k: str(v) for k, v in params.items()}
-        self.events.append({"code": code, **clean, "en": en_t.format(**clean), "ar": ar_t.format(**clean)})
+        en_p = {k: str(v[0] if isinstance(v, tuple) else v) for k, v in params.items()}
+        ar_p = {k: str(v[1] if isinstance(v, tuple) else v) for k, v in params.items()}
+        self.events.append({"code": code, **en_p, "en": en_t.format(**en_p), "ar": ar_t.format(**ar_p)})
 
     # -- address guard -----------------------------------------------------------------------------------------
     def _pin(self, host: str) -> _Pin:
@@ -1296,10 +1352,25 @@ class Fetcher:
         return rec
 
     # -- TLS support for tls/ ----------------------------------------------------------------------------------
-    def tls_context(self, verified: bool = True) -> ssl.SSLContext:
+    def tls_context(self, verified: bool = True, *, legacy: bool = False) -> ssl.SSLContext:
         """Browser-parity verifying context (no X509_STRICT, CN-only certificates rejected, test CA from the hook) or
-        an unverified one (CERT_NONE) for reading the leaf of a bad certificate."""
-        if verified:
+        an unverified one (CERT_NONE) for reading the leaf of a bad certificate. ``legacy``: unverified, every cipher
+        at security level 0 and TLS 1.0 as the minimum, for a server only an old client can talk to (evidence only)."""
+        if legacy:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE  # nosec - legacy evidence-only connection, flagged legacy-tls
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                try:
+                    ctx.set_ciphers("ALL:@SECLEVEL=0")
+                except ssl.SSLError:   # pragma: no cover - a build without the keyword
+                    pass
+                try:
+                    ctx.minimum_version = ssl.TLSVersion.TLSv1
+                except (ValueError, ssl.SSLError, AttributeError):   # pragma: no cover
+                    pass
+        elif verified:
             ctx = ssl.create_default_context()
             if self.hooks is not None and self.hooks.cafile:
                 ctx.load_verify_locations(cafile=self.hooks.cafile)
@@ -1577,8 +1648,8 @@ class Fetcher:
         return resp
 
     def _connection(self, prep: _Prepared, proxy: Proxy | None, addrs: tuple[str, ...] | None, verified: bool,
-                    timeout: float) -> tuple[http.client.HTTPConnection, tuple, bool]:
-        key = (prep.scheme, prep.host, prep.port, proxy.display if proxy else "", verified)
+                    timeout: float, legacy: bool = False) -> tuple[http.client.HTTPConnection, tuple, bool]:
+        key = (prep.scheme, prep.host, prep.port, proxy.display if proxy else "", verified, legacy)
         with self._lock:
             conn = self._pool.pop(key, None)
         if conn is not None and conn.sock is not None:
@@ -1594,7 +1665,8 @@ class Fetcher:
         https = prep.scheme == "https"
         if proxy is None:
             if https:
-                conn = _HTTPSConnection(prep.host, prep.port, timeout=timeout, context=self.tls_context(verified))
+                conn = _HTTPSConnection(prep.host, prep.port, timeout=timeout,
+                                        context=self.tls_context(verified, legacy=legacy))
                 conn.on_socket = on_socket
             else:
                 conn = http.client.HTTPConnection(prep.host, prep.port, timeout=timeout)
@@ -1606,7 +1678,8 @@ class Fetcher:
                                                        self._connect_remaining)
         else:
             if https:
-                conn = _HTTPSConnection(proxy.host, proxy.port, timeout=timeout, context=self.tls_context(verified))
+                conn = _HTTPSConnection(proxy.host, proxy.port, timeout=timeout,
+                                        context=self.tls_context(verified, legacy=legacy))
                 conn.on_socket = on_socket
                 conn.set_tunnel(prep.host, prep.port, headers=self._tunnel_headers(proxy))
             else:
@@ -1642,12 +1715,16 @@ class Fetcher:
                                                    for k, v in headers.items() if k != "Proxy-Authorization"]
         req_headers = HeaderList(tuple(recorded))
         base_flags: set[str] = {"proxied"} if proxy is not None else set()
+        if proxy is not None:
+            self.proxy_used.setdefault(prep.host, proxy.display)
         request_target = prep.url if (proxy is not None and prep.scheme == "http") else prep.target
         deadline_s = self._deadline()
         verified_failed = prep.host in self.cert_errors
-        for attempt in range(3):     # stale pooled connection → one fresh retry; certificate error → unverified
-            verified = not verified_failed
-            conn, key, reused = self._connection(prep, proxy, addrs, verified, timeout)
+        legacy = prep.host in self.legacy_errors
+        # stale pooled connection -> one fresh retry; certificate error -> unverified; legacy-only server -> legacy
+        for attempt in range(4):
+            verified = not verified_failed and not legacy
+            conn, key, reused = self._connection(prep, proxy, addrs, verified, timeout, legacy)
             wd = _Watchdog(deadline_s).start()
             self._local.watchdog = wd
             t0 = self._clock()
@@ -1687,36 +1764,55 @@ class Fetcher:
             except ssl.SSLCertVerificationError as e:
                 _close(conn)
                 if sent or wd.fired:
-                    return self._fail(e, prep, source, req_headers, wd, t0, base_flags)
+                    return self._fail(e, prep, source, req_headers, wd, t0, base_flags, proxy, sent=sent)
                 code_ = getattr(e, "verify_code", None)
                 msg = getattr(e, "verify_message", "") or str(e)
                 self.cert_errors[prep.host] = (code_, msg)
-                self._event("cert_error", once=prep.host, host=prep.host, message=msg[:120])
+                self._event("cert_error", once=prep.host, host=prep.host, message=verify_text(code_, msg[:120]))
                 verified_failed = True
                 continue
+            except ssl.SSLError as e:
+                _close(conn)
+                reason = legacy_tls_reason(e)
+                if reason and not legacy and not sent and not wd.fired and prep.scheme == "https":
+                    # the modern handshake failed for an old protocol/cipher/DH reason before anything was sent:
+                    # retry once as a legacy client (evidence only); tls/ judges the server itself (WEB030, WEB705 ...)
+                    self.legacy_errors[prep.host] = reason
+                    self._event("legacy_tls", once=prep.host, host=prep.host, message=reason)
+                    legacy = True
+                    continue
+                return self._fail(e, prep, source, req_headers, wd, t0, base_flags, proxy, sent=sent)
             except (http.client.RemoteDisconnected, BrokenPipeError, ConnectionResetError,
                     ConnectionAbortedError) as e:
                 _close(conn)
                 if reused and not wd.fired and attempt == 0:
                     continue             # an idle keep-alive connection the server had closed: retry on a new one
-                return self._fail(e, prep, source, req_headers, wd, t0, base_flags)
-            except (OSError, http.client.HTTPException, ValueError, ssl.SSLError) as e:
+                return self._fail(e, prep, source, req_headers, wd, t0, base_flags, proxy, sent=sent)
+            except (OSError, http.client.HTTPException, ValueError) as e:
                 _close(conn)
-                return self._fail(e, prep, source, req_headers, wd, t0, base_flags)
+                return self._fail(e, prep, source, req_headers, wd, t0, base_flags, proxy, sent=sent)
             finally:
                 wd.cancel()
                 self._local.watchdog = None
         return self._error(prep.url, source, "network", "connection failed", request_headers=req_headers)
 
     def _fail(self, e: BaseException, prep: _Prepared, source: str, req_headers: HeaderList, wd: _Watchdog, t0: float,
-              base_flags: set[str]) -> Response:
-        code, msg = classify_error(e, deadline_fired=wd.fired, deadline=self._deadline())
+              base_flags: set[str], proxy: "Proxy | None" = None, *, sent: bool = False) -> Response:
+        code, msg = classify_error(e, deadline_fired=wd.fired, deadline=self._deadline(),
+                                   proxy=proxy.display if proxy is not None else None, sent=sent)
         if code == "deadline":
             self._event("deadline", once=prep.url, url=prep.url[:300], seconds=f"{self._deadline():g}")
         extra = set(base_flags)
+        if proxy is not None:
+            extra.add(f"via-proxy:{proxy.display}")
+            status = _TUNNEL_STATUS.search(str(e)) if code == "proxy_refused" else None
+            if status:
+                extra.add(f"proxy-status:{status.group(1)}")
         if prep.host in self.cert_errors:
             c, _m = self.cert_errors[prep.host]
             extra |= {"cert-error", f"cert-verify:{c}"}
+        if prep.host in self.legacy_errors:
+            extra |= {"legacy-tls", f"legacy-reason:{self.legacy_errors[prep.host]}"}
         return self._error(prep.url, source, code, msg, request_headers=req_headers, extra_flags=frozenset(extra),
                            elapsed=self._clock() - t0)
 
@@ -1748,6 +1844,8 @@ class Fetcher:
         if prep.host in self.cert_errors:
             c, _m = self.cert_errors[prep.host]
             flags |= {"cert-error", f"cert-verify:{c}"}
+        if prep.host in self.legacy_errors:
+            flags |= {"legacy-tls", f"legacy-reason:{self.legacy_errors[prep.host]}"}
         codings = content_codings(headers)
         limit = cap if cap is not None else _cap_for(source, headers)
         remaining_bytes = max(0, self.options.max_bytes - self.bytes_received - header_bytes)
@@ -1950,11 +2048,31 @@ def _close(conn: Any) -> None:
         pass
 
 
-def classify_error(e: BaseException, *, deadline_fired: bool = False, deadline: float = 30.0) -> tuple[str, str]:
-    """``(code, message)`` for a failed request; messages keep the OS wording that ``web.explain_failure`` reads."""
+_TUNNEL_STATUS = re.compile(r"(?i)tunnel connection failed:\s*(\d{3})")
+_UNREACHABLE_ERRNOS = frozenset({getattr(errno, n, None) for n in ("ENETUNREACH", "EHOSTUNREACH")} | {10051, 10065})
+
+
+def classify_error(e: BaseException, *, deadline_fired: bool = False, deadline: float = 30.0, proxy: "str | None" = None,
+                   sent: bool = False) -> tuple[str, str]:
+    """``(code, message)`` for a failed request; messages keep the OS wording that ``web.explain_failure`` reads.
+    Through a proxy (``proxy`` = its display), failures of the proxy itself get their own codes, so no caller has to
+    guess from the wording: ``proxy_refused`` (the CONNECT tunnel was answered with an HTTP status, kept in the message
+    as "(HTTP 403)"), ``proxy_unreachable`` (no TCP connection to the proxy) and ``proxy_reset`` (the proxy closed the
+    connection before the request was sent)."""
     if deadline_fired:
         return "deadline", f"response deadline exceeded ({deadline:g} s): the server kept the response open"
     text = str(e) or type(e).__name__
+    if proxy:
+        m = _TUNNEL_STATUS.search(text)
+        if m or (isinstance(e, OSError) and "tunnel connection failed" in text.lower()):
+            status = f" (HTTP {m.group(1)})" if m else ""
+            return "proxy_refused", f"the proxy {proxy} refused the tunnel{status}: {text[:200]}"
+        if isinstance(e, (ConnectionRefusedError, socket.gaierror)) or (
+                isinstance(e, OSError) and not isinstance(e, ssl.SSLError) and e.errno in _UNREACHABLE_ERRNOS):
+            return "proxy_unreachable", f"the proxy {proxy} could not be reached: {text[:200]}"
+        if not sent and isinstance(e, (ConnectionResetError, ConnectionAbortedError, BrokenPipeError,
+                                       http.client.RemoteDisconnected)):
+            return "proxy_reset", f"the proxy {proxy} closed the connection: {text[:200]}"
     if isinstance(e, http.client.HTTPException):
         if "more than" in text and "headers" in text:
             return "too_many_headers", f"{TOO_MANY_HEADERS} (more than {MAX_HEADER_LINES} header lines)"
@@ -1978,11 +2096,26 @@ def classify_error(e: BaseException, *, deadline_fired: bool = False, deadline: 
     if isinstance(e, OSError):
         if "tunnel connection failed" in text.lower():
             return "proxy", f"proxy refused the tunnel: {text}"
-        unreachable = {getattr(errno, n, None) for n in ("ENETUNREACH", "EHOSTUNREACH")} | {10051, 10065}
-        if e.errno in unreachable:
+        if e.errno in _UNREACHABLE_ERRNOS:
             return "unreachable", text
         return "network", text
     return "network", text
+
+
+def proxy_of(response: "Response | None") -> str:
+    """The display of the proxy a response (or its failure) went through ("" when none)."""
+    for f in (response.flags if response is not None else ()):
+        if f.startswith("via-proxy:"):
+            return f[10:]
+    return ""
+
+
+def proxy_status(response: "Response | None") -> "int | None":
+    """The HTTP status a proxy refused the CONNECT tunnel with (None when it did not)."""
+    for f in (response.flags if response is not None else ()):
+        if f.startswith("proxy-status:") and f[13:].isdigit():
+            return int(f[13:])
+    return None
 
 
 def error_code(response: Response | None) -> str:
@@ -2014,4 +2147,5 @@ __all__ = ["MIN_DELAY", "MAX_CRAWL_DELAY", "MAX_HOPS", "PROFILE_BUDGETS", "CRAWL
            "Proxy", "parse_proxy", "unusable_proxy", "CookieJar", "parse_cookie_date", "HostLimiter", "FetchRefused", "Fetcher",
            "address_category", "ssrf_allows", "ip_literal", "gai_status", "content_codings", "decode_body",
            "parse_retry_after", "normalise_headers", "next_url", "classify_error", "error_code", "coverage_reason",
+           "proxy_of", "proxy_status", "verify_text", "VERIFY_TEXT", "LEGACY_TLS_REASONS", "legacy_tls_reason",
            "redact_cookie_request", "i18n_catalog"]

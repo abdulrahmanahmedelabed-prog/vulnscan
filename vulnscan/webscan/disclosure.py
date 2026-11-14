@@ -77,7 +77,7 @@ STR: dict[str, tuple[str, str]] = {
     "map_fetched": ("The source map {url} was downloaded and lists {sources}.",
                     "نُزّلت خريطة المصدر {url} وهي تسرد {sources}."),
     "map_inline": ("The script embeds its source map inline (data: URL), so the original sources ship with it.",
-                   "يضمّن السكربت خريطة المصدر داخله (رابط data:)، فتُشحن الشيفرة الأصلية معه."),
+                   "يضمّن السكربت خريطة المصدر داخله (رابط data:)، فيُشحن الكود الأصلي معه."),
     "map_referenced": ("The file names a source map ({url}); it was not downloaded in this profile, so whether it is "
                        "public is not confirmed (use --deep).",
                        "يشير الملف إلى خريطة مصدر ({url})؛ لم تُنزَّل في هذا الملف الشخصي للفحص، فلم يُتأكَّد من أنها "
@@ -88,7 +88,7 @@ STR: dict[str, tuple[str, str]] = {
     "etag": ("The ETag {value} has Apache's inode-size-mtime form.", "قيمة ETag ‏{value} بصيغة Apache ‏(inode-الحجم-الوقت)."),
     "error_sig": ("{platform}: {value}", "{platform}: {value}"),
     "console": ("The page offers an interactive debugger console: anyone who reaches it can run code on the server.",
-                "تتيح الصفحة وحدة تحكم تفاعلية للتصحيح: يستطيع كل من يصل إليها تنفيذ شيفرة على الخادم."),
+                "تتيح الصفحة وحدة تحكم تفاعلية للتصحيح: يستطيع كل من يصل إليها تنفيذ كود على الخادم."),
     "guarded": ("Found inside <pre>/<code> on a normal page; it may be documentation.",
                 "وُجد داخل <pre> أو <code> في صفحة عادية؛ قد يكون جزءًا من توثيق."),
     "site_wide": ("The host's not-found page shows the same text, so every missing path returns it; reported once for the "
@@ -98,7 +98,7 @@ STR: dict[str, tuple[str, str]] = {
     "default_page": ("{platform} default page.", "الصفحة الافتراضية لـ {platform}."),
     "parked": ("Parking page ({platform}).", "صفحة نطاق مركون ({platform})."),
     "source_code": ("{value} source code is served instead of being executed.",
-                    "تُقدَّم شيفرة {value} كما هي بدل تنفيذها."),
+                    "يُقدَّم كود {value} كما هو بدل تنفيذه."),
     "secret": ("{kind}: {value}", "{kind}: {value}"),
     "secret_where": ("Found in {where}.", "وُجد في {where}."),
     "serialized": ("{where} starts with a {value} serialized object.", "{where} يبدأ بكائن مُسلسَل بصيغة {value}."),
@@ -130,7 +130,7 @@ _WHERE: dict[str, tuple[str, str]] = {
     "attribute": ("an HTML attribute", "سمة HTML"),
     "script": ("a script file", "ملف سكربت"),
     "json": ("a JSON response", "استجابة JSON"),
-    "sourcemap": ("the sources embedded in a source map", "الشيفرة المضمَّنة في خريطة مصدر"),
+    "sourcemap": ("the sources embedded in a source map", "الكود المضمَّن في خريطة مصدر"),
     "header": ("the response header", "ترويسة الاستجابة"),
     "cookie": ("the cookie value", "قيمة الكوكي"),
     "hidden": ("the hidden form field", "حقل النموذج المخفي"),

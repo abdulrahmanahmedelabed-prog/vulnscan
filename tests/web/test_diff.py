@@ -125,7 +125,7 @@ def test_no_previous_and_other_target():
     other = snap(make_ctx(target="https://other.example.test/"))
     d = diff.diff(other, cur)
     assert not d["comparable"] and "other.example.test" in d["notes"][0]["en"] and d["notes"][0]["ar"]
-    assert d["findings"] == {"new": [], "resolved": [], "unchanged": []}
+    assert d["findings"] == {"new": [], "resolved": [], "unchanged": [], "not_retested": []}
 
 
 def test_profile_difference_is_stated_and_deep_hits_not_compared():
@@ -138,10 +138,21 @@ def test_profile_difference_is_stated_and_deep_hits_not_compared():
 
 # ----------------------------------------------------------------------------------------------- findings / grades
 
+def _cov(**states):
+    c = Coverage(list(states))
+    for check, st in states.items():
+        if st in ("not_tested", "inconclusive"):
+            c.record(check, st, "profile" if st == "not_tested" else "waf")
+        else:
+            c.record(check, st, host="shop.example.test")
+    return c
+
+
 def test_new_resolved_unchanged_by_fp_key():
     prev = snap(make_ctx(), [mk("WEB062", SITE + ".env", "/.env"), mk("WEB010", value="nginx/1.25.3")])
     cur = snap(make_ctx(), [mk("WEB010", SITE + "other", value="nginx/1.25.3"), mk("WEB-content-security-policy",
-                                                                                  value="missing")])
+                                                                                  value="missing")],
+               coverage=_cov(WEB062="pass", WEB010="fail"))
     d = diff.diff(prev, cur)
     assert [r["rule"] for r in d["findings"]["new"]] == ["WEB-content-security-policy"]
     assert [r["rule"] for r in d["findings"]["resolved"]] == ["WEB062"]
@@ -352,3 +363,114 @@ def test_security_txt_expiring_within_a_day_is_not_zero_days():
     cur = make_ctx(inventory=_inv(security_txt={"present": True, "expires": soon}))
     [exp] = _find(_posture(make_ctx(), cur), "sectxt_soon")
     assert exp["en"] == "security.txt expires in 1 day" and "يوم واحد" in exp["ar"]
+
+
+# ----------------------------------------------------------------------------------------------- 1.1.0 accuracy round
+
+def test_unmatched_finding_whose_check_did_not_run_is_not_retested_not_resolved():
+    prev = snap(make_ctx(), [mk("WEB062", SITE + ".env", "/.env"), mk("WEB010", value="nginx/1.25.3")])
+    cur = snap(make_ctx(profile="minimal"), [], coverage=_cov(WEB062="not_tested", WEB010="inconclusive"))
+    d = diff.diff(prev, cur)
+    assert d["findings"]["resolved"] == [] and d["counts"]["resolved"] == 0
+    nr = {r["rule"]: r["reason"] for r in d["findings"]["not_retested"]}
+    assert set(nr) == {"WEB062", "WEB010"} and d["counts"]["not_retested"] == 2
+    assert nr["WEB062"]["code"] == "profile" and nr["WEB062"]["en"] and nr["WEB062"]["ar"]
+    assert nr["WEB010"]["code"] == "waf"
+    # a check missing from the current coverage altogether did not run either
+    d = diff.diff(prev, snap(make_ctx(), [], coverage=_cov(WEB010="pass")))
+    assert [r["rule"] for r in d["findings"]["resolved"]] == ["WEB010"]
+    assert [(r["rule"], r["reason"]["code"]) for r in d["findings"]["not_retested"]] == [("WEB062", "not_run")]
+
+
+def test_failed_check_that_was_partly_skipped_does_not_resolve_other_instances():
+    prev = snap(make_ctx(), [mk("WEB052", SITE + "login", SITE + "login"), mk("WEB052", SITE + "a", SITE + "a")])
+    c = Coverage(["WEB052"])
+    c.record("WEB052", "fail", host="shop.example.test")
+    c.record("WEB052", "not_tested", "budget", host="shop.example.test")
+    d = diff.diff(prev, snap(make_ctx(), [mk("WEB052", SITE + "a", SITE + "a")], coverage=c))
+    assert d["findings"]["resolved"] == []
+    assert [r["reason"]["code"] for r in d["findings"]["not_retested"]] == ["partial"]
+    c2 = Coverage(["WEB052"])
+    c2.record("WEB052", "fail", host="shop.example.test")
+    d = diff.diff(prev, snap(make_ctx(), [mk("WEB052", SITE + "a", SITE + "a")], coverage=c2))
+    assert len(d["findings"]["resolved"]) == 1 and not d["findings"]["not_retested"]
+
+
+def test_severity_change_is_one_posture_change_not_new_plus_resolved():
+    prev = snap(make_ctx(), [mk("WEB315", value="max-age=600", severity="high")])
+    cur = snap(make_ctx(), [mk("WEB315", value="max-age=600", severity="low")], coverage=_cov(WEB315="fail"))
+    d = diff.diff(prev, cur)
+    assert not d["findings"]["new"] and not d["findings"]["resolved"] and len(d["findings"]["unchanged"]) == 1
+    assert d["findings"]["unchanged"][0]["severity_before"] == "high"
+    sev = [i for i in d["posture"] if i["kind"] == "severity"]
+    assert len(sev) == 1 and sev[0]["direction"] == "change" and sev[0]["en"].startswith("WEB315 high → low")
+    assert "عالية" in sev[0]["ar"] and "منخفضة" in sev[0]["ar"] and d["counts"]["severity_changed"] == 1
+    # rows of an older snapshot with another key scheme still match on rule + host + group value
+    prev["findings"][0]["key"] = "legacy-key"
+    prev["findings"][0]["fingerprint"] = "legacy-fp"
+    d = diff.diff(prev, cur)
+    assert len(d["findings"]["unchanged"]) == 1 and not d["findings"]["new"]
+
+
+def test_new_fingerprints_are_exposed_for_badges():
+    prev = snap(make_ctx(), [mk("WEB010", value="nginx")])
+    cur = snap(make_ctx(), [mk("WEB010", value="nginx"), mk("WEB062", SITE + ".env", "/.env")])
+    d = diff.diff(prev, cur)
+    assert d["new_fingerprints"] == [d["findings"]["new"][0]["fingerprint"]] and d["new_fingerprints"][0]
+
+
+def test_csp_added_after_none_is_not_a_check_regression():
+    """No CSP (the value checks are not_applicable: no_policy), then a weak CSP (WEB042 fails): new findings and a CSP
+    posture change, never "check WEB042 now fails"."""
+    from vulnscan.webscan import csp
+    from vulnscan.webscan.engine import analyze_responses
+    from vulnscan.webscan.types import ScanOptions as Opts
+
+    def run_with(csp_value):
+        hl = [("Content-Type", "text/html")] + ([("Content-Security-Policy", csp_value)] if csp_value else [])
+        entry = Response(url=SITE, status=200, headers=HeaderList.of(*hl), kind="document",
+                         body=b"<html><head><script src='/a.js'></script></head><body></body></html>")
+        findings, ctx = analyze_responses(SITE, entry, Opts(), modules=("csp",))
+        return diff.snapshot(ctx, findings, None, ctx.coverage, scan_id="x", version="1.1.0"), ctx
+
+    before, bctx = run_with("")
+    assert bctx.coverage.state("WEB042").state == "not_applicable"
+    assert {r[0] for r in bctx.coverage.state("WEB042").reasons} == {"no_policy"}
+    after, _ = run_with("upgrade-insecure-requests; script-src *")
+    d = diff.diff(before, after)
+    assert [i for i in d["posture"] if i["id"] == "check_regressed"] == []
+    assert "WEB042" in {r["rule"] for r in d["findings"]["new"]}
+    assert [r["rule"] for r in d["findings"]["resolved"]] == ["WEB-content-security-policy"]
+    assert csp  # imported for its side effects on the registry
+
+
+def test_grade_changes_only_changed_with_scores_and_no_change_line():
+    def g(k, ks, o, og, s):
+        return {"kashif": {"grade": k, "score": ks}, "observatory": {"grade": og, "score": o}, "ssllabs": {"grade": s}}
+    prev = snap(make_ctx(), grades=g("F*", 59.69, 0, "F", "A"))
+    cur = snap(make_ctx(), grades=g("F*", 65.94, 15, "F", "A"))
+    d = diff.diff(prev, cur)
+    lines = {x["algorithm"]: x for x in d["grade_changes"]}
+    assert set(lines) == {"kashif", "observatory"}
+    assert lines["kashif"]["en"] == "Kashif: F* (59.69 → 65.94)"
+    assert lines["observatory"]["en"] == "Observatory score rose: 0 → 15 (grade still F)"
+    assert lines["kashif"]["ar"].startswith("كاشِف: ") and "⁨F*⁩" in lines["kashif"]["ar"]
+    assert lines["observatory"]["ar"].startswith("ارتفعت درجة Observatory")
+    assert d["grades"]["ssllabs"]["change"] == "same" and not d["grades"]["ssllabs"]["changed"]
+    assert d["grades"]["kashif"]["text"]["en"] == lines["kashif"]["en"]
+    letters = diff.diff(snap(make_ctx(), grades=g("C+*", 60, 50, "C", "B")), snap(make_ctx(), grades=g("A*", 92, 50, "C", "B")))
+    (line,) = letters["grade_changes"]
+    assert line["en"] == "Kashif grade improved: C+* → A* (60 → 92)"
+    assert "⁨C+*⁩" in line["ar"] and "⁨A*⁩" in line["ar"] and "كاشِف" in line["ar"]
+    same = diff.diff(prev, copy.deepcopy(prev))
+    assert same["grade_changes"] == [{"algorithm": "", "direction": "same", "en": "no grade changes",
+                                      "ar": "لا تغيّر في الدرجات"}]
+    assert not [i for i in same["posture"] if i["kind"] == "grade"]
+
+
+def test_arabic_values_are_isolated_and_profile_is_called_scan_mode():
+    items = _posture(make_ctx(), make_ctx(headers=[("Server", "nginx")]))
+    (added,) = _find(items, "header_added")
+    assert "⁨Server⁩" in added["ar"] and "⁨nginx⁩" in added["ar"]
+    d = diff.diff(snap(make_ctx(profile="minimal")), snap(make_ctx()))
+    assert "نمط الفحص" in d["notes"][0]["ar"] and "ملف الفحص" not in d["notes"][0]["ar"]

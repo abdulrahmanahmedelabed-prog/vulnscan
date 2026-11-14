@@ -21,7 +21,8 @@ from .types import CHECK_STATES, CheckState
 
 PRECEDENCE = {"fail": 4, "inconclusive": 3, "not_tested": 2, "pass": 1, "not_applicable": 0}
 
-# code → (English, Arabic, chosen_by_user): chosen_by_user reasons (profile, sensitivity) never trigger WEB991
+# code → (English, Arabic, no_web991): reasons that are the user's own choice (profile, sensitivity) or that follow from
+# another check's result or from passive scanning by design never trigger WEB991 (it lists limitations of this run)
 REASONS: dict[str, tuple[str, str, bool]] = {
     "not_run": ("the check did not run", "لم يُجرَ هذا الفحص", False),
     "profile": ("not part of the selected scan profile", "ليس ضمن ملف الفحص المختار", True),
@@ -48,6 +49,22 @@ REASONS: dict[str, tuple[str, str, bool]] = {
     "data_missing": ("the bundled data file is missing", "ملف البيانات المضمّن مفقود", False),
     "third_party_off": ("third-party lookups are off (--third-party-lookups)", "الاستعلامات لدى أطراف ثالثة معطّلة (--third-party-lookups)", True),
     "error": ("internal error in this check", "خطأ داخلي في هذا الفحص", False),
+    "precondition": ("not checked because an earlier certificate check failed",
+                     "لم يُفحص لأن فحصًا سابقًا للشهادة فشل", True),
+    "no_policy": ("no enforced Content-Security-Policy on this host (judged by WEB-content-security-policy)",
+                  "لا توجد سياسة CSP مفروضة على هذا المضيف (يقيّمها WEB-content-security-policy)", True),
+    "revocation": ("certificate revocation (CRL/OCSP) is not checked: a passive scan does not contact the CA; only a "
+                   "stapled OCSP response is read",
+                   "لا يُتحقَّق من إلغاء الشهادة (CRL/OCSP): الفحص السلبي لا يتصل بجهة الإصدار، ويُقرأ ردّ OCSP المرفق "
+                   "بالمصافحة (stapling) فقط", True),
+    "dh_unmeasured": ("key exchange strength not measured (DHE offered; run --web-profile deep)",
+                      "لم تُقَس قوة تبادل المفاتيح (الخادم يعرض DHE؛ شغّل --web-profile deep)", True),
+    "distro_backport": ("possible match hidden at this sensitivity (distribution build: backports likely); run "
+                        "--web-sensitivity paranoid",
+                        "تطابق محتمل مخفي بهذه الحساسية (نسخة توزيعة: يُرجَّح أنها تتضمن الإصلاحات المنقولة)؛ شغّل "
+                        "--web-sensitivity paranoid", True),
+    "distro_support": ("distribution build: support depends on the distribution release",
+                       "نسخة توزيعة: يتوقف دعمها على إصدار التوزيعة", False),
 }
 
 _FORMS = {
@@ -142,6 +159,12 @@ class Coverage:
         for st in self.states().values():
             out[st.state] += 1
         return out
+
+    def partial(self, check_id: str) -> bool:
+        """True when the check ran (pass or fail) but was also skipped somewhere (a not_tested or inconclusive record:
+        a page over budget, a blocked host): its absence of a finding then proves nothing for the skipped part."""
+        recs = self._records.get(check_id) or []
+        return any(r[0] in ("not_tested", "inconclusive") for r in recs) and any(r[0] in ("pass", "fail") for r in recs)
 
     def tested(self, check_id: str) -> bool:
         """True when the check ran (pass or fail): only such checks may count in a grade."""

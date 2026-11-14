@@ -972,7 +972,9 @@ def test_https_goes_through_a_connect_tunnel():
         r = f.fetch("https://site.kashif.test/")
     finally:
         stop.set()
-    assert r.status is None and wh.error_code(r) == "proxy" and "proxied" in r.flags
+    assert r.status is None and wh.error_code(r) == "proxy_refused" and "proxied" in r.flags
+    assert wh.proxy_status(r) == 403 and wh.proxy_of(r) == f"http://127.0.0.1:{port}"
+    assert wh.coverage_reason(r) == "network" and "(HTTP 403)" in r.error
     first = seen[0].split(b"\r\n")
     assert first[0] in (b"CONNECT site.kashif.test:443 HTTP/1.0", b"CONNECT site.kashif.test:443 HTTP/1.1")
     assert any(h.startswith(b"User-Agent: Kashif/") for h in first[1:])
@@ -1076,6 +1078,13 @@ def test_classify_error_and_coverage_reasons():
     assert wh.classify_error(ConnectionRefusedError(111, "Connection refused"))[1] == "[Errno 111] Connection refused"
     assert wh.classify_error(ssl.SSLError(1, "handshake failure"))[0] == "tls"
     assert wh.classify_error(OSError("Tunnel connection failed: 403 Forbidden"))[0] == "proxy"
+    p = "http://proxy.example:3128"
+    assert wh.classify_error(OSError("Tunnel connection failed: 403 Forbidden"), proxy=p) == (
+        "proxy_refused", f"the proxy {p} refused the tunnel (HTTP 403): Tunnel connection failed: 403 Forbidden")
+    assert wh.classify_error(ConnectionRefusedError(111, "Connection refused"), proxy=p)[0] == "proxy_unreachable"
+    assert wh.classify_error(ConnectionResetError(104, "reset"), proxy=p)[0] == "proxy_reset"
+    assert wh.classify_error(ConnectionResetError(104, "reset"), proxy=p, sent=True)[0] == "reset"
+    assert wh.classify_error(ConnectionRefusedError(111, "Connection refused"))[0] == "refused"
     assert wh.classify_error(OSError(), deadline_fired=True)[0] == "deadline"
     assert wh.coverage_reason(None) == "not_run"
     for code in wh.ERROR_CODES:

@@ -8,7 +8,9 @@ coverage check id. The engine formats findings from here; ``vulnscan/i18n/cat_we
 
 Titles and advice may be format strings: ``{cookie}``, ``{value}``, ``{versions}``, ``{days}`` … are filled from
 ``Issue.params``. A parameter listed in :data:`PLURAL_PARAMS` is a count rendered with the noun that agrees with it
-(Arabic via ``vulnscan.i18n.plural``). ``Issue.params["variant"]`` selects an alternative title/advice from
+(Arabic via ``vulnscan.i18n.plural``; a fractional value takes the plural in English and the "other" form in Arabic).
+A list value is joined with ``RuleMeta.joiners[name]`` (English, Arabic), by default " and " and " و"; for a parameter
+named in ``joiners`` a comma-separated string counts as a list. ``Issue.params["variant"]`` selects an alternative title/advice from
 ``RuleMeta.variants``.
 
 Stability (1.x): rule ids and their meanings never change; an id is never reused. ``title_1_0`` keeps the English
@@ -35,7 +37,7 @@ FAMILIES: dict[str, tuple[str, str]] = {
           "التضمين ونوع المحتوى والإحالة والصلاحيات والعزل والتخزين المؤقت وترويسات أخرى"),
     "D": ("CORS", "مشاركة الموارد بين المصادر (CORS)"),
     "E": ("Cookies", "الكوكيز"),
-    "F": ("Page content and client-side code", "محتوى الصفحة والشيفرة في المتصفح"),
+    "F": ("Page content and client-side code", "محتوى الصفحة والكود في المتصفح"),
     "G": ("Information disclosure", "كشف المعلومات"),
     "H": ("TLS and certificates", "TLS والشهادات"),
     "I": ("Components and technologies", "المكونات والتقنيات"),
@@ -79,7 +81,13 @@ CONTROLS: dict[str, tuple[str, tuple[str, ...]]] = {
 PLURAL_PARAMS: dict[str, tuple[str, str, tuple[str, str, str, str, str]]] = {
     "days": ("{n} day", "{n} days", ("يوم واحد", "يومين", "{n} أيام", "{n} يومًا", "{n} يوم")),
     "hops": ("{n} hop", "{n} hops", ("قفزة واحدة", "قفزتين", "{n} قفزات", "{n} قفزةً", "{n} قفزة")),
+    # the forms of vulnscan.i18n.plural.SECONDS (not imported: see the SEVERITIES note above)
+    "seconds": ("{n} second", "{n} seconds", ("ثانية واحدة", "ثانيتين", "{n} ثوانٍ", "{n} ثانيةً", "{n} ثانية")),
+    "delay": ("{n} second", "{n} seconds", ("ثانية واحدة", "ثانيتين", "{n} ثوانٍ", "{n} ثانيةً", "{n} ثانية")),
 }
+
+# how a list parameter is joined by default: (English last-item joiner, Arabic joiner between every two items)
+DEFAULT_JOINER = (" and ", " و")
 
 _PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
@@ -114,6 +122,7 @@ class RuleMeta:
     variants: dict = field(default_factory=dict)   # name → {title_en?, title_ar?, advice_en?, advice_ar?}
     existing: bool = False            # rule existed in 1.0.1
     title_1_0: str = ""               # 1.0.1 English title format when it differs (fingerprint continuity)
+    joiners: dict = field(default_factory=dict)    # list parameter → (English, Arabic) joiner (DEFAULT_JOINER)
 
     # -- formatting ----------------------------------------------------------------------------------------
     @property
@@ -148,23 +157,38 @@ class RuleMeta:
         if var and var.get(key):
             template = var[key]
         names = _PLACEHOLDER.findall(template)
-        if any(params.get(n) in (None, "") for n in names):
+        if any(_missing(params.get(n)) for n in names):
             return self.name(lang) if what == "title" else _PLACEHOLDER.sub("", template).strip()
-        return _PLACEHOLDER.sub(lambda m: _render(m.group(1), params[m.group(1)], lang), template)
+        return _PLACEHOLDER.sub(lambda m: _render(m.group(1), params[m.group(1)], lang, self.joiners.get(m.group(1))),
+                                template)
 
 
-def _render(name: str, value, lang: str) -> str:
+def _missing(value) -> bool:
+    return value is None or value == "" or (isinstance(value, (list, tuple)) and not any(v not in (None, "") for v in value))
+
+
+def _join(items: list[str], lang: str, joiner: tuple[str, str]) -> str:
+    """``a and b`` / ``a, b and c`` in English; ``a وb`` / ``a ولا b`` in Arabic (the joiner between every two items)."""
+    if lang == "ar":
+        return joiner[1].join(items)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + joiner[0] + items[-1]
+
+
+def _render(name: str, value, lang: str, joiner: tuple[str, str] | None = None) -> str:
+    if joiner is not None and isinstance(value, str) and ", " in value:
+        value = value.split(", ")
+    if isinstance(value, (list, tuple)):
+        return _join([str(v) for v in value if v not in (None, "")], lang, joiner or DEFAULT_JOINER)
     plural = PLURAL_PARAMS.get(name)
     if plural is None:
         return str(value)
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
+    from ..i18n import plural as _plural   # lazy: see the SEVERITIES note above
+    n = _plural.parse_number(value)
+    if n is None:
         return str(value)
     if lang == "ar":
-        from ..i18n.plural import ar_count   # lazy: see the SEVERITIES note above
-        return ar_count(n, plural[2])
-    return (plural[0] if n == 1 else plural[1]).replace("{n}", str(n))
+        return _plural.ar_count(n, plural[2])
+    return (plural[0] if n == 1 else plural[1]).replace("{n}", _plural.number_text(n))
 
 
 # ----------------------------------------------------------------------------------------------- builder
@@ -182,7 +206,7 @@ def _split(s: str) -> tuple[str, ...]:
 def _r(rid: str, family: str, module: str, sev: str, conf: str, cwe: str, wstg: str, asvs4: str, asvs5: str, fix: str,
        name: tuple[str, str], advice: tuple[str, str], *, sevs: str = "", confs: str = "", title: tuple[str, str] | None = None,
        paranoid: bool = False, cwe_variants: str = "", variants: dict | None = None, existing: bool = False,
-       title_1_0: str = "") -> None:
+       title_1_0: str = "", joiners: dict | None = None) -> None:
     if rid in _BUILT:
         raise ValueError(f"duplicate rule id {rid}")
     allowed = _split(sevs) or (sev,)
@@ -200,7 +224,7 @@ def _r(rid: str, family: str, module: str, sev: str, conf: str, cwe: str, wstg: 
         asvs4=_split(asvs4), asvs5=_split(asvs5), fix=_split(fix), name_en=name[0], name_ar=name[1], title_en=t_en,
         title_ar=t_ar, advice_en=advice[0], advice_ar=advice[1], paranoid_only=paranoid, check_id=rid,
         cwe_variants=_split(cwe_variants), controls=controls, variants=variants or {}, existing=existing,
-        title_1_0=title_1_0)
+        title_1_0=title_1_0, joiners=joiners or {})
     _ORDER.append(rid)
 
 
@@ -238,17 +262,19 @@ _r("WEB105", "A", "transport", "info", "certain", "CWE-319", "WSTG-CONF-07", "�
     "استخدم توجيهًا دائمًا (301 أو 308) من HTTP إلى HTTPS."))
 _r("WEB106", "A", "transport", "low", "firm", "CWE-698", "WSTG-INFO-05", "—", "—", "S-ERR",
    ("Redirect response carries a full page", "استجابة التوجيه تحمل صفحة كاملة"),
-   ("Stop rendering page content in redirect responses (send the redirect before any output, e.g. call exit after "
-    "header(\"Location\")).",
+   ("Stop rendering page content in redirect responses (send the redirect before any output; e.g. in PHP, call exit "
+    "after header(\"Location\")).",
     "لا تُرسل محتوى الصفحة مع استجابة التوجيه (أرسل التوجيه قبل أي مخرجات، مثل استدعاء exit بعد header(\"Location\") في PHP)."))
 _r("WEB-strict-transport-security", "A", "transport", "medium", "firm", "CWE-319", "WSTG-CONF-07", "14.4.5", "3.4.1",
    "S-HSTS",
    ("Missing Strict-Transport-Security", "ترويسة HSTS مفقودة"),
-   ("Send Strict-Transport-Security: max-age=63072000; includeSubDomains on every HTTPS response.",
-    "أرسل الترويسة Strict-Transport-Security: max-age=63072000; includeSubDomains في كل استجابة HTTPS."),
+   ("Send Strict-Transport-Security: max-age=63072000 on every HTTPS response; add includeSubDomains only after "
+    "confirming that every subdomain serves HTTPS.",
+    "أرسل الترويسة Strict-Transport-Security: max-age=63072000 في كل استجابة HTTPS، ولا تضف includeSubDomains إلا بعد "
+    "التأكد من أن كل النطاقات الفرعية تعمل عبر HTTPS."),
    sevs="medium info", existing=True)
 _r("WEB110", "A", "transport", "medium", "certain", "CWE-319", "WSTG-CONF-07", "14.4.5", "3.4.1", "S-HSTS",
-   ("HSTS disabled by max-age=0", "HSTS معطَّل بالقيمة max-age=0"),
+   ("HSTS disabled by max-age=0", "HSTS معطَّلة بالقيمة max-age=0"),
    ("Set max-age to at least 31536000 (one year); max-age=0 removes HSTS protection from browsers.",
     "اضبط max-age على 31536000 (سنة) على الأقل؛ القيمة 0 تزيل حماية HSTS من المتصفحات."))
 _r("WEB111", "A", "transport", "medium", "certain", "CWE-319", "WSTG-CONF-07", "14.4.5", "3.4.1", "S-HSTS",
@@ -262,8 +288,10 @@ _r("WEB111", "A", "transport", "medium", "certain", "CWE-319", "WSTG-CONF-07", "
        "advice_ar": "استخدم max-age لمدة سنة أو سنتين (31536000–63072000)؛ إذ يحذّر hstspreload من القيم التي تتجاوز عشر سنوات."}})
 _r("WEB112", "A", "transport", "medium", "certain", "CWE-319", "WSTG-CONF-07", "14.4.5", "3.4.1", "S-HSTS",
    ("HSTS header invalid (ignored by browsers)", "ترويسة HSTS غير صالحة فيتجاهلها المتصفح"),
-   ("Use exactly: Strict-Transport-Security: max-age=63072000; includeSubDomains (one header, plain ASCII, no commas).",
-    "استخدم الصيغة بالضبط: Strict-Transport-Security: max-age=63072000; includeSubDomains (ترويسة واحدة، أحرف ASCII عادية، بلا فواصل)."))
+   ("Send exactly one header in this form: Strict-Transport-Security: max-age=63072000 (plain ASCII, no commas); add "
+    "includeSubDomains only after confirming that every subdomain serves HTTPS.",
+    "أرسل ترويسة واحدة بهذه الصيغة بالضبط: Strict-Transport-Security: max-age=63072000 (بأحرف ASCII عادية وبلا فواصل)، "
+    "ولا تضف includeSubDomains إلا بعد التأكد من أن كل النطاقات الفرعية تعمل عبر HTTPS."))
 _r("WEB113", "A", "transport", "low", "certain", "CWE-319", "WSTG-CONF-07", "14.4.5", "3.4.1", "S-HSTS",
    ("Multiple HSTS headers", "أكثر من ترويسة HSTS"),
    ("Set HSTS in one place only (the proxy or the application, not both).",
@@ -275,13 +303,14 @@ _r("WEB114", "A", "transport", "info", "certain", "CWE-319", "WSTG-CONF-07", "14
     "أضف includeSubDomains بعد التأكد من أن كل النطاقات الفرعية تعمل عبر HTTPS."),
    sevs="info low")
 _r("WEB115", "A", "transport", "low", "certain", "CWE-319", "WSTG-CONF-07", "—", "3.7.4", "S-HSTS",
-   ("HSTS preload: requested but not eligible / eligibility report", "طلب الإدراج المسبق لـ HSTS غير مستوفٍ"),
-   ("Either remove \"preload\" or meet every preload requirement (listed in the evidence) before submitting at "
-    "hstspreload.org.",
-    "إما أن تحذف preload، أو تستوفي كل شروط الإدراج المسبق (المذكورة في الدليل) قبل التقديم في hstspreload.org."),
+   ("HSTS preload requested but requirements not met", "طلب الإدراج المسبق لـ HSTS غير مستوفٍ للشروط"),
+   ("Remove preload, or meet every requirement (listed in the evidence) before submitting at hstspreload.org; "
+    "preloading forces HTTPS on every subdomain of the registrable domain, and removal takes months.",
+    "احذف preload، أو استوفِ كل الشروط (المذكورة في الدليل) قبل التقديم في hstspreload.org؛ فالإدراج المسبق يفرض HTTPS "
+    "على كل النطاقات الفرعية للنطاق المسجَّل، والحذف من القائمة يستغرق أشهرًا."),
    sevs="low info", confs="certain firm")
 _r("WEB116", "A", "transport", "info", "certain", "CWE-319", "WSTG-CONF-07", "—", "—", "S-HSTS",
-   ("HSTS where browsers ignore it", "HSTS في موضع يتجاهله المتصفح"),
+   ("HSTS where browsers ignore it", "HSTS في موضع يتجاهلها المتصفح"),
    ("Send HSTS as an HTTP response header on HTTPS responses only; it has no effect over HTTP or in a meta tag.",
     "أرسل HSTS كترويسة HTTP في استجابات HTTPS فقط؛ لا أثر لها عبر HTTP أو داخل وسم meta."))
 _r("WEB117", "A", "transport", "low", "certain", "CWE-319", "WSTG-CONF-07", "14.4.5", "3.4.1", "S-HSTS",
@@ -308,17 +337,17 @@ _r("WEB-content-security-policy", "B", "csp", "medium", "firm", *_CSP,
     "أضف ترويسة Content-Security-Policy، ويُنصح بسياسة صارمة قائمة على nonce (انظر المقتطف)."),
    sevs="medium low", existing=True)
 _r("WEB040", "B", "csp", "medium", "certain", *_CSP,
-   ("CSP allows inline scripts ('unsafe-inline')", "CSP يسمح بسكربتات inline"),
+   ("CSP allows inline scripts ('unsafe-inline')", "سياسة CSP تسمح بسكربتات inline ('unsafe-inline')"),
    ("Remove 'unsafe-inline' from script-src and use nonces or hashes (with 'strict-dynamic').",
     "أزل 'unsafe-inline' من script-src واستخدم nonce أو hash (مع 'strict-dynamic')."),
    existing=True, title_1_0="CSP allows 'unsafe-inline' scripts")
 _r("WEB041", "B", "csp", "medium", "certain", *_CSP,
-   ("CSP allows 'unsafe-eval'", "CSP يسمح بـ unsafe-eval"),
+   ("CSP allows 'unsafe-eval'", "سياسة CSP تسمح بـ 'unsafe-eval'"),
    ("Remove 'unsafe-eval'; replace eval/new Function/string timers in your code and libraries.",
-    "أزل 'unsafe-eval' واستبدل eval و new Function والمؤقتات النصية في الشيفرة والمكتبات."),
+    "أزل 'unsafe-eval' واستبدل eval و new Function والمؤقتات النصية في الكود والمكتبات."),
    existing=True)
 _r("WEB042", "B", "csp", "medium", "certain", *_CSP,
-   ("CSP lets scripts load from any source", "CSP يسمح بتحميل السكربتات من أي مصدر"),
+   ("CSP lets scripts load from any source", "سياسة CSP تسمح بتحميل السكربتات من أي مصدر"),
    ("Replace *, https:, http: and data: in script-src with nonces/hashes and 'strict-dynamic' (or an explicit host list).",
     "استبدل *، https:، http:، data: في script-src بـ nonce/hash و'strict-dynamic' (أو قائمة مضيفين محددة)."),
    existing=True, title_1_0="CSP script source uses wildcard *",
@@ -328,20 +357,20 @@ _r("WEB042", "B", "csp", "medium", "certain", *_CSP,
                     "'strict-dynamic').",
        "advice_ar": "هذه السياسة لا تقيّد script-src ولا default-src؛ أضف سياسة للسكربتات (nonce أو hash مع 'strict-dynamic')."}})
 _r("WEB043", "B", "csp", "low", "certain", *_CSP,
-   ("CSP does not restrict plugins (object-src)", "CSP لا يقيّد الإضافات (object-src)"),
+   ("CSP does not restrict plugins (object-src)", "سياسة CSP لا تقيّد الإضافات (object-src)"),
    ("Add object-src 'none'.", "أضف object-src 'none'."),
    sevs="low info", existing=True, title_1_0="CSP missing object-src 'none'")
 _r("WEB200", "B", "csp", "medium", "certain", *_CSP,
-   ("CSP only in report-only mode", "CSP في وضع التقرير فقط وغير مُطبَّقة"),
+   ("CSP only in report-only mode", "سياسة CSP في وضع التقرير فقط وغير مُطبَّقة"),
    ("Switch the report-only policy to enforcement (Content-Security-Policy) once the reports are clean.",
     "حوّل السياسة من وضع التقرير إلى التطبيق (Content-Security-Policy) بعد خلوّ التقارير من المخالفات."))
 _r("WEB201", "B", "csp", "low", "certain", *_CSP,
-   ("CSP syntax errors", "أخطاء صياغة في CSP"),
+   ("CSP syntax errors", "أخطاء صياغة في سياسة CSP"),
    ("Fix the listed CSP syntax errors; browsers silently ignore invalid parts.",
-    "صحّح أخطاء الصياغة المذكورة في CSP؛ المتصفح يتجاهل الأجزاء غير الصالحة دون تنبيه."),
+    "صحّح أخطاء الصياغة المذكورة في سياسة CSP؛ فالمتصفح يتجاهل الأجزاء غير الصالحة دون تنبيه."),
    sevs="low medium info")
 _r("WEB202", "B", "csp", "low", "certain", *_CSP,
-   ("Duplicate CSP directive ignored", "توجيه مكرر في CSP يُتجاهَل"),
+   ("Duplicate CSP directive ignored", "توجيه مكرر في سياسة CSP يُتجاهَل"),
    ("Merge the duplicated directive into one; only the first occurrence is used.",
     "ادمج التوجيه المكرر في توجيه واحد؛ فالمتصفح يستخدم أول ظهور فقط."))
 _r("WEB203", "B", "csp", "medium", "certain", *_CSP,
@@ -349,39 +378,39 @@ _r("WEB203", "B", "csp", "medium", "certain", *_CSP,
    ("Add a per-response nonce (or hashes) to script-src next to 'strict-dynamic'.",
     "أضف nonce يتغيّر مع كل استجابة (أو hash) إلى script-src بجانب 'strict-dynamic'."))
 _r("WEB204", "B", "csp", "medium", "certain", *_CSP,
-   ("CSP base-uri missing or broad", "base-uri مفقود أو واسع في CSP"),
+   ("CSP base-uri missing or broad", "التوجيه base-uri مفقود أو واسع في سياسة CSP"),
    ("Add base-uri 'none' (or 'self').", "أضف base-uri 'none' (أو 'self')."),
    sevs="medium info")
 _r("WEB205", "B", "csp", "medium", "certain", *_CSP,
-   ("CSP form-action missing or broad (form hijacking)", "form-action مفقود أو واسع (اختطاف النماذج)"),
+   ("CSP form-action missing or broad (form hijacking)", "التوجيه form-action مفقود أو واسع في سياسة CSP (اختطاف النماذج)"),
    ("Add form-action 'self' (plus any legitimate external form targets).",
     "أضف form-action 'self' (مع أي وجهات خارجية مشروعة للنماذج)."),
    sevs="medium info")
 _r("WEB206", "B", "csp", "medium", "certain", "CWE-1021", "WSTG-CLNT-09", "14.4.7", "3.4.6", "S-FRAME",
-   ("CSP frame-ancestors allows any site", "frame-ancestors يسمح بالتضمين من أي موقع"),
+   ("CSP frame-ancestors allows any site", "التوجيه frame-ancestors في سياسة CSP يسمح بالتضمين من أي موقع"),
    ("Use frame-ancestors 'none' (or 'self' / an explicit list of trusted origins).",
     "استخدم frame-ancestors 'none' (أو 'self' أو قائمة محددة بالمواقع الموثوقة)."))
 _r("WEB207", "B", "csp", "medium", "certain", "CWE-693", "WSTG-CONF-12", "14.4.3", "3.4.3", "S-CSP S-FRAME",
-   ("CSP directive ignored in a meta tag", "توجيه CSP لا يعمل داخل وسم meta"),
+   ("CSP directive ignored in a meta tag", "توجيه في سياسة CSP لا يعمل داخل وسم meta"),
    ("Send frame-ancestors, report-uri and sandbox in the HTTP header; browsers ignore them in <meta>.",
     "أرسل frame-ancestors وreport-uri وsandbox في ترويسة HTTP؛ المتصفح يتجاهلها داخل <meta>."),
    sevs="medium low")
 _r("WEB208", "B", "csp", "low", "certain", *_CSP,
-   ("Meta CSP placed after scripts or styles", "وسم CSP يأتي بعد سكربتات أو أنماط"),
+   ("Meta CSP placed after scripts or styles", "وسم meta لسياسة CSP يأتي بعد سكربتات أو أنماط"),
    ("Make the CSP meta tag the first element in <head>, or send CSP as a header.",
-    "اجعل وسم CSP أول عنصر في <head>، أو أرسل CSP كترويسة HTTP."))
+    "اجعل وسم meta الخاص بسياسة CSP أول عنصر في <head>، أو أرسل السياسة كترويسة HTTP."))
 _r("WEB209", "B", "csp", "medium", "firm", *_CSP,
-   ("CSP allowlists a host that can bypass it (JSONP/AngularJS)", "CSP يسمح بمضيف يمكن تجاوزها عبره"),
+   ("CSP allowlists a host that can bypass it (JSONP/AngularJS)", "سياسة CSP تسمح بمضيف يمكن تجاوزها عبره (JSONP أو AngularJS)"),
    ("Allowlisted hosts serve JSONP or AngularJS that defeat this policy; switch to a nonce-based policy with "
     "'strict-dynamic'.",
     "المضيفون المسموح بهم يقدّمون JSONP أو AngularJS تتيح تجاوز هذه السياسة؛ انتقل إلى سياسة nonce مع 'strict-dynamic'."),
    sevs="medium low")
 _r("WEB210", "B", "csp", "medium", "certain", *_CSP,
-   ("CSP allows 'unsafe-hashes'", "CSP يسمح بـ 'unsafe-hashes'"),
+   ("CSP allows 'unsafe-hashes'", "سياسة CSP تسمح بـ 'unsafe-hashes'"),
    ("Remove 'unsafe-hashes' and move inline event handlers into nonce'd scripts (addEventListener).",
     "أزل 'unsafe-hashes' وانقل معالجات الأحداث المضمّنة إلى سكربتات بـ nonce (addEventListener)."))
 _r("WEB211", "B", "csp", "medium", "certain", "CWE-319", "WSTG-CONF-12", "14.4.3", "3.4.3", "S-CSP",
-   ("CSP allows insecure http: sources on an HTTPS page", "CSP يسمح بمصادر http: غير آمنة"),
+   ("CSP allows insecure http: sources on an HTTPS page", "سياسة CSP تسمح بمصادر http: غير آمنة في صفحة HTTPS"),
    ("Use only https: sources and add upgrade-insecure-requests.",
     "استخدم مصادر https: فقط وأضف upgrade-insecure-requests."),
    sevs="medium low")
@@ -389,24 +418,24 @@ _r("WEB212", "B", "csp", "medium", "certain", "CWE-330", "WSTG-CONF-12", "14.4.3
    ("CSP nonce is static (reused across responses)", "قيمة nonce ثابتة لا تتغيّر"),
    ("Generate a new cryptographically random nonce (≥ 128 bits) for every response and do not cache nonce'd pages "
     "publicly.",
-    "ولّد nonce عشوائيًا آمنًا جديدًا (128 بت على الأقل) لكل استجابة، ولا تخزّن الصفحات المحتوية على nonce في ذاكرة تخزين عامة."),
+    "ولّد nonce عشوائيًا آمنًا جديدًا (128 بتًا على الأقل) لكل استجابة، ولا تخزّن الصفحات المحتوية على nonce في ذاكرة تخزين عامة."),
    confs="certain firm")
 _r("WEB213", "B", "csp", "medium", "certain", "CWE-330", "WSTG-CONF-12", "14.4.3", "3.4.3", "S-CSP",
    ("CSP nonce too short", "قيمة nonce قصيرة"),
    ("Use at least 16 random bytes, base64-encoded, per response.",
-    "استخدم 16 بايت عشوائية على الأقل بترميز base64 لكل استجابة."),
+    "استخدم 16 بايتًا عشوائيًا على الأقل بترميز base64 لكل استجابة."),
    sevs="medium info")
 _r("WEB214", "B", "csp", "info", "certain", *_CSP,
-   ("CSP allows inline styles", "CSP يسمح بأنماط inline"),
+   ("CSP allows inline styles", "سياسة CSP تسمح بأنماط inline"),
    ("Prefer nonces or hashes for styles; 'unsafe-inline' in style-src allows CSS injection.",
     "يُفضَّل استخدام nonce أو hash للأنماط؛ فالسماح بـ 'unsafe-inline' في style-src يتيح حقن CSS."))
 _r("WEB215", "B", "csp", "info", "certain", "CWE-778", "WSTG-CONF-12", "—", "3.4.7", "S-CSP",
-   ("CSP reporting not configured", "لا يوجد إعداد للإبلاغ عن مخالفات CSP"),
+   ("CSP reporting not configured", "لا يوجد إعداد للإبلاغ عن مخالفات سياسة CSP"),
    ("Add report-to (with a Reporting-Endpoints header) and report-uri for older browsers.",
     "أضف report-to (مع ترويسة Reporting-Endpoints) وreport-uri للمتصفحات الأقدم."),
    sevs="info low")
 _r("WEB216", "B", "csp", "info", "certain", "CWE-693", "WSTG-CONF-12", "—", "—", "S-CSP",
-   ("Deprecated CSP directive", "توجيه CSP متقادم"),
+   ("Deprecated CSP directive", "توجيه متقادم في سياسة CSP"),
    ("Remove deprecated directives; they have no effect in current browsers.",
     "احذف التوجيهات المتقادمة؛ فلا أثر لها في المتصفحات الحالية."))
 _r("WEB217", "B", "csp", "info", "certain", "CWE-693", "WSTG-CONF-12", "—", "—", "S-CSP",
@@ -419,7 +448,7 @@ _r("WEB218", "B", "csp", "info", "certain", *_CSP,
    ("Consider a strict CSP (nonce or hash + 'strict-dynamic'), which is more robust than host allowlists.",
     "يُنصح بسياسة CSP صارمة (nonce أو hash مع 'strict-dynamic')، فهي أمتن من قوائم المضيفين."))
 _r("WEB219", "B", "csp", "info", "certain", "CWE-79", "WSTG-CLNT-01", "—", "—", "S-CSP",
-   ("Trusted Types not required (paranoid only)", "Trusted Types غير مفعّل"),
+   ("Trusted Types not required", "سياسة CSP لا تشترط Trusted Types"),
    ("Add require-trusted-types-for 'script' to block DOM XSS sinks.",
     "أضف require-trusted-types-for 'script' لمنع نقاط DOM XSS الخطرة."),
    paranoid=True)
@@ -427,14 +456,14 @@ _r("WEB219", "B", "csp", "info", "certain", "CWE-79", "WSTG-CLNT-01", "—", "�
 # =============================================================================================== §2.3 Family C
 _FRAME = ("CWE-1021", "WSTG-CLNT-09", "14.4.7", "3.4.6", "S-FRAME")
 _r("WEB-x-frame-options", "C", "headers", "medium", "firm", *_FRAME,
-   ("No clickjacking protection", "لا حماية من Clickjacking"),
+   ("Missing X-Frame-Options / frame-ancestors", "لا حماية من Clickjacking"),
    ("Add Content-Security-Policy: frame-ancestors 'none' (or 'self'), and X-Frame-Options: DENY for old browsers.",
     "أضف Content-Security-Policy: frame-ancestors 'none' (أو 'self')، وX-Frame-Options: DENY للمتصفحات القديمة."),
    sevs="medium low", existing=True, title_1_0="Missing X-Frame-Options / frame-ancestors")
 _r("WEB300", "C", "headers", "medium", "certain", *_FRAME,
    ("X-Frame-Options value is ineffective", "قيمة X-Frame-Options غير فعّالة"),
    ("Use X-Frame-Options: DENY or SAMEORIGIN; ALLOW-FROM is ignored — use CSP frame-ancestors for an allowlist.",
-    "استخدم X-Frame-Options: DENY أو SAMEORIGIN؛ فالقيمة ALLOW-FROM مهملة، واستخدم frame-ancestors في CSP لقائمة السماح."),
+    "استخدم X-Frame-Options: DENY أو SAMEORIGIN؛ فالقيمة ALLOW-FROM مهملة، واستخدم frame-ancestors في سياسة CSP لقائمة السماح."),
    sevs="medium low")
 _r("WEB301", "C", "headers", "low", "certain", *_FRAME,
    ("Conflicting or duplicated X-Frame-Options", "قيم X-Frame-Options متعارضة أو مكررة"),
@@ -495,7 +524,7 @@ _r("WEB310", "C", "headers", "low", "certain", "CWE-693", "WSTG-CONF-14", "—",
 _r("WEB311", "C", "headers", "info", "certain", "CWE-693", "WSTG-CONF-14", "—", "—", "S-DEPR",
    ("X-XSS-Protection enables the legacy XSS auditor", "X-XSS-Protection يفعّل المدقق القديم"),
    ("Set X-XSS-Protection: 0 (or remove it) and rely on CSP; the old auditor caused XS-Leaks.",
-    "اضبط X-XSS-Protection: 0 (أو احذفها) واعتمد على CSP؛ فالمدقق القديم كان يسبب تسريبات XS-Leaks."))
+    "اضبط X-XSS-Protection: 0 (أو احذفها) واعتمد على سياسة CSP؛ فالمدقق القديم كان يسبب تسريبات XS-Leaks."))
 _r("WEB312", "C", "headers", "info", "certain", "CWE-693", "WSTG-CONF-14", "—", "—", "S-DEPR",
    ("Deprecated security header", "ترويسة أمان متقادمة"),
    ("Remove deprecated headers (HPKP, Expect-CT); use Cache-Control instead of Pragma.",
@@ -528,41 +557,63 @@ _r("WEB318", "C", "headers", "info", "certain", "CWE-693", "WSTG-CONF-14", "14.4
 
 # =============================================================================================== §2.4 Family D
 _CORS = ("CWE-942", "WSTG-CLNT-07", "14.5.3", "3.4.2", "S-CORS")
+# «بيانات الاعتماد» is "credentials" here; «الاعتماديات» means dependencies only (a test keeps it out of CORS texts)
 _CORS_ADVICE = (
-    "Return Access-Control-Allow-Origin only for an explicit allowlist of trusted https origins, never reflect the Origin "
-    "header, never allow \"null\", and add Vary: Origin.",
-    "أعد Access-Control-Allow-Origin لقائمة سماح محددة من أصول https موثوقة فقط، ولا تعكس ترويسة Origin أبدًا، ولا تسمح بالأصل null، وأضف Vary: Origin.")
+    "Echo the Origin back in Access-Control-Allow-Origin only after an exact match against an allowlist of trusted "
+    "origins; never reflect arbitrary origins or \"null\", and send Vary: Origin.",
+    "أعِد قيمة Origin في Access-Control-Allow-Origin فقط بعد مطابقتها تمامًا لقائمة سماح بالأصول الموثوقة، ولا تعكس "
+    "أي أصل عشوائي ولا القيمة null أبدًا، وأرسل Vary: Origin.")
+_CORS_RULE_ADVICE = {
+    "WEB323": ("Drop Access-Control-Allow-Credentials, or return one allowlisted origin instead of *; browsers reject * "
+               "together with credentials.",
+               "احذف Access-Control-Allow-Credentials، أو أعِد أصلًا واحدًا من قائمة السماح بدل *؛ فالمتصفح يرفض * مع "
+               "بيانات الاعتماد."),
+    "WEB324": ("Add Vary: Origin to every response whose Access-Control-Allow-Origin depends on the request's Origin, so "
+               "caches never serve one site's answer to another.",
+               "أضف Vary: Origin إلى كل استجابة تتغيّر فيها قيمة Access-Control-Allow-Origin بحسب ترويسة Origin في الطلب، "
+               "حتى لا تقدّم الذاكرات المؤقتة إجابة موقع إلى موقع آخر."),
+    "WEB325": ("Send exactly one Access-Control-Allow-Origin value: *, null or one origin (such as https://app.example.com); "
+               "browsers reject lists and patterns.",
+               "أرسل قيمة واحدة فقط في Access-Control-Allow-Origin: إما * أو null أو أصلًا واحدًا (مثل "
+               "https://app.example.com)؛ فالمتصفح يرفض القوائم والأنماط."),
+    "WEB327": ("Do not send Access-Control-Allow-Origin: * on responses that carry session or personal data; answer only "
+               "allowlisted origins there.",
+               "لا ترسل Access-Control-Allow-Origin: * في الاستجابات التي تحمل بيانات جلسة أو بيانات شخصية، وأجب فيها "
+               "الأصول المدرجة في قائمة السماح فقط."),
+}
 for _rid, _sev, _sevs, _conf, _en, _ar in (
         ("WEB320", "high", "", "certain", "Any website can read authenticated responses (Origin reflected with credentials)",
-         "أي موقع يستطيع قراءة الاستجابات الموثقة"),
-        ("WEB321", "low", "low medium", "certain", "Origin reflected without credentials", "أصل الطلب يُعاد بلا اعتماديات"),
+         "أي موقع يستطيع قراءة الاستجابات الموثقة (إعادة Origin مع السماح ببيانات الاعتماد)"),
+        ("WEB321", "low", "low medium", "certain", "Origin reflected without credentials",
+         "أصل الطلب يُعاد دون السماح ببيانات الاعتماد"),
         ("WEB322", "medium", "medium high", "certain", "CORS trusts the \"null\" origin", "CORS يثق بالأصل null"),
-        ("WEB323", "low", "", "certain", "ACAO * combined with credentials (invalid)", "ACAO * مع الاعتماديات (تركيبة غير صالحة)"),
+        ("WEB323", "low", "", "certain", "ACAO * combined with credentials (invalid)",
+         "ACAO * مع بيانات الاعتماد (تركيبة غير صالحة)"),
         ("WEB324", "low", "", "certain", "Reflected ACAO without Vary: Origin", "إعادة الأصل بلا Vary: Origin"),
         ("WEB325", "low", "", "certain", "Invalid ACAO value", "قيمة ACAO غير صالحة"),
         ("WEB326", "low", "", "certain", "CORS trusts an http:// origin on an https site", "CORS يثق بأصل http على موقع https"),
         ("WEB327", "low", "", "tentative", "Public CORS on a response with session data", "CORS عام على استجابة تحوي بيانات جلسة")):
-    _r(_rid, "D", "cors", _sev, _conf, *_CORS, (_en, _ar), _CORS_ADVICE, sevs=_sevs)
+    _r(_rid, "D", "cors", _sev, _conf, *_CORS, (_en, _ar), _CORS_RULE_ADVICE.get(_rid, _CORS_ADVICE), sevs=_sevs)
 
 # =============================================================================================== §2.5 Family E
 _r("WEB020", "E", "cookies", "high", "certain", "CWE-614", "WSTG-SESS-02", "3.4.1", "3.3.1", "S-COOKIE",
-   ("Cookie without Secure flag", "كوكي بدون علامة Secure"),
+   ("Cookie without Secure flag", "كوكي بلا علامة Secure"),
    ("Add the Secure attribute (and preferably the __Host- prefix) to this cookie.",
     "أضف السمة Secure إلى هذه الكوكي (ويُفضَّل استخدام البادئة __Host-)."),
    sevs="high medium low info", confs="certain tentative",
-   title=("Cookie without Secure flag: {cookie}", "كوكي بدون علامة Secure: {cookie}"), existing=True)
+   title=("Cookie without Secure flag: {cookie}", "كوكي بلا علامة Secure: {cookie}"), existing=True)
 _r("WEB021", "E", "cookies", "medium", "firm", "CWE-1004", "WSTG-SESS-02", "3.4.2", "3.3.4", "S-COOKIE",
-   ("Session cookie without HttpOnly", "كوكي جلسة بدون HttpOnly"),
+   ("Session cookie without HttpOnly", "كوكي جلسة بلا HttpOnly"),
    ("Add HttpOnly so page scripts cannot read the session cookie.",
     "أضف HttpOnly حتى لا تستطيع سكربتات الصفحة قراءة كوكي الجلسة."),
    sevs="medium info", confs="certain firm tentative",
-   title=("Session cookie without HttpOnly: {cookie}", "كوكي جلسة بدون HttpOnly: {cookie}"), existing=True,
+   title=("Session cookie without HttpOnly: {cookie}", "كوكي جلسة بلا HttpOnly: {cookie}"), existing=True,
    title_1_0="Cookie without HttpOnly flag: {cookie}")
 _r("WEB022", "E", "cookies", "low", "certain", "CWE-1275", "WSTG-SESS-02", "3.4.3", "3.3.2", "S-COOKIE",
-   ("Cookie without SameSite", "كوكي بدون SameSite"),
+   ("Cookie without SameSite", "كوكي بلا SameSite"),
    ("Set SameSite=Lax (or Strict) explicitly.", "اضبط SameSite=Lax (أو Strict) صراحةً."),
    sevs="low info", confs="certain tentative",
-   title=("Cookie without SameSite: {cookie}", "كوكي بدون SameSite: {cookie}"), existing=True)
+   title=("Cookie without SameSite: {cookie}", "كوكي بلا SameSite: {cookie}"), existing=True)
 
 
 def _cookie(rid, sev, sevs, conf, cwe, asvs4, asvs5, name, advice, *, confs="", paranoid=False):
@@ -575,13 +626,15 @@ _cookie("WEB400", "medium", "", "certain", "CWE-1275", "3.4.3", "3.3.2",
         ("Add Secure, or use Lax/Strict.", "أضف Secure أو استخدم Lax أو Strict."))
 _cookie("WEB401", "medium", "", "certain", "CWE-614", "3.4.4", "3.3.1",
         ("Cookie prefix rules broken (cookie rejected)", "قواعد بادئة الكوكي مخالفة (يرفضها المتصفح)"),
-        ("Meet the prefix rules (__Host-: Secure; Path=/; no Domain).",
-         "استوفِ قواعد البادئة (__Host- تتطلب Secure وPath=/ وبلا Domain)."))
+        ("Meet the prefix rules: __Secure- needs Secure; __Host- needs Secure, Path=/ and no Domain; both must be set "
+         "over HTTPS.",
+         "استوفِ قواعد البادئة: تتطلب __Secure- السمة Secure، وتتطلب __Host- السمة Secure والمسار Path=/ وعدم ذكر Domain، "
+         "ويجب ضبط كلتيهما عبر HTTPS."))
 _cookie("WEB402", "low", "", "certain", "CWE-1275", "3.4.3", "3.3.2",
         ("Invalid SameSite value", "قيمة SameSite غير صالحة"),
         ("Use Strict, Lax or None.", "استخدم Strict أو Lax أو None."))
 _cookie("WEB403", "medium", "", "certain", "CWE-614", "—", "3.3.1",
-        ("Partitioned without Secure (cookie rejected)", "Partitioned بلا Secure"),
+        ("Partitioned without Secure (cookie rejected)", "Partitioned بلا Secure (يرفضها المتصفح)"),
         ("Add Secure (and prefer __Host-).", "أضف Secure (ويُفضّل __Host-)."))
 _cookie("WEB404", "low", "", "certain", "CWE-565", "3.4.5", "3.3.3",
         ("Cookie scoped too broadly or to a foreign domain", "نطاق الكوكي واسع أو لا يطابق المضيف"),
@@ -603,16 +656,16 @@ _cookie("WEB407", "low", "low info", "certain", "CWE-1275", "3.4.3", "3.3.2",
         confs="certain tentative")
 _cookie("WEB408", "low", "", "certain", "CWE-436", "—", "3.3.5",
         ("Cookie too large (ignored by browsers)", "كوكي كبيرة جدًا (يتجاهلها المتصفح)"),
-        ("Keep name and value under 4096 bytes.", "اجعل الاسم والقيمة معًا أقل من 4096 بايت."))
+        ("Keep name and value under 4096 bytes.", "اجعل الاسم والقيمة معًا أقل من 4096 بايتًا."))
 _cookie("WEB409", "info", "", "certain", "CWE-614", "3.4.4", "3.3.3",
         ("Session cookie without the __Host- prefix", "كوكي جلسة بلا البادئة __Host-"),
         ("Rename to __Host-<name> (Secure; Path=/; no Domain).", "أعد تسميتها إلى __Host-<الاسم> مع Secure وPath=/ وبلا Domain."),
         confs="certain tentative", paranoid=True)
 _cookie("WEB410", "low", "", "certain", "CWE-614", "—", "—",
-        ("Secure attribute on a cookie set over HTTP (ignored)", "سمة Secure على كوكي عبر HTTP (مُهمَلة)"),
+        ("Secure cookie set over HTTP (the browser drops it)", "كوكي بسمة Secure تُضبط عبر HTTP (يرفضها المتصفح)"),
         ("Serve the site over HTTPS.", "قدّم الموقع عبر HTTPS."))
 _cookie("WEB411", "low", "", "certain", "CWE-200", "—", "—",
-        ("Load-balancer cookie reveals an internal address", "كوكي موازن الحمل يكشف عنوانًا داخليًا"),
+        ("Load-balancer cookie reveals an internal address", "كوكي موازن الحمل تكشف عنوانًا داخليًا"),
         ("Enable cookie encryption on the BIG-IP persistence profile.", "فعّل تشفير كوكي الاستمرارية في ملف إعداد BIG-IP."))
 _cookie("WEB412", "medium", "medium low", "firm", "CWE-315", "3.5.3", "14.3.3",
         ("Sensitive data in a cookie value", "بيانات حساسة في قيمة الكوكي"),
@@ -632,16 +685,16 @@ _cookie("WEB414", "low", "", "certain", "CWE-1004", "3.4.2", "3.3.4",
 _r("WEB050", "F", "content", "medium", "certain", "CWE-319", "WSTG-CRYP-03", "9.1.1", "12.2.1", "S-MIXED",
    ("Mixed content on an HTTPS page", "محتوى مختلط في صفحة HTTPS"),
    ("Load every subresource over https:// (and add CSP upgrade-insecure-requests as a safety net).",
-    "حمّل كل الموارد الفرعية عبر https:// (وأضف upgrade-insecure-requests في CSP كشبكة أمان)."),
+    "حمّل كل الموارد الفرعية عبر https:// (وأضف upgrade-insecure-requests إلى سياسة CSP كشبكة أمان)."),
    sevs="medium low info", existing=True, title_1_0="Mixed content: insecure resource on HTTPS page")
 _r("WEB051", "F", "content", "high", "certain", "CWE-319", "WSTG-ATHN-01", "9.1.1", "12.2.1", "S-MIXED",
    ("Form submits over plain HTTP", "نموذج يُرسل عبر HTTP"),
    ("Make the form action https://.", "اجعل وجهة النموذج (action) عبر https://."),
    sevs="high medium", existing=True)
 _r("WEB052", "F", "content", "high", "certain", "CWE-523", "WSTG-ATHN-01", "9.1.1", "12.2.1", "S-REDIR",
-   ("Password field on a non-HTTPS page", "حقل كلمة مرور في صفحة غير HTTPS"),
-   ("Serve login pages only over HTTPS.", "قدّم صفحات تسجيل الدخول عبر HTTPS فقط."),
-   existing=True, title_1_0="Password field on non-HTTPS page")
+   ("Password field on non-HTTPS page", "حقل كلمة مرور في صفحة غير HTTPS"),
+   ("Serve login pages over HTTPS only.", "قدّم صفحات تسجيل الدخول عبر HTTPS فقط."),
+   existing=True)
 _r("WEB053", "F", "content", "low", "certain", "CWE-353", "WSTG-CONF-14", "14.2.3", "3.6.1", "S-SRI",
    ("External script or stylesheet without Subresource Integrity", "سكربت أو ملف أنماط خارجي بلا SRI"),
    ("Add integrity=\"sha384-…\" and crossorigin=\"anonymous\" to third-party scripts and stylesheets (or self-host them).",
@@ -672,8 +725,10 @@ _r("WEB506", "F", "content", "high", "certain", "CWE-829", "—", "10.3.2", "15.
    confs="certain firm")
 _r("WEB507", "F", "content", "high", "firm", "CWE-506", "—", "—", "—", "S-INCIDENT",
    ("Signs of compromise (cryptominer, injected loader, defacement)", "مؤشرات اختراق (معدِّن عملات، محمّل مزروع، تشويه)"),
-   ("Treat as a security incident: take a clean backup, rotate credentials, find the entry point.",
-    "تعامل معه كحادث أمني: استعد نسخة نظيفة، وغيّر بيانات الاعتماد، وابحث عن نقطة الاختراق."))
+   ("Treat it as a security incident: preserve a copy of the evidence, find and close the entry point, then remove the "
+    "injected code (or restore a known-clean copy) and rotate credentials.",
+    "تعامل معه كحادث أمني: احتفظ بنسخة من الأدلة، وابحث عن نقطة الاختراق وأغلقها، ثم أزل الكود المحقون (أو استعد نسخة "
+    "نظيفة موثوقة) وغيّر بيانات الاعتماد."))
 _r("WEB508", "F", "content", "info", "certain", "CWE-521", "WSTG-ATHN-05", "—", "6.2.7", "S-HTML",
    ("Password field blocks password managers or paste", "حقل كلمة المرور يمنع مدير كلمات المرور أو اللصق"),
    ("Allow paste and password managers (use autocomplete=\"current-password\"/\"new-password\").",
@@ -702,17 +757,17 @@ _r("WEB514", "F", "content", "info", "firm", "CWE-436", "—", "—", "—", "S-
    ("Add <!doctype html> and use root-relative or absolute stylesheet URLs.",
     "أضف <!doctype html> واستخدم روابط أنماط مطلقة أو تبدأ من الجذر."))
 _r("WEB515", "F", "content", "info", "certain", "CWE-693", "WSTG-CONF-12", "—", "—", "S-CSP",
-   ("Inline event handlers or javascript: URLs block a strict CSP", "معالجات أحداث مضمّنة تعيق CSP صارمة"),
+   ("Inline event handlers or javascript: URLs block a strict CSP", "معالجات أحداث مضمّنة تعيق سياسة CSP صارمة"),
    ("Move inline event handlers and javascript: URLs into script files (addEventListener) to prepare for a strict CSP.",
     "انقل معالجات الأحداث المضمّنة وروابط javascript: إلى ملفات سكربت (addEventListener) تمهيدًا لسياسة CSP صارمة."),
    paranoid=True)
 _r("WEB516", "F", "content", "info", "tentative", "CWE-352", "WSTG-SESS-05", "4.2.2", "3.5.1", "S-COOKIE",
-   ("State-changing form without an anti-CSRF token (paranoid only)", "نموذج بلا رمز مضاد لـ CSRF"),
+   ("State-changing form without an anti-CSRF token", "نموذج يغيّر الحالة بلا رمز مضاد لـ CSRF"),
    ("Use anti-CSRF tokens and SameSite cookies.", "استخدم رموزًا مضادة لـ CSRF وكوكيز SameSite."),
    paranoid=True)
 _r("WEB517", "F", "content", "high", "firm", "CWE-829", "WSTG-CONF-10", "14.2.3", "15.2.4", "S-SRI",
    ("Page loads code from a host or bucket that does not exist (hijackable)",
-    "الصفحة تحمّل شيفرة من مضيف أو حاوية تخزين غير موجودة (قابلة للاستيلاء)"),
+    "الصفحة تحمّل كودًا من مضيف أو حاوية تخزين غير موجودة (قابلة للاستيلاء)"),
    ("Remove the reference or host the file yourself; check whether the domain has expired.",
     "أزل المرجع أو استضف الملف على خادمك، وتحقّق مما إذا كان النطاق قد انتهى تسجيله."),
    sevs="high medium low info", confs="firm tentative")
@@ -775,7 +830,9 @@ _r("WEB603", "G", "disclosure", "low", "firm", "CWE-200", "WSTG-INFO-05", "—",
    confs="firm tentative")
 _r("WEB604", "G", "disclosure", "info", "certain", "CWE-200", "WSTG-INFO-02", "—", "—", "S-BANNER",
    ("ETag reveals inode numbers", "ترويسة ETag تكشف أرقام inode"),
-   ("Set FileETag MTime Size.", "اضبط FileETag MTime Size."))
+   ("Set Apache's FileETag directive to MTime Size (in httpd.conf or .htaccess) so the ETag no longer carries the "
+    "inode.",
+    "اضبط التوجيه FileETag في Apache على MTime Size (في httpd.conf أو .htaccess) حتى لا تحمل ETag رقم inode."))
 _r("WEB605", "G", "disclosure", "high", "certain", "CWE-489", "WSTG-ERRH-02", "14.3.2", "13.4.2", "S-ERR",
    ("Framework debug mode enabled", "وضع التصحيح للإطار مفعّل"),
    ("Turn off debug mode in production.", "أوقف وضع التصحيح في بيئة الإنتاج."),
@@ -787,10 +844,10 @@ _r("WEB607", "G", "disclosure", "low", "tentative", "CWE-209", "WSTG-ERRH-01", "
    ("Server file path disclosed in an error", "كشف مسار ملف في الخادم ضمن رسالة خطأ"),
    ("Hide internal paths in error output.", "أخفِ المسارات الداخلية من رسائل الخطأ."))
 _r("WEB608", "G", "disclosure", "medium", "firm", "CWE-540", "WSTG-CONF-03", "12.5.1", "13.4.7", "S-DOTFILES",
-   ("Server-side source code disclosed", "كشف شيفرة المصدر من جهة الخادم"),
+   ("Server-side source code disclosed", "كشف الكود المصدري من جهة الخادم"),
    ("Make sure server-side files are executed, never served as text.", "تأكد من تنفيذ ملفات الخادم وعدم تقديمها كنص."))
 _r("WEB609", "G", "disclosure", "critical", "firm", "CWE-798", "WSTG-INFO-05", "2.10.4", "13.3.1", "S-SECRET",
-   ("Secret or private key in client-side code", "سرّ أو مفتاح خاص في الشيفرة المقدَّمة للمتصفح"),
+   ("Secret or private key in client-side code", "سرّ أو مفتاح خاص في الكود المقدَّم للمتصفح"),
    ("Revoke the secret now and move it server-side.", "أبطل السرّ فورًا وانقله إلى جهة الخادم."),
    sevs="critical high low", confs="certain firm tentative")
 _r("WEB610", "G", "disclosure", "medium", "firm", "CWE-502", "—", "1.5.2", "1.5.2", "S-SECRET",
@@ -810,12 +867,15 @@ _r("WEB613", "G", "disclosure", "medium", "firm", "CWE-359", "WSTG-INFO-05", "�
    ("Remove or mask card numbers (show at most the last 4 digits).", "أزل أرقام البطاقات أو أخفها (اعرض آخر 4 أرقام فقط)."),
    sevs="medium info")
 _r("WEB614", "G", "disclosure", "info", "tentative", "CWE-615", "WSTG-INFO-05", "—", "—", "S-HTML",
-   ("Sensitive HTML comment (paranoid only)", "تعليق HTML حساس"),
+   ("Sensitive HTML comment", "تعليق HTML حساس"),
    ("Strip comments from production HTML.", "احذف التعليقات من HTML في الإنتاج."),
    paranoid=True)
 _r("WEB615", "G", "disclosure", "high", "tentative", "CWE-119", "WSTG-CRYP-01", "9.1.2", "12.1.2", "S-TLS",
    ("OpenSSL version vulnerable to Heartbleed (from banner)", "إصدار OpenSSL عرضة لـ Heartbleed (من الترويسة)"),
-   ("Upgrade OpenSSL and reissue keys.", "حدّث OpenSSL وأعد إصدار المفاتيح."))
+   ("Check whether your distribution's OpenSSL package includes the CVE-2014-0160 fix; if it does not, upgrade "
+    "OpenSSL, issue a new key and certificate, and revoke the old certificate.",
+    "تحقّق مما إذا كانت حزمة OpenSSL في توزيعتك تتضمن إصلاح الثغرة CVE-2014-0160؛ فإن لم تتضمنه فحدّث OpenSSL، وأصدر "
+    "مفتاحًا وشهادة جديدين، وأبطل الشهادة القديمة."))
 _r("WEB616", "G", "disclosure", "low", "certain", "CWE-497", "WSTG-INFO-02", "14.3.3", "13.4.6", "S-BANNER",
    ("Server version shown on error pages", "إصدار الخادم يظهر في صفحات الخطأ"),
    ("Use custom error pages without version strings.", "استخدم صفحات خطأ مخصصة بلا أرقام إصدارات."))
@@ -832,9 +892,9 @@ _TLS_WSTG = "WSTG-CRYP-01"
 
 
 def _tls(rid, sev, sevs, conf, cwe, asvs4, asvs5, name, advice, *, confs="", paranoid=False, title=None, existing=False,
-         title_1_0=""):
+         title_1_0="", variants=None, joiners=None):
     _r(rid, "H", "tls", sev, conf, cwe, _TLS_WSTG, asvs4, asvs5, "S-TLS", name, advice, sevs=sevs, confs=confs,
-       paranoid=paranoid, title=title, existing=existing, title_1_0=title_1_0)
+       paranoid=paranoid, title=title, existing=existing, title_1_0=title_1_0, variants=variants, joiners=joiners)
 
 
 _tls("WEB030", "medium", "", "certain", "CWE-327", "9.1.3", "12.1.1",
@@ -876,7 +936,11 @@ _tls("WEB704", "critical", "critical high", "certain", "CWE-327", "9.1.3", "12.1
 _tls("WEB705", "high", "high low", "certain", "CWE-327", "9.1.3", "12.1.1",
      ("TLS 1.2 not supported / TLS 1.3 not supported", "لا دعم لـ TLS 1.2 أو 1.3"),
      ("Enable TLS 1.3 (and keep 1.2).", "فعّل TLS 1.3 (مع الإبقاء على 1.2)."),
-     title=("{versions} not supported", "لا دعم لـ {versions}"))
+     title=("{versions} not supported", "لا دعم لـ {versions}"), joiners={"versions": (" and ", " ولا ")},
+     variants={"no12no13": {
+         "title_en": "TLS 1.2 and TLS 1.3 not supported", "title_ar": "لا دعم لـ TLS 1.2 ولا TLS 1.3",
+         "advice_en": "Enable TLS 1.2 and TLS 1.3 (see S-TLS).",
+         "advice_ar": "فعّل TLS 1.2 وTLS 1.3 (انظر S-TLS)."}})
 _tls("WEB706", "high", "high medium low", "certain", "CWE-327", "9.1.2", "12.1.2",
      ("Weak cipher suites offered", "مجموعات تشفير ضعيفة مسموحة"),
      ("Offer only ECDHE + AEAD suites (Mozilla intermediate).", "اسمح فقط بمجموعات ECDHE مع AEAD (إعداد Mozilla المتوسط)."))
@@ -905,7 +969,26 @@ _tls("WEB713", "medium", "medium low", "firm", "CWE-295", "—", "12.2.2",
      confs="firm tentative")
 _tls("WEB714", "high", "high medium info", "certain", "CWE-299", "—", "12.1.4",
      ("OCSP stapling problem", "مشكلة في تدبيس OCSP"),
-     ("Enable stapling, or reissue without must-staple.", "فعّل تدبيس OCSP أو أعد إصدار الشهادة بلا must-staple."))
+     ("Enable stapling, or reissue without must-staple.", "فعّل تدبيس OCSP أو أعد إصدار الشهادة بلا must-staple."),
+     variants={
+         "revoked": {
+             "title_en": "Certificate revoked (stapled OCSP response)",
+             "title_ar": "الشهادة مُبطَلة (بحسب استجابة OCSP المدبَّسة)",
+             "advice_en": "The certificate is revoked: install a new certificate now and find out why it was revoked.",
+             "advice_ar": "الشهادة مُبطَلة: ثبّت شهادة جديدة فورًا، واعرف سبب إبطالها."},
+         "expired": {
+             "title_en": "Stapled OCSP response expired",
+             "title_ar": "استجابة OCSP المدبَّسة منتهية الصلاحية",
+             "advice_en": "Fix OCSP fetching on the server (it must reach the CA's OCSP responder) or restart it so it "
+                          "staples a fresh response.",
+             "advice_ar": "أصلح جلب استجابة OCSP في الخادم (يجب أن يصل إلى خادم OCSP لدى جهة الإصدار) أو أعد تشغيله "
+                          "ليدبّس استجابة حديثة."},
+         "must_staple": {
+             "advice_en": "Enable stapling, or reissue without must-staple.",
+             "advice_ar": "فعّل تدبيس OCSP أو أعد إصدار الشهادة بلا must-staple."},
+         "no_staple": {
+             "advice_en": "Enable stapling, or reissue without must-staple.",
+             "advice_ar": "فعّل تدبيس OCSP أو أعد إصدار الشهادة بلا must-staple."}})
 _tls("WEB715", "low", "", "certain", "CWE-1188", "—", "12.1.1",
      ("TLS configuration differs between servers", "إعداد TLS مختلف بين الخوادم"),
      ("Apply one TLS configuration to every node.", "طبّق إعداد TLS نفسه على جميع الخوادم."))
@@ -956,9 +1039,16 @@ _r("WEB800", "I", "tech", "high", "firm", "CWE-1395", "WSTG-INFO-02", "14.2.1", 
    sevs="critical high medium low", confs="firm tentative",
    title=("Server software version with known vulnerabilities: {product} {version}",
           "إصدار برمجية خادم به ثغرات معروفة: {product} {version}"),
-   variants={"tentative": {
-       "title_en": "Server software version may be affected by known vulnerabilities: {product} {version}",
-       "title_ar": "إصدار برمجية الخادم قد يكون متأثرًا بثغرات معروفة: {product} {version}"}})
+   variants={
+       "tentative": {
+           "title_en": "Server software version may be affected by known vulnerabilities: {product} {version}",
+           "title_ar": "إصدار برمجية الخادم قد يكون متأثرًا بثغرات معروفة: {product} {version}"},
+       # the fixed version is on an end-of-life branch: {supported} is the oldest supported release
+       "eol": {
+           "advice_en": "Upgrade {product} to a supported release (≥ {supported}); {fixed} only closes these CVEs and is "
+                        "itself unsupported.",
+           "advice_ar": "حدّث {product} إلى إصدار مدعوم ({supported} أو أحدث)؛ فالإصدار {fixed} يسدّ هذه الثغرات فقط، "
+                        "وهو نفسه غير مدعوم."}})
 _r("WEB801", "I", "tech", "medium", "firm", "CWE-1104", "WSTG-INFO-02", "14.2.1", "15.2.1", "S-BANNER",
    ("End-of-life server software or runtime", "برمجية خادم أو بيئة تشغيل انتهى دعمها"),
    ("Move to a supported release.", "انتقل إلى إصدار ما زال مدعومًا."),
@@ -1120,8 +1210,17 @@ def _plural_patterns(ar: str, en: str) -> list[tuple[str, str]]:
 
 def template_patterns(ar: str, en: str) -> list[tuple[str, str]]:
     """i18n PATTERNS entries for one Arabic/English template pair (``{name}`` groups; one count parameter of
-    :data:`PLURAL_PARAMS` expands to its five Arabic forms). Empty when the template has no placeholder."""
-    return _plural_patterns(ar, en)
+    :data:`PLURAL_PARAMS` expands to its five Arabic forms). Empty when the template has no placeholder.
+
+    For a template with a count parameter, the plain pattern (the bare number in the group) follows the five forms: a
+    module may print a count without its noun (``Retry-After: {seconds}``, a value from a header), and its text must
+    still translate."""
+    out = _plural_patterns(ar, en)
+    if any(n in PLURAL_PARAMS for n in _PLACEHOLDER.findall(ar)):
+        rx = _template_regex(ar)
+        if rx and all(rx != r for r, _e in out):
+            out.append((rx, _en_replacement(en)))
+    return out
 
 
 def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:

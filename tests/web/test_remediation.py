@@ -326,10 +326,10 @@ def test_detected_platforms_are_shown_first_and_the_rest_collapsed():
     assert [b["platform"] for b in d["detected"]] == ["any", "django", "nginx"]
     rest = [b["platform"] for b in d["other"]]
     assert "django" not in rest and "nginx" not in rest
-    assert rest == [p for p in R.PLATFORMS if p in set(rest)]            # default order for the collapsed ones
+    assert list(dict.fromkeys(rest)) == [p for p in R.PLATFORMS if p in set(rest)]   # default order for the collapsed ones
     plain = R.render("S-HSTS", "en")
     assert [b["platform"] for b in plain["detected"]] == ["any"]
-    assert [b["platform"] for b in plain["other"]][:4] == ["nginx", "apache", "iis", "caddy"]
+    assert list(dict.fromkeys(b["platform"] for b in plain["other"]))[:4] == ["nginx", "apache", "iis", "caddy"]
     # a detected platform without a block in this snippet changes nothing
     assert [b["platform"] for b in R.render("S-SRI", detected=("nginx",))["detected"]] == ["any", "any"]
 
@@ -389,16 +389,17 @@ def test_importing_i18n_stays_lazy():
 
 
 # texts whose Arabic equals a 1.0.1 string of cat_web with a slightly different English (cat_web is earlier, so 1.x
-# reports keep the 1.0.1 wording); vulnscan.model.Finding carries its English title directly, so only to_en differs
-LEGACY_1_0 = {"لا حماية من Clickjacking", "ترويسة X-Powered-By تكشف التقنية", "CSP يسمح بسكربتات inline",
-              "حقل كلمة مرور في صفحة غير HTTPS", "قدّم صفحات تسجيل الدخول عبر HTTPS فقط."}
+# reports keep the 1.0.1 wording); vulnscan.model.Finding carries its English title directly, so only to_en differs.
+# The registry's English of WEB040, WEB-x-frame-options and WEB052 now equals the 1.0.1 wording, so only this name is
+# left (names are not rendered through to_en).
+LEGACY_1_0 = {"ترويسة X-Powered-By تكشف التقنية"}
 
 
 def test_every_rule_text_has_english_through_vulnscan_i18n():
     from vulnscan.i18n import cat_web, to_en, translated
     samples = {"cookie": "sid", "value": "Apache/2.4.1", "versions": "TLS 1.0", "library": "jquery", "version": "1.8.3",
                "fixed": "3.5.0", "platform": "WordPress", "branch": "5.9", "date": "2024-01-01", "latest": "6.4.5",
-               "product": "nginx", "path": "/.env", "header": "X-AspNet-Version"}
+               "product": "nginx", "path": "/.env", "header": "X-AspNet-Version", "supported": "1.26"}
     wrong = []
     for rid, m in RULES.items():
         for variant in (None, *m.variants):

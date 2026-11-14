@@ -241,6 +241,10 @@ STR: dict[str, tuple[str, str]] = {
                  "سياسة التقرير لا تحتوي أيًّا من نقاط الضعف التي يفحصها كاشف."),
     "static_doc": ("The page has no scripts, forms or event handlers, so the risk is lower.",
                    "الصفحة بلا سكربتات ولا نماذج ولا معالجات أحداث، فالخطر أقل."),
+    "ceiling": ("Capped at {severity}: a weak policy is never rated worse than no policy on the same page (a missing CSP "
+                "is {severity} here because the page has no scripts, forms or event handlers).",
+                "خُفّضت الخطورة إلى {severity}: لا تُقيَّم السياسة الضعيفة أسوأ من غياب السياسة على الصفحة نفسها (غياب "
+                "CSP هنا خطورته {severity} لأن الصفحة بلا سكربتات ولا نماذج ولا معالجات أحداث)."),
     "object_self": ("object-src 'self' allows plugins from this origin; object-src 'none' is safer.",
                     "القيمة object-src 'self' تسمح بالإضافات من هذا الأصل؛ والقيمة object-src 'none' أكثر أمانًا."),
     "flash_bypass": ("{host} hosts Flash files that could bypass object-src (Flash no longer runs in current browsers).",
@@ -1522,6 +1526,7 @@ class _Run:
         self.issues: list[Issue] = []
         self.evaluated: dict[str, set[str]] = {}
         self.failed: dict[str, set[str]] = {}
+        self.no_policy: dict[str, set[str]] = {}     # check → hosts with a document that has no enforced policy
         self.paranoid = ctx.options.sensitivity == _PARANOID
         self.own_sites = {psl.site(h) for h in (ctx.target_host, ctx.entry.host if ctx.entry else "") if h}
         self.blocked_hosts: dict[str, str] = {}
@@ -1531,6 +1536,7 @@ class _Run:
                 self.blocked_hosts[h.host] = reason
         self.bypass = load_bypass(ctx.data)
         self.facts_cache: dict[int, CspFacts] = {}
+        self.docs: dict[int, ParsedHTML | None] = {}     # id(response) → document, as documents() parsed it
 
     def doc_of(self, r: Response) -> ParsedHTML | None:
         page = self.ctx.page_for(r)
@@ -1538,6 +1544,11 @@ class _Run:
 
     def seen(self, check: str, host: str) -> None:
         self.evaluated.setdefault(check, set()).add(host)
+
+    def without_policy(self, check: str, host: str) -> None:
+        """The check judges policy content and this host's document has none: not_applicable (``no_policy``), never a
+        pass (a later weak policy is then a new finding, not a "check regressed")."""
+        self.no_policy.setdefault(check, set()).add(host)
 
     def facts(self, r: Response, doc: ParsedHTML | None = None) -> CspFacts:
         f = self.ctx.csp.get(r)
@@ -1557,8 +1568,15 @@ class _Run:
         if conf not in meta.allowed_confidences:
             return
         sev = severity if severity in meta.allowed_severities else None
+        notes = list(notes or [])[:8]
+        if rule in CEILING_RULES:
+            ceiling = missing_severity(self.docs.get(id(r)) if id(r) in self.docs else self.doc_of(r))
+            base = sev or meta.severity
+            if _SEV_RANK[base] < _SEV_RANK[ceiling] and ceiling in meta.allowed_severities:
+                sev = ceiling
+                notes.append(ceiling_note(ceiling))
         self.issues.append(Issue(rule=rule, url=r.url, confidence=conf, evidence=evidence, params=dict(params or {}),
-                                 severity=sev, group_value=group_value, notes=list(notes or [])[:8], host=r.host))
+                                 severity=sev, group_value=group_value, notes=notes, host=r.host))
         self.seen(meta.check_id, r.host)
         if self.ctx.options.reports(conf):
             self.failed.setdefault(meta.check_id, set()).add(r.host)
@@ -1589,6 +1607,7 @@ class _Run:
             doc = p.doc
             if doc is None and r.body and not _opaque(r):
                 doc = htmlparse.parse_response(r)
+            self.docs[id(r)] = doc
             out.append((r, doc, conf))
         return out
 
@@ -1604,10 +1623,13 @@ class _Run:
                     cov.failed(check, host)
                 else:
                     cov.passed(check, host)
+            na = self.no_policy.get(check, set()) - hosts
+            for host in sorted(na):
+                cov.not_applicable(check, "no_policy", host=host)
             for host, reason in self.blocked_hosts.items():
                 if host not in hosts:
                     cov.inconclusive(check, reason, host=host)
-            if not hosts and not self.blocked_hosts:
+            if not hosts and not na and not self.blocked_hosts:
                 if RULES[check].paranoid_only and not self.paranoid:
                     cov.not_tested(check, "sensitivity")
                 elif check == "WEB209" and not self.bypass.available:
@@ -1635,6 +1657,21 @@ def _doc_info(r: Response, doc: ParsedHTML | None) -> DocInfo:
     forms = bool(doc and any(f.live for f in doc.forms))
     return DocInfo(url=r.url, https=r.is_https, forms=forms, password=bool(doc and doc.has_password_field),
                    reporting_groups=_reporting_groups(r))
+
+
+# §2.2 severity ceiling: no CSP-weakness rule is more severe than WEB-content-security-policy on the same document
+CEILING_RULES = frozenset({"WEB040", "WEB041", "WEB042", "WEB043"} | {f"WEB{n}" for n in range(200, 220)})
+_SEV_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+_SEV_AR = {"critical": "حرجة", "high": "عالية", "medium": "متوسطة", "low": "منخفضة", "info": "معلوماتية"}
+
+
+def missing_severity(doc: ParsedHTML | None) -> str:
+    """The severity WEB-content-security-policy has (or would have) on this document: low on a static one."""
+    return "low" if _static_doc(doc) else RULES["WEB-content-security-policy"].severity
+
+
+def ceiling_note(severity: str) -> tuple[str, str]:
+    return _note("ceiling", severity=(severity, _SEV_AR.get(severity, severity)))
 
 
 def _static_doc(doc: ParsedHTML | None) -> bool:
@@ -1731,15 +1768,20 @@ def _missing(st: _Run, r: Response, doc: ParsedHTML | None, conf: str, facts: Cs
             severity="low" if static else None, notes=notes, group_value="missing")
 
 
+# the checks that judge the content of an enforced policy: on a document without one they are not_applicable
+POLICY_CONTENT_CHECKS = ("WEB040", "WEB041", "WEB042", "WEB043", "WEB203", "WEB204", "WEB205", "WEB206", "WEB209",
+                         "WEB210", "WEB211", "WEB213", "WEB214", "WEB215", "WEB216", "WEB218")
+
+
 def _values(st: _Run, r: Response, doc: ParsedHTML | None, facts: CspFacts) -> None:
     ctx = st.ctx
-    for rule in ("WEB040", "WEB041", "WEB042", "WEB043", "WEB203", "WEB204", "WEB205", "WEB206", "WEB209", "WEB210",
-                 "WEB211", "WEB213", "WEB214", "WEB215", "WEB216", "WEB218"):
-        st.seen(rule, r.host)
-    if st.paranoid:
-        st.seen("WEB219", r.host)
+    checks = POLICY_CONTENT_CHECKS + (("WEB219",) if st.paranoid else ())
     if not facts.enforced:
+        for rule in checks + ("WEB201", "WEB202", "WEB207", "WEB208", "WEB212"):
+            st.without_policy(rule, r.host)
         return
+    for rule in checks:
+        st.seen(rule, r.host)
     for h in evaluate(facts.enforced, _doc_info(r, doc), st.bypass, st.paranoid):
         st.emit(h.rule, r, _ev(ctx, r, h.policy or facts.enforced[0], value=h.value if h.policy is None else "", doc=doc),
                 severity=h.severity, confidence=h.confidence, notes=h.notes, params=h.params, group_value=h.group)

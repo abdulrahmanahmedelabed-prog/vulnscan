@@ -47,8 +47,8 @@
    "date": "2026-11-13",
    "license": "Kashif project licence",
    "schema_version": 1,
-   "sha256": "d26ae2482701d1ad9d38a1490f1aa8c16c5266bf57b664f6e0a63b6ddc634ae4",
-   "size": 38689,
+   "sha256": "6a192d4cafa5c3a1f28d5473528fa7c8b93c115964a9033f0415a55ae8a8d05a",
+   "size": 38665,
    "source": "Kashif: the fixed deep-probe list of spec §2.10 (no wordlists); signatures written for Kashif"
   },
   "favicons.json": {
@@ -146,8 +146,8 @@
    "date": "2026-11-12",
    "license": "Kashif (project licence) + MIT (nuclei-templates)",
    "schema_version": 1,
-   "sha256": "c0e4a202599cbb59ddfb8783b19ad9507a04b9ffad94c6f4d09c560c668724a0",
-   "size": 106234,
+   "sha256": "c5eb4b27338327f1bae4f02636e8e0c6cb59a48fd319f8c0b24e052f362bdf38",
+   "size": 106256,
    "source": "Kashif original signatures + projectdiscovery/nuclei-templates http/technologies/tech-detect.yaml (scoped matchers)",
    "version": "f99ca476bb7e82e6de3c15834584e16eeff29d88"
   },

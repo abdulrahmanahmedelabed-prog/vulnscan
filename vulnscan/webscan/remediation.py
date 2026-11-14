@@ -52,7 +52,7 @@ PLATFORMS: dict[str, tuple[str, str]] = {
     "rails": ("Ruby on Rails", "Ruby on Rails"),
     "symfony": ("Symfony", "Symfony"),
     "tomcat": ("Apache Tomcat", "Apache Tomcat"),
-    "aspnet": ("ASP.NET (.NET Framework)", "ASP.NET (‏.NET Framework)"),
+    "aspnet": ("ASP.NET (.NET Framework)", "ASP.NET (.NET Framework)"),
     "node": ("Node.js", "Node.js"),
     "bigip": ("F5 BIG-IP", "F5 BIG-IP"),
 }
@@ -124,15 +124,22 @@ _ARABIC = re.compile(r"[؀-ۿ]")
 
 @dataclass(frozen=True)
 class Block:
-    """One copy-paste block for one platform. ``code`` may be empty when the fix is a dashboard step (``note``)."""
+    """One copy-paste block for one platform. ``code`` may be empty when the fix is a dashboard step (``note``).
+    ``label_en`` / ``label_ar`` replace the platform name as the block's heading, to tell two blocks of one platform in
+    a snippet apart."""
     platform: str
     code: str = ""
     lang: str = "text"
     note_en: str = ""
     note_ar: str = ""
+    label_en: str = ""
+    label_ar: str = ""
 
     def note(self, lang: str = "en") -> str:
         return self.note_ar if lang == "ar" else self.note_en
+
+    def label(self, lang: str = "en") -> str:
+        return self.label_ar if lang == "ar" else self.label_en
 
 
 @dataclass(frozen=True)
@@ -183,8 +190,9 @@ def _s(sid: str, title: tuple[str, str], summary: tuple[str, str], caveat: tuple
                             tuple(headers), prose)
 
 
-def _b(platform: str, code: str = "", lang: str = "text", note: tuple[str, str] = ("", "")) -> Block:
-    return Block(platform, code.strip("\n"), lang, note[0], note[1])
+def _b(platform: str, code: str = "", lang: str = "text", note: tuple[str, str] = ("", ""),
+       label: tuple[str, str] = ("", "")) -> Block:
+    return Block(platform, code.strip("\n"), lang, note[0], note[1], label[0], label[1])
 
 
 # -- generic header-setting blocks (S-REF says: "same header-setting syntax for each platform") ---------------------
@@ -242,10 +250,22 @@ add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" alway
 # Apache httpd (mod_headers), inside <VirtualHost *:443>
 Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains\"""", "apache"),
        _b("iis", """
-<!-- IIS 10 1709+: applicationHost.config / site <hsts>, or web.config custom header -->
+<!-- IIS 10 version 1709+: the site's native HSTS (applicationHost.config, or IIS Manager → site → HSTS) -->
+<site name="Default Web Site">
+  <hsts enabled="true" max-age="63072000" includeSubDomains="true" redirectHttpToHttps="true" />
+</site>""", "xml",
+         ("IIS sends the header on HTTPS responses only and redirects HTTP to HTTPS; use your site's name.",
+          "يرسل IIS الترويسة في استجابات HTTPS فقط ويوجّه HTTP إلى HTTPS؛ استخدم اسم موقعك."),
+         ("IIS 10 version 1709+ (native HSTS)", "IIS 10 الإصدار 1709 فأحدث (HSTS المدمجة)")),
+       _b("iis", """
 <system.webServer><httpProtocol><customHeaders>
   <add name="Strict-Transport-Security" value="max-age=63072000; includeSubDomains" />
-</customHeaders></httpProtocol></system.webServer>""", "xml"),
+</customHeaders></httpProtocol></system.webServer>""", "xml",
+         ("Only for IIS older than 10 version 1709: customHeaders goes out on every binding, so put it only in the "
+          "web.config of a site that is bound to HTTPS alone.",
+          "لإصدارات IIS الأقدم من 10 (الإصدار 1709) فقط: تُرسَل customHeaders في كل ربط (binding)، فضعها فقط في ملف "
+          "web.config لموقع مربوط بـ HTTPS وحده."),
+         ("Older IIS (web.config custom header)", "IIS الأقدم (ترويسة مخصّصة في web.config)")),
        _b("caddy", """
 {host} {
 	header Strict-Transport-Security "max-age=63072000; includeSubDomains"
@@ -266,11 +286,12 @@ http.headers(h -> h.httpStrictTransportSecurity(s -> s.includeSubDomains(true).m
 builder.Services.AddHsts(o => { o.MaxAge = TimeSpan.FromDays(730); o.IncludeSubDomains = true; });
 app.UseHsts();""", "csharp"),
        _b("cloudflare", note=(
-           "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable, Max Age 12 months or more, "
-           "Apply HSTS policy to subdomains. Add preload only after reading hstspreload.org (removal takes months).",
-           "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable، واختر Max Age مدة 12 شهرًا "
-           "أو أكثر، وفعّل Apply HSTS policy to subdomains. لا تضف preload إلا بعد قراءة hstspreload.org (الحذف "
-           "يستغرق أشهرًا).")),
+           "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable, Max Age 12 months; turn on "
+           "Apply HSTS policy to subdomains only after confirming every subdomain serves HTTPS. Add preload only after "
+           "reading hstspreload.org (removal takes months).",
+           "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable، واختر Max Age بقيمة "
+           "12 months، ولا تفعّل Apply HSTS policy to subdomains إلا بعد التأكد من أن كل النطاقات الفرعية تعمل عبر "
+           "HTTPS. ولا تضف preload إلا بعد قراءة hstspreload.org (الحذف يستغرق أشهرًا).")),
    ],
    [Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains", "any")])
 
@@ -384,11 +405,30 @@ app.Use(async (ctx, next) => {
     ctx.Response.Headers.ContentSecurityPolicy = $"script-src 'nonce-{nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
     await next(); });""", "csharp"),
        _b("cloudflare", """
-const r = new Response(res.body, res); r.headers.set("Content-Security-Policy", policy); return r;""", "js",
-         ("Rules → Transform Rules → Modify Response Header → Set static Content-Security-Policy (static policies "
-          "only). For a nonce use a Worker (code above) and HTMLRewriter to add nonce attributes.",
-          "Rules → Transform Rules → Modify Response Header → Set static للترويسة Content-Security-Policy (للسياسات "
-          "الثابتة فقط). ولاستخدام nonce استعمل Worker (الشيفرة أعلاه) مع HTMLRewriter لإضافة سمات nonce.")),
+// Cloudflare Worker: a new nonce for every HTML response
+export default {
+  async fetch(req, env) {
+    const res = await fetch(req);
+    if (!(res.headers.get("content-type") || "").includes("text/html")) return res;
+    const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
+    const policy = `script-src 'nonce-${nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`;
+    const out = new HTMLRewriter().on("script[nonce]", {
+      element(e) {   // only scripts your templates marked; any other nonce (e.g. an injected one) is removed
+        if (e.getAttribute("nonce") === env.NONCE_MARK) e.setAttribute("nonce", nonce); else e.removeAttribute("nonce");
+      },
+    }).transform(res);
+    const r = new Response(out.body, out);
+    r.headers.set("Content-Security-Policy", policy);
+    r.headers.set("Cache-Control", "private, no-store");   // a cached page would reuse the nonce
+    return r;
+  },
+};""", "js",
+         ("Your templates mark trusted scripts with nonce=\"<NONCE_MARK>\", a random value you also store as the Worker "
+          "secret NONCE_MARK; the Worker replaces it with a fresh nonce. For a static policy (no nonce), use Rules → "
+          "Transform Rules → Modify Response Header → Set static Content-Security-Policy instead.",
+          "تضع قوالبك على السكربتات الموثوقة السمة nonce=\"<NONCE_MARK>\"، وهي قيمة عشوائية تحفظها أيضًا سرًّا للـ "
+          "Worker باسم NONCE_MARK، فيستبدل بها الـ Worker قيمة nonce جديدة. أما السياسة الثابتة (بلا nonce) فاضبطها من "
+          "Rules → Transform Rules → Modify Response Header → Set static للترويسة Content-Security-Policy.")),
    ],
    [Header("Content-Security-Policy", _STRICT_CSP), Header("Reporting-Endpoints", 'csp="https://{host}/csp-report"'),
     Header("Content-Security-Policy", _API_CSP, "api")])
@@ -406,7 +446,7 @@ X-Frame-Options: DENY                                                (or SAMEORI
          ("Add frame-ancestors to the policy you already send (S-CSP): a policy with only frame-ancestors restricts no "
           "scripts, and Kashif reports it as such (WEB042).",
           "أضف frame-ancestors إلى السياسة التي ترسلها أصلًا (S-CSP)، فالسياسة التي لا تحوي إلا frame-ancestors لا تقيّد "
-          "أي سكربت، ويبلّغ عنها كاشف بذلك (WEB042).")),
+          "أي سكربت، ويبلّغ عنها كاشِف بذلك (WEB042).")),
        *header_blocks("X-Frame-Options", "DENY"),
        _b("express", 'app.use(helmet.xFrameOptions({ action: "deny" }));', "js"),
        _b("django", 'X_FRAME_OPTIONS = "DENY"', "python",
@@ -518,9 +558,13 @@ _s("S-COOKIE",
                   "no-store on it (S-CACHE).",
                   "يجب ألا تخزّن الذاكرات المؤقتة المشتركة أي استجابة تضبط كوكي جلسة، فأرسل معها Cache-Control: no-store "
                   "‏(S-CACHE).")),
-       _b("nginx", "proxy_cookie_flags ~ secure httponly samesite=lax;", "nginx",
-         ("nginx 1.19.3+ as a reverse proxy; prefer fixing the application.",
-          "يتطلب nginx 1.19.3 أو أحدث كوكيل عكسي؛ والأفضل إصلاح التطبيق نفسه.")),
+       _b("nginx", """
+proxy_cookie_flags sessionid secure httponly samesite=lax;   # each session cookie by name (the first match applies)
+proxy_cookie_flags ~ secure samesite=lax;                     # every other cookie""", "nginx",
+         ("nginx 1.19.3+ as a reverse proxy; prefer fixing the application. Name each session cookie on its own "
+          "httponly line; never give HttpOnly to a CSRF cookie your JavaScript reads (such as XSRF-TOKEN or csrftoken).",
+          "يتطلب nginx 1.19.3 أو أحدث كوكيل عكسي، والأفضل إصلاح التطبيق نفسه. اذكر كل كوكي جلسة باسمها في سطر httponly "
+          "خاص بها، ولا تضف HttpOnly أبدًا إلى كوكي CSRF يقرؤها كود JavaScript (مثل XSRF-TOKEN أو csrftoken).")),
        _b("apache", r'Header always edit Set-Cookie "^((?!.*;\s*Secure).*)$" "$1; Secure"', "apache",
          ("Proxy, last resort; prefer the application setting.", "كحل أخير عند الوكيل فقط؛ والأفضل ضبطها في التطبيق.")),
        _b("iis", '<system.web><httpCookies requireSSL="true" httpOnlyCookies="true" sameSite="Lax" /></system.web>', "xml",
@@ -679,6 +723,14 @@ _s("S-ERR",
        _b("aspnetcore", 'app.UseExceptionHandler("/error");', "csharp",
          ("Never UseDeveloperExceptionPage in production.", "لا تستخدم UseDeveloperExceptionPage في الإنتاج أبدًا.")),
        _b("aspnet", '<customErrors mode="RemoteOnly" defaultRedirect="/error" />\n<compilation debug="false" />', "xml"),
+       _b("iis", '<httpErrors errorMode="DetailedLocalOnly" />', "xml",
+         ("Inside <system.webServer> of web.config: detailed errors only on the server itself.",
+          "داخل <system.webServer> في ملف web.config: الأخطاء التفصيلية على الخادم نفسه فقط.")),
+       _b("express", "NODE_ENV=production", "shell",
+         ("Set it in the service environment (systemd Environment=, docker run -e, your host's settings): Express then "
+          "stops sending stack traces; log errors in your own error handler.",
+          "اضبطه في بيئة الخدمة (Environment= في systemd أو docker run -e أو إعدادات الاستضافة)، فيتوقف Express عن إرسال "
+          "أثر الاستثناء؛ وسجّل الأخطاء في معالج الأخطاء الخاص بك.")),
        _b("symfony", "APP_ENV=prod", "ini"),
        _b("nginx", "proxy_intercept_errors on;\nerror_page 500 502 503 504 /50x.html;", "nginx"),
        _b("apache", "ErrorDocument 500 /error.html", "apache"),
@@ -699,9 +751,13 @@ _s("S-TLS",
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_ciphers {_TLS_CIPHERS};
 ssl_prefer_server_ciphers off;
-ssl_ecdh_curve X25519MLKEM768:X25519:prime256v1:secp384r1;   # X25519MLKEM768 needs OpenSSL >= 3.5; drop it on older builds
+ssl_ecdh_curve X25519:prime256v1:secp384r1;
+# with OpenSSL >= 3.5, add the post-quantum hybrid group instead:
+# ssl_ecdh_curve X25519MLKEM768:X25519:prime256v1:secp384r1;
 ssl_session_tickets off;
-ssl_stapling on; ssl_stapling_verify on;                     # only if the certificate has an OCSP URL""", "nginx"),
+ssl_stapling on; ssl_stapling_verify on;                     # only if the certificate has an OCSP URL""", "nginx",
+         ("Check the configuration with nginx -t before reloading (nginx -s reload).",
+          "تحقّق من الإعداد بالأمر nginx -t قبل إعادة التحميل (nginx -s reload).")),
        _b("apache", f"""
 SSLProtocol             -all +TLSv1.2 +TLSv1.3
 SSLCipherSuite          {_TLS_CIPHERS}
@@ -761,25 +817,28 @@ _s("S-SRI",
    [
        _b("any", """
 <script src="https://cdn.example.net/lib/1.2.3/lib.min.js" integrity="sha384-<base64>" crossorigin="anonymous"></script>""",
-         "html"),
+         "html", label=("All platforms · HTML", "كل المنصات · HTML")),
        _b("any", "openssl dgst -sha384 -binary lib.min.js | openssl base64 -A", "shell",
-         ("Compute the integrity value of the exact file you load.", "احسب قيمة integrity للملف نفسه الذي تحمّله.")),
+         ("Compute the integrity value of the exact file you load.", "احسب قيمة integrity للملف نفسه الذي تحمّله."),
+         ("All platforms · integrity value", "كل المنصات · قيمة integrity")),
    ])
 
 _s("S-LIBS",
    ("Upgrade vulnerable components", "تحديث المكونات المصابة بثغرات"),
    ("Upgrade the library or platform to the fixed version, rebuild and redeploy; add Kashif's dependency scan (kashif "
     "<project-dir>) or npm audit to CI.",
-    "حدّث المكتبة أو المنصة إلى الإصدار المُصلَح، ثم أعد البناء والنشر؛ وأضف فحص الاعتماديات في كاشف (kashif <project-dir>) "
+    "حدّث المكتبة أو المنصة إلى الإصدار المُصلَح، ثم أعد البناء والنشر؛ وأضف فحص الاعتماديات في كاشِف (kashif <project-dir>) "
     "أو npm audit إلى خط التكامل المستمر."),
    ("A major-version upgrade can change APIs: run your tests and read the library's migration notes before deploying.",
     "قد يغيّر التحديث إلى إصدار رئيسي جديد واجهات البرمجة، فشغّل اختباراتك واقرأ ملاحظات الترحيل قبل النشر."),
    [
-       _b("any", "npm install <lib>@<fixed>", "shell",
-         ("Or replace the CDN URL with the fixed version.", "أو استبدل رابط CDN برابط الإصدار المُصلَح.")),
-       _b("any", "kashif <project-dir>", "shell",
-         ("Run in CI so the next vulnerable version is caught before deployment.",
-          "شغّله في التكامل المستمر ليُكتشف أي إصدار مصاب لاحق قبل النشر.")),
+       _b("any", """
+npm install <lib>@<fixed>     # or point the CDN URL at the fixed version
+kashif <project-dir>          # in CI: catches the next vulnerable version before deployment""", "shell",
+         ("Installed with npm: upgrade the package; loaded from a CDN: replace the URL with the fixed version. Run "
+          "kashif in CI so the next vulnerable version is caught before deployment.",
+          "إن ثبّتّ المكتبة عبر npm فحدّث الحزمة، وإن حمّلتها من CDN فاستبدل الرابط برابط الإصدار المُصلَح. وشغّل kashif "
+          "في التكامل المستمر ليُكتشف أي إصدار مصاب لاحق قبل النشر.")),
    ])
 
 _s("S-SECTXT",
@@ -861,10 +920,10 @@ _s("S-BREACH",
    [_b("nginx", "gzip off;   # only in the location{} of pages that mix secrets with user input", "nginx")])
 
 _s("S-HTML",
-   ("Fix the page markup or script", "إصلاح شيفرة الصفحة أو السكربت"),
+   ("Fix the page markup or script", "إصلاح كود الصفحة أو السكربت"),
    ("Change the markup or script named in the evidence: add rel=\"noopener\" to target=_blank links, send forms with "
     "POST to your own HTTPS origin, keep secrets out of URLs and treat location/postMessage data as untrusted.",
-    "عدّل الشيفرة أو السكربت المذكور في الدليل: أضف rel=\"noopener\" إلى روابط target=_blank، وأرسل النماذج بطريقة POST "
+    "عدّل الكود أو السكربت المذكور في الدليل: أضف rel=\"noopener\" إلى روابط target=_blank، وأرسل النماذج بطريقة POST "
     "إلى موقعك عبر HTTPS، وأبعد الأسرار عن الروابط، وتعامل مع بيانات location وpostMessage على أنها غير موثوقة."),
    ("Test the page after the change: forms, sign-in and links to partner sites can depend on the old behaviour.",
     "اختبر الصفحة بعد التعديل، فالنماذج وتسجيل الدخول والروابط إلى المواقع الشريكة قد تعتمد على السلوك القديم."),
@@ -912,10 +971,10 @@ _s("S-TAKEOVER",
 
 _s("S-INCIDENT",
    ("Incident response", "الاستجابة للحادث"),
-   ("Treat the site as compromised: take a copy of the evidence, remove the injected code, find how it got in, patch "
-    "it, rotate credentials and check other pages.",
-    "تعامل مع الموقع على أنه مخترق: احتفظ بنسخة من الأدلة، وأزل الشيفرة المحقونة، واعرف كيف دخلت، وأصلح الثغرة، "
-    "وغيّر بيانات الاعتماد، وافحص بقية الصفحات."),
+   ("Treat the site as compromised: preserve a copy of the evidence, find and close the entry point, then remove the "
+    "injected code (or restore a known-clean copy), rotate credentials and check the other pages.",
+    "تعامل مع الموقع على أنه مخترق: احتفظ بنسخة من الأدلة، وابحث عن نقطة الاختراق وأغلقها، ثم أزل الكود المحقون (أو "
+    "استعد نسخة نظيفة موثوقة)، وغيّر بيانات الاعتماد، وافحص بقية الصفحات."),
    ("Restoring a backup without closing the entry point lets the attacker return; patch first.",
     "استعادة نسخة احتياطية دون سد نقطة الدخول تسمح للمهاجم بالعودة، فأصلح الثغرة أولًا."),
    [_b("any", note=("Notify affected users and the authorities your law requires.",
@@ -1106,8 +1165,8 @@ def ordered_blocks(snippet_id: str, detected: Iterable[str] = ()) -> tuple[list[
 
 def _block_dict(b: Block, lang: str, vals: dict[str, str]) -> dict:
     name = PLATFORMS.get(b.platform, (b.platform, b.platform))
-    return {"platform": b.platform, "name": name[1] if lang == "ar" else name[0], "lang": b.lang,
-            "code": fill(b.code, vals), "note": b.note(lang)}
+    label = b.label(lang) or (name[1] if lang == "ar" else name[0])
+    return {"platform": b.platform, "name": label, "lang": b.lang, "code": fill(b.code, vals), "note": b.note(lang)}
 
 
 def render(snippet_id: str, lang: str = "en", *, host: str | None = None, now: datetime | None = None,
@@ -1166,6 +1225,7 @@ def texts() -> list[tuple[str, str]]:
     for sn in SNIPPETS.values():
         pairs += [(sn.title_en, sn.title_ar), (sn.summary_en, sn.summary_ar), (sn.caveat_en, sn.caveat_ar)]
         pairs += [(b.note_en, b.note_ar) for b in sn.blocks if b.note_en or b.note_ar]
+        pairs += [(b.label_en, b.label_ar) for b in sn.blocks if b.label_en or b.label_ar]
     pairs += [(en, ar) for en, ar in PLATFORMS.values()]
     pairs += list(STR.values())
     return pairs

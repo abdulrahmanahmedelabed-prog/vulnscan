@@ -122,7 +122,7 @@ STR: dict[str, tuple[str, str]] = {
     "csrf_form": ("No anti-CSRF token among the form fields, and no session cookie with SameSite=Lax or Strict.",
                   "لا يوجد رمز مضاد لـ CSRF بين حقول النموذج، ولا كوكي جلسة مع SameSite=Lax أو Strict."),
     "dns_a": ("{host} does not exist and neither does its domain {domain}: anyone can register it and serve code here.",
-              "المضيف {host} غير موجود، ولا نطاقه {domain} أيضًا: يستطيع أي شخص تسجيله وتقديم شيفرة لهذه الصفحة."),
+              "المضيف {host} غير موجود، ولا نطاقه {domain} أيضًا: يستطيع أي شخص تسجيله وتقديم كود لهذه الصفحة."),
     "dns_a_macos": ("macOS reports \"no data\" answers as \"name not found\" too; confirm the domain is unregistered.",
                     "يبلّغ macOS عن إجابات \"لا بيانات\" على أنها \"اسم غير موجود\" أيضًا؛ تأكّد أن النطاق غير مسجّل."),
     "dns_b": ("{host} does not exist inside the live domain {domain}; only its owner can create it (check for a "

@@ -1,8 +1,8 @@
-# Kashif passive web corpus: kashif vulnscan 1.0.2 (hook)
+# Kashif passive web corpus: kashif vulnscan 1.1.0 (hook)
 
 Cases scored 380 (ran 380, skipped 0, failed 0); labels 579; inconclusive 26 (4.5%).
 
-**Macro F1 1.0** · micro P 1.0 R 1.0 F1 1.0 · precision certain 1.0 / firm 1.0 / tentative 1.0 · noise ratio 1.031 · findings per case 3.61 · ZAP-FP-family trap failures 0
+**Macro F1 1.0** · micro P 1.0 R 1.0 F1 1.0 · precision certain 1.0 / firm 1.0 / tentative 1.0 · noise ratio 1.031 · findings per case 3.6 · ZAP-FP-family trap failures 0
 
 | Rule | TP | FP | FN | TN | Inc. | Precision | Recall | F1 | J | Wrong cases |
 |---|---|---|---|---|---|---|---|---|---|---|

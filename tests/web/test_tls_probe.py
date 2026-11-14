@@ -333,7 +333,7 @@ def test_weak_digest_is_judged_again_at_security_level_0(server_factory):
                             "proxy": None, "profile": "minimal", "ips": {"127.0.0.1": rep}, "not_sampled": [],
                             "error": None, "leaf": {}, "test_ca": {"publicly_trusted": False, "ct_required": False}}
     rules = {i.rule for i in tls.run(ctx)}
-    assert "WEB708" in rules and "WEB072" not in rules
+    assert "WEB708" in rules and "WEB072" in rules       # browsers reject a SHA-1 chain (verify code 68)
 
 
 def test_leaf_only_server_gives_code_20(server_factory):

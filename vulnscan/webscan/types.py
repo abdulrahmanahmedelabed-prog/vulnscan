@@ -680,6 +680,23 @@ def strip_controls(text: str) -> str:
     return _CONTROL.sub("", text)
 
 
+FSI, LRI, PDI = "\u2068", "\u2066", "\u2069"
+
+
+def iso(value: Any) -> str:
+    """``value`` as a bidi isolate for Arabic text (a URL, a header, a grade such as ``C+*``): without it an RTL
+    terminal or page moves ``*``/``+`` to the wrong side and reorders ``a → b``. Uses ``vulnscan.i18n.bidi.iso`` when
+    that module exists, else a first-strong isolate (U+2068 … U+2069). Empty values stay empty."""
+    s = "" if value is None else str(value)
+    if not s:
+        return s
+    try:
+        from ..i18n.bidi import iso as _iso   # lazy: vulnscan.i18n may import webscan modules
+    except ImportError:
+        return f"{FSI}{s}{PDI}"
+    return _iso(s)
+
+
 def cap(text: str | None, limit: int) -> str:
     if not text:
         return ""
@@ -893,6 +910,7 @@ class WebScanResult:
     requests: int = 0
     bytes_received: int = 0
     data_date: str = ""                                   # "web data as of <date>"
+    hidden_by_sensitivity: dict = field(default_factory=dict)   # {total, by_severity, tls_proxied, en?, ar?} (engine)
 
 
 # ----------------------------------------------------------------------------------------------- URL helpers
@@ -931,6 +949,6 @@ __all__ = [
     "HeaderList", "normalise_charset", "python_codec", "essence", "charset_param", "bom_encoding", "meta_charset",
     "Response", "ResponseSignature", "Element", "InlineScript", "InlineStyle", "Comment", "Form", "ParsedHTML", "Page",
     "ScanOptions", "CspPolicy", "CspFacts", "HstsVerdict", "CookieFact", "DnsRecord", "redact_secret",
-    "redact_cookie_header", "strip_controls", "cap", "safe_url", "curl_command", "openssl_command", "Evidence", "Issue",
+    "redact_cookie_header", "strip_controls", "iso", "cap", "safe_url", "curl_command", "openssl_command", "Evidence", "Issue",
     "CheckState", "CheckModule", "ScanContext", "WebScanResult", "normalise_host", "url_origin", "same_origin",
 ]

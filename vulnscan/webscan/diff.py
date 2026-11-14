@@ -8,9 +8,14 @@ notAfter, key, SCT count), security.txt Expires, robots.txt disallow paths and d
 
 :func:`diff` compares two snapshots of the same normalised target and returns (JSON key ``web.diff``):
 
-* ``findings``: ``new``, ``resolved`` and ``unchanged`` (matched by the stable ``fp_key`` of §3.5, else the
-  fingerprint);
-* ``grades``: the change per algorithm (``up`` / ``down`` / ``same``);
+* ``findings``: ``new``, ``resolved``, ``unchanged`` and ``not_retested``. Rows match on the stable ``fp_key`` of §3.5,
+  then on rule + host + group value (severity is not part of the identity: a severity change is a posture ``change``
+  such as "WEB315 high → low"), then on the fingerprint. A previous row with no match is ``resolved`` only when this
+  scan ran its check on that host (pass, not_applicable, or a fail that was not partly skipped); otherwise it goes to
+  ``not_retested`` with the reason (the profile, the sensitivity, a budget, a WAF …) and is not counted as resolved;
+* ``grades``: the change per algorithm (``up`` / ``down`` / ``same``, with the scores) and ``grade_changes``: one line
+  per algorithm whose letter or score changed ("Kashif: F* (59.69 → 65.94)"), or the single line "no grade changes";
+* ``new_fingerprints``: the fingerprints of the new findings (console NEW badges);
 * ``posture``: changes that are not findings ("CSP changed: script-src added https://cdn.new.example", "new
   third-party script host", "certificate renewed, new issuer", "TLS 1.3 enabled", "new cookie __Host-x", "library jquery
   3.6.0 → 3.7.1", "security.txt expires in 20 days"), each ``regression`` / ``change`` / ``improvement`` with English and
@@ -29,7 +34,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterable, Sequence
 
 from .rules import PLURAL_PARAMS, RULES, SEVERITIES
-from .types import url_origin
+from .types import iso, url_origin
 
 SCHEMA = 1
 SEV_RANK = {s: i for i, s in enumerate(SEVERITIES)}
@@ -54,12 +59,26 @@ STR: dict[str, tuple[str, str]] = {
                        "لم تُقارن: الفحص السابق كان لهدف آخر ({previous})"),
     "no_previous": ("no previous scan of this target to compare with", "لا يوجد فحص سابق لهذا الهدف للمقارنة به"),
     "profile_diff": ("the previous scan used the {previous} profile and this one {current}; checks that only one of them "
-                     "runs are not comparable", "استخدم الفحص السابق ملف الفحص {previous} وهذا الفحص {current}؛ فالفحوص "
+                     "runs are not comparable", "استخدم الفحص السابق نمط الفحص {previous} وهذا الفحص {current}؛ فالفحوص "
                      "التي يجريها أحدهما فقط غير قابلة للمقارنة"),
     "deep_diff": ("the previous scan was {previous}, this one {current}: exposure checks are not comparable",
-                  "كان الفحص السابق بملف {previous} وهذا الفحص بملف {current}: فحوص الملفات المكشوفة غير قابلة للمقارنة"),
-    "grade_up": ("{algorithm} grade improved: {before} → {after}", "تحسّنت درجة {algorithm}: من {before} إلى {after}"),
-    "grade_down": ("{algorithm} grade dropped: {before} → {after}", "انخفضت درجة {algorithm}: من {before} إلى {after}"),
+                  "كان الفحص السابق بنمط الفحص {previous} وهذا الفحص بنمط {current}: فحوص الملفات المكشوفة غير قابلة "
+                  "للمقارنة"),
+    "grade_up": ("{algorithm} grade improved: {before} → {after}{scores}",
+                 "تحسّنت درجة {algorithm}: من {before} إلى {after}{scores}"),
+    "grade_down": ("{algorithm} grade dropped: {before} → {after}{scores}",
+                   "انخفضت درجة {algorithm}: من {before} إلى {after}{scores}"),
+    "grade_scores": (" ({before} → {after})", " (من {before} إلى {after})"),
+    "grade_score_only": ("{algorithm}: {grade} ({before} → {after})", "{algorithm}: {grade} (من {before} إلى {after})"),
+    "obs_score_up": ("Observatory score rose: {before} → {after} (grade still {grade})",
+                     "ارتفعت درجة Observatory: من {before} إلى {after} (والتقدير ما زال {grade})"),
+    "obs_score_down": ("Observatory score fell: {before} → {after} (grade still {grade})",
+                       "انخفضت درجة Observatory: من {before} إلى {after} (والتقدير ما زال {grade})"),
+    "grade_changed": ("{algorithm}: {before} → {after}", "{algorithm}: من {before} إلى {after}"),
+    "grades_same": ("no grade changes", "لا تغيّر في الدرجات"),
+    "severity_changed": ("{rule} {before} → {after}: {title}", "{rule}: تغيّرت الخطورة من {before} إلى {after} ({title})"),
+    "nr_not_run": ("its check did not run in this scan", "لم يُجرَ فحصه في هذا الفحص"),
+    "nr_partial": ("its check ran only on part of the site in this scan", "أُجري فحصه على جزء من الموقع فقط في هذا الفحص"),
     "final_url": ("final URL changed: {before} → {after}", "تغيّر الرابط النهائي: من {before} إلى {after}"),
     "chain": ("redirect chain changed: {before} → {after}", "تغيّرت سلسلة التوجيه: من {before} إلى {after}"),
     "header_added": ("header added: {header}: {value}", "أُضيفت ترويسة: {header}: {value}"),
@@ -110,13 +129,23 @@ STR: dict[str, tuple[str, str]] = {
     "check_coverage": ("check {check} could not be compared ({before} → {after})",
                        "تعذّرت مقارنة الفحص {check} (من {before} إلى {after})"),
 }
-_ALG_NAMES = {"kashif": "Kashif", "observatory": "Observatory", "ssllabs": "SSL Labs-compatible"}
+_ALG_NAMES = {"kashif": ("Kashif", "كاشِف"), "observatory": ("Observatory", "Observatory"),
+              "ssllabs": ("SSL Labs-compatible", "المتوافقة مع SSL Labs")}
+_SEV_AR = {"critical": "حرجة", "high": "عالية", "medium": "متوسطة", "low": "منخفضة", "info": "معلوماتية"}
+# Arabic parameters that are Arabic prose themselves (no isolate needed, and a count phrase must stay readable)
+_AR_PROSE_PARAMS = frozenset({"algorithm", "scores", "days", "title", "cls", "kind"})
 
 
 def t(key: str, lang: str = "en", **params: Any) -> str:
+    """The text of ``key``. In Arabic every value that is a URL, a header, a grade, a version or a number is wrapped in
+    a bidi isolate (:func:`types.iso`), so "C+*", "A*", "a → b" and URLs keep their order in RTL terminals and pages."""
     en, ar = STR[key]
     text = ar if lang == "ar" else en
-    return text.format(**params) if params else text
+    if not params:
+        return text
+    if lang == "ar":
+        params = {k: (v if k in _AR_PROSE_PARAMS else iso(v)) for k, v in params.items()}
+    return text.format(**params)
 
 
 def _days(n: int, lang: str) -> str:
@@ -164,6 +193,7 @@ def _finding_row(f: Any) -> dict | None:
         params = dict(f.issue.params or {})
         return {"key": f.fp_key, "fingerprint": hashlib.sha256(f.fp_key.encode("utf-8")).hexdigest()[:16],
                 "rule": f.rule, "severity": f.severity, "confidence": f.confidence, "host": f.host,
+                "value": _cap_value(f.value), "kind": f.kind,
                 "title_en": meta.title("en", **params) if meta else f.rule,
                 "title_ar": meta.title("ar", **params) if meta else f.rule}
     if isinstance(f, dict):
@@ -171,14 +201,22 @@ def _finding_row(f: Any) -> dict | None:
         key = extra.get("fp_key") or f.get("fingerprint") or ""
         return {"key": key, "fingerprint": f.get("fingerprint") or "", "rule": f.get("rule_id", ""),
                 "severity": f.get("severity", ""), "confidence": extra.get("confidence", ""), "host": extra.get("host", ""),
+                "value": _cap_value(extra.get("group_value")), "kind": str(extra.get("kind") or ""),
                 "title_en": f.get("title", ""), "title_ar": f.get("title_ar", "")}
     if hasattr(f, "rule_id"):                                     # model.Finding
         extra = getattr(f, "extra", {}) or {}
         fp = f.fingerprint() if hasattr(f, "fingerprint") else ""
         return {"key": extra.get("fp_key") or fp, "fingerprint": fp, "rule": f.rule_id, "severity": f.severity,
-                "confidence": extra.get("confidence", ""), "host": extra.get("host", ""), "title_en": f.title,
+                "confidence": extra.get("confidence", ""), "host": extra.get("host", ""),
+                "value": _cap_value(extra.get("group_value")), "kind": str(extra.get("kind") or ""), "title_en": f.title,
                 "title_ar": f.title_ar}
     return None
+
+
+def _cap_value(v: Any) -> str:
+    """The group value as stored in a row (the same cap as ``fp_key``: long values end in a digest)."""
+    from .group import _cap_key
+    return _cap_key(str(v or ""))
 
 
 def _grade_brief(grades: dict | None) -> dict:
@@ -197,6 +235,36 @@ def _states(coverage: Any) -> dict[str, str]:
     if isinstance(coverage, dict) and isinstance(coverage.get("checks"), list):
         return {c.get("check"): c.get("state") for c in coverage["checks"] if isinstance(c, dict)}
     return {}
+
+
+def _check_detail(coverage: Any) -> tuple[dict[str, dict[str, str]], dict[str, list[str]], list[str]]:
+    """``(per-host states, reason codes, partial checks)`` of the coverage, for deciding later whether a finding that
+    disappeared was really re-tested: hosts only where recorded, reasons only for checks that are not plainly passed or
+    failed (or ran only partly), ``partial`` = ran but was also skipped somewhere (:meth:`Coverage.partial`)."""
+    hosts: dict[str, dict[str, str]] = {}
+    reasons: dict[str, list[str]] = {}
+    partial: list[str] = []
+    if coverage is None:
+        return hosts, reasons, partial
+    if hasattr(coverage, "states"):
+        rows = [(c, st.state, list(st.hosts.items()), [r[0] for r in st.reasons],
+                 bool(getattr(coverage, "partial", lambda _c: False)(c))) for c, st in coverage.states().items()]
+    elif isinstance(coverage, dict) and isinstance(coverage.get("checks"), list):
+        rows = [(c.get("check"), c.get("state"), list((c.get("hosts") or {}).items()),
+                 [r.get("code") for r in c.get("reasons") or [] if isinstance(r, dict)], False)
+                for c in coverage["checks"] if isinstance(c, dict)]
+    else:
+        return hosts, reasons, partial
+    for cid, state, hs, codes, part in rows:
+        if not isinstance(cid, str):
+            continue
+        if hs:
+            hosts[cid] = {str(h): str(v) for h, v in sorted(hs)}
+        if part:
+            partial.append(cid)
+        if (state not in ("pass", "fail") or part) and codes:
+            reasons[cid] = sorted({str(c) for c in codes if c})
+    return dict(sorted(hosts.items())), dict(sorted(reasons.items())), sorted(partial)
 
 
 def _header_value(name: str, values: list[str]) -> str:
@@ -300,6 +368,7 @@ def snapshot(ctx: Any, findings: Iterable[Any] = (), grades: dict | None = None,
     entry = getattr(ctx, "entry", None)
     inv = getattr(ctx, "inventory", None) or {}
     rows = [r for r in (_finding_row(f) for f in findings) if r and r["key"]]
+    check_hosts, check_reasons, check_partial = _check_detail(coverage)
     headers: dict[str, str] = {}
     if entry is not None:
         for name in SECURITY_HEADERS:
@@ -323,6 +392,7 @@ def snapshot(ctx: Any, findings: Iterable[Any] = (), grades: dict | None = None,
         "profile": getattr(opts, "profile", ""), "crawl": bool(getattr(opts, "crawl", False)),
         "sensitivity": getattr(opts, "sensitivity", ""), "scanned_at": _iso(getattr(ctx, "now", None)),
         "grades": _grade_brief(grades), "checks": dict(sorted(_states(coverage).items())),
+        "check_hosts": check_hosts, "check_reasons": check_reasons, "check_partial": check_partial,
         "findings": sorted(rows, key=lambda r: (SEV_RANK.get(r["severity"], 9), r["rule"], r["key"])),
         "inventory": {
             "final_url": entry.url if entry is not None else "",
@@ -361,30 +431,64 @@ def _letter_rank(grade: Any) -> int | None:
     return LETTERS.index(g) if g in LETTERS else None
 
 
-def _grade_changes(prev: dict, cur: dict) -> tuple[dict, list[dict]]:
+def _fmt_score(v: Any) -> str:
+    if isinstance(v, float):
+        return f"{v:.2f}".rstrip("0").rstrip(".") if v != int(v) else str(int(v))
+    return str(v)
+
+
+def _grade_changes(prev: dict, cur: dict) -> tuple[dict, list[dict], list[dict]]:
+    """``(per-algorithm change, posture items, grade_changes lines)``. Only an algorithm whose letter or score changed
+    gets an item and a line, always with the scores; with no change at all the lines are the single "no grade
+    changes"."""
     out: dict[str, dict] = {}
     items: list[dict] = []
+    lines: list[dict] = []
     for alg in ("kashif", "observatory", "ssllabs"):
         b = (prev.get("grades") or {}).get(alg) or {}
         a = (cur.get("grades") or {}).get(alg) or {}
         before, after = b.get("grade"), a.get("grade")
-        change = "same"
+        sb, sa = b.get("score"), a.get("score")
         rb, ra = _letter_rank(before), _letter_rank(after)
-        if alg == "observatory" and b.get("score") is not None and a.get("score") is not None:
-            change = "up" if a["score"] > b["score"] else "down" if a["score"] < b["score"] else "same"
-        elif rb is not None and ra is not None:
-            change = "up" if ra < rb else "down" if ra > rb else "same"
-        elif before != after:
+        letter_changed = (before or None) != (after or None)
+        score_changed = sb is not None and sa is not None and sb != sa
+        change = "same"
+        if rb is not None and ra is not None and ra != rb:
+            change = "up" if ra < rb else "down"
+        elif letter_changed and str(before or "").rstrip("*") != str(after or "").rstrip("*"):
             change = "changed"
-        out[alg] = {"before": before, "after": after, "change": change,
-                    "score_before": b.get("score"), "score_after": a.get("score")}
-        if change in ("up", "down"):
-            shown_b = f"{b.get('score')} ({before})" if alg == "observatory" else before
-            shown_a = f"{a.get('score')} ({after})" if alg == "observatory" else after
-            items.append(_item("improvement" if change == "up" else "regression", "grade",
-                               "grade_up" if change == "up" else "grade_down", algorithm=_ALG_NAMES[alg],
-                               before=shown_b, after=shown_a))
-    return out, items
+        elif score_changed:
+            change = "up" if sa > sb else "down"
+        elif letter_changed:
+            change = "changed"            # only the provisional mark (*) came or went
+        entry = {"before": before, "after": after, "change": change, "score_before": sb, "score_after": sa,
+                 "changed": change != "same"}
+        out[alg] = entry
+        if change == "same":
+            continue
+        name = _ALG_NAMES[alg]
+        shown_b, shown_a = before or "—", after or "—"
+        if change in ("up", "down") and (rb != ra or (rb is None and letter_changed)):
+            scores = ((t("grade_scores", "en", before=_fmt_score(sb), after=_fmt_score(sa)),
+                       t("grade_scores", "ar", before=_fmt_score(sb), after=_fmt_score(sa))) if score_changed else ("", ""))
+            key = "grade_up" if change == "up" else "grade_down"
+            item = _item("improvement" if change == "up" else "regression", "grade", key, algorithm=name,
+                         before=shown_b, after=shown_a, scores=scores)
+        elif change in ("up", "down") and alg == "observatory":
+            key = "obs_score_up" if change == "up" else "obs_score_down"
+            item = _item("improvement" if change == "up" else "regression", "grade", key, before=_fmt_score(sb),
+                         after=_fmt_score(sa), grade=shown_a)
+        elif change in ("up", "down"):
+            item = _item("improvement" if change == "up" else "regression", "grade", "grade_score_only",
+                         algorithm=name, grade=shown_a, before=_fmt_score(sb), after=_fmt_score(sa))
+        else:
+            item = _item("change", "grade", "grade_changed", algorithm=name, before=shown_b, after=shown_a)
+        entry["text"] = {"en": item["en"], "ar": item["ar"]}
+        items.append(item)
+        lines.append({"algorithm": alg, "direction": item["direction"], "en": item["en"], "ar": item["ar"]})
+    if not lines:
+        lines.append({"algorithm": "", "direction": "same", "en": t("grades_same"), "ar": t("grades_same", "ar")})
+    return out, items, lines
 
 
 def _header_changes(p: dict, c: dict) -> list[dict]:
@@ -609,7 +713,7 @@ def _strs(v: Any) -> list[str]:
     return [x for x in v if isinstance(x, str)][:MAX_ITEMS * 5] if isinstance(v, (list, tuple)) else []
 
 
-_ROW_FIELDS = ("key", "fingerprint", "rule", "severity", "confidence", "host", "title_en", "title_ar")
+_ROW_FIELDS = ("key", "fingerprint", "rule", "severity", "confidence", "host", "value", "kind", "title_en", "title_ar")
 
 
 def sanitise(snap: Any) -> dict | None:
@@ -645,6 +749,10 @@ def sanitise(snap: Any) -> dict | None:
         "target": _s(snap.get("target")), "profile": _s(snap.get("profile")), "crawl": snap.get("crawl") is True,
         "sensitivity": _s(snap.get("sensitivity")), "scanned_at": _s(snap.get("scanned_at")), "grades": grades,
         "checks": {k: v for k, v in _d(snap.get("checks")).items() if isinstance(k, str) and isinstance(v, str)},
+        "check_hosts": {k: {h: st for h, st in v.items() if isinstance(h, str) and isinstance(st, str)}
+                        for k, v in _d(snap.get("check_hosts")).items() if isinstance(k, str) and isinstance(v, dict)},
+        "check_reasons": {k: _strs(v) for k, v in _d(snap.get("check_reasons")).items() if isinstance(k, str)},
+        "check_partial": _strs(snap.get("check_partial")),
         "findings": rows,
         "inventory": {
             "final_url": _s(inv.get("final_url")), "chain": chain,
@@ -661,12 +769,109 @@ def sanitise(snap: Any) -> dict | None:
     }
 
 
+def _identity(r: dict) -> tuple[str, str, str]:
+    """Rule + host + group value: what makes two rows the same finding (never the severity)."""
+    return r.get("rule", ""), r.get("host", ""), r.get("value", "")
+
+
+def _sev_text(sev: str, lang: str) -> str:
+    return _SEV_AR.get(sev, sev) if lang == "ar" else sev
+
+
+def _retested(row: dict, current: dict) -> tuple[bool, str]:
+    """``(re-tested, reason code)`` for a previous row that has no match now: it counts as resolved only when this scan
+    ran its check on that host: pass or not_applicable (the precondition is gone), or fail with the check not partly
+    skipped (a budget, a blocked page). A check that is not_tested, inconclusive or missing (not in this profile) gives
+    the reason instead."""
+    rule = row.get("rule", "")
+    meta = RULES.get(rule)
+    check = meta.check_id if meta is not None else rule
+    checks = current.get("checks") or {}
+    if check not in checks:
+        return False, "not_run"
+    state = checks[check]
+    host_state = ((current.get("check_hosts") or {}).get(check) or {}).get(row.get("host", ""))
+    if host_state:
+        state = host_state
+    codes = (current.get("check_reasons") or {}).get(check) or []
+    if state in ("pass", "not_applicable"):
+        return True, ""
+    if state == "fail":
+        if check in (current.get("check_partial") or []):
+            return False, "partial"
+        return True, ""
+    return False, next((c for c in codes if c != "not_run"), codes[0] if codes else "not_run")
+
+
+def _reason(code: str) -> dict:
+    from .coverage import REASONS, reason_text
+    if code in ("not_run", "partial"):
+        key = "nr_partial" if code == "partial" else "nr_not_run"
+        return {"code": code, "en": t(key), "ar": t(key, "ar")}
+    if code in REASONS:
+        _c, en, ar = reason_text(code)
+        return {"code": code, "en": en, "ar": ar}
+    return {"code": code, "en": code.replace("_", " "), "ar": code.replace("_", " ")}
+
+
+def _match_findings(previous: dict, current: dict, out: dict) -> None:
+    """Fill ``out["findings"]`` (new / resolved / unchanged / not_retested), ``out["new_fingerprints"]`` and the
+    severity-change posture items (``out["_severity_items"]``)."""
+    prev_rows = [r for r in previous.get("findings") or [] if r.get("key")]
+    cur_rows = [r for r in current.get("findings") or [] if r.get("key")]
+    by_key = {r["key"]: i for i, r in enumerate(prev_rows)}
+    by_ident: dict[tuple[str, str, str], list[int]] = {}
+    for i, r in enumerate(prev_rows):
+        if r.get("value"):
+            by_ident.setdefault(_identity(r), []).append(i)
+    by_fp = {r.get("fingerprint"): i for i, r in enumerate(prev_rows) if r.get("fingerprint")}
+    matched: set[int] = set()
+    sev_items: list[dict] = []
+    f = out["findings"]
+    for row in cur_rows:
+        pi = by_key.get(row["key"])
+        if pi is None or pi in matched:
+            pi = next((i for i in by_ident.get(_identity(row), []) if i not in matched), None) if row.get("value") \
+                else None
+        if pi is None or pi in matched:
+            fi = by_fp.get(row.get("fingerprint"))
+            pi = fi if fi is not None and fi not in matched and prev_rows[fi].get("rule") == row.get("rule") else None
+        if pi is None:
+            f["new"].append(row)
+            continue
+        matched.add(pi)
+        prev = prev_rows[pi]
+        f["unchanged"].append(row)
+        b, a = prev.get("severity") or "", row.get("severity") or ""
+        if b and a and b != a:
+            row = dict(row, severity_before=b)
+            f["unchanged"][-1] = row
+            title = (row.get("title_en") or row.get("rule", ""), row.get("title_ar") or row.get("title_en") or "")
+            item = _item("change", "severity", "severity_changed", rule=row.get("rule", ""),
+                         before=(b, _sev_text(b, "ar")), after=(a, _sev_text(a, "ar")),
+                         title=(_short(title[0], 160), _short(title[1], 160)))
+            item["worse"] = SEV_RANK.get(a, 9) < SEV_RANK.get(b, 9)
+            sev_items.append(item)
+    for i, r in enumerate(prev_rows):
+        if i in matched:
+            continue
+        ok, code = _retested(r, current)
+        if ok:
+            f["resolved"].append(r)
+        else:
+            f["not_retested"].append(dict(r, reason=_reason(code)))
+    for bucket in f.values():
+        bucket.sort(key=lambda r: (SEV_RANK.get(r.get("severity", ""), 9), r.get("rule", ""), r.get("key", "")))
+    out["new_fingerprints"] = [r.get("fingerprint") or r["key"] for r in f["new"]]
+    out["_severity_items"] = sev_items
+
+
 def diff(previous: dict | None, current: dict, *, now: datetime | None = None) -> dict:
     """``web.diff``: new / resolved / unchanged findings, grade changes and posture changes (regressions first).
     Both snapshots go through :func:`sanitise` first, so a malformed or foreign previous file is never a crash."""
     out: dict[str, Any] = {"schema": SCHEMA, "comparable": False, "previous": None, "notes": [],
-                           "findings": {"new": [], "resolved": [], "unchanged": []}, "grades": {}, "posture": [],
-                           "counts": {}}
+                           "findings": {"new": [], "resolved": [], "unchanged": [], "not_retested": []}, "grades": {},
+                           "grade_changes": [], "posture": [], "counts": {}, "new_fingerprints": []}
     previous = sanitise(previous) if previous else None
     current = sanitise(current) or sanitise({})
     if not previous:
@@ -686,22 +891,9 @@ def diff(previous: dict | None, current: dict, *, now: datetime | None = None) -
         out["notes"].append({"en": t(key, previous=b, current=a), "ar": t(key, "ar", previous=b, current=a)})
     if now is None:
         now = _parse_date(current.get("scanned_at", "")) or datetime.now(timezone.utc)
-    prev_rows = {r["key"]: r for r in previous.get("findings") or [] if r.get("key")}
-    cur_rows = {r["key"]: r for r in current.get("findings") or [] if r.get("key")}
-    # fall back to the fingerprint for rows from a snapshot whose key scheme differs
-    prev_fp = {r.get("fingerprint"): k for k, r in prev_rows.items() if r.get("fingerprint")}
-    matched_prev: set[str] = set()
-    for key, row in cur_rows.items():
-        pk = key if key in prev_rows else prev_fp.get(row.get("fingerprint"))
-        if pk is not None and pk not in matched_prev:
-            matched_prev.add(pk)
-            out["findings"]["unchanged"].append(row)
-        else:
-            out["findings"]["new"].append(row)
-    out["findings"]["resolved"] = [r for k, r in prev_rows.items() if k not in matched_prev]
-    for bucket in out["findings"].values():
-        bucket.sort(key=lambda r: (SEV_RANK.get(r.get("severity", ""), 9), r.get("rule", ""), r.get("key", "")))
-    out["grades"], items = _grade_changes(previous, current)
+    _match_findings(previous, current, out)
+    out["grades"], items, out["grade_changes"] = _grade_changes(previous, current)
+    items += out.pop("_severity_items")
     pi, ci = previous.get("inventory") or {}, current.get("inventory") or {}
     if pi.get("final_url") and ci.get("final_url") and pi["final_url"] != ci["final_url"]:
         items.append(_item("change", "redirect", "final_url", before=pi["final_url"], after=ci["final_url"]))
@@ -726,6 +918,8 @@ def diff(previous: dict | None, current: dict, *, now: datetime | None = None) -
     out["posture"] = items
     out["counts"] = {"new": len(out["findings"]["new"]), "resolved": len(out["findings"]["resolved"]),
                      "unchanged": len(out["findings"]["unchanged"]),
+                     "not_retested": len(out["findings"]["not_retested"]),
+                     "severity_changed": sum(1 for i in items if i["kind"] == "severity"),
                      "regressions": sum(1 for i in items if i["direction"] == "regression"),
                      "improvements": sum(1 for i in items if i["direction"] == "improvement")}
     return out
