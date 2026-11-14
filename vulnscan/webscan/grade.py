@@ -60,12 +60,13 @@ _STATIC_LOW = ("csp", "framing")
 STR: dict[str, tuple[str, str]] = {
     # labels
     "kashif_label": ("Kashif Web Grade (A+ to F): six weighted families, capped by serious findings",
-                     "درجة كاشف للويب (من A+ إلى F): ست مجموعات موزونة، مع حدود عليا عند وجود اكتشافات خطيرة"),
+                     "درجة كاشِف للويب (من A+ إلى F): ست مجموعات موزونة، مع حدود عليا عند وجود نتائج خطيرة"),
     "obs_label": ("MDN HTTP Observatory-compatible score (algorithm 6, the scorer of mdn-http-observatory 1.7.2)",
                   "درجة متوافقة مع MDN HTTP Observatory (الخوارزمية 6، بطريقة حساب mdn-http-observatory 1.7.2)"),
-    "ssl_label": ("SSL Labs-compatible, excluding attack-only tests (Heartbleed, ROBOT, padding oracles, …), which Kashif "
-                  "does not perform", "متوافقة مع SSL Labs، باستثناء اختبارات الهجوم (Heartbleed وROBOT وpadding oracle "
-                  "…) التي لا يجريها كاشف"),
+    "ssl_label": ("SSL Labs-compatible, excluding attack-only tests (Heartbleed, ROBOT, padding oracles, …) and certificate "
+                  "revocation (CRL/OCSP), which Kashif does not perform",
+                  "متوافقة مع SSL Labs، باستثناء اختبارات الهجوم (Heartbleed وROBOT وpadding oracle …) والتحقق من إلغاء "
+                  "الشهادة (CRL/OCSP)، وهي لا يجريها كاشِف"),
     # states
     "inconclusive": ("no grade: the site answered with a WAF challenge or a rate limit instead of the page (WEB990)",
                      "لا درجة: أجاب جدار حماية بتحدٍّ أو بتقييد للمعدل بدل الصفحة (WEB990)"),
@@ -74,6 +75,8 @@ STR: dict[str, tuple[str, str]] = {
                     "درجة مؤقتة: تعذّر اختبار هذه المجموعات: {families}"),
     "ssl_untested": ("not graded: no TLS handshake could be assessed", "بلا درجة: تعذّر تقييم أي مصافحة TLS"),
     "obs_down": ("not scored: the site did not answer", "لم تُحسب: لم يستجب الموقع"),
+    "obs_blocked": ("not scored: the response was a WAF challenge or a rate limit, not the site (WEB990)",
+                    "لم تُحسب: كانت الاستجابة تحدّيًا من جدار حماية أو تقييدًا للمعدل، لا الموقع نفسه (WEB990)"),
     "obs_none": ("not scored: no Observatory test result was computed in this scan",
                  "لم تُحسب: لم تُحسب أي نتيجة من اختبارات Observatory في هذا الفحص"),
     "obs_status": ("not scored: Observatory scores only 2xx, 3xx, 401 and 403 responses (got {status})",
@@ -81,11 +84,11 @@ STR: dict[str, tuple[str, str]] = {
     "obs_partial": ("partial: these tests were not computed and count 0, as missing results do in Observatory: {tests}",
                     "جزئية: لم تُحسب هذه الاختبارات فاحتُسبت صفرًا كما يفعل Observatory مع النتائج المفقودة: {tests}"),
     "obs_cors": ("Kashif sends one GET with an Origin header instead of Observatory's OPTIONS preflight; the CORS result "
-                 "uses that response", "يرسل كاشف طلب GET واحدًا مع ترويسة Origin بدل طلب OPTIONS الذي يرسله Observatory، "
+                 "uses that response", "يرسل كاشِف طلب GET واحدًا مع ترويسة Origin بدل طلب OPTIONS الذي يرسله Observatory، "
                  "وتعتمد نتيجة CORS على تلك الاستجابة"),
     # caps
-    "cap_critical": ("a critical finding", "وجود اكتشاف حرج"),
-    "cap_high": ("a high-severity finding", "وجود اكتشاف عالي الخطورة"),
+    "cap_critical": ("a critical finding", "وجود نتيجة حرجة"),
+    "cap_high": ("a high-severity finding", "وجود نتيجة عالية الخطورة"),
     "cap_rule": ("{rule}: {name}", "{rule}: {name}"),
     "cap_login_page": ("{rule} on a login page", "{rule} في صفحة تسجيل دخول"),
     "cap_http_login": ("the site is served over plain HTTP and has a login page (WEB000)",
@@ -93,8 +96,8 @@ STR: dict[str, tuple[str, str]] = {
     "cap_sslv2": ("SSLv2 accepted (WEB704)", "الخادم يقبل SSLv2 (WEB704)"),
     "cap_sslv3": ("SSLv3 accepted (WEB704)", "الخادم يقبل SSLv3 (WEB704)"),  # nosec - protocol name
     "cap_no_csp": ("no enforced Content-Security-Policy on the scanned page", "لا توجد سياسة CSP مفروضة على الصفحة المفحوصة"),
-    "cap_medium_core": ("a medium-severity finding in {family}", "وجود اكتشاف متوسط الخطورة في مجموعة {family}"),
-    "cap_low_core": ("a low-severity finding in {family}", "وجود اكتشاف منخفض الخطورة في مجموعة {family}"),
+    "cap_medium_core": ("a medium-severity finding in {family}", "وجود نتيجة متوسطة الخطورة في مجموعة {family}"),
+    "cap_low_core": ("a low-severity finding in {family}", "وجود نتيجة منخفضة الخطورة في مجموعة {family}"),
     "cap_no_tls13": ("TLS 1.3 not supported (WEB705)", "عدم دعم TLS 1.3 (WEB705)"),
     "cap_hsts_short": ("HSTS max-age shorter than one year (WEB111)", "مدة HSTS أقصر من سنة (WEB111)"),
     "cap_hsts_isd": ("HSTS without includeSubDomains (WEB114)", "HSTS بلا includeSubDomains (WEB114)"),
@@ -119,24 +122,24 @@ STR: dict[str, tuple[str, str]] = {
     "q_hsts_quoted": ("Observatory cannot parse a quoted max-age and passes it (even \"0\"); browsers honour the quoted "
                       "value, so Kashif reports HSTS as disabled (WEB110)",
                       "لا يستطيع Observatory قراءة max-age بين علامتي تنصيص فيعدّها ناجحة (حتى \"0\")؛ والمتصفحات تعتمد "
-                      "القيمة المنصّصة، لذا يُبلغ كاشف أن HSTS معطّل (WEB110)"),
+                      "القيمة المنصّصة، لذا يُبلغ كاشِف أن HSTS معطّل (WEB110)"),
     "q_hsts_zero": ("Observatory scores max-age=0 as shorter than six months; browsers delete the HSTS entry, so Kashif "
                     "reports WEB110", "يعدّ Observatory القيمة max-age=0 أقصر من ستة أشهر؛ والمتصفحات تحذف قيد HSTS، لذا "
-                    "يُبلغ كاشف عن WEB110"),
+                    "يُبلغ كاشِف عن WEB110"),
     "q_hsts_comma": ("Observatory marks an HSTS value containing a comma (repeated headers joined) as invalid; browsers "
                      "use the first header (WEB113)", "يعدّ Observatory قيمة HSTS التي فيها فاصلة (ترويسات مكررة مدموجة) "
                      "غير صالحة؛ والمتصفحات تعتمد الترويسة الأولى (WEB113)"),
     "q_xfo_fa": ("Observatory gives +5 for any frame-ancestors, even one that allows every site; Kashif reports WEB206",
-                 "يمنح Observatory خمس نقاط لأي frame-ancestors حتى لو سمح بكل المواقع؛ ويُبلغ كاشف عن WEB206"),
+                 "يمنح Observatory خمس نقاط لأي frame-ancestors حتى لو سمح بكل المواقع؛ ويُبلغ كاشِف عن WEB206"),
     "q_xfo_dup": ("Observatory marks a repeated X-Frame-Options value as invalid; browsers honour it",
                   "يعدّ Observatory تكرار قيمة X-Frame-Options غير صالح؛ والمتصفحات تلتزم بها"),
     "q_csp_object": ("Observatory counts a policy without object-src or default-src as unsafe-inline; Kashif does not",
-                     "يعدّ Observatory السياسة التي ليس فيها object-src ولا default-src سياسة unsafe-inline؛ وكاشف لا يعدّها كذلك"),
+                     "يعدّ Observatory السياسة التي ليس فيها object-src ولا default-src سياسة unsafe-inline؛ وكاشِف لا يعدّها كذلك"),
     "q_csp_dup": ("Observatory marks a policy with a repeated directive as invalid; browsers ignore only the repeat (WEB202)",
                   "يعدّ Observatory السياسة التي فيها توجيه مكرر غير صالحة؛ والمتصفحات تتجاهل التكرار فقط (WEB202)"),
     # one-line summary for the scan note
     "summary": ("Grades: Kashif {kashif} · Observatory {obs} · SSL Labs-compatible {ssl}",
-                "الدرجات: كاشف {kashif} · Observatory {obs} · متوافقة مع SSL Labs {ssl}"),
+                "الدرجات: كاشِف {kashif} · Observatory {obs} · درجة SSL Labs المتوافقة: {ssl}"),
     "none": ("not graded", "بلا درجة"),
 }
 
@@ -834,6 +837,12 @@ def observatory(ctx: Any, groups: Sequence[Any] = (), table: dict | None = None)
     auto = observatory_auto(ctx)
     status = auto.status if auto is not None else None
     slugs = dict(getattr(ctx, "observatory", None) or {})
+    if _entry_inconclusive(ctx):
+        # the headers judged would be those of a WAF challenge or rate-limit page, not of the site (§3.4, WEB990)
+        res = observatory_score({}, status=None, table=table)
+        res["notes"] = [pair("obs_blocked")]
+        res["blocked"] = True
+        return res
     res = observatory_score(slugs, status=status, table=table)
     if res["score"] is not None:
         res["quirks"] = observatory_quirks(slugs, groups)
@@ -883,6 +892,10 @@ def summary(g: dict, lang: str = "en") -> str:
     o = g.get("observatory") or {}
     obs = f"{o['score']} ({o['grade']})" if o.get("score") is not None else none
     s = (g.get("ssllabs") or {}).get("grade") or none
+    if lang == "ar":
+        # "C+*" / "A*" / "85 (A-)" inside Arabic: an isolate keeps the "*" and "+" on the right side in RTL terminals
+        from .types import iso
+        k, obs, s = (v if v == none else iso(v) for v in (k, obs, s))
     return t("summary", lang, kashif=k, obs=obs, ssl=s)
 
 
