@@ -5,7 +5,7 @@ This product bundles data files, under vulnscan/data/web/, derived from the thir
 works listed below. Each is used under its own licence; the Kashif MIT License does not
 apply to them. Every file records its source, licence and snapshot date in its "meta"
 header (or in a .meta.json file next to it), and vulnscan/data/web/MANIFEST.json lists
-the sha256 of every file. Only data is copied; no third-party program code is included.
+the sha256 of every file. Apart from the one program file listed at the end, only data is copied.
 
 --------------------------------------------------------------------------------------------
 Public Suffix List                              vulnscan/data/web/psl.dat.gz
@@ -91,3 +91,11 @@ MDN HTTP Observatory scoring                    vulnscan/data/web/observatory-v6
 References used without copying: OWASP Secure Headers Project (CC BY-SA 4.0) was used only
 as a cross-check for Kashif's own leak-header list; OWASP ASVS and WSTG identifiers are
 cited as mappings.
+
+--------------------------------------------------------------------------------------------
+CPython html.parser                             vulnscan/webscan/_htmlparser.py
+  Source:  CPython 3.13, Lib/html/parser.py (Copyright (c) 2001 Python Software Foundation;
+           All Rights Reserved)
+  Licence: Python Software Foundation License Version 2 (https://docs.python.org/3/license.html)
+  Modifications: a header comment only. Bundled so that every supported Python parses pages
+  with the same, non-quadratic parser (older patch releases are quadratic on some input).

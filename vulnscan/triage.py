@@ -700,13 +700,21 @@ def _locked(target: pathlib.Path, timeout: float = 10.0, stale: float = 60.0):
     target.parent.mkdir(parents=True, exist_ok=True)
     lock = str(target) + ".lock"
     deadline = time.monotonic() + timeout
+    denied = 0
     while True:
         try:
             fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
             break
         except (FileExistsError, PermissionError) as exc:  # PermissionError: Windows, lock is being deleted
-            if isinstance(exc, PermissionError) and not os.path.exists(lock):
-                raise                                      # the directory itself is not writable
+            if isinstance(exc, PermissionError):
+                # On Windows a lock another thread is deleting refuses the open and may be gone by the time
+                # we look, so one refusal with no lock file proves nothing; 20 in a row (~1 s) means the
+                # directory itself is not writable.
+                denied = denied + 1 if not os.path.exists(lock) else 0
+                if denied >= 20:
+                    raise
+            else:
+                denied = 0
             try:
                 if time.time() - os.stat(lock).st_mtime > stale:
                     os.unlink(lock)

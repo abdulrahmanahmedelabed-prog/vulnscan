@@ -193,3 +193,14 @@ def test_two_megabyte_tag_dense_page_is_fast_enough():
     # spec §4.3 budget is 1.5 s; line tracing under coverage (as in CI, on shared runners) roughly doubles it
     budget = 3.0 if "coverage" in sys.modules else 1.5
     assert best <= budget, f"light DOM over 2 MB took {best:.2f}s (budget {budget} s, spec §4.3)"
+
+
+def test_pages_are_parsed_with_the_bundled_parser_on_every_python():
+    """Older CPython patch releases (e.g. 3.10.11, the last 3.10 Windows/macOS build) have a quadratic
+    html.parser; the bundled CPython 3.13 copy keeps parse time and the DOM the same on every interpreter."""
+    from vulnscan.webscan import _htmlparser, htmlparse
+    assert htmlparse.HTMLParser is _htmlparser.HTMLParser
+    for page in ("<a " * 80000, "<pre " * 60000, "<code a=" * 40000):
+        t0 = time.perf_counter()
+        parse(page[:250_000], URL)
+        assert time.perf_counter() - t0 < 5.0

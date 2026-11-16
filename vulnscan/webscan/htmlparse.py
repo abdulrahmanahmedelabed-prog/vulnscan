@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import bisect
 import re
-from html.parser import HTMLParser
+from ._htmlparser import HTMLParser   # CPython 3.13 parser on every Python (see the module)
 from urllib.parse import urljoin
 
 from .types import Comment, Element, Form, InlineScript, InlineStyle, ParsedHTML, Response
