@@ -211,6 +211,7 @@ PATTERNS: list[tuple[str, str]] = [
     (r"الواجهة الأمامية \((?P<lang>[^)]+)\): تخطّت (?P<n>\d+) من (?P<total>\d+) عبارة في (?P<rel>.+?) "
      r"\(الأسطر (?P<lines>[^)]*)\) — frontend skipped .*",
      r"The \g<lang> frontend skipped \g<n> of \g<total> statements in \g<rel> (lines \g<lines>)"),
+    (r"عبارة متخطّاة في .+? — skipped statement at (?P<en>[^\u0600-\u06FF]+)", r"Skipped statement at \g<en>"),
     (r"ملفات متداخلة بعمق غير طبيعي \(مولَّدة أو عدائية\) استُثنيت من تحليل التدفق: (?P<files>.+?)"
      r" — too deeply nested for dataflow analysis",
      r"Abnormally deeply nested files (generated or hostile) were excluded from dataflow analysis: \g<files>"),

@@ -14,9 +14,9 @@ from datetime import datetime, timezone
 from . import __version__
 from .i18n import to_en
 from .i18n.bidi import iso, isolate, wrap_runs
-from .i18n.plural import FILES_SCANNED, FINDINGS, PAGES_SCANNED, REQUESTS, ar_count
+from .i18n.plural import FILES_SCANNED, FINDINGS, LOCATIONS, PAGES_SCANNED, REQUESTS, ar_count
 from .model import (SARIF_LEVEL, SECURITY_SEVERITY, SEVERITIES, SEVERITY_AR, Finding,
-                    ensure_fingerprints, sort_findings)
+                    ensure_fingerprints, finding_groups, sort_findings)
 
 REPO_URL = "https://github.com/abdulrahmanahmedelabed-prog/vulnscan"
 
@@ -56,7 +56,18 @@ _LABELS = {
     "col_vuln": ("الثغرة", "Vulnerability"),
     "no_results": ("✔ لا نتائج", "✔ No findings"),
     "autofix": ("إصلاح مقترح", "Suggested fix"),
+    "groups": ("أنماط متكررة (مجمّعة حسب السبب الجذري)", "Repeated patterns (grouped by root cause)"),
+    "groups_note": ("نتائج متعددة سببها نمط واحد في الكود: أصلح النمط في كل موضع مذكور. لكل نتيجة بصمتها الخاصة كما هي.",
+                    "Several findings caused by one code pattern: fix the pattern in each place listed. Each finding keeps "
+                    "its own fingerprint."),
+    "group_of": ("النمط نفسه في {where}", "Same pattern in {where}"),
+    "unused_comp": ("داخل مكوّن غير مستخدم: خُفّضت الخطورة درجة واحدة", "Inside an unused component: severity lowered one level"),
 }
+
+
+def _places(L: "_Lang", n: int) -> str:
+    """"3 مواضع" / "3 places" with the Arabic noun form that agrees with the number."""
+    return f"{n} place" + ("" if n == 1 else "s") if L.en else ar_count(n, LOCATIONS)
 
 
 class _Lang:
@@ -295,6 +306,9 @@ def render_json(findings: list[Finding], target: str, files: int, notes: list[st
     if scanners is not None:
         meta["scanners"] = sorted(set(scanners))
     doc = {**meta, "summary": summary_counts(findings), "findings": [f.to_dict() for f in findings]}
+    groups = finding_groups(findings)
+    if groups:                  # one pattern repeated in several places: the root causes, each with its locations
+        doc["groups"] = groups
     if web:
         doc["web"] = web
     return _json_text(json.dumps(doc, ensure_ascii=False, indent=2, default=str))
@@ -1690,6 +1704,7 @@ td,td.w{{min-width:0}}th,td{{padding:.3rem}}.ev td.nw,.hdrs td.nw{{white-space:n
 <h2 class="fd-h">{e(L('html_by_sev'))}</h2>
 <div class="tw"><table><thead><tr><th>{e(L('sev_col'))}</th>{conf_head}<th>{e(L('col_rule'))}</th><th>{e(L('col_vuln'))}</th><th>{e(L('location'))}</th><th>{e(L('fix'))}</th></tr></thead>
 <tbody>{''.join(rows) or empty}</tbody></table></div>
+{_groups_html(findings, L)}
 {web_bottom}
 </body></html>"""
 
@@ -1744,12 +1759,41 @@ def _html_row(f: Finding, L: "_Lang", show_conf: bool, anchored: set[str], snipp
         advice = b(L.text(f.advice))
         evidence = ""
     snippet = f"<br><small dir='auto'>{b(L.text(f.snippet)[:140])}</small>" if (f.snippet or not web_f) else ""
+    gid, gsize = f.extra.get("group_id"), f.extra.get("group_size")
+    if isinstance(gid, str) and isinstance(gsize, int) and gsize > 1 and not web_f:
+        snippet += (f"<br><small class='grp'><a href='#{html.escape(gid)}'>{e(gid)}</a> · "
+                    f"{b(L('group_of', where=_places(L, gsize)))}</small>")
+    if f.extra.get("unused_component") and not web_f:
+        snippet += f"<br><small class='grp'>{b(L('unused_comp'))}</small>"
     return (f"<tr class='{f.severity}'{rid}><td data-label='{labels['sev_col']}'><span class='b {f.severity}'>"
             f"{e(L.sev(f.severity))}</span></td>{conf_cell}"
             f"<td data-label='{labels['col_rule']}'><code>{e(f.rule_id)}</code><br><small>{e(f.cwe)}</small></td>"
             f"<td class='w' data-label='{labels['col_vuln']}'>{title_html}{evidence}</td>"
             f"<td class='w' data-label='{labels['location']}'>{loc}{snippet}{flow}</td>"
             f"<td class='w' data-label='{labels['fix']}'>{advice}{_fix_html(f, L)}</td></tr>")
+
+
+def _groups_html(findings: list[Finding], L: "_Lang") -> str:
+    """The root-cause groups: one row per repeated pattern with every place it was found (model.finding_groups)."""
+    groups = finding_groups([f for f in findings if f.source != "web"])
+    if not groups:
+        return ""
+    e = html.escape
+    rows = []
+    for g in groups[:200]:
+        title = (g["title"] or to_en(g["title_ar"])) if L.en else (g["title_ar"] or g["title"])
+        locs = "".join(f"<li><code>{e(loc['file'])}:{loc['line']}</code>"
+                       + (f" <bdi>{_bidi_html(L, L.text(loc['component']))}</bdi>" if loc.get("component") else "")
+                       + "</li>" for loc in g["locations"][:100])
+        rows.append(f"<tr id='{e(g['id'])}' class='{e(g['severity'])}'><td data-label='{e(L('sev_col'))}'>"
+                    f"<span class='b {e(g['severity'])}'>{e(L.sev(g['severity']))}</span></td>"
+                    f"<td data-label='{e(L('col_rule'))}'><code>{e(g['rule_id'])}</code><br><small>{e(g['id'])}</small></td>"
+                    f"<td class='w' data-label='{e(L('col_vuln'))}'><b>{_bidi_html(L, title)}</b><br>"
+                    f"<small>{_bidi_html(L, L('group_of', where=_places(L, g['count'])))}</small></td>"
+                    f"<td class='w' data-label='{e(L('location'))}'><ul class='flow'>{locs}</ul></td></tr>")
+    return (f"<h2 class='fd-h'>{e(L('groups'))}</h2><p><small>{_bidi_html(L, L('groups_note'))}</small></p>"
+            f"<div class='tw'><table><thead><tr><th>{e(L('sev_col'))}</th><th>{e(L('col_rule'))}</th>"
+            f"<th>{e(L('col_vuln'))}</th><th>{e(L('location'))}</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>")
 
 
 def _first_url(f: Finding) -> str:

@@ -1,4 +1,4 @@
-"""English catalog: vulnscan/apex_export.py: Oracle APEX checks (APX001-APX021) and component labels.
+"""English catalog: vulnscan/apex_export.py: Oracle APEX checks (APX001-APX023) and component labels.
 
 vulnscan/plsql_frontend.py emits no Arabic text, so it has no entries here.
 """
@@ -60,6 +60,8 @@ CATALOG: dict[str, str] = {
     "قيمة العنصر المخفي غير محمية (يمكن التلاعب بها)": "Hidden item value is not protected (can be tampered with)",
     "عملية تطبيق عند الطلب (AJAX) بلا تفويض": "On-demand (AJAX) application process without an authorization scheme",
     "يُسمح بالاستبدال دون النقطة الختامية (&ITEM)": "Substitutions without the trailing dot (&ITEM) are allowed",
+    "وحدة PL/SQL ملفوفة (wrapped): لا يمكن فحص الكود فيها": "Wrapped PL/SQL unit: its code cannot be scanned",
+    "إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق": "Plug-in defined but not used by any component of the application",
 
     # ---- remediation advice
     "استخدم متغير الربط :ITEM بدل &ITEM.": "Use the bind variable :ITEM instead of &ITEM.",
@@ -103,6 +105,11 @@ CATALOG: dict[str, str] = {
     "أسند Authorization Scheme للعملية؛ يمكن لأي جلسة استدعاؤها عبر apex.server.process.":
         "Assign an Authorization Scheme to the process; any session can call it through apex.server.process.",
     "اجعل Substitutions = Exact substitutions only.": "Set Substitutions to Exact substitutions only.",
+    "افحص الكود المصدري قبل لفّه (wrap)؛ اللفّ إخفاء لا حماية، ويمكن فكّه.":
+        "Scan the source code before it is wrapped; wrapping hides the code, it does not protect it, and it can be unwrapped.",
+    "احذف الإضافة غير المستخدمة من Shared Components › Plug-ins، أو تأكّد أنها مستخدمة في تطبيق آخر يشترك فيها.":
+        "Delete the unused plug-in from Shared Components › Plug-ins, or make sure another application that subscribes "
+        "to it uses it.",
 }
 
 _ITEM = r"(?P<item>[A-Za-z][A-Za-z0-9_$#]*)"

@@ -1,0 +1,156 @@
+-- Deployed objects of the HR application (wrapped with the Oracle wrap utility).
+
+create or replace package hr_secure as
+  procedure grant_role(p_user in varchar2, p_role in varchar2);
+end hr_secure;
+/
+
+CREATE OR REPLACE PACKAGE BODY hr_secure wrapped 
+a000000
+b2
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+b
+5dc 2ee
+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
+/
+
+CREATE OR REPLACE EDITIONABLE PROCEDURE "HR"."PURGE_AUDIT" wrapped
+a000000
+b2
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+7
+258 12c
+frGxS4ZrKdgp3MxjRs+losWfmVVCI/gnnOy+e8xN6nlOfNOCreQoU11Va/h9x7sU5SmovoTd
+AOHrWF1NFmRdVI+CPVoVWRjuFdHMPiGvIVYvIwfte4Idg9XR2f0EfjU7Hu6WejjU+djESCbC
+Lm7Cbr2/wgY4z7bQCYcqAEfiZ0IKyvd2XfynLwif6J4UuBpfXhzT3MLk7e1wCJXl9ROomF5M
+QDQI8zLJdtiCq+wbMpCYQgz1CqC9Vxa+rmVqyQf00INt09+VRruQn+5ArUheYpnVl2Ckz9SM
+ujpBytmxBVRu5QrkjIawmK4M/AFp8hmPjLe0NzVaG5yLymle69bPGFwz3UT/WBOOJvM72jYd
+2jTt59WyRYQxboJ5xSxOarbO27jnA29r/xlJuyIIylowAwRjV2JrKKnhpNUWIx/3WEpMq3gg
+od9XTq9lu6CUjkNhjWG0pX3UknsyiWhr/QugEAxNBT4zKz7lwZNUUk3CjGtayAPymlOsJY4Z
+PD8/pwLqEUwU7DGqAVkpi818NVmJCJt3u+zJyHkDxKO+ByR2dx5iymslYBRORl+adU4AvZP7
+wJcPDS45Rgt8CCfTE21oFoAx9mi9ggIkA7DuinO8IbjUWvIc4ynBtwJW+dT8OJ0eJqs5cEsG
+ajd6L7apS8SrTam36NpUvLHbN7kz5Qg15tkN9SrqVpC6qQWEi0U/TBE84XT/BgAmuiWqcyh2
+/H3/ruSN5Hl38JV043JmHbnXcUWhJP3R9B1x7W0j0NZ0ud3FV31vkqu5AypMZW0x842Pfz/5
+5se8NAax
+/
+
+create or replace function hr_hash wrapped
+a000000
+b2
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+8
+1a4 d2
+Rom7AntptgcvPJA3QYgv7pkoDorTVfyUJkFJbDFVTfjFUk+40Yn4wpTOENf6ZwJ13lAlEaqb
+x8A0JuY+Zi7BQxh+ziosoHvarucT8O+8UqAaPB9aoBAzzmqBJVmKy1hSYrTIC0ExrKkg7hk2
+6I9gVSMBV3wuFGBvYQX24zTXriYGeGGR4c2nLfwzHBtKiswJwEmaW1p8q3X8cWoYTIgBBVdj
+F2Eu/gir0LugYrLXONtMAQ98vzjL8ekbfocz5ez6gHXHN46jlLy+aceXZPItWeNeqiD1j/Xw
+ERKfDuNYEbRxf5luJfSRvfQZp6dCC6m98tGUl+QqQwXzzZMwJ+roGYyJ60qev2SwUo5ZdQY5
+b3/GeuAE45jd9pGG9EGyh5ovDfgPucdnhnyGvOW0uinT+OgTjE8PCjSyY75wMSe3DHjd+3if
+OiAHEcXe/4O2qRtDYo0gbWJsouT/wMOlG4cqdxP8bFsV2OV+216XQxsEg8DkYbyd7rGMfcOs
+/5EbgYJT8EK8B+ahU5ECXlTjBZnMuSImav0BmUI9mHoIVHH2jpF9VWsF
+/
+
+CREATE OR REPLACE TYPE BODY t_money wrapped 
+a000000
+b2
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+abcd
+e
+17c be
+jA9AoZgPoK4fHKx+gDBlxqrZfyQd+kGSFWsniWQJzjWhl50rqVYHFhfbhYdl/wHW0t+SEe3a
+eCWDpWZS6eBWt0vlpFoPknWNVgEzurpQyw7MdRALsoQLcO6nZ8Y3rmEm8PIEIUr2uQ5kTuac
+7e5cFccyQ1HsFq1MM4SXjBrsVVr64g4Qz2U1amT4ct1BKHpNEjDLnEjCzbwOdu5AzOQV4vQ3
+Q7z0V6qQwj9VWfmps/YXwVoQ4d6LNDCfBVHXdQ8nO8I65Wk31zCV8p6FforOoKgQXSN8rg4+
+RNBQjm0GMQPOWQxBB4AcXPHewXz/5bPnD/dCOwmzvJGwiYxVyn5HwHFKawK5PyOBQOKOGpao
+gvJnZlbkw/ebJRp1pingw3whqBPi2lzbD0dDQyuyS5pgx+h6njLlOSKqMdKGDqSVqpd7nLlg
+0p/82ksezKy/qsCSK6/FA6X2HcpP/5a8t/Cc7oA112lRVMn7BmndGD/y5gh5tU9Y4YpbkiAW
+g18=
+/
+
+create or replace procedure hr_ping is
+begin
+  htp.p('<p>' || v('P1_NAME') || '</p>');
+end hr_ping;
+/

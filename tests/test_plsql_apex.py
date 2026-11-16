@@ -276,7 +276,7 @@ def test_ords_metadata_view_export_json():
 def test_apex_security_configuration_sql_export():
     _, fs, _ = apex_export.extract((DATA / "f400_security.sql").read_text(), "f400_security.sql")
     got = {(f.rule_id, f.line): f.severity for f in fs if f.rule_id >= "APX006"}
-    expected = {("APX006", 6): "high", ("APX010", 7): "low", ("APX009", 9): "medium", ("APX021", 10): "low",
+    expected = {("APX006", 6): "high", ("APX010", 7): "low", ("APX009", 9): "low", ("APX021", 10): "low",
                 ("APX008", 11): "medium", ("APX007", 12): "high", ("APX011", 13): "medium", ("APX012", 14): "medium",
                 ("APX013", 23): "medium", ("APX015", 28): "high", ("APX020", 35): "medium", ("APX018", 48): "low",
                 ("APX019", 54): "medium", ("APX017", 61): "medium", ("APX016", 79): "high"}

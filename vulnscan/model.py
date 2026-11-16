@@ -149,3 +149,83 @@ def ensure_fingerprints(findings: "list[Finding]") -> None:
 def sort_findings(findings: list[Finding]) -> list[Finding]:
     """Highest severity first, then by file and line for stable output."""
     return sorted(findings, key=lambda f: (SEVERITY_RANK[f.severity], f.file, f.line, f.rule_id))
+
+
+# ------------------------------------------------------------------------------------------------- root-cause groups
+_LABEL_PREFIX = re.compile(r"^\[[^\]]*\]\s*")
+_SQL_STRING_LINE = re.compile(r"^'(.*)'\s*(?:,|\)\)?\s*;?)?\s*$")       # a code line inside an APEX export string
+
+
+def _norm_code(text: str) -> str:
+    text = _LABEL_PREFIX.sub("", str(text or "").strip())
+    m = _SQL_STRING_LINE.match(text)
+    if m:
+        text = m.group(1).replace("''", "'")
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _is_flow(f: "Finding") -> bool:
+    return f.extra.get("analysis") == "dataflow" or bool(f.extra.get("taint_source"))
+
+
+def group_key(f: "Finding", code: "str | None" = None) -> str:
+    """What makes two findings the same root cause: the same rule on the same code. A data-flow finding's snippet
+    names its source, so its code is the sink line (``code``); without it, its location. Web findings are grouped
+    by the web scanner itself (one finding per issue with its pages) and keep their own identity."""
+    if f.source == "web":
+        return f"web\x00{f.fingerprint()}"
+    if _is_flow(f):
+        norm = _norm_code(code) if code else ""
+        return f"{f.rule_id}\x00code:{norm}" if norm else f"{f.rule_id}\x00at:{f.file}:{f.line}"
+    norm = _norm_code(f.snippet)
+    return f"{f.rule_id}\x00snippet:{norm}" if norm and f.line else f"{f.rule_id}\x00at:{f.file}:{f.line}"
+
+
+def assign_groups(findings: "list[Finding]", code_of=None) -> None:
+    """Group findings by root cause (rule + the code pattern): one pattern repeated in several places — the same
+    plug-in code copied into several plug-ins, one helper reached from many callers — is one thing to fix.
+    Members of a group of two or more get ``extra["group_id"]`` ("G-" + 8 hex, stable) and ``extra["group_size"]``;
+    a finding alone keeps no group keys. Fingerprints are not affected. ``code_of(finding)`` returns the source line
+    of a data-flow finding's sink, or None."""
+    keys: dict[int, str] = {}
+    sizes: dict[str, int] = {}
+    for f in findings:
+        f.extra.pop("group_id", None)
+        f.extra.pop("group_size", None)
+        code = None
+        if code_of is not None and _is_flow(f) and f.source != "web":
+            try:
+                code = code_of(f)
+            except (OSError, ValueError):
+                code = None
+        k = group_key(f, code)
+        keys[id(f)] = k
+        sizes[k] = sizes.get(k, 0) + 1
+    for f in findings:
+        k = keys[id(f)]
+        if sizes[k] > 1:
+            f.extra["group_id"] = "G-" + hashlib.sha256(k.encode("utf-8", "replace")).hexdigest()[:8]
+            f.extra["group_size"] = sizes[k]
+
+
+def finding_groups(findings: "list[Finding]") -> list[dict]:
+    """The root-cause groups among ``findings`` (from ``extra["group_id"]``, counted on the findings present):
+    [{"id", "rule_id", "severity", "title", "title_ar", "cwe", "count", "locations": [{"file", "line",
+    "fingerprint", "component"}]}], most severe and largest first; groups of one are left out."""
+    by: dict[str, list] = {}
+    for f in findings:
+        gid = f.extra.get("group_id")
+        if isinstance(gid, str) and gid:
+            by.setdefault(gid, []).append(f)
+    out = []
+    for gid, members in by.items():
+        if len(members) < 2:
+            continue
+        members = sort_findings(members)
+        head = members[0]
+        out.append({"id": gid, "rule_id": head.rule_id, "severity": head.severity, "title": head.title,
+                    "title_ar": head.title_ar, "cwe": head.cwe, "count": len(members),
+                    "locations": [{"file": m.file, "line": m.line, "fingerprint": m.fingerprint(),
+                                   "component": m.extra.get("apex_component", "")} for m in members]})
+    out.sort(key=lambda g: (SEVERITY_RANK.get(g["severity"], 9), -g["count"], g["rule_id"], g["id"]))
+    return out

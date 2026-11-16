@@ -598,6 +598,7 @@ details summary{cursor:pointer;color:var(--accent-text);font-size:13px}
 .about-list div{display:flex;gap:var(--s3);align-items:baseline}
 .about-list dt{min-width:90px;color:var(--muted)}
 .about-list a{display:inline-flex;align-items:center;gap:6px}
+.about-list dd.about-mails{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:0}
 
 /* ------------------------------------------------ findings: second toolbar, export menu */
 .toolbar.sub{margin-top:calc(var(--s2) * -1)}

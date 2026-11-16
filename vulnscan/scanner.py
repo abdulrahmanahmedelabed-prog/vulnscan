@@ -17,7 +17,7 @@ import tarfile
 import tempfile
 import zipfile
 
-from .model import Finding
+from .model import Finding, assign_groups
 from .rules import RULES, SENSITIVE_FILES, Rule, weak_credential_entry
 from . import taint, vql
 from .plsql_frontend import PLSQL_EXTS
@@ -510,6 +510,12 @@ def _scan_bytes(path: pathlib.Path, rel: str, raw: bytes, rules: list[Rule], ign
     text = raw.decode("utf-8", errors="replace")
     if FILE_SUPPRESS.search(text[:2000]):
         return findings
+    wrapped_skip: set = set()          # lines of PL/SQL wrapped by Oracle: base64-like by design, never a secret
+    if path.suffix.lower() in PLSQL_EXTS:
+        wrapped = apex_export.wrapped_findings(text, rel)
+        for w in wrapped:
+            wrapped_skip.update(range(w.line + 1, int(w.extra.get("end_line", w.line)) + 1))
+        findings.extend(w for w in wrapped if "APX022" not in ignore_rules)
     keys = _ext_keys(path)
     workflow = _is_workflow(rel)
     applicable = [
@@ -548,6 +554,8 @@ def _scan_bytes(path: pathlib.Path, rel: str, raw: bytes, rules: list[Rule], ign
     script_lines = _script_lines(text) if path.suffix.lower() in (".html", ".htm", ".xhtml") else None
     all_lines = text.splitlines()
     for lineno, line in enumerate(all_lines, 1):
+        if lineno in wrapped_skip:
+            continue                         # wrapped PL/SQL text: reported once per unit as APX022
         # PEM-armored certificates / public keys: their base64 body is public data, not a secret
         if _PEM_BEGIN.search(line):
             in_pem = not _PEM_END.search(line)
@@ -894,9 +902,48 @@ def _all_names_known(tree, line: int, cache: dict) -> bool:
     return scope is not None and names <= scope[2]
 
 
+# Why a frontend skipped a statement: the parser's own message (English, from plsql/cfamily frontends) -> (Arabic, English)
+_Q = r"(?P<{}>'[^']*'|\"[^\"]*\"|\S+)"
+_SKIP_REASONS = [
+    (re.compile(r"expected IS/AS in (?P<name>\S+)"),
+     "خطأ في التحليل: كان المتوقَّع IS أو AS بعد ترويسة {name}", "parse error: expected IS or AS after the header of {name}"),
+    (re.compile(r"expected " + _Q.format("want") + r",? (?:found|got) " + _Q.format("got") + r"(?: (?:at )?line \d+)?"),
+     "خطأ في التحليل: كان المتوقَّع {want} فوُجد {got}", "parse error: expected {want}, found {got}"),
+    (re.compile(r"unexpected " + _Q.format("tok") + r" in declarations"),
+     "بنية غير مدعومة في قسم التعريفات: {tok}", "unsupported construct in the declarations: {tok}"),
+    (re.compile(r"(?:unexpected|stray) " + _Q.format("tok") + r"(?: (?:at )?line \d+)?"),
+     "بنية غير مدعومة أو غير متوقَّعة: {tok}", "unsupported or unexpected construct: {tok}"),
+    (re.compile(r"substitution variable in code"),
+     "متغير استبدال SQL*Plus (&) داخل الكود: يُستبدل نصّه قبل التنفيذ", "SQL*Plus substitution variable (&) inside the code: replaced as text before it runs"),
+    (re.compile(r"dangling NOT"), "خطأ في التحليل: NOT بلا شرط بعدها", "parse error: NOT without a condition after it"),
+    (re.compile(r"missing " + _Q.format("what") + r" for block opened(?: (?:at )?line \d+)?"),
+     "خطأ في التحليل: ينقص {what} لإغلاق كتلة", "parse error: missing {what} to close a block"),
+    (re.compile(r"missing " + _Q.format("what") + r" for (?P<blk>[\w-]+)(?: (?:at )?line \d+)?"),
+     "خطأ في التحليل: ينقص {what} لإغلاق {blk}", "parse error: missing {what} to close {blk}"),
+    (re.compile(r"missing " + _Q.format("what") + r"(?: (?:at )?line \d+)?"), "خطأ في التحليل: ينقص {what}", "parse error: missing {what}"),
+    (re.compile(r"(?:sql )?frontend failure: (?P<err>.+)"), "عطل داخلي في الواجهة الأمامية: {err}", "internal frontend failure: {err}"),
+]
+SKIP_DETAIL_PER_FILE = 25
+SKIP_DETAIL_TOTAL = 200
+
+
+def skip_reason(msg: str) -> tuple[str, str]:
+    """A frontend's message for a skipped statement -> (Arabic, English) reason. Unknown messages keep the parser text."""
+    msg = re.sub(r"\s+", " ", str(msg)).strip()
+    for rx, ar, en in _SKIP_REASONS:
+        m = rx.fullmatch(msg)
+        if m:
+            g = {k: (v or "")[:80] for k, v in m.groupdict().items()}
+            return ar.format(**g), en.format(**g)
+    return f"تعذّر تحليل العبارة: {msg[:160]}", f"could not parse the statement: {msg[:160]}"
+
+
 def frontend_notes(projects) -> list[str]:
-    """What the language frontends could not parse: one note per file with skipped statements, so nothing is dropped silently."""
+    """What the language frontends could not parse: one note per file with skipped statements, then the location and
+    the reason of each skipped statement (up to SKIP_DETAIL_PER_FILE per file), so nothing is dropped silently."""
+    from .i18n import to_en
     out: list[str] = []
+    details: list[str] = []
     for proj in projects:
         for rel, d in sorted(getattr(proj, "diagnostics", {}).items()):
             if not d.get("skipped"):
@@ -906,7 +953,16 @@ def frontend_notes(projects) -> list[str]:
             total = d["statements"] + d["skipped"]
             out.append(f"الواجهة الأمامية ({d['language']}): تخطّت {d['skipped']} من {total} عبارة في {rel} (الأسطر {lines}{more}) — "
                        f"frontend skipped {d['skipped']}/{total} statements in {rel}")
-    return out
+            for ln, msg in d["lines"][:SKIP_DETAIL_PER_FILE]:
+                if len(details) >= SKIP_DETAIL_TOTAL:
+                    break
+                m = re.match(r"\[([^\]]+)\] (.*)", str(msg), re.S)
+                label, msg = (m.group(1), m.group(2)) if m else ("", str(msg))
+                ar, en = skip_reason(msg)
+                where_ar = f"{rel}:{ln}" + (f" [{label}]" if label else "")
+                where_en = f"{rel}:{ln}" + (f" [{to_en(label)}]" if label else "")
+                details.append(f"عبارة متخطّاة في {where_ar}: {ar} — skipped statement at {where_en}: {en}")
+    return out + details
 
 
 # ------------------------------------------------------------------ per-file stage: parallel workers + incremental cache
@@ -1286,6 +1342,30 @@ def _contained_stage(p, rel, rules, ignore_rules, include_tests, cache, salt):
                 "error": _error_reason(e)}, None
 
 
+def _sink_code_reader(root: pathlib.Path):
+    """code_of(finding) for model.assign_groups: the line a data-flow finding points at, read from the scanned file
+    (inside an archive: its extracted member). None for virtual files (decoded static files, decompiled code)."""
+    cache: dict = {}
+    base = root if root.is_dir() else root.parent
+
+    def code_of(f: Finding):
+        rel = f.extra.get("archive_member") or f.file
+        if "!" in rel or not f.line:
+            return None
+        if rel not in cache:
+            p = base / rel if root.is_dir() else (root if root.name == rel else base / rel)
+            try:
+                if not p.is_file() or p.stat().st_size > MAX_PLSQL_BYTES:
+                    cache[rel] = None
+                else:
+                    cache[rel] = p.read_text(encoding="utf-8", errors="replace").split("\n")
+            except OSError:
+                cache[rel] = None
+        lines = cache[rel]
+        return lines[f.line - 1] if lines and 0 < f.line <= len(lines) else None
+    return code_of
+
+
 def skipped_files_note(skipped: list) -> str | None:
     """The scan note for files left out after an unexpected analysis error: [(rel, reason)]."""
     if not skipped:
@@ -1438,6 +1518,7 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
             if f.key() not in seen:
                 seen.add(f.key())
                 unique.append(f)
+        assign_groups(unique, _sink_code_reader(target if tmp is None else root))
         return unique, count
     finally:
         if tmp is not None:

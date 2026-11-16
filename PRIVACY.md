@@ -24,7 +24,7 @@
 
 ## التواصل
 
-لأي سؤال عن الخصوصية: [sdep@iugaza.edu.ps](mailto:sdep@iugaza.edu.ps)
+لأي سؤال عن الخصوصية: [its@iugaza.edu.ps](mailto:its@iugaza.edu.ps) و[aelabed@iugaza.edu.ps](mailto:aelabed@iugaza.edu.ps)
 
 ---
 
@@ -55,4 +55,4 @@ people who use the program and visit its site, collect as little as possible, an
 
 ### Contact
 
-Privacy questions: [sdep@iugaza.edu.ps](mailto:sdep@iugaza.edu.ps)
+Privacy questions: [its@iugaza.edu.ps](mailto:its@iugaza.edu.ps) and [aelabed@iugaza.edu.ps](mailto:aelabed@iugaza.edu.ps)

@@ -426,6 +426,7 @@
   "1174": ["config"],
   "346": ["config"],
   "489": ["debug"],
+  "561": ["config"],
   "11": ["debug"],
   "1021": ["clickjacking"],
   "1395": ["components"],
@@ -1179,6 +1180,13 @@
      ],
      "note": "A05 covers 'unnecessary features are enabled'; active debug code is such a feature.",
      "note_ar": "تشمل A05 «تفعيل ميزات غير ضرورية»، وكود التصحيح الفعّال من هذه الميزات."
+    },
+    "561": {
+     "controls": [
+      "A05"
+     ],
+     "note": "A05 covers 'unnecessary features are enabled or installed'; a component nothing uses is such a feature.",
+     "note_ar": "تشمل A05 «تفعيل ميزات غير ضرورية أو تثبيتها»، والمكوّن الذي لا يستخدمه شيء من هذه الميزات."
     },
     "693": {
      "controls": [
@@ -5718,6 +5726,7 @@
   "487": "Reliance on Package-level Scope",
   "488": "Exposure of Data Element to Wrong Session",
   "489": "Active Debug Code",
+  "561": "Dead Code",
   "491": "Public cloneable() Method Without Final ('Object Hijack')",
   "492": "Use of Inner Class Containing Sensitive Data",
   "493": "Critical Public Variable Without Final Modifier",
@@ -6676,6 +6685,7 @@
   "487": ["664"],
   "488": ["668"],
   "489": ["710"],
+  "561": ["1164"],
   "491": ["668"],
   "492": ["668"],
   "493": ["668"],

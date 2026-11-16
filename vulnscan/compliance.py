@@ -113,6 +113,9 @@ DATA_FILE = pathlib.Path(__file__).resolve().parent / "data" / "compliance.json"
 SEVERITIES = ("critical", "high", "medium", "low", "info")
 _RANK = {s: i for i, s in enumerate(SEVERITIES)}
 RISK_WEIGHTS = {"critical": 10.0, "high": 5.0, "medium": 2.0, "low": 0.5, "info": 0.0}
+# The highest score a report can reach for its most severe finding: findings of lower severity add up with diminishing
+# returns but never reach the band above it (no "critical" rating without a critical finding).
+RISK_CAPS = {"critical": 100, "high": 74, "medium": 49, "low": 24, "info": 0}
 SCHEMA = "kashif-compliance/1"
 MAX_INPUT_BYTES = 256 * 1024 * 1024       # largest report / SARIF file load_findings reads
 _MAX_SNIPPET, _MAX_ADVICE, _MAX_TITLE, _MAX_STEPS = 2000, 4000, 400, 200
@@ -181,7 +184,9 @@ STR = {
         "m_risk": "Risk score",
         "m_risk_txt": "W = 10 x critical + 5 x high + 2 x medium + 0.5 x low; score = 100 x (1 - e^(-W/25)), rounded. "
                       "Rating: 0 none, 1-24 low, 25-49 moderate, 50-74 high, 75-100 critical; never below \"high\" "
-                      "when a critical finding exists, nor below \"moderate\" when a high finding exists. The score "
+                      "when a critical finding exists, nor below \"moderate\" when a high finding exists. The most severe "
+                      "finding caps the score: at most 74 without a critical finding, 49 without a high one and 24 when "
+                      "all are low, so lower-severity findings never add up to a higher rating. The score "
                       "ranks reports against each other; it is not a CVSS score or a likelihood.",
         "m_review": "Analyst and category mappings are judgement. Review them before relying on them; the sources "
                     "are listed in Appendix B.",
@@ -251,7 +256,9 @@ STR = {
         "m_risk": "درجة الخطر",
         "m_risk_txt": "W = 10 × الحرجة + 5 × العالية + 2 × المتوسطة + 0.5 × المنخفضة؛ الدرجة = 100 × (1 − e^(−W/25)) "
                       "مقرّبة. التصنيف: 0 لا يوجد، 1–24 منخفض، 25–49 متوسط، 50–74 عالٍ، 75–100 حرج؛ ولا يقل عن «عالٍ» "
-                      "عند وجود نتيجة حرجة ولا عن «متوسط» عند وجود نتيجة عالية. الدرجة للمقارنة بين التقارير، وليست "
+                      "عند وجود نتيجة حرجة ولا عن «متوسط» عند وجود نتيجة عالية. وتُسقِّف أشدُّ النتائج خطورةً الدرجةَ: "
+                      "74 على الأكثر دون نتيجة حرجة، و49 دون نتيجة عالية، و24 إن كانت كل النتائج منخفضة، فلا تتراكم "
+                      "النتائج الأقل خطورة لتبلغ تصنيفًا أعلى. الدرجة للمقارنة بين التقارير، وليست "
                       "درجة CVSS ولا احتمالًا.",
         "m_review": "ربط المحلل وربط الفئة اجتهاد. راجعهما قبل الاعتماد عليهما؛ المصادر في الملحق ب.",
         "risk": "درجة الخطر", "rating": "التصنيف",
@@ -764,6 +771,8 @@ def risk_score(findings) -> dict:
     score = int(round(100 * (1 - math.exp(-weighted / 25.0))))
     if weighted > 0:
         score = max(score, 1)
+    worst = next((s for s in SEVERITIES if counts[s] and RISK_WEIGHTS[s] > 0), None)
+    score = min(score, RISK_CAPS[worst]) if worst else score
     bands = ["none", "low", "moderate", "high", "critical"]
     band = 0 if score == 0 else 1 if score < 25 else 2 if score < 50 else 3 if score < 75 else 4
     if counts["critical"]:

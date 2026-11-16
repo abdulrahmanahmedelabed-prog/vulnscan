@@ -22,6 +22,7 @@ separately so the Java frontend can analyse them.
 from __future__ import annotations
 
 import ast
+import copy
 import re
 
 from .js_frontend import _args, _const, _mk, _name
@@ -35,6 +36,13 @@ SQLPLUS_CMDS = {"set", "prompt", "spool", "whenever", "define", "undefine", "col
 SKIP_STMTS = {"select", "insert", "update", "delete", "merge", "with", "fetch", "close", "commit", "rollback", "savepoint", "lock",
               "goto", "null", "exit", "continue", "pipe", "set", "dbms_output_put"}
 STOP_BODY = {"end", "exception", "elsif", "else", "when"}
+RAISE_APP_ERROR = {"raise_application_error", "sys.raise_application_error", "dbms_standard.raise_application_error",
+                   "sys.dbms_standard.raise_application_error"}
+# owa_util procedures with a bclose_header parameter -> its position; `false` leaves the HTTP header open
+HEADER_OPENERS = {"owa_util.mime_header": 1, "owa_util.status_line": 2, "owa_util.redirect_url": 1}
+HTP_WRITES = {"htp.p", "htp.prn", "htp.print", "htp.prints", "htp.ps", "sys.htp.p", "sys.htp.prn", "sys.htp.print",
+              "sys.htp.prints", "sys.htp.ps"}
+HEADER_WRITE = "owa_header_write"     # lowered name of an htp call that writes an HTTP header line
 SQL_DML = {"select", "insert", "update", "delete", "merge", "with"}
 # words that may precede '(' in SQL without being a function call
 SQL_NON_FUNCS = {"in", "exists", "values", "over", "as", "from", "where", "and", "or", "not", "select", "when", "then", "else",
@@ -58,6 +66,15 @@ _TOKEN = re.compile(r"""
     (?P<one>[-+*/%(),;.=<>@:&|\[\]{}!?^~])
 """, re.S | re.X)
 _QPAIRS = {"[": "]", "{": "}", "(": ")", "<": ">"}
+# A unit obfuscated by Oracle's wrap utility: `create [or replace] [editionable] <unit type> [schema.]name wrapped`, then
+# the wrapped text (a000000, a version line, 15 x abcd, a type code, lengths, base64-like lines) up to a `/` line.
+_WRAPPED_HEAD = re.compile(
+    r"""^[ \t]*create\s+(?:or\s+replace\s+)?(?:(?:non)?editionable\s+)?"""
+    r"""(package\s+body|package|procedure|function|type\s+body|type|trigger|library)\s+"""
+    r"""((?:"[^"\n]+"|[A-Za-z_][\w$#]*)(?:\s*\.\s*(?:"[^"\n]+"|[A-Za-z_][\w$#]*))?)\s+wrapped\b[ \t]*\r?$""", re.I | re.M)
+_WRAPPED_END = re.compile(r"^[ \t]*/[ \t]*\r?$", re.M)
+# what wrap writes after the header: `a000000` (10g and later) or `0` (9i), a version line, then `abcd` lines; never `;`
+_WRAPPED_BODY = re.compile(r"[ \t]*\r?\n(?:a000000|0)[ \t]*\r?\n(?:[^\n]*\r?\n)?(?:[ \t]*\r?\n)*abcd[ \t]*\r?$", re.M)
 _JAVA_SRC = re.compile(r"create\s+(?:or\s+replace\s+)?(?:and\s+(?:resolve|compile)\s+)?(?:noforce\s+)?java\s+source\s+named\s+"
                        r"(\"[^\"]+\"|\S+)\s+(?:as|is)\s*?\n(.*?)^\s*/\s*$", re.I | re.S | re.M)
 
@@ -169,6 +186,9 @@ class Parser:
         self.anon = 0
         self.pending_pre: list = []
         self.cursors: dict = {}          # cursor name -> select info (for rows read through it)
+        # between owa_util.mime_header(…, false) and owa_util.http_header_close: True; "maybe" when only some branches
+        # leading here opened (or closed) the header
+        self.header_open = False
 
     # ---------------------------------------------------------------- helpers
     @property
@@ -271,6 +291,7 @@ class Parser:
             return Unit("anonymous", f"exec_{line}", [_mk(ast.Expr, line, value=self._as_call(e, line))], line)
         if v in ("declare", "begin"):
             line = t.line
+            self.header_open = False
             body = self.parse_anonymous()
             self.anon += 1
             return Unit("anonymous", f"anonymous_block_{line}", body, line)
@@ -377,7 +398,11 @@ class Parser:
         if self.at("language", "external", "mle"):
             self.skip_to_semicolon()
             return None
-        body = self.decls_and_body(name)
+        saved, self.header_open = self.header_open, False
+        try:
+            body = self.decls_and_body(name)
+        finally:
+            self.header_open = saved
         return _mk(ast.FunctionDef, line, name=name, args=_args(params, line), body=body or [_mk(ast.Pass, line)],
                    decorator_list=[], returns=None, type_params=[])
 
@@ -619,7 +644,42 @@ class Parser:
             self.eat(";")
             return self.assign(target, value, line)
         self.eat(";")
-        return [_mk(ast.Expr, line, value=self._as_call(target, line))]
+        call = self._as_call(target, line)
+        name = _dotted(call.func) if isinstance(call, ast.Call) else ""
+        if name.split(".")[-1] == "raise_application_error" and name in RAISE_APP_ERROR:
+            return [_mk(ast.Raise, line, exc=None, cause=None)]   # ends the block like `raise`: the guard before it holds
+        self._header_state(name, call)
+        if self.header_open is True and name in HTP_WRITES:
+            call.func = _name(HEADER_WRITE, line)                 # htp.p while the HTTP header is open writes a header line
+        elif self.header_open and name in HTP_WRITES:              # open on some paths only: a header line or HTML
+            hdr = copy.deepcopy(call)
+            hdr.func = _name(HEADER_WRITE, line)
+            return [_mk(ast.Expr, line, value=hdr), _mk(ast.Expr, line, value=call)]
+        return [_mk(ast.Expr, line, value=call)]
+
+    def _merge_header(self, *states) -> None:
+        """The header state after branches that ended in `states`: the same on every path, or "maybe"."""
+        self.header_open = states[0] if all(x == states[0] for x in states) else "maybe"
+
+    def _header_state(self, name: str, call) -> None:
+        """owa_util.mime_header / status_line / redirect_url with bclose_header => false leave the HTTP header open;
+        owa_util.http_header_close closes it. What htp writes in between is header text, not HTML."""
+        short = name[4:] if name.startswith("sys.") else name
+        if short == "owa_util.http_header_close":
+            self.header_open = False
+            return
+        pos = HEADER_OPENERS.get(short)
+        if pos is None:
+            return
+        arg = next((k.value for k in call.keywords if (k.arg or "").lower() == "bclose_header"), None)
+        if arg is None and len(call.args) > pos:
+            arg = call.args[pos]
+        if isinstance(arg, ast.Constant) and arg.value is False:
+            self.header_open = True
+        elif arg is None or (isinstance(arg, ast.Constant) and arg.value is True):
+            self.header_open = False                              # bclose_header => true (the default) closes it
+        else:
+            self.header_open = "maybe"                            # bclose_header => l_flag: open or closed
 
     @staticmethod
     def _as_call(e, line):
@@ -644,7 +704,9 @@ class Parser:
         return [_mk(ast.Expr, line, value=value)]
 
     def loop_body(self) -> list:
+        s0 = self.header_open
         body = self.parse_stmts({"end"})
+        self._merge_header(s0, self.header_open)          # the body may run zero times
         self.eat("end")
         self.opt("loop")
         if self.t.kind == "id":
@@ -657,14 +719,18 @@ class Parser:
         self.eat("if")
         test = self.parse_expr()
         self.eat("then")
+        s0 = self.header_open
         body = self.parse_stmts({"elsif", "else", "end"})
+        s_body, self.header_open = self.header_open, s0
         orelse = []
         if self.at("elsif"):
             self.t.val = "if"
             orelse = [self.parse_if_tail()]
+            self._merge_header(s_body, self.header_open)
             return _mk(ast.If, line, test=test, body=body or [_mk(ast.Pass, line)], orelse=orelse)
         if self.opt("else"):
             orelse = self.parse_stmts({"end"})
+        self._merge_header(s_body, self.header_open)
         self.eat("end")
         self.eat("if")
         self.eat(";")
@@ -676,14 +742,18 @@ class Parser:
         self.eat("if")
         test = self.parse_expr()
         self.eat("then")
+        s0 = self.header_open
         body = self.parse_stmts({"elsif", "else", "end"})
+        s_body, self.header_open = self.header_open, s0
         orelse = []
         if self.at("elsif"):
             self.t.val = "if"
             orelse = [self.parse_if_tail()]
+            self._merge_header(s_body, self.header_open)
         else:
             if self.opt("else"):
                 orelse = self.parse_stmts({"end"})
+            self._merge_header(s_body, self.header_open)
             self.eat("end")
             self.eat("if")
             self.eat(";")
@@ -696,12 +766,17 @@ class Parser:
         if not self.at("when"):
             subj = self.parse_expr()
         body = []
+        s0, ends = self.header_open, []
         while self.opt("when"):
             self.parse_expr()
             self.eat("then")
+            self.header_open = s0
             body.extend(self.parse_stmts({"when", "else", "end"}))
+            ends.append(self.header_open)
+        self.header_open = s0
         if self.opt("else"):
             body.extend(self.parse_stmts({"end"}))
+        self._merge_header(*ends, self.header_open)
         self.eat("end")
         self.eat("case")
         if self.t.kind == "id":
@@ -1244,6 +1319,47 @@ def java_sources(text: str) -> list[tuple[str, int, str]]:
     return out
 
 
+def wrapped_units(text: str) -> list[tuple[int, int, str, str]]:
+    """Units obfuscated by Oracle's wrap utility -> [(header line, last line, unit type, name)]. The wrapped text is
+    base64-like by design: it cannot be analysed, and it is not a secret. The unit ends at the next line holding only
+    `/` (a wrapped line may start with `/`, never consist of it); without one, at the end of the file."""
+    if not re.search(r"wrapped", text, re.I):
+        return []
+    out = []
+    pos = 0
+    while True:
+        m = _WRAPPED_HEAD.search(text, pos)
+        if not m:
+            return out
+        start = text.count("\n", 0, m.start()) + 1
+        e = _WRAPPED_END.search(text, m.end())
+        stop = e.end() if e else len(text)
+        body = text[m.end():e.start() if e else len(text)]
+        if not _WRAPPED_BODY.match(body) or ";" in body:
+            # not the output of wrap (a header in a comment or a string, or source code with the word): read it as code
+            pos = m.end()
+            continue
+        end = text.count("\n", 0, stop) + 1
+        if not e and text.endswith("\n"):
+            end -= 1
+        kind = " ".join(m.group(1).lower().split())
+        name = re.sub(r"\s+", "", m.group(2)).replace('"', "")
+        out.append((start, max(start, end), kind, name))
+        pos = stop
+
+
+def blank_wrapped(text: str) -> str:
+    """Blank wrapped units (keeping every line) so the parser neither reads their text nor reports it as skipped."""
+    units = wrapped_units(text)
+    if not units:
+        return text
+    lines = text.split("\n")
+    for start, end, _k, _n in units:
+        for k in range(start - 1, min(end, len(lines))):
+            lines[k] = ""
+    return "\n".join(lines)
+
+
 def blank_java_sources(text: str) -> str:
     """Remove Java source blocks (keeping line numbers) so the PL/SQL parser does not trip over them."""
     return _JAVA_SRC.sub(lambda m: "\n" * m.group(0).count("\n"), text)
@@ -1251,9 +1367,10 @@ def blank_java_sources(text: str) -> str:
 
 def parse_plsql(text: str):
     """Parse PL/SQL source. Returns (units, diagnostics)."""
-    diag = {"language": "plsql", "statements": 0, "skipped": 0, "lines": []}
+    diag = {"language": "plsql", "statements": 0, "skipped": 0, "lines": [], "wrapped": []}
     try:
-        p = Parser(blank_java_sources(text))
+        diag["wrapped"] = wrapped_units(text)
+        p = Parser(blank_wrapped(blank_java_sources(text)) if diag["wrapped"] else blank_java_sources(text))
         units = p.parse_program()
         diag["statements"] = p.n_statements
         diag["skipped"] = len(p.diagnostics)

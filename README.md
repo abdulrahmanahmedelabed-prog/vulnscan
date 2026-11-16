@@ -34,8 +34,8 @@ from a **local web UI** in English and Arabic.
   context-sensitive (k=2) points-to analysis; context-specific sanitizers (`html.escape` protects HTML only,
   not SQL or a shell); second-order (stored) injection through database tables.
 - **Rules and models** — 153 pattern rules, 48 dataflow and APEX rules and 19 built-in VQL queries (VQL is
-  Kashif's declarative query language over the program database), over 6,354 modelled library APIs
-  (1,044 sources, 4,531 sinks, 779 sanitizers).
+  Kashif's declarative query language over the program database), over 6,357 modelled library APIs
+  (1,044 sources, 4,532 sinks, 781 sanitizers).
 - **Fewer false positives on real code** — test, documentation and example code is recognised by its path: fixture
   noise there is dropped and the rest is lowered to info; vendored bundles are skipped. On the 35 open-source projects
   (of 38) that 0.9 could finish, findings went from 17,228 to 2,607 (critical and high: 4,345 to 783); half of 0.9's
@@ -455,7 +455,7 @@ provenance.
 
 ## About
 
-Kashif is developed by the Programming Department at the Islamic University of Gaza. Contact: [sdep@iugaza.edu.ps](mailto:sdep@iugaza.edu.ps)
+Kashif is developed by the Programming Department at the Islamic University of Gaza. Contact: [its@iugaza.edu.ps](mailto:its@iugaza.edu.ps) and [aelabed@iugaza.edu.ps](mailto:aelabed@iugaza.edu.ps)
 
 ## License
 
@@ -519,7 +519,7 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
   من 17,228 إلى 2,607 (الحرجة والعالية من 4,345 إلى 783)، وكان نصف نتائج 0.9 في كود الاختبارات والتوثيق والأمثلة.
 - **أسرع:** `--jobs N` لتوزيع الفحص على المعالجات، و`--cache DIR` لإعادة فحص مشروع لم يتغير بالنتائج نفسها: Django كاملًا
   (6,973 ملفًا) في 311–411 ثانية أول مرة على 4 معالجات افتراضية (كان 594 ثانية في 0.9)، و3.5 ثوانٍ عند الإعادة.
-- النماذج **6,354** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,531، ومعقّمات 779). التفاصيل في `CHANGELOG.md`.
+- النماذج **6,357** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,532، ومعقّمات 781). التفاصيل في `CHANGELOG.md`.
 
 ### فحص المواقع السلبي
 
@@ -731,12 +731,14 @@ kashif ./my-apex-app        # f100.sql أو application/pages/*.sql، وملفا
 | `APX013` | كوكي المصادقة دون Secure |
 | `APX014` | مخطط «بلا مصادقة» |
 | `APX015` | كلمة مرور تُقارن كنص صريح (المصادقة المخصصة والحزم) |
-| `APX016` | صفحة عامة تعدّل البيانات (صفحة الدخول مستثناة) |
+| `APX016` | صفحة عامة تعدّل البيانات (تُستثنى عمليات صفحة الدخول التي لا تكتب في الجداول) |
 | `APX017` | صفحة تعدّل البيانات بلا مخطط تفويض |
 | `APX018` | حماية الوصول للصفحة غير مقيّدة |
 | `APX019` | عنصر مخفي قيمته غير محمية |
 | `APX020` | عملية AJAX عند الطلب بلا تفويض |
 | `APX021` | الاستبدال دون النقطة الختامية |
+| `APX022` | وحدة PL/SQL ملفوفة (wrapped): تُذكر مرة واحدة ولا يُفحص نصّها (معلوماتية) |
+| `APX023` | إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق؛ وتُخفَّض خطورة ما يوجد داخلها درجة واحدة |
 
 أسماء الخصائص ومعانيها مأخوذة من ملفات تصدير أوراكل الرسمية نفسها، وقد جُرّبت الفحوص عليها.
 
@@ -1229,7 +1231,7 @@ python -m pytest -q
 
 ## حول كاشِف
 
-كاشِف من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة. للتواصل: [sdep@iugaza.edu.ps](mailto:sdep@iugaza.edu.ps)
+كاشِف من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة. للتواصل: [its@iugaza.edu.ps](mailto:its@iugaza.edu.ps) و[aelabed@iugaza.edu.ps](mailto:aelabed@iugaza.edu.ps)
 
 ## الرخصة
 

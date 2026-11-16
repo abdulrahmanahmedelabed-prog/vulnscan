@@ -17,6 +17,8 @@ FINDINGS = ("نتيجة واحدة", "نتيجتان", "{n} نتائج", "{n} ن
 PAGES_SCANNED = ("صفحة واحدة مفحوصة", "صفحتان مفحوصتان", "{n} صفحات مفحوصة", "{n} صفحةً مفحوصة", "{n} صفحة مفحوصة")
 REQUESTS = ("طلب واحد", "طلبان", "{n} طلبات", "{n} طلبًا", "{n} طلب")
 # accusative/genitive dual ("بعد ثانيتين", "مهلة ثانيتين"): durations are objects or complements in engine text
+# places a repeated pattern was found ("في 3 مواضع"); genitive after «في»
+LOCATIONS = ("موضع واحد", "موضعين", "{n} مواضع", "{n} موضعًا", "{n} موضع")
 SECONDS = ("ثانية واحدة", "ثانيتين", "{n} ثوانٍ", "{n} ثانيةً", "{n} ثانية")
 
 

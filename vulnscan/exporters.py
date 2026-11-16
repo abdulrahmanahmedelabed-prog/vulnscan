@@ -95,10 +95,13 @@ shows which factor produced it.
 Per project, over the findings that are still open (accepted risks and won't-fix are left out), with scores
 sorted from highest to lowest s1 >= s2 >= ...::
 
-    project = s1 + (10 - s1) x (1 - exp(-(s2 + s3 + ...) / 40))
+    t = min(s1, cap)
+    project = t + (cap - t) x (1 - exp(-(s2 + s3 + ...) / 40))
 
-so the project is never rated below its worst finding, more findings push it towards 10, and no number of
-small findings can outweigh the distance that is left above the worst one.
+``cap`` is set by the most severe finding still open: 10.0 with a critical finding, 8.9 with a high one at most,
+6.9 with a medium one at most, 3.9 otherwise. So the project is rated like its worst finding (at most the top of
+that severity's band), more findings push it towards the cap with diminishing returns, and no number of lower-
+severity findings makes it critical without a critical finding (nor high without a high one).
 
 Limits
 ======
@@ -623,12 +626,18 @@ def risk_score(finding, meta: "dict | None" = None) -> dict:
     return _risk(_normalise([finding])[0], _exposure_arg(meta or {}))
 
 
-def _project_score(scores: "list[float]") -> float:
+# The highest project score for its most severe open finding (severity, not per-finding score): many high findings
+# approach the top of the "high" band, never "critical".
+_PROJECT_CAP = {"critical": 10.0, "high": 8.9, "medium": 6.9, "low": 3.9, "info": 3.9}
+
+
+def _project_score(scores: "list[float]", worst: "str | None" = None) -> float:
     ranked = sorted((s for s in scores if s > 0), reverse=True)
     if not ranked:
         return 0.0
-    top = ranked[0]
-    return _round1(min(10.0, top + (10.0 - top) * (1.0 - math.exp(-sum(ranked[1:]) / 40.0))))
+    cap = _PROJECT_CAP.get(worst, 10.0) if worst else 10.0
+    top = min(ranked[0], cap)
+    return _round1(min(cap, top + (cap - top) * (1.0 - math.exp(-sum(ranked[1:]) / 40.0))))
 
 
 def project_risk(findings, meta: "dict | None" = None) -> dict:
@@ -650,7 +659,8 @@ def _project_risk(items: "list[_F]", exposure: str) -> dict:
                      "vector": r["vector"], "counted": r["counted"]})
     rows.sort(key=lambda row: (-row["score"], row["file"], row["line"], row["rule_id"]))
     counted = [row for row in rows if row["counted"]]
-    score = _project_score([row["score"] for row in counted])
+    worst = min((row["severity"] for row in counted), key=lambda s: SEVERITY_RANK.get(s, 9), default=None)
+    score = _project_score([row["score"] for row in counted], worst)
     by_rating = {name: 0 for name in ("critical", "high", "medium", "low", "none")}
     for row in counted:
         by_rating[row["rating"]] += 1

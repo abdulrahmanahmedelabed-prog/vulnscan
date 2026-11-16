@@ -24,6 +24,7 @@ const I18N = {
     'find.title': 'النتائج', 'find.sub': 'مرتبة من الأعلى خطورة إلى الأقل. اضغط على أي نتيجة لعرض التفاصيل وطريقة الإصلاح.', 'find.search': 'ابحث في الملف أو القاعدة أو النص…', 'find.allSources': 'كل المصادر',
     'find.none': 'لا نتائج مطابقة للمرشحات الحالية.', 'find.flow': 'مسار التدفق (من المصدر إلى نقطة الخطر)',
     'find.advice': 'طريقة الإصلاح', 'find.snippet': 'المقتطف', 'find.ref': 'المرجع', 'find.scan': 'الفحص', 'find.export': 'تصدير',
+    'find.unused': 'داخل مكوّن غير مستخدم', 'find.unusedTip': 'المكوّن معرَّف ولا يستخدمه أي جزء من التطبيق؛ خُفّضت الخطورة درجة واحدة.', 'find.groupHead': 'النمط نفسه في مواضع أخرى (سبب جذري واحد)',
     'find.dataflow': 'مُثبتة بتدفق البيانات', 'find.pattern': 'مطابقة نمط', 'find.location': 'الموقع', 'find.source': 'المصدر', 'find.sink': 'نقطة الخطر', 'find.step': 'خطوة',
     'find.fingerprint': 'البصمة', 'find.copy': 'نسخ', 'find.copied': 'تم النسخ', 'find.cwe': 'افتح تعريف {cwe} على موقع MITRE', 'find.input': 'المدخل غير الموثوق', 'find.clear': 'إظهار الكل',
     'rep.title': 'التقارير', 'rep.sub': 'سجل كل الفحوصات، تنزيل التقارير، ومقارنة فحصين لمعرفة ما أُصلح وما استجد.', 'rep.compare': 'مقارنة فحصين', 'rep.compareBtn': 'قارن', 'rep.fixed': 'أُصلحت (اختفت)', 'rep.new': 'جديدة (ظهرت)',
@@ -141,6 +142,7 @@ const I18N = {
       'find.nPages': {one: 'صفحة واحدة مفحوصة', two: 'صفحتان مفحوصتان', few: '{n} صفحات مفحوصة', many: '{n} صفحةً مفحوصةً', other: '{n} صفحة مفحوصة'},
       'find.nFindings': {one: 'نتيجة واحدة', two: 'نتيجتان', few: '{n} نتائج', many: '{n} نتيجةً', other: '{n} نتيجة'},
       'find.onPages': {one: 'ظهرت في صفحة واحدة', two: 'ظهرت في صفحتين', few: 'ظهرت في {n} صفحات', many: 'ظهرت في {n} صفحةً', other: 'ظهرت في {n} صفحة'},
+      'find.group': {one: 'النمط نفسه في موضع واحد', two: 'النمط نفسه في موضعين', few: 'النمط نفسه في {n} مواضع', many: 'النمط نفسه في {n} موضعًا', other: 'النمط نفسه في {n} موضع'},
       'find.showing': {one: 'عرض {n} من نتيجة واحدة', two: 'عرض {n} من نتيجتين', few: 'عرض {n} من {total} نتائج', many: 'عرض {n} من {total} نتيجةً', other: 'عرض {n} من {total} نتيجة'},
       'dash.findingsCap': {one: 'نتيجة', two: 'نتيجتان', few: 'نتائج', many: 'نتيجةً', other: 'نتيجة'},
       'proj.findings': {one: 'نتيجة', two: 'نتيجتان', few: 'نتائج', many: 'نتيجةً', other: 'نتيجة'},
@@ -185,6 +187,7 @@ const I18N = {
     'find.title': 'Findings', 'find.sub': 'Sorted from highest to lowest severity. Select a finding to see its details and remediation.', 'find.search': 'Search file, rule or text…', 'find.allSources': 'All sources',
     'find.none': 'No findings match the current filters.', 'find.flow': 'Data-flow path (source to sink)',
     'find.advice': 'Remediation', 'find.snippet': 'Code', 'find.ref': 'Reference', 'find.scan': 'Scan', 'find.export': 'Export',
+    'find.unused': 'In an unused component', 'find.unusedTip': 'The component is defined but nothing in the application uses it; the severity was lowered one level.', 'find.groupHead': 'Same pattern elsewhere (one root cause)',
     'find.dataflow': 'Proven by data flow', 'find.pattern': 'Pattern match', 'find.location': 'Location', 'find.source': 'Source', 'find.sink': 'Sink', 'find.step': 'Step',
     'find.fingerprint': 'Fingerprint', 'find.copy': 'Copy', 'find.copied': 'Copied', 'find.cwe': 'Open the {cwe} definition at MITRE', 'find.input': 'Untrusted input', 'find.clear': 'Show all',
     'rep.title': 'Reports', 'rep.sub': 'Scan history, report downloads, and a comparison of two scans to see what was fixed and what is new.', 'rep.compare': 'Compare two scans', 'rep.compareBtn': 'Compare', 'rep.fixed': 'Fixed (no longer present)', 'rep.new': 'New (introduced)',
@@ -303,6 +306,7 @@ const I18N = {
       'find.nPages': {one: '{n} page scanned', other: '{n} pages scanned'},
       'find.nFindings': {one: '{n} finding', other: '{n} findings'},
       'find.onPages': {one: 'Seen on {n} page', other: 'Seen on {n} pages'},
+      'find.group': {one: 'Same pattern in {n} place', other: 'Same pattern in {n} places'},
       'find.showing': {one: 'Showing {n} of {total} finding', other: 'Showing {n} of {total} findings'},
       'dash.findingsCap': {one: 'finding', other: 'findings'},
       'proj.findings': {one: 'finding', other: 'findings'},
@@ -1238,7 +1242,11 @@ const locMeta = (f) => {
 const confOf = (f) => { const c = f.extra && f.extra.confidence; return ['certain', 'firm', 'tentative'].includes(c) ? c : ''; };
 const CONF_KEY = {certain: 'web.c_certain', firm: 'web.c_firm', tentative: 'web.c_tentative'};
 const confTag = (f) => (confOf(f) ? `<span class="tag conf-${confOf(f)}" title="${esc(t('web.confidence'))}">${esc(t(CONF_KEY[confOf(f)]))}</span>` : '');
-const sideHTML = (f, flow = isFlow(f)) => `${triTag(f)}${reachTag(f)}${confTag(f)}${hasFix(f) && f.source !== 'web' ? `<span class="tag fixable" title="${esc(t('fix.badge'))}">${ic('wrench')}<span class="tx">${esc(t('fix.badge'))}</span></span>` : ''}${flow ? `<span class="tag flow">${ic('flow')}${esc(t('find.dataflow'))}</span>` : ''}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ''}`;
+/* Root-cause group (the same pattern in several places, model.assign_groups) and a finding inside an unused component. */
+const groupSize = (f) => { const x = f.extra || {}; return typeof x.group_id === 'string' && Number(x.group_size) > 1 ? Number(x.group_size) : 0; };
+const groupTag = (f) => (groupSize(f) ? `<span class="tag" title="${esc(f.extra.group_id)}">${ic('pattern')}${esc(tn('find.group', groupSize(f)))}</span>` : '');
+const unusedTag = (f) => (f.extra && f.extra.unused_component ? `<span class="tag" title="${esc(t('find.unusedTip'))}">${esc(t('find.unused'))}</span>` : '');
+const sideHTML = (f, flow = isFlow(f)) => `${triTag(f)}${reachTag(f)}${confTag(f)}${groupTag(f)}${unusedTag(f)}${hasFix(f) && f.source !== 'web' ? `<span class="tag fixable" title="${esc(t('fix.badge'))}">${ic('wrench')}<span class="tx">${esc(t('fix.badge'))}</span></span>` : ''}${flow ? `<span class="tag flow">${ic('flow')}${esc(t('find.dataflow'))}</span>` : ''}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ''}`;
 $('#findings-list').addEventListener('click', (e) => {
   const row = e.target.closest('.f-row'); if (!row) return;
   const box = row.parentElement; const det = box.querySelector('.f-detail');
@@ -1323,7 +1331,7 @@ function detailHTML(f, idx) {
   const tags = [pill(f.severity), `<span class="tag code" dir="ltr">${esc(f.rule_id)}</span>`, cweTag(f.cwe),
     flow ? `<span class="tag flow">${ic('shield')}${esc(t('find.dataflow'))}</span>` : `<span class="tag">${ic('pattern')}${esc(t('find.pattern'))}</span>`,
     `<span class="tag" title="${esc(f.source)}">${ic('code')}${esc(srcName(f.source))}</span>`,
-    reachTag(f), confTag(f), x.decompiled ? '<span class="tag">jadx</span>' : '',
+    reachTag(f), confTag(f), groupTag(f), unusedTag(f), x.decompiled ? '<span class="tag">jadx</span>' : '',
     x.page_count > 1 ? `<span class="tag">${esc(tn('find.onPages', x.page_count))}</span>` : ''].join('');
   let body = `<section class="d-sec"><h2>${ic('file')}${esc(t('find.location'))}</h2><div class="locbar">${ic('file')}<span class="p" title="${esc(where)}">${esc(dir)}<b>${esc(base)}</b>${f.line ? ':' + f.line : ''}</span>${copyBtn(where)}</div></section>`;
   if (flow && x.path && x.path.length) {
@@ -1335,6 +1343,10 @@ function detailHTML(f, idx) {
   const adv = loc(f, 'advice');
   if (adv) body += `<section class="d-sec"><div class="remedy">${ic('bulb')}<div><b>${esc(t('find.advice'))}</b><span>${bidi(adv)}</span></div></div></section>`;
   if (hasFix(f)) body += fixHTML(f, idx);
+  if (groupSize(f) && cur && Array.isArray(cur.findings)) {
+    const same = cur.findings.filter((o) => o !== f && o.extra && o.extra.group_id === x.group_id);
+    if (same.length) body += `<section class="d-sec"><details><summary>${esc(t('find.groupHead'))} <span class="muted" dir="ltr">${esc(x.group_id)}</span></summary><ul class="pages-list" dir="ltr">${same.slice(0, 50).map((o) => `<li>${esc(o.file)}${o.line ? ':' + o.line : ''}</li>`).join('')}</ul></details></section>`;
+  }
   body += triageHTML(f, idx);
   if (x.url) body += `<section class="d-sec"><h2>${ic('link')}${esc(t('find.ref'))}</h2><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" dir="ltr">${esc(x.url)} ${ic('external', 'xs')}</a></section>`;
   if (x.pages && x.pages.length > 1) body += `<section class="d-sec"><details><summary>${esc(tn('find.onPages', x.pages.length))}</summary><ul class="pages-list">${x.pages.slice(0, 50).map((u) => `<li>${esc(u)}</li>`).join('')}</ul></details></section>`;
