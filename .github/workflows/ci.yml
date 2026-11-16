@@ -17,6 +17,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python: ["3.10", "3.13"]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -28,7 +29,8 @@ jobs:
       - name: Lint
         run: ruff check vulnscan tests bench
       - name: Tests with coverage gate
-        run: python -m pytest -q --cov=vulnscan --cov-fail-under=75
+        # a test stuck for 5 minutes dumps every thread's stack into the log instead of hanging the job silently
+        run: python -m pytest -q --cov=vulnscan --cov-fail-under=75 -o faulthandler_timeout=300
 
   self-scan:
     # kashif scans its own source: it must stay free of high/critical findings, and the
