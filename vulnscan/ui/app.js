@@ -110,8 +110,8 @@ const I18N = {
     'web.diff': 'مقارنة بالفحص السابق', 'web.dNew': 'نتائج جديدة', 'web.dResolved': 'نتائج حُلّت', 'web.dUnchanged': 'نتائج لم تتغير',
     'web.dPosture': 'تغييرات في الوضع الأمني', 'web.dGrades': 'تغيّر الدرجات', 'web.dNone': 'لا تغييرات', 'web.confidence': 'الثقة', 'web.c_certain': 'مؤكَّدة',
     'web.c_firm': 'مرجَّحة', 'web.c_tentative': 'محتملة', 'web.page': 'الصفحة', 'web.curl': 'أمر يعيد الطلب نفسه', 'web.mapping': 'الربط بمعايير الاختبار (WSTG وASVS)',
-    'web.profile': 'ملف الفحص', 'web.requests': 'الطلبات', 'web.final': 'العنوان النهائي', 'web.data': 'بيانات الويب بتاريخ',
-    'web.loadFail': 'تعذّر تحميل تفاصيل فحص الموقع: {err}', 'set.webProfile': 'ملف فحص المواقع الافتراضي', 'set.webSens': 'الحساسية الافتراضية',
+    'web.profile': 'نمط الفحص', 'web.requests': 'الطلبات', 'web.final': 'العنوان النهائي', 'web.data': 'بيانات الويب بتاريخ',
+    'web.loadFail': 'تعذّر تحميل تفاصيل فحص الموقع: {err}', 'set.webProfile': 'نمط فحص المواقع الافتراضي', 'set.webSens': 'الحساسية الافتراضية',
     'set.webCompare': 'قارن كل فحص بآخر فحص للموقع نفسه', 'set.webRobots': 'احترم robots.txt عند الزحف',
     'set.web3p': 'اسمح باستعلامات لدى أطراف ثالثة (مثل hstspreload.org)', 'set.webProxy': 'استخدم الوكيل (proxy) المعرَّف في النظام',
     'scan.hMinimal': 'الصفحة وسلسلة توجيهاتها فقط: {budget} على الأكثر.',
@@ -959,7 +959,7 @@ function parseTarget(raw) {
   if (!u.hostname || /\s/.test(v)) return {error: 'scan.badUrl'};
   return {url: u.href, host: u.host};
 }
-const urlKey = (href) => { try { const u = new URL(href); return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`.toLowerCase(); } catch { return ''; } };
+const urlKey = (href) => { try { const u = new URL(href); return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`; } catch { return ''; } };
 let webSettings = null;                 // GET /api/settings, for the authorized targets
 const listedTarget = (href) => !!(webSettings && Array.isArray(webSettings.authorized_targets)
   && webSettings.authorized_targets.some((x) => { const p = parseTarget(x); return p.url && urlKey(p.url) === urlKey(href); }));
@@ -1014,7 +1014,7 @@ $('#url-btn').onclick = () => {
     toast(t('scan.needAuth')); box.focus(); return;
   }
   const crawl = $('#url-crawl');
-  startScan({target: p.url, kind: 'url', authorized: true, profile: $('#url-profile').value, sensitivity: $('#url-sens').value,
+  startScan({target: p.url, kind: 'url', authorized: box.checked, profile: $('#url-profile').value, sensitivity: $('#url-sens').value,
     crawl: crawl.checked && !crawl.disabled, compare_previous: $('#url-compare').checked, ignore_robots: $('#url-robots').checked,
     third_party_lookups: $('#url-3p').checked, use_proxy: !$('#url-noproxy').checked});
 };
@@ -1078,39 +1078,44 @@ async function watchScan(id) {
     try { await api(`/api/scans/${encodeURIComponent(id)}/cancel`, {method: 'POST', body: '{}'}); } catch (err) { toast(err.message); }
   };
   const icon = $('#scan-status-icon'); icon.className = 'status-icon'; setHTML(icon, '<span class="spinner"></span>');
-  $('#scan-status-title').textContent = t('scan.running'); $('#scan-status-step').textContent = '';
-  const done = () => { setScanBusy(false); cancel.classList.add('hidden'); bar.classList.add('hidden'); };
+  /* #scan-status is a polite live region: while the scan runs, the step line (rewritten as requests are sent) is kept
+     out of it (the progress bar carries the step and the count), and text is written only when it changes, so a
+     screen reader announces the start and the end of the scan rather than every poll. */
+  const stepEl = $('#scan-status-step'); stepEl.setAttribute('aria-live', 'off');
+  const put = (el, html) => { if (el.dataset.html !== html) { el.dataset.html = html; setHTML(el, html); } };
+  put($('#scan-status-title'), esc(t('scan.running'))); put(stepEl, '');
+  const done = () => { setScanBusy(false); cancel.classList.add('hidden'); bar.classList.add('hidden'); stepEl.removeAttribute('aria-live'); };
   const poll = async () => {
     if (watching !== id) return;
     let s;
     try { s = await api(`/api/scans/${id}`); } catch (err) { done(); toast(err.message); return; }
-    $('#scan-status-target').textContent = s.target; $('#scan-status-target').title = s.target;
+    const tgt = $('#scan-status-target'); if (tgt.textContent !== s.target) { tgt.textContent = s.target; tgt.title = s.target; }
     if (s.status === 'running') {
       if (s.kind === 'url') {
         const p = progressHTML(s.progress);
-        $('#scan-status-title').textContent = t('scan.running');
-        setHTML($('#scan-status-step'), [p.step, p.req, p.crawl].filter(Boolean).map((x) => `<span>${bidi(x)}</span>`).join(' · '));
+        put($('#scan-status-title'), esc(t('scan.running')));
+        put(stepEl, [p.step, p.req, p.crawl].filter(Boolean).map((x) => `<span>${bidi(x)}</span>`).join(' · '));
         if (p.budget) {
           bar.classList.remove('indeterminate'); bar.firstElementChild.style.width = `${Math.round((p.sent / p.budget) * 100)}%`;
           bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', String(p.budget)); bar.setAttribute('aria-valuenow', String(p.sent));
           bar.setAttribute('aria-valuetext', `${p.step} — ${p.req}`); bar.setAttribute('aria-label', `${t('scan.progressLabel')}: ${p.step}`);
         }
       } else {
-        $('#scan-status-title').textContent = `${t('scan.running')} ${s.files_scanned ? '(' + s.files_scanned + ')' : ''}`;
+        put($('#scan-status-title'), esc(`${t('scan.running')} ${s.files_scanned ? '(' + s.files_scanned + ')' : ''}`));
       }
       setTimeout(poll, 700); return;
     }
-    done(); $('#scan-status-step').textContent = '';
+    done(); put(stepEl, '');
     if (s.status === 'cancelled') {
       icon.className = 'status-icon'; setHTML(icon, ic('x'));
-      $('#scan-status-title').textContent = t('scan.cancelled'); $('#scan-status-step').textContent = t('scan.cancelledSub'); return;
+      put($('#scan-status-title'), esc(t('scan.cancelled'))); put(stepEl, esc(t('scan.cancelledSub'))); return;
     }
     if (s.status === 'error') {
       icon.className = 'status-icon err'; setHTML(icon, ic('warning'));
-      setHTML($('#scan-status-title'), failureHTML(s)); return;
+      put($('#scan-status-title'), failureHTML(s)); return;
     }
     icon.className = 'status-icon ok'; setHTML(icon, ic('check'));
-    $('#scan-status-title').textContent = `${t('scan.done')} — ${scanName(s)} · ${tn(s.kind === 'url' ? 'find.nPages' : 'find.nFiles', s.files_scanned)}`;
+    put($('#scan-status-title'), esc(`${t('scan.done')} — ${scanName(s)} · ${tn(s.kind === 'url' ? 'find.nPages' : 'find.nFiles', s.files_scanned)}`));
     const kg = s.web && s.web.grades && s.web.grades.kashif && typeof s.web.grades.kashif === 'object' ? s.web.grades.kashif.grade : null;
     const grade = s.kind === 'url' && s.web ? `<div class="done-grade ${gradeClass(kg)}"><span class="muted">${esc(t('scan.grade'))}</span><span class="g-letter" dir="ltr">${esc(kg || '—')}</span><span class="g-meaning">${esc(gradeMeaning(kg))}</span></div>` : '';
     setHTML($('#scan-status-tiles'), grade + tilesHTML(s.summary, false));
@@ -1886,7 +1891,7 @@ async function loadSettings(arg) {
 $('#settings-form').onsubmit = async (e) => {
   e.preventDefault(); const f = e.target; const lines = (v) => v.split('\n').map((x) => x.trim()).filter(Boolean);
   try {
-    await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, web_timeout: Math.min(120, Math.max(5, +f.web_timeout.value || 20)), web_delay: Math.min(10, Math.max(0.2, +f.web_delay.value || 0.5)), fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
+    await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, web_timeout: Math.min(120, Math.max(5, +f.web_timeout.value || 20)), web_delay: Number.isFinite(parseFloat(f.web_delay.value)) ? Math.min(10, Math.max(0.2, parseFloat(f.web_delay.value))) : 0.5, fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
       exclude: lines(f.exclude.value), ignore_rules: lines(f.ignore_rules.value), authorized_targets: lines(f.authorized_targets.value), use_osv: f.use_osv.checked, use_external: f.use_external.checked,
       audit: f.audit.checked, use_jadx: f.use_jadx.checked, jadx_include_libs: f.jadx_include_libs.checked, jadx_timeout: +f.jadx_timeout.value,
       models_dir: f.models_dir.value.trim(), queries_dir: f.queries_dir.value.trim(), check_updates: f.check_updates.checked,

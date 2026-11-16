@@ -702,12 +702,17 @@ def _bidi_html(L: "_Lang", text) -> str:
         return html.escape(text)
     # a short run stays on one line in a table cell (td bdi[dir='ltr']); a long one (a URL, a CSP or cookie value)
     # is marked "lr" and may wrap, or one nowrap URL would widen the whole findings table past the page
-    return wrap_runs(text, lambda run: f"<bdi dir='ltr'{_LONG_RUN if len(html.unescape(run)) > _SHORT_RUN else ''}>"
-                                       f"{run}</bdi>", html.escape)
+    return wrap_runs(text, lambda run: f"<bdi dir='ltr'{'' if _short_run(html.unescape(run)) else _LONG_RUN}>{run}</bdi>",
+                     html.escape)
 
 
-_SHORT_RUN = 32
 _LONG_RUN = " class='lr'"
+
+
+def _short_run(run: str) -> bool:
+    """A run short enough to keep on one line in a table cell: one token up to 32 characters, or a few words up to
+    20 ("base-uri 'none'", "SSL Labs A+"); "X-Content-Type-Options: nosniff" may wrap at its space."""
+    return len(run) <= (20 if " " in run else 32)
 
 
 def _pair(L: "_Lang", value) -> str:
@@ -1646,6 +1651,7 @@ td bdi[dir='ltr']{{white-space:nowrap}}td bdi.lr{{white-space:normal}}
 h1{{overflow-wrap:anywhere}}
 .tw{{max-width:100%;overflow-x:auto}}
 td{{min-width:5rem}}td.w{{min-width:12rem}}
+@media (max-width:1000px){{td{{min-width:0}}td.w{{min-width:8rem}}}}
 @media (max-width:640px){{body{{margin:1rem}}h1{{font-size:1.4rem}}.tile{{min-width:5rem;padding:.5rem .8rem}}
 td bdi[dir='ltr']{{white-space:normal}}
 .fd-h+.tw>table,.fd-h+.tw>table>tbody,.fd-h+.tw>table>tbody>tr,.fd-h+.tw>table>tbody>tr>td{{display:block;width:auto;min-width:0}}
@@ -1670,6 +1676,8 @@ details::details-content{{content-visibility:visible;display:contents}}
 details>summary{{list-style:none}}
 tr{{break-inside:avoid}}
 .tw{{overflow:visible}}
+td,td.w{{min-width:0}}th,td{{padding:.3rem}}.ev td.nw,.hdrs td.nw{{white-space:normal}}
+.fd-h+.tw>table>tbody>tr>td:nth-child(-n+3){{overflow-wrap:normal;word-break:normal}}
 }}
 </style></head><body>
 <h1>{e(L('md_title'))} — <code dir="ltr">{e(target)}</code></h1>
@@ -2023,7 +2031,7 @@ background:var(--code);cursor:pointer;margin-inline-end:.2rem}.tabs>input:checke
 .posture li.regression{color:var(--bad)}.posture li.improvement{color:var(--ok)}
 .ev{margin-top:.5rem;font-size:.9em}.ev .kv{margin:.35rem 0}.ev ul,.ev ol{margin:.2rem 0;padding-inline-start:1.2rem}
 .ev pre{direction:ltr;text-align:left;background:var(--code);padding:.4rem .5rem;margin:.2rem 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85em}
-.ev tr.hit td{background:var(--hl);font-weight:600}.ev td{min-width:0}
+.ev tr.hit td{background:var(--hl);font-weight:600}.ev td{min-width:0}.ev td.nw,.ev td.nw code,.hdrs td.nw,.hdrs td.nw code{overflow-wrap:normal;word-break:normal}
 .sys{display:inline-block;border:1px solid var(--warn);color:var(--warn);border-radius:.8rem;padding:0 .5rem;font-size:.8em}
 .tag{margin-inline-end:.3rem}.cp{margin:.4rem 0 0}
 @media (max-width:640px){.cov-d table,.cov-d tbody,.cov-d tr,.cov-d td{display:block;min-width:0}.cov-d thead{display:none}

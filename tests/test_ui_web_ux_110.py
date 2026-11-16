@@ -72,9 +72,14 @@ def test_url_field_progress_cancel_and_settings_controls():
     assert 'id="url-profile-hint"' in HTML and 'id="url-auth-text"' in HTML
     assert 'id="scan-cancel"' in HTML and 'id="scan-bar" role="progressbar"' in HTML
     assert 'name="web_delay" type="number" min="0.2"' in HTML
-    assert "Math.max(0.2, +f.web_delay.value" in JS
+    # a delay typed below the floor (0 included) is raised to 0.2 s, not replaced by the 0.5 s default
+    assert "Math.max(0.2, parseFloat(f.web_delay.value))" in JS and "+f.web_delay.value || 0.5" not in JS
     send = _slice("$('#url-btn').onclick", "let pending = [];")
     assert "kind: 'url'" in send and "!listedTarget(p.url)" in send and "crawl.checked && !crawl.disabled" in send
+    # the box as ticked: a listed target is authorized by the server's own comparison, not by the client's
+    assert "authorized: box.checked" in send and "authorized: true" not in send
+    # the client compares listed targets as the server does: the path keeps its case (store.project_key)
+    assert ".toLowerCase()" not in _slice("const urlKey", "let webSettings")
     assert "$('#toast').classList.add('hidden');" in _slice("async function startScan(", "$('#path-btn').onclick")
     assert "setScanBusy(true)" in JS and "b.setAttribute('aria-busy', String(busy))" in JS
     assert "aria-valuenow" in JS and "aria-valuemax" in JS and "/cancel`" in JS
@@ -82,6 +87,9 @@ def test_url_field_progress_cancel_and_settings_controls():
 
 def test_labels_of_the_web_form():
     assert AR["web.mapping"] == "الربط بمعايير الاختبار (WSTG وASVS)"
+    # the profile is «نمط الفحص» everywhere, as in the CLI, the reports and the docs
+    assert AR["scan.profile"] == AR["web.profile"] == "نمط الفحص" and AR["set.webProfile"].startswith("نمط فحص")
+    assert "ملف الفحص" not in JS + HTML and "ملف فحص" not in JS + HTML
     assert AR["scan.webMore"] == "خيارات متقدمة" and EN["scan.webMore"] == "Advanced options"
     assert '<summary data-i18n="scan.webMore">' in HTML
     assert AR["scan.crawl"].startswith("الزحف على صفحات الموقع وفحص كل منها")
@@ -235,3 +243,18 @@ def test_failed_scan_title_keeps_the_raw_error_apart():
     fail = _slice("function failureHTML(s)", "function progressHTML(")
     assert "bidi(why)" in fail and '<bdi dir="ltr">${esc(raw)}</bdi>' in fail
     assert "setHTML($('#scan-status-title'), failureHTML(s))" in JS
+
+
+def test_progress_updates_are_not_announced_on_every_poll():
+    """#scan-status is a polite live region: the step line, rewritten while requests are sent, is kept out of it while
+    the scan runs, and the status texts are written only when they change (no announcement per poll)."""
+    assert 'id="scan-status" class="card hidden" aria-live="polite"' in HTML
+    watch = _slice("async function watchScan(", "/* ------------------------------------------------------------ findings */")
+    assert "stepEl.setAttribute('aria-live', 'off')" in watch and "stepEl.removeAttribute('aria-live')" in watch
+    assert "if (el.dataset.html !== html)" in watch and "if (tgt.textContent !== s.target)" in watch
+    assert "$('#scan-status-title').textContent =" not in watch and "setHTML($('#scan-status-step')" not in watch
+
+
+def test_a_fix_in_a_finding_is_drawn_as_good_code():
+    # the finding's severity colour marks vulnerable code; a copy-paste fix takes the accent colour
+    assert ".d-sec.fix .code{--c:var(--accent)}" in CSS and "p.muted.small{" in CSS

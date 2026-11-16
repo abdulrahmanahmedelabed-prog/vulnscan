@@ -1235,8 +1235,9 @@ class Handler(BaseHTTPRequestHandler):
         if not JOBS.begin(scan):                             # the same target started meanwhile
             self.store.delete_scan(scan["id"])
             return self._json({"error": "scan already running", "scan": JOBS.running_target(target)}, 409)
+        reply = dict(scan)                       # the worker adds keys ("progress") while the reply is serialised
         threading.Thread(target=run_scan, args=(self.store, scan, settings, authorized), daemon=True).start()
-        return self._json(scan, 202)
+        return self._json(reply, 202)
 
     def _cancel_scan(self, scan_id: str):
         """POST /api/scans/<id>/cancel: stop a running scan between two steps (a web scan sends no further request);
@@ -1289,8 +1290,9 @@ class Handler(BaseHTTPRequestHandler):
         scan["tmp_root"] = str(tmp)
         self.store.save_scan(scan)
         JOBS.begin(scan)
+        reply = dict(scan)
         threading.Thread(target=run_scan, args=(self.store, scan, self.store.settings(), False), daemon=True).start()
-        return self._json(scan, 202)
+        return self._json(reply, 202)
 
     def _static(self, path: str):
         if path in ("/", ""):

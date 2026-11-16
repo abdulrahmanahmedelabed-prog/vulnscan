@@ -873,3 +873,7 @@ details.snip>p{margin-bottom:var(--s2)}
 }
 .web-card .note.inconclusive{margin-top:var(--s3)}
 .g-meaning{display:inline-block}.g-meaning::first-letter{text-transform:uppercase}
+/* small print of the web panel (coverage note, diff hints, a fix's platform); a fix in a finding is good code: the
+   accent colour, not the finding's severity colour that marks vulnerable code */
+p.muted.small{font-size:12.5px}
+.d-sec.fix .code{--c:var(--accent)}

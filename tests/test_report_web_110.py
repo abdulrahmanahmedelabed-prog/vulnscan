@@ -92,7 +92,30 @@ def test_bidi_html_uses_the_shared_rule_and_escapes():
 
 def test_short_runs_do_not_break_in_table_cells_on_desktop():
     html = report.render_html([wf("WEB022", params={"cookie": "sid"})], TARGET, 1, [], lang="ar", web=web())
-    assert "td bdi[dir='ltr']{white-space:nowrap}" in html
+    assert "td bdi[dir='ltr']{white-space:nowrap}td bdi.lr{white-space:normal}" in html
+
+
+def test_long_latin_runs_may_wrap_so_the_findings_table_fits_the_page():
+    # a nowrap URL or header line in an Arabic evidence note made the findings table twice the page width (and cut it
+    # on paper): only short runs keep to one line
+    ar = report._Lang("ar")
+    url = "https://exp.example/kashif-404-eb8b29ab5aff7cb6"
+    assert report._bidi_html(ar, f"أجاب الطلب ({url}) بصفحة") == f"أجاب الطلب (<bdi dir='ltr' class='lr'>{url}</bdi>) بصفحة"
+    assert report._bidi_html(ar, "أرسل X-Content-Type-Options: nosniff دائمًا") == \
+        "أرسل <bdi dir='ltr' class='lr'>X-Content-Type-Options: nosniff</bdi> دائمًا"
+    assert report._bidi_html(ar, "استخدم Content-Security-Policy هنا") == \
+        "استخدم <bdi dir='ltr'>Content-Security-Policy</bdi> هنا"
+    html = report.render_html([wf("WEB204")], TARGET, 1, [], lang="ar", web=web())
+    css_print = html[html.index("@media print{\n"):]
+    assert "td,td.w{min-width:0}" in css_print and ".ev td.nw,.hdrs td.nw{white-space:normal}" in css_print
+
+
+def test_headers_inventory_fits_a_phone():
+    inv = {"security_headers": [{"url": TARGET, "status": 200, "headers": {
+        "Cross-Origin-Embedder-Policy": {"value": "", "verdict": "missing"}}}]}
+    html = report.render_html([wf("WEB204")], TARGET, 1, [], lang="ar", web=web(inventory=inv))
+    assert "<table class='hdrs'><caption>" in html
+    assert ".hdrs td,.gt td,.gt th{min-width:0;padding:.35rem}.hdrs td.nw,.gt td{white-space:normal}" in html
 
 
 # ------------------------------------------------------------------------------------------- 2. phones (blocker)
@@ -193,7 +216,36 @@ def test_console_diff_in_arabic_agrees_in_number_and_isolates_latin(monkeypatch)
     assert "12 نتيجةً جديدةً · نتيجة واحدة حُلّت · 3 نتائج لم تتغير · نتيجتان لم يُعَد فحصهما" in out
     assert f"درجة كاشِف للويب: من {LRI}B{PDI} إلى {LRI}A{PDI}" in out
     assert f"جديد {LRI}WEB204 [CWE-693]{PDI} " in out
-    assert f"     + منخفض: {LRI}base-uri{PDI} مفقود ({LRI}WEB204{PDI})" in out
+    assert f"     + منخفض: {LRI}base-uri{PDI} مفقود · {LRI}WEB204{PDI}" in out
+
+
+def test_console_diff_in_arabic_keeps_the_rule_id_out_of_a_latin_title_run(monkeypatch):
+    # "base-uri 'none' (WEB204)" would be one left-to-right run: the id would show between the Arabic and the title
+    monkeypatch.setenv("COLUMNS", "160")
+    w, new = _diff_web()
+    for r in w["diff"]["findings"]["new"]:
+        r["title_ar"] = "سياسة CSP لا تحدد base-uri 'none'"
+    out = report.render_console(new, TARGET, 1, [], color=False, lang="ar", web=w)
+    assert f"     + منخفض: سياسة {LRI}CSP{PDI} لا تحدد {LRI}base-uri 'none'{PDI} · {LRI}WEB204{PDI}" in out
+    assert "(WEB204)" not in out
+
+
+def test_diff_grade_changes_list_only_the_grades_that_changed():
+    w, new = _diff_web()
+    w["diff"]["grades"]["ssllabs"] = {"before": "A+", "after": "A+", "change": "same", "changed": False}
+    w["diff"]["grades"]["kashif"]["text"] = {"en": "Kashif: B → A (88 → 95)", "ar": "كاشِف: من B إلى A (88 ← 95)"}
+    for lang in ("en", "ar"):
+        page = report.render_html(new, TARGET, 1, [], lang=lang, web=w)
+        md = report.render_markdown(new, TARGET, 1, [], lang=lang, web=w)
+        view = report.web_view(new, w, lang)
+        for out in (page, md, json.dumps(view, ensure_ascii=False)):
+            assert "B+ → B+" not in out and "من B+ إلى B+" not in out and "A+ → A+" not in out
+        assert len(view["diff"]["grades"]) == 1
+    assert "Kashif: B → A (88 → 95)" in report.render_html(new, TARGET, 1, [], lang="en", web=w)
+    w["diff"]["grades"] = {"kashif": {"before": "A", "after": "A", "change": "same", "changed": False}}
+    assert "Grade changes:</b> grades unchanged" in report.render_html(new, TARGET, 1, [], lang="en", web=w)
+    assert "- Grade changes: grades unchanged" in report.render_markdown(new, TARGET, 1, [], lang="en", web=w)
+    assert report.web_view(new, w, "en")["diff"]["grades"] == []
 
 
 def test_console_diff_that_is_not_comparable_still_says_why():
