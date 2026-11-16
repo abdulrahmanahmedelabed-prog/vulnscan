@@ -155,7 +155,9 @@ class RuleMeta:
         template = getattr(self, key)
         var = self.variants.get(params.get("variant") or "")
         if var and var.get(key):
-            template = var[key]
+            # a variant whose own parameters are missing (WEB800 "eol" without {supported}) falls back to the base text
+            if not any(_missing(params.get(n)) for n in _PLACEHOLDER.findall(var[key])):
+                template = var[key]
         names = _PLACEHOLDER.findall(template)
         if any(_missing(params.get(n)) for n in names):
             return self.name(lang) if what == "title" else _PLACEHOLDER.sub("", template).strip()
@@ -344,12 +346,12 @@ _r("WEB040", "B", "csp", "medium", "certain", *_CSP,
 _r("WEB041", "B", "csp", "medium", "certain", *_CSP,
    ("CSP allows 'unsafe-eval'", "سياسة CSP تسمح بـ 'unsafe-eval'"),
    ("Remove 'unsafe-eval'; replace eval/new Function/string timers in your code and libraries.",
-    "أزل 'unsafe-eval' واستبدل eval و new Function والمؤقتات النصية في الكود والمكتبات."),
+    "أزل 'unsafe-eval' واستبدل eval وnew Function والمؤقتات النصية في الكود والمكتبات."),
    existing=True)
 _r("WEB042", "B", "csp", "medium", "certain", *_CSP,
    ("CSP lets scripts load from any source", "سياسة CSP تسمح بتحميل السكربتات من أي مصدر"),
    ("Replace *, https:, http: and data: in script-src with nonces/hashes and 'strict-dynamic' (or an explicit host list).",
-    "استبدل *، https:، http:، data: في script-src بـ nonce/hash و'strict-dynamic' (أو قائمة مضيفين محددة)."),
+    "استبدل القيم * وhttps: وhttp: وdata: في script-src بـ nonce/hash و'strict-dynamic' (أو قائمة مضيفين محددة)."),
    existing=True, title_1_0="CSP script source uses wildcard *",
    variants={"non_script": {
        "title_en": "CSP does not restrict scripts", "title_ar": "سياسة CSP لا تقيّد السكربتات",
@@ -1045,6 +1047,14 @@ _r("WEB800", "I", "tech", "high", "firm", "CWE-1395", "WSTG-INFO-02", "14.2.1", 
            "title_ar": "إصدار برمجية الخادم قد يكون متأثرًا بثغرات معروفة: {product} {version}"},
        # the fixed version is on an end-of-life branch: {supported} is the oldest supported release
        "eol": {
+           "advice_en": "Upgrade {product} to a supported release (≥ {supported}); {fixed} only closes these CVEs and is "
+                        "itself unsupported.",
+           "advice_ar": "حدّث {product} إلى إصدار مدعوم ({supported} أو أحدث)؛ فالإصدار {fixed} يسدّ هذه الثغرات فقط، "
+                        "وهو نفسه غير مدعوم."},
+       # both: a distribution build or an incomplete version (tentative title) on an end-of-life branch (eol advice)
+       "tentative_eol": {
+           "title_en": "Server software version may be affected by known vulnerabilities: {product} {version}",
+           "title_ar": "إصدار برمجية الخادم قد يكون متأثرًا بثغرات معروفة: {product} {version}",
            "advice_en": "Upgrade {product} to a supported release (≥ {supported}); {fixed} only closes these CVEs and is "
                         "itself unsupported.",
            "advice_ar": "حدّث {product} إلى إصدار مدعوم ({supported} أو أحدث)؛ فالإصدار {fixed} يسدّ هذه الثغرات فقط، "

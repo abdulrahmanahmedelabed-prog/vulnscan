@@ -46,7 +46,14 @@ def test_each_code_fragment_is_exactly_one_ltr_run(run, context):
     ("الملف /admin → في الخادم", ["/admin"]),
     ("اضبط FileETag في Apache (في httpd.conf أو .htaccess) الآن", ["FileETag", "Apache", "httpd.conf", ".htaccess"]),
     ("- بند و* نجمة", []),
+    ("استبدل القيم (https:, http:, data:, *) في script-src الآن", ["https:, http:, data:, *", "script-src"]),
     ("نص عربي فقط، بلا أي كود.", []),
+    # a URL-scheme source keeps its colon (else it is drawn as ":http"); a sentence colon after a run is trimmed
+    ("سياسة CSP تسمح بمصادر http: غير آمنة", ["CSP", "http:"]),
+    ("استخدم مصادر https: فقط وأضف upgrade-insecure-requests.", ["https:", "upgrade-insecure-requests"]),
+    ("انقل روابط javascript: إلى ملفات سكربت", ["javascript:"]),
+    ("داخل <system.webServer> في ملف web.config: الأخطاء", ["<system.webServer>", "web.config"]),
+    ("عبر HTTP: نص", ["HTTP"]),
 ])
 def test_ltr_runs_in_real_sentences(text, runs):
     assert [text[a:b] for a, b in bidi.ltr_runs(text)] == runs
@@ -72,7 +79,8 @@ def test_pattern_source_is_ascii_without_bidi_controls():
 def test_javascript_twin_finds_the_same_runs():
     samples = [c.format(r) for r in ONE_RUN for c in CONTEXTS] + [
         "اضبط SameSite=Lax (أو Strict) صراحةً.", "كاشِف F* · Observatory 0 (F)", "انتهى في 2024-01-01 على 10.0.0.1:8443",
-        "\u200f(HSTS) و(JSONP أو AngularJS)", "/admin → HTTP 200 صفحة", "- بند و* نجمة"]
+        "\u200f(HSTS) و(JSONP أو AngularJS)", "/admin → HTTP 200 صفحة", "- بند و* نجمة",
+        "بمصادر http: غير آمنة", "روابط javascript: إلى", "في ملف web.config: الأخطاء", "عبر HTTP: نص", "http:."]
     samples += [R.RULES[r].advice_ar for r in R.RULE_IDS] + [R.RULES[r].title_ar for r in R.RULE_IDS]
     script = bidi.JS_BIDI + "\nconst S = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n" \
                             "process.stdout.write(JSON.stringify(S.map(ltrRuns)));\n"
@@ -212,6 +220,8 @@ def test_tls_and_server_variants():
                                    "itself unsupported.")
     assert m.advice("ar", **p) == "حدّث PHP إلى إصدار مدعوم (8.3 أو أحدث)؛ فالإصدار 8.1.31 يسدّ هذه الثغرات فقط، وهو نفسه غير مدعوم."
     assert m.title("en", **p) == "Server software version with known vulnerabilities: PHP 8.1.2"
+    both = dict(p, variant="tentative_eol")
+    assert m.advice("ar", **both) == m.advice("ar", **p) and m.title("en", **both).startswith("Server software version may")
     issue_ok = R.validate_issue(type("I", (), {"rule": "WEB800", "severity": "high", "confidence": "firm",
                                                "params": p})())
     assert issue_ok == []

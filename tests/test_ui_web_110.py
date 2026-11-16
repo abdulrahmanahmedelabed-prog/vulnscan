@@ -201,7 +201,10 @@ def test_ui_web_scan_end_to_end(ui, site):
     assert first["kind"] == "url" and first["web_options"]["profile"] == "minimal"
     web = first["web"]
     assert web["grades"]["kashif"]["grade"] and web["coverage"] and "snapshot" not in web
-    assert first["notes"][0].startswith("ملف الفحص minimal") and first["notes_en"][0].startswith("Profile minimal")
+    # one note for the requests sent against the profile's budget, as the CLI writes it (cli.web_scan_notes)
+    assert first["notes"][0].startswith("فحص سلبي بنمط الفحص minimal") and "10" in first["notes"][0]
+    assert first["notes_en"][0].startswith("Passive scan, profile minimal") and "at most 10 requests" in first["notes_en"][0]
+    assert 0 in web["notes_covered"] and web["compare"] == {"asked": True, "previous": False}
     assert not any(ARABIC.search(n) for n in first["notes_en"])
     assert all(f["extra"].get("confidence") in ("certain", "firm", "tentative") for f in first["findings"])
     # the panels of the findings page, in both languages
@@ -211,7 +214,7 @@ def test_ui_web_scan_end_to_end(ui, site):
     assert set(en["coverage"]["counts"]) == {"pass", "fail", "not_applicable", "not_tested", "inconclusive"}
     assert [t["id"] for t in en["inventory"]] == ["headers", "csp", "cookies", "tls", "technologies", "third_parties"]
     assert en["remediation"] and en["remediation"][0]["detected"] + en["remediation"][0]["other"]
-    assert en["diff"] is None
+    assert en["diff"]["baseline"] is True and en["diff"]["comparable"] is False   # first scan: the baseline
     assert not ARABIC.search(json.dumps(en["coverage"]["states"]))
     st, ar = _json(ui, f"/api/scans/{first['id']}/web?lang=ar")
     assert ARABIC.search(ar["grades"][0]["name"]) and ARABIC.search(ar["inventory"][0]["label"])
@@ -259,7 +262,7 @@ def test_web_scan_still_needs_authorization(ui, site):
 
 
 @pytest.mark.skipif(NODE is None, reason="Node.js is not installed")
-def test_panel_renders_hostile_text_escaped_under_node(ui, site):
+def test_panel_renders_hostile_text_escaped_under_node(ui, site, tmp_path):
     """Smoke test of the findings page's web panel: the real webPanelHTML/webDetailHTML code of app.js, run under
     Node.js with the view the server returns (and a finding whose evidence holds the site's hostile text)."""
     _call(ui, "/api/settings", "POST", {"web_delay": 0.2})
@@ -279,13 +282,16 @@ const ic = (name, cls = '') => `<svg class="i ${cls}"><use href="#i-${name}"/></
 const pill = (s) => `<span class="pill sev-${s}">${esc(s)}</span>`;
 const copyBtn = (text) => `<button class="copy" data-copy="${esc(text)}"></button>`;
 const $ = () => null; const $$ = () => [];
-""" + JS[JS.index("const bidi = (text) =>"):JS.index("const ARABIC = /")] + web + """
-const [vArg, fArg] = process.argv.slice(-2); const views = JSON.parse(vArg); const f = JSON.parse(fArg); const res = {};
+""" + JS[JS.index("const bidi = (text) =>"):JS.index("/* Localized engine text")] + web + """
+const {views, f} = JSON.parse(require('fs').readFileSync(process.env.KASHIF_PROBE_DATA, 'utf8')); const res = {};
 for (const lg of ['en', 'ar']) { lang = lg; res[lg] = webPanelHTML(views[lg]); res[lg + '_detail'] = webDetailHTML(f); }
 process.stdout.write(JSON.stringify(res));
 """
-    r = subprocess.run([NODE, "-", json.dumps(out), json.dumps(finding)], input=probe, capture_output=True, text=True,
-                       encoding="utf-8", timeout=60)
+    data = tmp_path / "probe.json"          # through a file: the view and the evidence exceed an argv string's limit
+    data.write_text(json.dumps({"views": out, "f": finding}), encoding="utf-8")
+    import os
+    r = subprocess.run([NODE, "-"], input=probe, capture_output=True, text=True, encoding="utf-8", timeout=60,
+                       env={**os.environ, "KASHIF_PROBE_DATA": str(data)})
     assert r.returncode == 0, r.stderr
     got = json.loads(r.stdout)
     for key, html in got.items():

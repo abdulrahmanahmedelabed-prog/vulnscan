@@ -129,14 +129,14 @@ STR: dict[str, tuple[str, str]] = {
                     "النوع المعلن {declared}، لكن الجسم يبدو {sniffed}."),
     "cs_missing": ("No charset in the Content-Type header, no byte-order mark and no <meta charset> in the first "
                    "1024 bytes.",
-                   "لا ترميز في ترويسة Content-Type ولا علامة ترتيب بايتات ولا <meta charset> في أول 1024 بايت."),
+                   "لا ترميز في ترويسة Content-Type ولا علامة ترتيب بايتات ولا <meta charset> في أول 1024 بايتًا."),
     "cs_unknown": ("The charset label {value} is unknown to browsers, so it is ignored.",
                    "تسمية الترميز {value} غير معروفة للمتصفح فتُهمَل."),
     "cs_conflict": ("The header declares {header} but the page declares {meta}; browsers use {header}.",
                     "تعلن الترويسة الترميز {header} بينما تعلن الصفحة {meta}؛ ويستخدم المتصفح {header}."),
     "cache_same_session": ("The same {cookie} session value was issued to two separate requests that sent no cookie "
                            "({first} and {second}): a shared cache hands one visitor's session to the next.",
-                           "صدرت قيمة الجلسة نفسها للكوكي {cookie} لطلبين منفصلين لم يرسلا أي كوكي ({first} و{second}): "
+                           "صدرت قيمة الجلسة نفسها للكوكي {cookie} لطلبين منفصلين لم يرسلا أي كوكي ({first}، ثم {second}): "
                            "فذاكرة مؤقتة مشتركة تسلّم جلسة زائر إلى الزائر التالي."),
     "cache_hit": ("Served from a shared cache ({value}) while setting the session cookie {cookie}.",
                   "قُدِّمت من ذاكرة مؤقتة مشتركة ({value}) وهي تضبط كوكي الجلسة {cookie}."),
@@ -189,6 +189,13 @@ def _note(key: str, **values) -> tuple[str, str]:
             return strip_controls(str(v))     # §0.6: no terminal escapes from the target in notes
         return _PLACEHOLDER.sub(sub, text)
     return fill(en, "en"), fill(ar, "ar")
+
+
+def _url_pair(url: str, limit: int = 80) -> tuple[str, str]:
+    """A URL for a note: as is in English, inside an LTR isolate in Arabic (so "(a، ثم b)" keeps its order)."""
+    from .types import iso
+    short = _short(strip_controls(url), limit)
+    return short, iso(short)
 
 
 def _count(n: int, forms: tuple) -> tuple[str, str]:
@@ -1085,13 +1092,63 @@ def header_inventory(ctx: ScanContext, docs) -> list[dict]:
         corp = h.get_all("cross-origin-resource-policy")
         cv, problem = corp_value(corp)
         row("Cross-Origin-Resource-Policy", cv or problem, corp)
-        for header in ("Feature-Policy", "X-XSS-Protection", "Clear-Site-Data", "X-Permitted-Cross-Domain-Policies",
-                       "Cache-Control"):
+        hsts = h.get_all("strict-transport-security")
+        row("Strict-Transport-Security", hsts_inventory_verdict(ctx, r, hsts), hsts)
+        csp_fields = h.get_all("content-security-policy")
+        csp_ro = h.get_all("content-security-policy-report-only")
+        row("Content-Security-Policy", csp_inventory_verdict(ctx, r, csp_fields, csp_ro), csp_fields or csp_ro)
+        for header in ("Feature-Policy", "X-XSS-Protection", "Clear-Site-Data", "X-Permitted-Cross-Domain-Policies"):
             fields = h.get_all(header)
             if fields:
                 row(header, "present", fields)
+        cc = h.get_all("cache-control")
+        row("Cache-Control", "present" if cc else "missing", cc)
         out.append({"url": r.url, "status": r.status, "headers": rows})
     return out
+
+
+# stable verdict tokens of the inventory rows (the report translates them)
+HSTS_VERDICTS = ("ok", "short-max-age", "disabled", "invalid", "ignored-on-http", "missing")
+CSP_VERDICTS = ("enforced", "meta", "report-only", "missing")
+
+
+def hsts_inventory_verdict(ctx: ScanContext, r: Response, fields: list[str]) -> str:
+    """Strict-Transport-Security as transport.py parsed it for this host: ok, short-max-age (< 1 year), disabled
+    (max-age=0), invalid (ignored by browsers), ignored-on-http (sent over plain HTTP) or missing."""
+    if not r.is_https:
+        return "ignored-on-http" if fields else "missing"
+    if not fields:
+        return "missing"
+    v = ctx.hsts_for(r.host) if hasattr(ctx, "hsts_for") else None
+    if v is None or v.response is not r:
+        try:
+            from .transport import parse_sts
+            v = parse_sts(fields[0])           # browsers honour the first field (WEB113)
+        except Exception:   # noqa: BLE001 - an inventory row never breaks the checks
+            v = None
+    if v is None:
+        return "invalid"
+    if not getattr(v, "valid", False):
+        return "invalid"
+    age = getattr(v, "max_age", None)
+    if age is None:
+        return "invalid"
+    if age == 0:
+        return "disabled"
+    return "short-max-age" if age < 31_536_000 else "ok"
+
+
+def csp_inventory_verdict(ctx: ScanContext, r: Response, fields: list[str], report_only: list[str]) -> str:
+    """enforced (a Content-Security-Policy header), meta (only a <meta> policy), report-only (only
+    Content-Security-Policy-Report-Only) or missing."""
+    if fields:
+        return "enforced"
+    facts = ctx.csp.get(r) if isinstance(getattr(ctx, "csp", None), dict) else None
+    if facts is not None and any(p.origin == "meta" for p in facts.enforced):
+        return "meta"
+    if report_only or (facts is not None and facts.report_only):
+        return "report-only"
+    return "missing"
 
 
 # ----------------------------------------------------------------------------------------------- checks
@@ -1507,8 +1564,8 @@ def _caching(st: _Run, docs) -> None:
             done.add(id(r))
             ev = _ev(ctx, r, where="cookie", name=fact.name, value=fact.redacted())
             st.emit("WEB315", r, ev, severity="high", confidence="certain", group_value="session-shared",
-                    notes=[_note("cache_same_session", cookie=fact.name, first=_short(r.url, 80),
-                                 second=_short(other.url, 80)), why_note],
+                    notes=[_note("cache_same_session", cookie=fact.name, first=_url_pair(r.url),
+                                 second=_url_pair(other.url)), why_note],
                     params={"cookie": fact.name})
             continue
         hit = cache_hit(r)

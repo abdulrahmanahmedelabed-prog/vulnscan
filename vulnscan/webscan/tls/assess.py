@@ -687,7 +687,7 @@ def _ct(out: _Ip, iprep: dict, leaf: x509.Certificate, public: bool, test_ca: di
             notes.append(STR["tls13_scts"])
             base_conf = "tentative"
         out.fail("WEB713", "medium", confidence=base_conf, group="none", notes=[STR["no_scts"]] + notes, name="scts",
-                 value="0")
+                 value="SCTs: 0")
         return
 
     def judge(scts: list[x509.Sct], need: int) -> tuple[bool, bool, int, int]:
@@ -720,7 +720,8 @@ def _ct(out: _Ip, iprep: dict, leaf: x509.Certificate, public: bool, test_ca: di
     conf = "tentative" if (any_unknown or base_conf == "tentative") else "firm"
     if any_unknown:
         notes.append(_t("unknown_logs", date=str(ct_date or "?")))
-    out.fail("WEB713", "low", confidence=conf, group="few", name="scts", value=str(len(embedded) + len(tls_scts)),
+    out.fail("WEB713", "low", confidence=conf, group="few", name="scts",
+             value=f"SCTs: {len(embedded) + len(tls_scts)}",
              notes=[_t("few_scts", n=_count(len(embedded), "scts"), ops=_count(n_ops, "operators"),
                        need=_count(need, "scts"))] + notes)
 
@@ -845,7 +846,7 @@ def _ciphers(out: _Ip, iprep: dict, opts) -> None:
         if cat not in CATEGORY_RULE:
             continue
         sev, en, ar = CATEGORY_RULE[cat]
-        out.fail("WEB706", sev, group=cat, notes=[(en, ar)], name="cipher", value=f"{res.get('cipher')} ({res.get('version')})",
+        out.fail("WEB706", sev, group=cat, notes=[(en, ar)], name="cipher", value=f"{res.get('cipher')} ({str(res.get('version') or '').replace('TLSv', 'TLS ')})",
                  flag={"TLSv1.0": "-tls1", "TLSv1.1": "-tls1_1", "TLSv1.2": "-tls1_2"}.get(res.get("version") or "", ""))  # nosec
         any_fail = True
     tls13 = _version_state(iprep, "TLSv1.3") == "yes"
@@ -1101,7 +1102,10 @@ def dh_unmeasured(iprep: dict) -> bool:
 def _trust_failure(leaf: x509.Certificate, trust: dict, now, host: str) -> tuple[str, tuple[str, str]] | None:
     """``(T or M, (en, ar) reason)`` when the certificate makes SSL Labs grade the server T (not trusted) or M (name
     mismatch), else None."""
-    from ..http import verify_text
+    from ..http import VERIFY_TEXT
+
+    def verify_text(c: int | None) -> tuple[str, str]:
+        return VERIFY_TEXT.get(c) or (f"verify code {c}", f"رمز التحقق {c}")   # type: ignore[arg-type]
     code, ok = trust.get("verify_code"), trust.get("ok")
     rejected = browser_rejection(trust)
     if leaf.not_after < now:

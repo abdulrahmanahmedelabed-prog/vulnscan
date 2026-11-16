@@ -614,3 +614,33 @@ def test_php_of_a_distribution_web_server_is_a_distro_build(make_ctx):
     ctx = _banner_ctx(make_ctx, ("Server", "Apache/2.4.62 (Unix)"), ("X-Powered-By", "PHP/7.4.33"))
     php = [i for i in run(ctx) if i.params.get("product") == "PHP"]
     assert any(i.rule == "WEB801" and i.confidence == "firm" for i in php)
+
+
+# ----------------------------------------------------------------------------------------------- 1.1.0 accuracy round
+
+def test_web800_on_an_eol_branch_points_to_a_supported_release(make_ctx):
+    ctx = _banner_ctx(make_ctx, ("Server", "nginx/1.14.0"))
+    issues = run(ctx)
+    (w,) = [i for i in issues if i.rule == "WEB800"]
+    assert w.confidence == "firm" and w.params["variant"] == "eol"
+    supported = w.params["supported"]
+    assert tech._cmp(supported, "1.29") > 0                     # a supported branch, not the dead 1.14 patch
+    assert not w.params["fixed"].startswith("1.14") or tech._cmp(w.params["fixed"], "1.14") >= 0
+    en, ar = RULES["WEB800"].advice("en", **w.params), RULES["WEB800"].advice("ar", **w.params)
+    assert supported in en and "supported release" in en and supported in ar
+    assert [i.rule for i in issues].count("WEB801") == 1          # the same end-of-life data
+
+
+def test_web800_hidden_by_sensitivity_is_inconclusive_not_pass(make_ctx):
+    ctx = _banner_ctx(make_ctx, ("Server", "Apache/2.4.41 (Ubuntu)"))
+    run(ctx)
+    st = ctx.coverage.state("WEB800")
+    assert st.state == "inconclusive"
+    assert [r[0] for r in st.reasons] == ["distro_backport"]
+    assert "--web-sensitivity paranoid" in st.reasons[0][1] and "paranoid" in st.reasons[0][2]
+    st801 = ctx.coverage.state("WEB801")
+    assert st801.state == "not_tested" and [r[0] for r in st801.reasons] == ["distro_support"]
+    # at paranoid the same match is shown, so the check failed
+    ctx = _banner_ctx(make_ctx, ("Server", "Apache/2.4.41 (Ubuntu)"), sensitivity="paranoid")
+    run(ctx)
+    assert ctx.coverage.state("WEB800").state == "fail"

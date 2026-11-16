@@ -12,6 +12,7 @@ import pytest
 from vulnscan.webscan import diff, group
 from vulnscan.webscan.coverage import Coverage
 from vulnscan.webscan.rules import RULES
+from vulnscan.webscan.types import iso
 from vulnscan.webscan.types import (CookieFact, CspFacts, CspPolicy, Evidence, HeaderList, Issue, Page, Response,
                                     ScanContext, ScanOptions)
 
@@ -396,6 +397,30 @@ def test_failed_check_that_was_partly_skipped_does_not_resolve_other_instances()
     assert len(d["findings"]["resolved"]) == 1 and not d["findings"]["not_retested"]
 
 
+def test_finding_below_this_scans_sensitivity_is_not_retested():
+    # a tentative finding shown by a paranoid scan would be hidden by a default rescan even if it is still there
+    prev = snap(make_ctx(), [mk("WEB010", value="nginx/1.25.3")])
+    prev["sensitivity"] = "paranoid"
+    for r in prev["findings"]:
+        r["confidence"] = "tentative"
+    cur = snap(make_ctx(), [], coverage=_cov(WEB010="fail"))
+    cur["sensitivity"] = "default"
+    d = diff.diff(prev, cur)
+    assert d["findings"]["resolved"] == [] and d["counts"]["resolved"] == 0
+    (row,) = d["findings"]["not_retested"]
+    assert row["reason"]["code"] == "sensitivity" and "default" in row["reason"]["en"] and row["reason"]["ar"]
+    cur["sensitivity"] = "paranoid"
+    assert diff.diff(prev, cur)["counts"]["resolved"] == 1
+
+
+def test_finding_on_a_host_this_scan_did_not_check_is_not_retested():
+    prev = snap(make_ctx(), [mk("WEB010", "https://www.example.test/", value="nginx/1.25.3")])
+    cur = snap(make_ctx(), [], coverage=_cov(WEB010="pass"))       # recorded on shop.example.test only
+    d = diff.diff(prev, cur)
+    assert d["findings"]["resolved"] == []
+    assert [r["reason"]["code"] for r in d["findings"]["not_retested"]] == ["host"]
+
+
 def test_severity_change_is_one_posture_change_not_new_plus_resolved():
     prev = snap(make_ctx(), [mk("WEB315", value="max-age=600", severity="high")])
     cur = snap(make_ctx(), [mk("WEB315", value="max-age=600", severity="low")], coverage=_cov(WEB315="fail"))
@@ -454,14 +479,14 @@ def test_grade_changes_only_changed_with_scores_and_no_change_line():
     assert set(lines) == {"kashif", "observatory"}
     assert lines["kashif"]["en"] == "Kashif: F* (59.69 → 65.94)"
     assert lines["observatory"]["en"] == "Observatory score rose: 0 → 15 (grade still F)"
-    assert lines["kashif"]["ar"].startswith("كاشِف: ") and "⁨F*⁩" in lines["kashif"]["ar"]
+    assert lines["kashif"]["ar"].startswith("كاشِف: ") and iso("F*") in lines["kashif"]["ar"]
     assert lines["observatory"]["ar"].startswith("ارتفعت درجة Observatory")
     assert d["grades"]["ssllabs"]["change"] == "same" and not d["grades"]["ssllabs"]["changed"]
     assert d["grades"]["kashif"]["text"]["en"] == lines["kashif"]["en"]
     letters = diff.diff(snap(make_ctx(), grades=g("C+*", 60, 50, "C", "B")), snap(make_ctx(), grades=g("A*", 92, 50, "C", "B")))
     (line,) = letters["grade_changes"]
     assert line["en"] == "Kashif grade improved: C+* → A* (60 → 92)"
-    assert "⁨C+*⁩" in line["ar"] and "⁨A*⁩" in line["ar"] and "كاشِف" in line["ar"]
+    assert iso("C+*") in line["ar"] and iso("A*") in line["ar"] and "كاشِف" in line["ar"]
     same = diff.diff(prev, copy.deepcopy(prev))
     assert same["grade_changes"] == [{"algorithm": "", "direction": "same", "en": "no grade changes",
                                       "ar": "لا تغيّر في الدرجات"}]
@@ -471,6 +496,22 @@ def test_grade_changes_only_changed_with_scores_and_no_change_line():
 def test_arabic_values_are_isolated_and_profile_is_called_scan_mode():
     items = _posture(make_ctx(), make_ctx(headers=[("Server", "nginx")]))
     (added,) = _find(items, "header_added")
-    assert "⁨Server⁩" in added["ar"] and "⁨nginx⁩" in added["ar"]
+    assert iso("Server") in added["ar"] and iso("nginx") in added["ar"]
     d = diff.diff(snap(make_ctx(profile="minimal")), snap(make_ctx()))
     assert "نمط الفحص" in d["notes"][0]["ar"] and "ملف الفحص" not in d["notes"][0]["ar"]
+
+
+def test_check_change_already_explained_by_a_finding_is_not_repeated():
+    a, b = Coverage(["WEB062"]), Coverage(["WEB062"])
+    a.record("WEB062", "fail"), b.record("WEB062", "pass")
+    prev = snap(make_ctx(), [mk("WEB062", SITE + ".env", "/.env")], coverage=a)
+    d = diff.diff(prev, snap(make_ctx(), [], coverage=b))
+    assert [r["rule"] for r in d["findings"]["resolved"]] == ["WEB062"]
+    assert [i for i in d["posture"] if i["kind"] == "check"] == []
+    d = diff.diff(snap(make_ctx(), [], coverage=b), snap(make_ctx(), [mk("WEB062", SITE + ".env", "/.env")], coverage=a))
+    assert [i for i in d["posture"] if i["kind"] == "check"] == []
+
+
+def test_csp_header_appearing_is_one_csp_item_not_also_a_header_item():
+    d = diff.diff(snap(make_ctx(csp="")), snap(make_ctx()))
+    assert [i["id"] for i in d["posture"] if i["kind"] in ("csp", "header")] == ["csp_enabled"]

@@ -211,39 +211,336 @@ def web_scan_options(body: dict, settings: dict) -> dict:
             "cookie_ignore": ignore}
 
 
+def url_kind(target: str) -> str:
+    """"url" when ``target`` parses as an http(s) URL with a host (scheme in any letter case), else "path". The kind is
+    decided from the parsed scheme only, never from a text prefix ("HTTPS://Example.com" is a URL, "httpfoo" a path)."""
+    try:
+        parts = urllib.parse.urlsplit(target)
+        return "url" if parts.scheme.lower() in ("http", "https") and parts.hostname else "path"
+    except ValueError:
+        return "path"
+
+
+def normalise_url(target: str) -> str:
+    """An http(s) target with its scheme lower-cased (the rest is kept as typed); the engine normalises the host."""
+    scheme = urllib.parse.urlsplit(target).scheme
+    return scheme.lower() + target[len(scheme):]
+
+
+def _target_key(target: str) -> str:
+    from .store import project_key
+    return project_key({"target": target, "kind": "url"})
+
+
+def authorized_target(target: str, settings: dict) -> bool:
+    """Whether ``target`` is one of the settings' authorized web targets, compared as projects compare (scheme and host
+    case, default port, trailing slash, query and fragment do not matter)."""
+    listed = settings.get("authorized_targets") or []
+    if not isinstance(listed, list):
+        return False
+    key = _target_key(target)
+    return any(isinstance(t, str) and t.strip() and (t.strip() == target or _target_key(t.strip()) == key)
+               for t in listed)
+
+
+class ScanJobs:
+    """Scans running in this server: the cancel flag of each, and the running URL scans by normalised target (a second
+    scan of a target that is still being scanned is refused with 409)."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.cancel: dict[str, threading.Event] = {}
+        self.fetchers: dict[str, object] = {}
+        self.targets: dict[str, str] = {}          # normalised URL target -> scan id
+
+    def begin(self, scan: dict) -> bool:
+        """Register a scan before its thread starts; False when a URL scan of the same target is already running."""
+        with self.lock:
+            if scan.get("kind") == "url":
+                key = _target_key(scan["target"])
+                if key in self.targets:
+                    return False
+                self.targets[key] = scan["id"]
+            self.cancel[scan["id"]] = threading.Event()
+            return True
+
+    def end(self, scan: dict) -> None:
+        with self.lock:
+            self.cancel.pop(scan["id"], None)
+            self.fetchers.pop(scan["id"], None)
+            if scan.get("kind") == "url":
+                key = _target_key(scan["target"])
+                if self.targets.get(key) == scan["id"]:
+                    del self.targets[key]
+
+    def ensure(self, scan: dict) -> None:
+        """Register a scan run directly (not through POST /api/scan) so that it can be cancelled too."""
+        with self.lock:
+            self.cancel.setdefault(scan["id"], threading.Event())
+
+    def running_target(self, target: str) -> str | None:
+        with self.lock:
+            return self.targets.get(_target_key(target))
+
+    def cancelled(self, scan_id: str) -> bool:
+        ev = self.cancel.get(scan_id)
+        return bool(ev and ev.is_set())
+
+    def set_fetcher(self, scan_id: str, fetcher) -> None:
+        with self.lock:
+            self.fetchers[scan_id] = fetcher
+            stop = self.cancelled(scan_id)
+        if stop:
+            _stop_fetcher(fetcher)
+
+    def request_cancel(self, scan_id: str) -> bool:
+        """Set the cancel flag of a running scan and stop its network activity; False when it is not running here."""
+        with self.lock:
+            ev = self.cancel.get(scan_id)
+            if ev is None:
+                return False
+            ev.set()
+            fetcher = self.fetchers.get(scan_id)
+        if fetcher is not None:
+            _stop_fetcher(fetcher)
+        return True
+
+
+def _stop_fetcher(fetcher) -> None:
+    """No further request of a cancelled web scan: every later fetch is refused as if the time budget were spent, so the
+    engine's remaining steps end at once (the partial result is discarded by run_scan)."""
+    try:
+        stop = getattr(fetcher, "cancel", None)
+        if callable(stop):
+            stop()
+        else:
+            fetcher.remaining_time = lambda: 0.0
+    except Exception:  # noqa: BLE001 - cancelling never raises into the request handler
+        pass
+
+
+JOBS = ScanJobs()
+
+
+class ScanCancelled(Exception):
+    """The user cancelled the scan (POST /api/scans/<id>/cancel)."""
+
+
+# what the UI's progress bar shows: the engine's step names (webscan.engine ``progress``), labelled as on the console
+def _step_labels(step: str) -> tuple[str, str]:
+    from .cli import _WEB_STEPS
+    return _WEB_STEPS.get(step, (step, step))
+
+
+class _UiProgress:
+    """The ``progress`` callback of a UI web scan: records the current step and the requests sent against the profile's
+    budget on the scan, saved at most about once a second by a ticker thread (stopped before the final save)."""
+
+    def __init__(self, store: Store, scan: dict, fetcher, budget: int, crawl_budget: int):
+        self.store, self.scan, self.fetcher = store, scan, fetcher
+        self.budget, self.crawl_budget = budget, crawl_budget
+        self.step = ""
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._last = None
+        self._thread = threading.Thread(target=self._tick, name="kashif-ui-progress", daemon=True)
+
+    def __call__(self, step: str) -> None:          # webscan.engine calls this before each step
+        self.step = str(step)
+        if JOBS.cancelled(self.scan["id"]):
+            _stop_fetcher(self.fetcher)
+
+    def snapshot(self) -> dict:
+        f = self.fetcher
+        sent = int(getattr(f, "core_requests", 0) or 0) if f is not None else 0
+        budget = int(getattr(f, "budget", 0) or 0) if f is not None else 0
+        crawl = int(getattr(f, "crawl_requests", 0) or 0) if f is not None else 0
+        en, ar = _step_labels(self.step) if self.step else ("", "")
+        return {"step": self.step, "label": ar, "label_en": en, "requests": sent, "budget": budget or self.budget,
+                "crawl": crawl, "crawl_budget": self.crawl_budget}
+
+    def save(self, force: bool = False) -> None:
+        with self._lock:
+            if self._stop.is_set() and not force:
+                return
+            snap = self.snapshot()
+            if snap == self._last:
+                return
+            self._last = snap
+            self.scan["progress"] = snap
+            self.store.save_scan(self.scan)
+
+    def _tick(self) -> None:
+        while not self._stop.wait(1.0):
+            try:
+                self.save()
+            except OSError:
+                pass
+
+    def start(self) -> "_UiProgress":
+        self.save()
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        with self._lock:
+            self._stop.set()
+        self._thread.join(timeout=5)
+
+
+def _covered_notes(notes: list[dict], res, budget_note: dict) -> list[int]:
+    """Indices of the scan notes the findings page's web panel already shows: the request budget (one "Requests"
+    fact), the coverage summary (coverage chips), the grades line (grade cards) and the web data date (a fact)."""
+    covered = {budget_note.get("en")}
+    try:
+        from .webscan import engine, grade
+        cov = (getattr(res, "inventory", None) or {}).get("coverage_summary") or {}
+        if cov.get("en"):
+            covered.add(engine.text("coverage", "en", summary=cov["en"]))
+        covered.add(grade.summary(getattr(res, "grades", None) or {}, "en"))
+    except Exception:  # noqa: BLE001 - only decides which notes are hidden in the UI
+        pass
+    date = str(getattr(res, "data_date", "") or "")
+    return [i for i, n in enumerate(notes) if isinstance(n, dict) and n.get("en")
+            and (n["en"] in covered or (date and n["en"] == f"web data as of {date}"))]
+
+
 def _run_web_scan(store: Store, scan: dict, settings: dict):
-    """A passive web scan of the UI (spec §4.3): findings, Arabic notes, pages, {Arabic note: English note}.
-    Saves the web report object (``web``: grades, coverage, inventory, diff) and ``web_snapshot`` on the scan."""
-    from .cli import web_budget_note
+    """A passive web scan of the UI (spec §4.3), run as the CLI runs it (cli._run_web): findings, Arabic notes, pages,
+    {Arabic note: English note}. Saves the web report object (``web``: grades, coverage, inventory, diff, the panel's
+    notes) and ``web_snapshot`` on the scan, and the scan's ``progress`` (step, requests sent of the budget) while it
+    runs. A site that cannot be reached raises :class:`WebFailure` with the explanation of ``explain_failure``."""
+    from .cli import web_scan_notes
     from .report import web_section
-    from .web import options_for, scan_web
+    from .web import WebUnreachable, describe_failure, open_fetcher, options_for, scan_web
     opts = scan.get("web_options") if isinstance(scan.get("web_options"), dict) else web_scan_options({}, settings)
     target = scan["target"]
     previous = store.latest_web_snapshot(target, exclude=scan["id"]) if opts.get("compare_previous") else None
-    o = options_for(timeout=float(settings.get("web_timeout") or 20), delay=float(settings.get("web_delay", 0.5)),
+    delay = _num(settings.get("web_delay"), 0.5)
+    o = options_for(timeout=_num(settings.get("web_timeout"), 20) or 20, delay=max(0.2, delay),
                     profile=opts["profile"], sensitivity=opts["sensitivity"], crawl=opts["crawl"],
                     respect_robots=opts["respect_robots"], third_party_lookups=opts["third_party_lookups"],
                     cookie_ignore=tuple(opts["cookie_ignore"]), use_proxy=opts["use_proxy"])
-    res = scan_web(target, options=o, previous=previous, scan_id=scan["id"])    # raises WebUnreachable
+    fetcher = None
+    try:
+        fetcher = open_fetcher(target, o)
+    except Exception:  # noqa: BLE001 - scan_web reports a bad URL itself; the progress then has no request count
+        fetcher = None
+    from .webscan.http import CRAWL_HARD_CAP
+    from .cli import WEB_BUDGET
+    progress = _UiProgress(store, scan, fetcher, WEB_BUDGET.get(o.profile, 45),
+                           min(int(o.max_pages), CRAWL_HARD_CAP) if o.crawl else 0)
+    if fetcher is not None:
+        JOBS.set_fetcher(scan["id"], fetcher)
+    progress.start()
+    try:
+        res = scan_web(target, options=o, previous=previous, scan_id=scan["id"], progress=progress, fetcher=fetcher)
+    except WebUnreachable as e:
+        info = describe_failure(getattr(e, "error", "") or str(e), target, o.timeout, "ui",
+                                code=getattr(e, "code", ""), proxy=getattr(e, "proxy", ""),
+                                proxy_status=getattr(e, "proxy_status", None), use_proxy=o.use_proxy)
+        raise WebFailure(info) from e
+    finally:
+        progress.stop()
+        if fetcher is not None:
+            fetcher.close()
+    if JOBS.cancelled(scan["id"]):
+        raise ScanCancelled()
+    scan["progress"] = progress.snapshot()
     web = web_section(res, sensitivity=o.sensitivity)
-    ar, en = web_budget_note(o.profile, o.crawl, o.max_pages)
-    web["notes"] = [{"en": en, "ar": ar}] + list(web.get("notes") or [])
+    web["notes"] = web_scan_notes(res, o, delay_asked=delay if delay < 0.2 else None)
     pages = 1 + (int(res.inventory.get("crawl_fetched", 0) or 0) if o.crawl else 0)
+    web["pages"] = pages
+    web["compare"] = {"asked": bool(opts.get("compare_previous")), "previous": previous is not None}
+    web["notes_covered"] = _covered_notes(web["notes"], res, web["notes"][0])
     scan["web"] = {k: v for k, v in web.items() if k != "snapshot"}
     scan["web_snapshot"] = res.snapshot
+    notes = [n["ar"] for n in web["notes"]]
     english = {n["ar"]: n["en"] for n in web["notes"] if isinstance(n, dict) and n.get("ar") and n.get("en")}
-    return list(res.findings), [ar] + list(res.notes), pages, english
+    return list(res.findings), notes, pages, english
+
+
+def _num(value, default: float) -> float:
+    """A finite number from a setting, else ``default``."""
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return default
+    return x if x == x and x not in (float("inf"), float("-inf")) else default
+
+
+class WebFailure(Exception):
+    """A web scan that reached nothing: ``info`` is describe_failure's {code, en, ar, raw}."""
+
+    def __init__(self, info: dict):
+        super().__init__(info.get("ar") or "")
+        self.info = info
+
+
+def _compare_asked(web: dict, scan: dict) -> bool:
+    """Whether the scan asked for a comparison with the previous scan of the site (its web options)."""
+    cmp_ = web.get("compare") if isinstance(web.get("compare"), dict) else None
+    if cmp_ is not None:
+        return bool(cmp_.get("asked"))
+    opts = scan.get("web_options") if isinstance(scan.get("web_options"), dict) else {}
+    return bool(opts.get("compare_previous"))
+
+
+def _ui_web_view(view: dict, web: dict, scan: dict, lang: str) -> dict:
+    """report.web_view plus what only the UI needs, each key added only when web_view does not give it already:
+    ``facts`` requests sent against the profile's budget (crawl pages apart) and the sensitivity; ``compare``
+    {asked, previous} (no previous scan: this one becomes the baseline); ``notes_covered`` (indices of the scan notes
+    the panel shows itself); ``diff.not_retested_rows`` [{rule, severity, title, reason}] (web_view gives the count in
+    ``diff.not_retested``; when it gives the rows there, they are used as they are)."""
+    facts = view.setdefault("facts", {})
+    inv = web.get("inventory") if isinstance(web.get("inventory"), dict) else {}
+    req = inv.get("requests") if isinstance(inv.get("requests"), dict) else {}
+    for key, value in (("core_requests", req.get("core_requests")), ("budget", req.get("budget")),
+                       ("crawl_requests", req.get("crawl_requests")), ("pages", web.get("pages")),
+                       ("sensitivity", web.get("sensitivity"))):
+        if facts.get(key) is None and isinstance(value, (int, float, str)) and not isinstance(value, bool):
+            facts[key] = value
+    if "compare" not in view:
+        cmp_ = web.get("compare") if isinstance(web.get("compare"), dict) else None
+        if cmp_ is None:                              # scans saved before 1.1.0's compare record
+            cmp_ = {"asked": _compare_asked(web, scan), "previous": isinstance(web.get("diff"), dict)
+                    and bool((web["diff"].get("previous") or {}))}
+        view["compare"] = {"asked": bool(cmp_.get("asked")), "previous": bool(cmp_.get("previous"))}
+    if "notes_covered" not in view:
+        covered = web.get("notes_covered")
+        view["notes_covered"] = [i for i in covered if isinstance(i, int)] if isinstance(covered, list) else []
+    diff = view.get("diff")
+    if isinstance(diff, dict) and not isinstance(diff.get("not_retested"), list) and "not_retested_rows" not in diff:
+        raw = ((web.get("diff") or {}).get("findings") or {}).get("not_retested") if isinstance(web.get("diff"), dict) else None
+        rows = []
+        for r in (raw if isinstance(raw, list) else [])[:200]:
+            if not isinstance(r, dict):
+                continue
+            reason = r.get("reason") if isinstance(r.get("reason"), dict) else {}
+            title = (r.get("title_en") if lang == "en" else r.get("title_ar")) or r.get("title_en") or r.get("rule")
+            rows.append({"rule": str(r.get("rule") or "")[:40],
+                         "severity": r.get("severity") if r.get("severity") in SEVERITY_RANK else "info",
+                         "title": str(title or "")[:200], "reason": str(reason.get(lang) or reason.get("en") or "")[:300]})
+        diff["not_retested_rows"] = rows
+        if not isinstance(diff.get("not_retested"), int):
+            diff["not_retested"] = len(rows)
+    return view
 
 
 def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None:
-    """Executes in a worker thread and persists progress."""
+    """Executes in a worker thread and persists progress. A URL scan (kind "url", an http(s) URL) is a web scan; it is
+    never run as a path scan."""
     target = scan["target"]
+    is_url = scan.get("kind") == "url" or (scan.get("kind") != "upload" and url_kind(target) == "url")
+    JOBS.ensure(scan)
     try:
         findings: list[Finding] = []
         notes: list[str] = []
         files = 0
         web_notes_en: dict = {}
-        if target.startswith(("http://", "https://")):
+        if is_url:
+            if url_kind(target) != "url":
+                raise ValueError("invalid url")
             if not authorized:
                 raise PermissionError("فحص عنوان ويب يتطلب تأكيد الصلاحية.")
             findings, notes, files, web_notes_en = _run_web_scan(store, scan, settings)
@@ -259,6 +556,8 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
                                         query_paths=[settings["queries_dir"]] if settings.get("queries_dir") else None)
             scan["files_scanned"] = files
             store.save_scan(scan)
+            if JOBS.cancelled(scan["id"]):
+                raise ScanCancelled()
             if settings.get("use_osv", True):
                 dep, err = audit_dependencies(path)
                 findings.extend(dep)
@@ -266,31 +565,48 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
                     from .cli import _KNOWN_VULNS
                     err = f"استعلام OSV.dev عن الاعتماديات: {ar_count(len(dep), _KNOWN_VULNS)}."
                 notes.append(err)
+            if JOBS.cancelled(scan["id"]):
+                raise ScanCancelled()
             if settings.get("use_external", True):
                 ext, ran = run_external(path)
                 findings.extend(ext)
                 if ran:
                     notes.append("أدوات خارجية: " + ", ".join(ran))
+        if JOBS.cancelled(scan["id"]):
+            raise ScanCancelled()
         assign_fingerprints(findings)          # on the full list, as the CLI does, so every endpoint agrees
         min_sev = settings.get("min_severity", "info")
         findings = [f for f in sort_findings(findings) if SEVERITY_RANK[f.severity] <= SEVERITY_RANK[min_sev]]
-        if not target.startswith(("http://", "https://")):
+        if not is_url:
             try:                               # suggested fixes ("fix" in each finding), as the CLI attaches them
                 from . import autofix
                 autofix.attach_fixes(findings, target)
             except Exception:  # noqa: BLE001 - a missing or failing fixer never fails the scan
                 pass
         notes_en = [to_en(n) for n in notes]
-        if target.startswith(("http://", "https://")):        # the engine's own English for its notes
+        if is_url:                             # the engine's own English for its notes
             notes_en = [web_notes_en.get(n) or to_en(n) for n in notes]
         scan.update(status="done", finished_at=time.time(), files_scanned=files, notes=notes,
                     notes_en=notes_en, summary=summary_counts(findings), findings=[f.to_dict() for f in findings])
     except Exception as e:  # noqa: BLE001 - surfaced to the UI
-        scan.update(status="error", finished_at=time.time(), error=str(e), error_en=to_en(str(e)))
+        if isinstance(e, ScanCancelled) or JOBS.cancelled(scan["id"]):
+            # a cancelled scan keeps nothing: a partial result is neither shown nor used as the next diff's baseline
+            for key in ("web", "web_snapshot"):
+                scan.pop(key, None)
+            scan.update(status="cancelled", finished_at=time.time(), findings=[], notes=[], notes_en=[], error=None,
+                        summary={k: 0 for k in SEVERITY_RANK})
+        elif isinstance(e, WebFailure):
+            info = e.info
+            scan.update(status="error", finished_at=time.time(), error=info.get("ar") or "",
+                        error_en=info.get("en") or "", error_raw=str(info.get("raw") or ""),
+                        error_code=str(info.get("code") or ""))
+        else:
+            scan.update(status="error", finished_at=time.time(), error=str(e), error_en=to_en(str(e)))
     finally:
         if scan.get("kind") == "upload" and scan.get("tmp_root"):
             shutil.rmtree(scan["tmp_root"], ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
         store.save_scan(scan)
+        JOBS.end(scan)
 
 
 def parse_multipart(body: bytes, content_type: str) -> list[tuple[str, bytes]]:
@@ -324,6 +640,26 @@ def _default_author() -> str:
         except (OSError, KeyError, ImportError):
             name = ""
     return name or "kashif-ui"
+
+
+# Ranges of the numeric settings the UI sends (the settings form has the same min / max): a value outside them is
+# refused with 400 rather than stored, so the web scan's politeness delay can never be set below its 0.2 s floor.
+SETTING_RANGES = {"web_delay": (0.2, 10.0), "web_timeout": (5.0, 120.0)}
+SETTING_CHOICES = {"web_profile": WEB_PROFILES, "web_sensitivity": WEB_SENSITIVITIES}
+
+
+def invalid_settings(body: dict) -> list[str]:
+    """The keys of a settings patch whose values are out of range or of the wrong kind (empty when all are valid)."""
+    bad = []
+    for key, (lo, hi) in SETTING_RANGES.items():
+        if key in body:
+            v = body[key]
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or not lo <= float(v) <= hi:
+                bad.append(key)
+    for key, choices in SETTING_CHOICES.items():
+        if key in body and body[key] not in choices:
+            bad.append(key)
+    return bad
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -452,7 +788,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/upload":
             return self._upload()
         if path == "/api/settings":
-            return self._json(self.store.save_settings(self._body()))
+            body = self._body()
+            bad = invalid_settings(body if isinstance(body, dict) else {})
+            if bad:
+                return self._json({"error": "invalid setting", "fields": bad}, 400)
+            return self._json(self.store.save_settings(body if isinstance(body, dict) else {}))
+        parts = path.split("/")
+        if len(parts) == 5 and parts[1:3] == ["api", "scans"] and parts[4] == "cancel":
+            return self._cancel_scan(parts[3])
         if path in ("/api/update", "/api/update/restart"):
             if not self._loopback_json():
                 return self._json({"error": "forbidden"}, 403)
@@ -585,7 +928,9 @@ class Handler(BaseHTTPRequestHandler):
         if web is None:
             return self._json({"error": "not found"}, 404)
         findings = [_dict_to_finding(d) for d in _scan_findings(scan)]
-        return self._json(web_view(findings, web, self._lang_param(("ar", "en"), "ar")))
+        lang = self._lang_param(("ar", "en"), "ar")
+        return self._json(_ui_web_view(web_view(findings, web, lang, compare_previous=_compare_asked(web, scan)),
+                                       web, scan, lang))
 
     # ------------------------------------------------- 1.0: exports, compliance, attack surface, triage
     def _lang_param(self, allowed: tuple, default: str) -> str:
@@ -858,22 +1203,52 @@ class Handler(BaseHTTPRequestHandler):
                 "top_rules": sorted(top_rules.values(), key=lambda r: (SEVERITY_RANK[r["severity"]], -r["count"]))[:8]}
 
     def _start_scan(self, body: dict):
-        target = (body.get("target") or "").strip()
+        """POST /api/scan {target, kind?, authorized?, web options}: start a scan. The kind comes from the parsed scheme
+        of the target (http/https: a web scan); a request that says kind "url" for anything else is refused with
+        400 "invalid url" and never falls back to a path scan. A second URL scan of a target that is still being
+        scanned is refused with 409."""
+        target = body.get("target") if isinstance(body.get("target"), str) else ""
+        target = target.strip()
         if not target:
             return self._json({"error": "target required"}, 400)
+        kind = url_kind(target)
+        if body.get("kind") == "url" and kind != "url":
+            return self._json({"error": "invalid url"}, 400)
         settings = self.store.settings()
-        authorized = bool(body.get("authorized")) or target in settings.get("authorized_targets", [])
-        if target.startswith(("http://", "https://")) and not authorized:
-            return self._json({"error": "authorization required"}, 403)
-        scan = self.store.new_scan(target, body.get("kind") or ("url" if target.startswith("http") else "path"))
-        if target.startswith(("http://", "https://")):
+        if kind == "url":
+            target = normalise_url(target)
+            authorized = body.get("authorized") is True or authorized_target(target, settings)
+            if not authorized:
+                return self._json({"error": "authorization required"}, 403)
+            running = JOBS.running_target(target)
+            if running:
+                return self._json({"error": "scan already running", "scan": running}, 409)
+        else:
+            authorized = False
+        scan = self.store.new_scan(target, kind)
+        if kind == "url":
             opts = web_scan_options(body, settings)
             scan["web_options"] = opts
             scan["deep"] = opts["profile"] == "deep"          # 1.0.x keys, read by older UIs
             scan["crawl"] = opts["crawl"]
             self.store.save_scan(scan)
+        if not JOBS.begin(scan):                             # the same target started meanwhile
+            self.store.delete_scan(scan["id"])
+            return self._json({"error": "scan already running", "scan": JOBS.running_target(target)}, 409)
         threading.Thread(target=run_scan, args=(self.store, scan, settings, authorized), daemon=True).start()
         return self._json(scan, 202)
+
+    def _cancel_scan(self, scan_id: str):
+        """POST /api/scans/<id>/cancel: stop a running scan between two steps (a web scan sends no further request);
+        the scan ends with status "cancelled" and keeps no partial result."""
+        if not _ID.match(scan_id):
+            return self._json({"error": "not found"}, 404)
+        scan = self.store.get_scan(scan_id)
+        if not scan:
+            return self._json({"error": "not found"}, 404)
+        if scan.get("status") != "running" or not JOBS.request_cancel(scan_id):
+            return self._json({"error": "scan not running", "status": scan.get("status")}, 409)
+        return self._json({"ok": True, "status": "cancelling"}, 202)
 
     def _upload(self):
         """Accepts one archive (zip/apk/jar/tar…) or any number of loose files.
@@ -913,6 +1288,7 @@ class Handler(BaseHTTPRequestHandler):
         scan["label"] = label
         scan["tmp_root"] = str(tmp)
         self.store.save_scan(scan)
+        JOBS.begin(scan)
         threading.Thread(target=run_scan, args=(self.store, scan, self.store.settings(), False), daemon=True).start()
         return self._json(scan, 202)
 

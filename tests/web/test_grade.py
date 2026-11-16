@@ -789,7 +789,11 @@ def test_grades_bundle_and_summary(monkeypatch):
     assert g["kashif"]["grade"] == "A+" and g["observatory"]["score"] == 165 and g["ssllabs"]["grade"] == "A+"
     assert "attack-only" in g["ssllabs"]["label"]["en"] and g["ssllabs"]["label"]["ar"]
     assert grade.summary(g) == "Grades: Kashif A+ · Observatory 165 (A+) · SSL Labs-compatible A+"
-    assert grade.summary(g, "ar").startswith("الدرجات: كاشف A+")
+    from vulnscan.webscan.types import iso
+    ar = grade.summary(g, "ar")
+    assert ar == f"الدرجات: كاشِف {iso('A+')} · Observatory {iso('165 (A+)')} · درجة SSL Labs المتوافقة: {iso('A+')}"
+    none = grade.summary({"kashif": {"grade": "C+*"}, "observatory": {}, "ssllabs": {}}, "ar")
+    assert iso("C+*") in none and none.endswith("درجة SSL Labs المتوافقة: بلا درجة")
     json.dumps(g, ensure_ascii=False)
 
 

@@ -80,7 +80,7 @@ STR: dict[str, tuple[str, str]] = {
     "https_port": ("HTTPS not checked: the target uses a non-default port.",
                    "لم يُفحص HTTPS: الهدف يستخدم منفذًا غير افتراضي."),
     "https_profile": ("HTTPS not checked: the minimal profile sends no counterpart request.",
-                      "لم يُفحص HTTPS: ملف الفحص minimal لا يرسل طلب النظير."),
+                      "لم يُفحص HTTPS: نمط الفحص minimal لا يرسل طلب النظير."),
     "preloaded": ("{host} is in the browsers' HSTS preload list ({entry}), so browsers never use plain HTTP for it.",
                   "المضيف {host} مدرج في قائمة HSTS المسبقة في المتصفحات ({entry})، فلا تستخدم المتصفحات HTTP غير المشفّر معه."),
     "loopback": ("{host} is a loopback address (a developer's local server).",
@@ -102,11 +102,11 @@ STR: dict[str, tuple[str, str]] = {
                  "تمر السلسلة بـ {hops} قبل الاستجابة النهائية؛ ولا يقبل hstspreload أكثر من 3."),
     "loop": ("The redirect chain loops ({url} repeats).", "سلسلة التوجيه دائرية (يتكرر {url})."),
     "limit": ("The chain was still redirecting after {hops}; Kashif stops there, as browsers stop after about 20.",
-              "كانت السلسلة ما زالت توجّه بعد {hops}؛ يتوقف كاشف عندها، كما تتوقف المتصفحات بعد نحو 20 قفزة."),
+              "كانت السلسلة ما زالت توجّه بعد {hops}؛ يتوقف كاشف عندها، كما تتوقف المتصفحات بعد نحو 20 قفزةً."),
     "temporary": ("The HTTP→HTTPS redirect uses status {status}; browsers do not cache it, so every visit starts on HTTP.",
                   "يستخدم التوجيه من HTTP إلى HTTPS الحالة {status}؛ ولا تخزّنه المتصفحات، فتبدأ كل زيارة عبر HTTP."),
-    "big_redirect": ("The {status} response carries {length} bytes of page content ({signals}); first text: {text}",
-                     "تحمل استجابة {status} مقدار {length} بايت من محتوى الصفحة ({signals})؛ أول النص: {text}"),
+    "big_redirect": ("The {status} response carries {length} of page content ({signals}); first text: {text}",
+                     "تحمل استجابة {status} مقدار {length} من محتوى الصفحة ({signals})؛ أول النص: {text}"),
     "sts_missing": ("{url} has no Strict-Transport-Security header.",
                     "لا توجد ترويسة Strict-Transport-Security في {url}."),
     "sts_preloaded_info": ("Already enforced by the browsers' preload list ({entry}); the header still protects browsers "
@@ -115,9 +115,9 @@ STR: dict[str, tuple[str, str]] = {
                            "القائمة القديمة والعملاء الآخرين."),
     "sts_zero": ("max-age is 0: browsers delete the HSTS entry for {host}.",
                  "القيمة max-age تساوي 0: فتحذف المتصفحات سجل HSTS للمضيف {host}."),
-    "sts_short": ("max-age is {seconds} seconds (about {days}).", "القيمة max-age هي {seconds} ثانية (نحو {days})."),
-    "sts_long": ("max-age is {seconds} seconds (about {days}), more than ten years.",
-                 "القيمة max-age هي {seconds} ثانية (نحو {days})، أي أكثر من عشر سنوات."),
+    "sts_short": ("max-age is {seconds} (about {days}).", "القيمة max-age هي {seconds} (نحو {days})."),
+    "sts_long": ("max-age is {seconds} (about {days}), more than ten years.",
+                 "القيمة max-age هي {seconds} (نحو {days})، أي أكثر من عشر سنوات."),
     "sts_value": ("Header value: {value}", "قيمة الترويسة: {value}"),
     "sts_multi_same": ("The same value is sent in {fields}; browsers use the first.",
                        "تُرسَل القيمة نفسها في {fields}؛ وتستخدم المتصفحات الأولى."),
@@ -125,7 +125,7 @@ STR: dict[str, tuple[str, str]] = {
                        "تُرسَل الترويسة في {fields} بقيم مختلفة؛ ولا تستخدم المتصفحات إلا الأولى: {value}"),
     "sts_no_isd": ("Subdomains of {host} are not covered by HSTS.", "النطاقات الفرعية للمضيف {host} لا تغطيها HSTS."),
     "sts_isd_cookie": ("The session cookie {cookie} is sent to every host under {domain}, but HSTS does not cover them.",
-                       "الكوكي {cookie} للجلسة يُرسَل إلى كل مضيف تحت {domain}، لكن HSTS لا تغطي هذه المضيفات."),
+                       "كوكي الجلسة {cookie} تُرسَل إلى كل مضيف تحت {domain}، لكن HSTS لا تغطي هذه المضيفات."),
     "sts_obs_fold": ("The header was folded over several lines (obsolete line folding); it was read as one line.",
                      "كانت الترويسة مطوية على عدة أسطر (طيّ أسطر متقادم)؛ وقُرئت كسطر واحد."),
     "preload_fail": ("Not eligible for the preload list: {codes}", "غير مستوفٍ لشروط القائمة المسبقة: {codes}"),
@@ -203,6 +203,10 @@ _PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 NOTE_VALUE_CAP = 1000                 # one substituted value (a hostile Location can be megabytes long, §0.6)
 GROUP_VALUE_CAP = 200
 _FIELDS_FORMS = ("{n} field", "{n} fields", ("حقل واحد", "حقلين", "{n} حقول", "{n} حقلًا", "{n} حقل"))
+# nominative ("القيمة max-age هي …"); large values take the singular after 100 ("31536000 ثانية")
+_SECONDS_FORMS = ("{n} second", "{n} seconds", ("ثانية واحدة", "ثانيتان", "{n} ثوانٍ", "{n} ثانيةً", "{n} ثانية"))
+# genitive ("مقدار …")
+_BYTES_FORMS = ("{n} byte", "{n} bytes", ("بايت واحد", "بايتين", "{n} بايتات", "{n} بايتًا", "{n} بايت"))
 
 
 def _note(key: str, **values: Any) -> tuple[str, str]:
@@ -534,8 +538,14 @@ def https_chain(ctx: ScanContext) -> Response | None:
 
 
 def _cert_error_hosts(ctx: ScanContext) -> set[str]:
-    return {r.host for r in ctx.all_responses() if "cert-error" in r.flags or any(
+    """Hosts whose https responses a browser would never get: a certificate that does not validate, or a server that
+    only a legacy client can talk to (``legacy-tls``: read as evidence only). Browsers note no HSTS from either."""
+    return {r.host for r in ctx.all_responses() if "cert-error" in r.flags or "legacy-tls" in r.flags or any(
         f.startswith("cert-verify:") for f in r.flags)}
+
+
+def _legacy_tls_hosts(ctx: ScanContext) -> set[str]:
+    return {r.host for r in ctx.all_responses() if "legacy-tls" in r.flags}
 
 
 # ----------------------------------------------------------------------------------------------- stage 1: HSTS facts
@@ -829,8 +839,10 @@ def _plain_http(st: _Run) -> None:
         notes.append(_note("loopback", host=host))
     if len(hops) > 1:
         notes.append(_note("chain", chain=_chain_text(final)))
-    st.emit(check, final, st.ev(final, where="header", name="status", value=str(final.status)), url=first.url,
-            severity=severity, group_value="http", notes=notes, params=params, host=host)
+    # the evidence names the status and the URL that served the page; the group value stays "http" (explicit), so
+    # the 1.1 fp_key and the 1.0.1 fingerprint (fp_url) do not change
+    st.emit(check, final, st.ev(final, where="header", name="status", value=f"HTTP {final.status} {final.url}"),
+            url=first.url, severity=severity, group_value="http", notes=notes, params=params, host=host)
 
 
 # ----------------------------------------------------------------------------------------------- WEB101 / WEB102 / WEB105
@@ -1017,7 +1029,8 @@ def _big_redirects(st: _Run) -> None:
             continue
         st.emit(check, r, st.ev(r, where="body", name="body", value=str(len(r.body)), excerpt=visible),
                 group_value="+".join(signals), key=("big", r.url),
-                notes=[_note("big_redirect", status=r.status, length=len(r.body), signals=", ".join(signals),
+                notes=[_note("big_redirect", status=r.status, length=_count(len(r.body), _BYTES_FORMS),
+                             signals=", ".join(signals),
                              text=_short(visible, 200))])
 
 
@@ -1136,9 +1149,11 @@ def _hsts(st: _Run, verdicts: dict[str, HstsVerdict]) -> None:
         hsts_checks = ("WEB-strict-transport-security", "WEB110", "WEB111", "WEB112", "WEB113", "WEB114", "WEB115",
                        "WEB117")
         if host in st.cert_hosts:
+            why = (("only a legacy TLS client can connect: browsers never see HSTS there",
+                    "لا يتصل به إلا عميل TLS قديم: فلا ترى المتصفحات HSTS هناك") if host in _legacy_tls_hosts(ctx) else
+                   ("certificate error: browsers ignore HSTS there", "خطأ في الشهادة: يتجاهل المتصفح HSTS هناك"))
             for c in hsts_checks:
-                st.skip(c, "not_applicable", host, "", ("certificate error: browsers ignore HSTS there",
-                                                         "خطأ في الشهادة: يتجاهل المتصفح HSTS هناك"))
+                st.skip(c, "not_applicable", host, "", why)
             continue
         if is_ip_literal(host):
             for c in hsts_checks:
@@ -1246,10 +1261,10 @@ def _judge_value(st: _Run, host: str, r: Response, fields: list[str], pre: bool,
     if age < ONE_YEAR:
         sev = "medium" if age < SIX_MONTHS else "low"
         st.emit("WEB111", r, ev, severity=sev, group_value=f"short-{sev}", key=("short", age),
-                notes=[_note("sts_short", seconds=age, days=days)] + base_notes)
+                notes=[_note("sts_short", seconds=_count(age, _SECONDS_FORMS), days=days)] + base_notes)
     elif age > TEN_YEARS:
         st.emit("WEB111", r, ev, severity="info", group_value="too-long", key=("long", age),
-                notes=[_note("sts_long", seconds=age, days=days)] + base_notes,
+                notes=[_note("sts_long", seconds=_count(age, _SECONDS_FORMS), days=days)] + base_notes,
                 params={"variant": "too_long"})
     if not header.include_subdomains and not (pre and pre_isd):
         cookie = _session_domain_cookie(ctx, host)

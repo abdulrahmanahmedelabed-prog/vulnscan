@@ -39,7 +39,7 @@ ACAC = "access-control-allow-credentials"
 STR: dict[str, tuple[str, str]] = {
     "reflected_creds": ("The response to Origin: {origin} allows that origin with credentials, so any website can read "
                         "this response with the visitor's cookies.",
-                        "الاستجابة للطلب ذي Origin: {origin} تسمح لذلك الأصل مع الاعتماديات، فيستطيع أي موقع قراءة هذه "
+                        "الاستجابة للطلب ذي Origin: {origin} تسمح لذلك الأصل مع بيانات الاعتماد، فيستطيع أي موقع قراءة هذه "
                         "الاستجابة بكوكيز الزائر."),
     "reflected": ("The response to Origin: {origin} echoes that origin; any website can read it (without cookies).",
                   "الاستجابة للطلب ذي Origin: {origin} تعيد ذلك الأصل نفسه؛ فيستطيع أي موقع قراءتها (بلا كوكيز)."),

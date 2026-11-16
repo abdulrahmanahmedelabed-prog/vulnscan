@@ -17,7 +17,7 @@ A run starts at a Latin letter, a digit or code punctuation (``_ $ . / ~ ' " < #
 followed by a non-space) and continues through anything except Arabic letters, the Arabic comma and semicolon (``،؛``
 are in the Arabic block), the Arabic quotation marks ``« »``, list separators (``·`` ``•``) and directional marks;
 so ``= ' " < > ; , ( ) *`` and the spaces between Latin tokens stay in one run. It is then trimmed (:func:`trim_run`): trailing spaces, trailing ASCII
-``.`` and ``:`` (sentence punctuation of the Arabic text), a trailing closing bracket without its opening one (the
+``.`` and ``:`` (sentence punctuation of the Arabic text; the colon of a URL-scheme source such as ``http:`` stays), a trailing closing bracket without its opening one (the
 ``)`` of an Arabic parenthesis), a dangling opening bracket and a trailing token made only of brackets, dashes or
 arrows. A trailing ``-`` attached to a token (``__Host-``) and a leading ``/`` or ``.`` (``/.well-known/``, ``.map``)
 stay. A run is kept when it has a Latin letter, or when it is digits joined by ``- / : .`` (dates, versions, IP
@@ -56,6 +56,9 @@ _DIGIT_RUN = re.compile(r"[0-9]+(?:[-/:.][0-9]+)+")
 _TAIL_SPACE = re.compile(rf"{_SPACE}+$")
 _TAIL_TOKEN = re.compile(rf"{_SPACE}+[(\[{{<\u2014\u2013\u2192\u2190\u21D2|-]+$")
 _PAIRS = {")": "(", "]": "[", "}": "{"}
+# a run ending in a URL-scheme source keeps its colon (``http:``, ``https:``, ``data:``, ``javascript:`` in CSP texts):
+# trimmed, the colon would be drawn on the wrong side of the scheme (``:http``) in right-to-left text
+_SCHEME_TAIL = re.compile(r"(?:^|[\s,(])(?:https?|wss?|data|blob|mediastream|filesystem|javascript):$")
 
 
 def iso(text: str) -> str:
@@ -73,7 +76,8 @@ def trim_run(run: str) -> str:
     while True:
         prev = run
         run = _TAIL_SPACE.sub("", run)
-        run = run.rstrip(".:")
+        while run and run[-1] in ".:" and not (run[-1] == ":" and _SCHEME_TAIL.search(run)):
+            run = run[:-1]
         if _TAIL_TOKEN.search(run):
             run = _TAIL_TOKEN.sub("", run)
         elif run and run[-1] in _PAIRS and run.count(run[-1]) > run.count(_PAIRS[run[-1]]):
@@ -134,11 +138,13 @@ const LTR_RUN_SRC = %(pattern)s;
 const LTR_TAIL_SPACE = new RegExp(%(tail_space)s);
 const LTR_TAIL_TOKEN = new RegExp(%(tail_token)s);
 const LTR_PAIRS = {')': '(', ']': '[', '}': '{'};
+const LTR_SCHEME_TAIL = new RegExp(%(scheme_tail)s);
 const ARABIC_RX = new RegExp('[' + %(arabic)s + ']');
 const trimRun = (run) => {
   for (;;) {
     const prev = run;
-    run = run.replace(LTR_TAIL_SPACE, '').replace(/[.:]+$/, '');
+    run = run.replace(LTR_TAIL_SPACE, '');
+    while (run && '.:'.includes(run.slice(-1)) && !(run.slice(-1) === ':' && LTR_SCHEME_TAIL.test(run))) run = run.slice(0, -1);
     const last = run.slice(-1);
     const count = (ch) => run.split(ch).length - 1;
     if (LTR_TAIL_TOKEN.test(run)) run = run.replace(LTR_TAIL_TOKEN, '');
@@ -165,7 +171,8 @@ const bidiHtml = (text, esc) => {
   return out + esc(str.slice(last));
 };
 """ % {"pattern": json.dumps(LTR_RUN_PATTERN), "tail_space": json.dumps(_TAIL_SPACE.pattern),
-       "tail_token": json.dumps(_TAIL_TOKEN.pattern), "arabic": json.dumps(ARABIC_RANGES)}
+       "tail_token": json.dumps(_TAIL_TOKEN.pattern),
+       "scheme_tail": json.dumps(_SCHEME_TAIL.pattern), "arabic": json.dumps(ARABIC_RANGES)}
 
 
 __all__ = ["LRI", "FSI", "PDI", "LRM", "RLM", "ARABIC_RANGES", "BREAK_CHARS", "LTR_RUN_PATTERN", "LTR_RUN", "iso",

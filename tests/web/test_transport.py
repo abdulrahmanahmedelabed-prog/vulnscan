@@ -931,3 +931,32 @@ def test_corpus_groups_pass(corpus_run):
                 failures.append(f"{cid}: {rule} above {mx}")
     assert len(results) >= 45
     assert not failures, failures
+
+
+# ----------------------------------------------------------------------------------------------- 1.1.0 accuracy round
+
+def test_web000_evidence_names_status_and_url_with_a_stable_group_value():
+    from vulnscan.webscan import group
+    e = R("http://example.com:8080/", headers=[])
+    ctx = ctx_for(e)
+    (i,) = issues(ctx)["WEB000"]
+    assert i.evidence.match["value"] == "HTTP 200 http://example.com:8080/"
+    assert i.group_value == "http"                       # explicit: the evidence value never feeds the fp_key
+    (g,) = [g for g in group.group_issues([i], ctx) if g.rule == "WEB000"]
+    assert g.fp_key == "WEB000|example.com|document|http" or g.fp_key.endswith("|http")
+
+
+def test_hsts_seconds_and_cookie_notes_agree_in_arabic():
+    (i,) = issues(ctx_for(R("https://a.example/", headers=[sts("max-age=300; includeSubDomains")])))["WEB111"]
+    en, ar = i.notes[0]
+    assert "max-age is 300 seconds" in en and "القيمة max-age هي 300 ثانية" in ar
+    (i,) = issues(ctx_for(R("https://a.example/", headers=[sts("max-age=15; includeSubDomains")])))["WEB111"]
+    assert "15 ثانيةً" in i.notes[0][1]
+    e = R("https://www.a.example/", headers=[sts("max-age=63072000")])
+    ctx = ctx_for(e)
+    ctx.cookies = [CookieFact(name="sid", value="1", attrs={"domain": "a.example", "secure": "", "httponly": ""},
+                              raw="sid=1; Domain=a.example; Secure; HttpOnly", response=e, host="www.a.example",
+                              secure_context=True, cls="session")]
+    (i,) = issues(ctx)["WEB114"]
+    assert any("كوكي الجلسة sid تُرسَل" in ar for _en, ar in i.notes)
+    assert "نحو 20 قفزةً" in transport.STR["limit"][1]

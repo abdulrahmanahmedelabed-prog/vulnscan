@@ -501,8 +501,14 @@ def test_web207_meta_dropped_directives_and_severity(make_page, make_ctx):
     html = ("<html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; frame-ancestors "
             "'none'\"><title>x</title></head><body></body></html>")
     (i,) = [i for i in _run(_doc_ctx(make_page, make_ctx, [], html=html)) if i.rule == "WEB207"]
-    assert i.severity == "medium" and i.evidence.match["where"] == "body" and i.evidence.match["offset"] is not None
-    (i,) = [i for i in _run(_doc_ctx(make_page, make_ctx, [("X-Frame-Options", "DENY")], html=html)) if i.rule == "WEB207"]
+    # §2.2 ceiling: on this static page a missing CSP would be low, so no CSP weakness may be rated above low
+    assert i.severity == "low" and i.evidence.match["where"] == "body" and i.evidence.match["offset"] is not None
+    assert any("never rated worse than no policy" in en for en, _ar in i.notes)
+    live = html.replace("<body></body>", "<body><form action='/s'><input name=q></form></body>")
+    (i,) = [i for i in _run(_doc_ctx(make_page, make_ctx, [], html=live)) if i.rule == "WEB207"]
+    assert i.severity == "medium"
+    (i,) = [i for i in _run(_doc_ctx(make_page, make_ctx, [("X-Frame-Options", "DENY")], html=live))
+            if i.rule == "WEB207"]
     assert i.severity == "low"
 
 
@@ -1153,3 +1159,28 @@ def test_huge_port_does_not_crash():
     assert "invalid_source" in _codes("script-src a.example:65536")
     src = csp.classify_source("https://www.google.com:0443")
     assert src.port == "443" and csp.source_matches_url(src, "https://www.google.com/x", "https://e.test")
+
+
+# ----------------------------------------------------------------------------------------------- 1.1.0 accuracy round
+
+def test_no_policy_makes_policy_content_checks_not_applicable(make_page, make_ctx):
+    ctx = _doc_ctx(make_page, make_ctx, [], html="<html><body><script>1</script></body></html>")
+    issues = _run(ctx)
+    assert [i.rule for i in issues] == ["WEB-content-security-policy"]
+    assert ctx.coverage.state("WEB-content-security-policy").state == "fail"
+    for check in csp.POLICY_CONTENT_CHECKS:
+        st = ctx.coverage.state(check)
+        assert st.state == "not_applicable" and [r[0] for r in st.reasons] == ["no_policy"], check
+
+
+@pytest.mark.parametrize("body, expect", [("<p>static</p>", "low"), ("<script>app()</script>", "medium")])
+def test_csp_weakness_never_exceeds_missing_csp(make_page, make_ctx, body, expect):
+    ctx = _doc_ctx(make_page, make_ctx, [("Content-Security-Policy", "upgrade-insecure-requests")],
+                   html=f"<html><body>{body}</body></html>")
+    from vulnscan.webscan import group
+    # the ceiling holds whatever severities the registry allows: csp.py applies it when the registry allows the lower
+    # severity, and group.adjust (the engine's step after coercion) always
+    (i,) = [i for i in group.adjust(_run(ctx), ctx) if i.rule == "WEB042"]
+    assert group.severity_of(i) == expect
+    if expect == "low":
+        assert any("never rated worse than no policy" in en for en, _ar in i.notes)

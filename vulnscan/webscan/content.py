@@ -1053,6 +1053,22 @@ def _form_has_password(doc: ParsedHTML, form_index: int) -> bool:
     return f is not None and bool(_password_inputs(doc, f))
 
 
+def password_form_text(doc: ParsedHTML, el) -> str:
+    """WEB052 evidence: ``<input type=password name=p> in form → https://site/login`` (where the password goes), or
+    ``… (no form)``; capped, with control characters removed."""
+    name = strip_controls(str(el.attrs.get("name") or ""))[:60]
+    tag = f"<input type=password name={name}>" if name else "<input type=password>"
+    try:
+        idx = doc.elements.index(el)
+    except ValueError:
+        idx = -1
+    form = next((f for f in doc.forms if idx in f.inputs), None) if idx >= 0 else None
+    if form is None:
+        return f"{tag} (no form)"
+    action = strip_controls(str(form.action or ""))
+    return _short(f"{tag} in form → {_short(action, 200)}", 300)
+
+
 def _forms_transport(st: _Run, r: Response, doc: ParsedHTML, forms: list[tuple[int, Item]]) -> None:
     st.seen("WEB051", r.host)
     for form_index, item in forms:
@@ -1072,8 +1088,11 @@ def _forms_transport(st: _Run, r: Response, doc: ParsedHTML, forms: list[tuple[i
         pws = doc.password_inputs()
         if pws:
             el = pws[0]
-            st.emit("WEB052", r, st.evidence(r, name="input[type=password]", value=el.attrs.get("name") or "",
-                                             offset=el.offset))
+            name = el.attrs.get("name") or ""
+            # the group value stays what the evidence match used to give (fp_key unchanged across 1.1 scans)
+            st.emit("WEB052", r, st.evidence(r, name="input[type=password]", value=password_form_text(doc, el),
+                                             offset=el.offset),
+                    group_value=f"input[type=password]={name}")
         st.seen("WEB504", r.host)
         done: set[str] = set()
         for _fi, item in forms:

@@ -47,31 +47,157 @@ _UNREACHABLE = ("unreachable", "10051", "10065", "no route to host")
 TRANSIENT = _TIMEOUT + _RESET + ("temporarily",)
 
 
-def explain_failure(err: str, url: str, timeout: float) -> str:
-    """A clear Arabic explanation of why a site could not be reached (the raw error is kept at the end)."""
-    low = (err or "").lower()
-    try:
-        host = urllib.parse.urlparse(url).hostname or url
-    except ValueError:
-        host = url
-    other = "http://" if url.lower().startswith("https://") else "https://"
+_PROXY_ERR = re.compile(r"(?i)\bthe proxy (?P<proxy>\S+) (?P<what>refused the tunnel|could not be reached|closed the connection)"
+                        r"(?: \(HTTP (?P<status>\d{3})\))?")
+_PROXY_CODES = {"refused the tunnel": "proxy_refused", "could not be reached": "proxy_unreachable",
+                "closed the connection": "proxy_reset"}
+_DEADLINE = re.compile(r"(?i)response deadline exceeded \((?P<secs>\d+(?:\.\d+)?) s\)")
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _iso(text) -> str:
+    from .i18n.bidi import iso
+    return iso(str(text))
+
+
+def _secs(value) -> tuple[str, str]:
+    """(English, Arabic) of a duration in seconds: "20 s" / "20 ثانيةً" (the Arabic noun agrees with the number)."""
+    from .i18n.plural import SECONDS, ar_count, number_text
+    return f"{number_text(value)} s", ar_count(value, SECONDS)
+
+
+def _failure_code(low: str, code: str, proxy: str) -> tuple[str, str, int | None]:
+    """(code, proxy display, proxy status) from the structured facts of ``WebUnreachable`` when given, else read from
+    the error text (``webscan.http.classify_error`` writes the proxy failures as "the proxy P refused the tunnel …")."""
+    m = _PROXY_ERR.search(low)
+    status = int(m.group("status")) if m and m.group("status") else None
+    if m:
+        proxy = proxy or m.group("proxy")
+        if not code or code in ("proxy", "network"):
+            code = _PROXY_CODES[m.group("what").lower()]
+    elif code == "proxy" or (not code and "tunnel connection failed" in low):
+        code = "proxy_refused"
+    if code:
+        return code, proxy, status
+    if "unsupported url" in low:
+        return "unsupported", proxy, status
+    if low.strip() == "invalid url":
+        return "invalid", proxy, status
+    if _DEADLINE.search(low):
+        return "deadline", proxy, status
     if any(w in low for w in _TIMEOUT):
-        why = (f"انتهت مهلة الاتصال بـ {host} بعد {int(timeout)} ثانية في محاولتين. الموقع لم يرد: قد يكون بطيئًا أو متوقفًا، "
-               "أو يحجب الطلبات القادمة من شبكتك أو من خارج بلده (جدار حماية / حجب جغرافي). "
-               f"جرّب: فتح الموقع من المتصفح على الجهاز نفسه، أو من شبكة أخرى (بيانات الجوال)، أو {other}{host}، أو زد المهلة من الإعدادات.")
-    elif any(w in low for w in _DNS):
-        why = f"تعذّر حلّ اسم النطاق {host}: تحقق من كتابة العنوان ومن اتصال الإنترنت أو إعدادات DNS."
-    elif any(w in low for w in _REFUSED):
-        why = f"رفض الخادم {host} الاتصال: المنفذ مغلق أو الخدمة متوقفة. جرّب {other}{host}."
-    elif any(w in low for w in _UNREACHABLE):
-        why = f"لا يوجد مسار شبكي إلى {host}: الشبكة أو الخادم غير قابلين للوصول من جهازك الآن."
-    elif "certificate" in low or "ssl" in low or "tls" in low:
-        why = f"فشل إنشاء اتصال TLS آمن مع {host} (شهادة غير صالحة أو إعداد TLS خاطئ). هذا بحد ذاته مشكلة أمنية تستحق المراجعة."
-    elif any(w in low for w in _RESET):
-        why = f"قطع الخادم {host} الاتصال أثناء الطلب: قد يكون جدار حماية تطبيقات الويب (WAF) يحجب الطلب."
+        return "timeout", proxy, status
+    if any(w in low for w in _DNS):
+        return "dns", proxy, status
+    if any(w in low for w in _REFUSED):
+        return "refused", proxy, status
+    if any(w in low for w in _UNREACHABLE):
+        return "unreachable", proxy, status
+    if "certificate" in low or "ssl" in low or "tls" in low:
+        return "tls", proxy, status
+    if any(w in low for w in _RESET):
+        return "reset", proxy, status
+    return "network", proxy, status
+
+
+def _https_proxy_only(proxies) -> bool:
+    if proxies is None:
+        try:
+            proxies = urllib.request.getproxies()
+        except Exception:   # noqa: BLE001 - an unreadable environment is not worth a crash here
+            return False
+    return bool(proxies.get("https")) and not proxies.get("http")
+
+
+def describe_failure(err: str, url: str, timeout: float, surface: str = "ui", *, code: str = "", proxy: str = "",
+                     proxy_status: int | None = None, use_proxy: bool = True, proxies: dict | None = None) -> dict:
+    """Why ``url`` could not be scanned: ``{"code", "en", "ar", "raw"}``. ``en`` and ``ar`` are the same message
+    (``vulnscan.i18n.to_en(ar) == en``, from the sentences of ``i18n/cat_web.FAILURE``); ``raw`` is the error text.
+
+    ``surface``: "cli" names the command-line options (``--timeout N``, ``--no-proxy``), "ui" the web UI's settings.
+    ``code``, ``proxy``, ``proxy_status``: the facts of :class:`WebUnreachable` (read from ``err`` when not given).
+    Proxy failures are explained first and never suggest the other scheme or a WAF: Kashif did not reach the site.
+    ``use_proxy``/``proxies``: whether the environment's proxies were in use (default ``urllib.request.getproxies()``),
+    for the hint about an http:// address whose name was resolved directly because only HTTPS_PROXY is set."""
+    from .i18n.cat_web import FAILURE
+    raw = str(err or "") or "no response"
+    low = raw.lower()
+    cli = surface == "cli"
+    code, proxy, status = _failure_code(low, str(code or ""), str(proxy or ""))
+    if proxy_status is not None:
+        status = proxy_status
+    try:
+        parts = urllib.parse.urlsplit(url)
+        host = parts.hostname or url
+        scheme = (parts.scheme or "").lower()
+        port = parts.port
+    except ValueError:
+        parts, host, scheme, port = None, url, "", None
+        code = code if code.startswith("proxy") else "invalid"
+    shown_host = f"[{host}]" if ":" in host and parts is not None and parts.hostname else host
+    default_port = port is None or port == _DEFAULT_PORTS.get(scheme)
+    other = "http" if scheme == "https" else "https"
+    alt_url = f"{other}://{shown_host}{parts.path if parts is not None and parts.path not in ('', '/') else ''}"
+    vals_en = {"host": shown_host, "url": url, "proxy": proxy, "port": str(port or ""), "status": str(status or ""),
+               "n": ""}
+    vals_ar = {k: (_iso(v) if k in ("host", "url", "proxy", "port") else v) for k, v in vals_en.items()}
+    keys: list[str] = []
+    fix = "proxy_fix_cli" if cli else "proxy_fix_ui"
+    more = "timeout_cli" if cli else "timeout_ui"
+    if code == "proxy_unreachable":
+        keys = ["proxy_unreachable", fix]
+    elif code == "proxy_refused":
+        keys = ["proxy_refused" if status else "proxy_refused_any", fix]
+    elif code == "proxy_reset":
+        keys = ["proxy_reset_tls" if scheme == "https" else "proxy_reset", fix]
+    elif code == "unsupported":
+        keys = ["unsupported"]
+    elif code == "invalid":
+        keys = ["invalid"]
+    elif code == "deadline":
+        m = _DEADLINE.search(low)
+        vals_en["t1"], vals_ar["t1"] = _secs(float(m.group("secs")) if m else timeout)
+        keys = ["deadline"]
+    elif code == "timeout":
+        t = float(timeout)
+        (vals_en["t1"], vals_ar["t1"]), (vals_en["t2"], vals_ar["t2"]) = _secs(t), _secs(t * 2)
+        from .i18n.plural import number_text
+        vals_en["n"] = vals_ar["n"] = number_text(max(round(t * 2), 20))
+        if proxy:
+            keys = ["timeout", "via_proxy", fix, more]
+        else:
+            alt = ["alt_url"] if default_port else ["alt_port"]
+            keys = ["timeout", "timeout_cause", "timeout_try", *alt, more]
+    elif code == "dns":
+        keys = ["dns"]
+        if scheme == "http" and use_proxy and not proxy and _https_proxy_only(proxies):
+            vals_en["url"], vals_ar["url"] = f"https://{shown_host}", _iso(f"https://{shown_host}")
+            keys.append("dns_https_proxy")
+    elif code == "refused":
+        keys = ["refused", "alt_url" if default_port else "alt_port"]
+    elif code == "unreachable":
+        keys = ["route"]
+    elif code == "tls":
+        keys = ["tls"]
+    elif code in ("bad_response", "too_many_headers", "header_too_large"):
+        keys = ["unreadable"]
+    elif code == "reset":
+        keys = ["reset_proxy", fix] if proxy else ["waf"]
     else:
-        why = f"تعذّر الوصول إلى {host}."
-    return f"لم يُفحص الموقع — {why} (التفاصيل: {err})"
+        keys = ["other"]
+    if "alt_url" in keys:
+        vals_en["url"], vals_ar["url"] = alt_url, _iso(alt_url)
+    why_en = " ".join(FAILURE[k][0].format(**vals_en) for k in keys)
+    why_ar = " ".join(FAILURE[k][1].format(**vals_ar) for k in keys)
+    en = FAILURE["wrap"][0].format(why=why_en, err=raw)
+    ar = FAILURE["wrap"][1].format(why=why_ar, err=_iso(raw))
+    return {"code": code, "en": en, "ar": ar, "raw": raw}
+
+
+def explain_failure(err: str, url: str, timeout: float, surface: str = "ui", **kw) -> str:
+    """A clear Arabic explanation of why a site could not be reached (the raw error is kept at the end); its English
+    is ``vulnscan.i18n.to_en`` of it. See :func:`describe_failure` for ``surface`` and the keyword arguments."""
+    return describe_failure(err, url, timeout, surface, **kw)["ar"]
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -119,11 +245,21 @@ def options_for(*, timeout: float = DEFAULT_TIMEOUT, deep: bool = False, crawl: 
 
 
 def scan_web(url: str, *, previous: dict | None = None, scan_id: str = "", progress=None,
-             options: ScanOptions | None = None, **kw) -> WebScanResult:
+             options: ScanOptions | None = None, fetcher=None, **kw) -> WebScanResult:
     """The full 1.1.0 result (findings, grades, coverage, inventory, notes, snapshot, diff). ``kw`` are the
-    arguments of :func:`options_for` (ignored when ``options`` is given). Raises :class:`WebUnreachable`."""
+    arguments of :func:`options_for` (ignored when ``options`` is given). ``fetcher``: one made by
+    :func:`open_fetcher` for this URL and options, so the caller can show its request count while the scan runs (the
+    caller closes it). Raises :class:`WebUnreachable`."""
     opts = options or options_for(**kw)
-    return _engine.scan(url, opts, previous=previous, scan_id=scan_id, progress=progress)
+    return _engine.scan(url, opts, previous=previous, scan_id=scan_id, progress=progress, fetcher=fetcher)
+
+
+def open_fetcher(url: str, options: ScanOptions):
+    """The scan's network gateway (``webscan.http.Fetcher``) for ``url``, made the way :func:`scan_web` makes it; pass
+    it as ``scan_web(fetcher=...)`` and close it afterwards. Raises :class:`WebUnreachable` for a URL that cannot be
+    scanned."""
+    from .webscan import http as _http
+    return _http.Fetcher(options, _engine._validate_target(url, options.timeout))
 
 
 def scan_url(url: str, timeout: float = DEFAULT_TIMEOUT, deep: bool = False, **kw) -> tuple[list[Finding], str | None]:

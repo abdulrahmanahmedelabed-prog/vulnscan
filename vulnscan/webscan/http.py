@@ -152,7 +152,7 @@ EVENTS: dict[str, tuple[str, str]] = {
                       "on it.",
                       "استخدم {url} ترميز المحتوى {coding} الذي لا يطلبه كاشف؛ فلم تُجرَ فحوص المحتوى عليه."),
     "budget": ("The request budget of this profile ({limit}) was reached; the remaining checks were not tested.",
-               "بلغ الفحص حدّ عدد الطلبات لهذا الملف ({limit})؛ فلم تُجرَ الفحوص المتبقية."),
+               "بلغ الفحص حدّ عدد الطلبات لنمط الفحص هذا ({limit})؛ فلم تُجرَ الفحوص المتبقية."),
     "time_budget": ("The scan's time budget ({limit} s) was reached; the result is partial.",
                     "بلغ الفحص حدّ الوقت المسموح ({limit} ث)؛ فالنتيجة جزئية."),
     "byte_budget": ("The scan's download budget ({limit} bytes) was reached; the result is partial.",
@@ -215,7 +215,7 @@ def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
     patterns: list[tuple[str, str]] = []
     for en, ar in EVENTS.values():
         patterns += template_patterns(ar, en)
-    return {}, patterns
+    return {ar: en for en, ar in VERIFY_TEXT.values()}, patterns
 
 
 # ----------------------------------------------------------------------------------------------- addresses

@@ -1033,3 +1033,41 @@ def test_identical_random_iv_payloads_stay_certain(make_page, make_response, mak
     ctx.cookies = [_session_fact(page.response, "laravel_session", value), _session_fact(cors, "laravel_session", value)]
     assert [(i.severity, i.confidence) for i in _rules(_run(ctx), "WEB315")] == [("high", "certain")]
     assert headers._payload_keys("eyJ" + "A" * 20000) == set()          # bounded, never raises
+
+
+# ----------------------------------------------------------------------------------------------- 1.1.0 accuracy round
+
+@pytest.mark.parametrize("sts, expect", [
+    (None, "missing"), ("max-age=63072000; includeSubDomains", "ok"), ("max-age=600", "short-max-age"),
+    ("max-age=0", "disabled"), ("max-age=abc", "invalid"),
+])
+def test_inventory_has_hsts_csp_and_cache_control_rows(make_page, make_ctx, sts, expect):
+    hdrs = [("Content-Security-Policy-Report-Only", "default-src 'self'")] + ([("Strict-Transport-Security", sts)]
+                                                                              if sts else [])
+    ctx = make_ctx(entry=_doc(make_page, headers_=hdrs))
+    _run(ctx)
+    rows = ctx.inventory["security_headers"][0]["headers"]
+    assert rows["Strict-Transport-Security"]["verdict"] == expect
+    assert rows["Content-Security-Policy"]["verdict"] == "report-only"
+    assert rows["Cache-Control"] == {"value": None, "verdict": "missing"}
+    assert expect in headers.HSTS_VERDICTS
+
+
+def test_inventory_hsts_over_http_and_csp_enforced(make_page, make_ctx):
+    page = _doc(make_page, url="http://example.test/", headers_=[("Strict-Transport-Security", "max-age=63072000"),
+                                                                 ("Content-Security-Policy", "default-src 'self'"),
+                                                                 ("Cache-Control", "no-store")])
+    ctx = make_ctx(target="http://example.test/", entry=page)
+    _run(ctx)
+    rows = ctx.inventory["security_headers"][0]["headers"]
+    assert rows["Strict-Transport-Security"]["verdict"] == "ignored-on-http"
+    assert rows["Content-Security-Policy"]["verdict"] == "enforced"
+    assert rows["Cache-Control"] == {"value": "no-store", "verdict": "present"}
+
+
+def test_web315_arabic_note_orders_the_two_urls():
+    from vulnscan.webscan.types import iso
+    en, ar = headers._note("cache_same_session", cookie="sid", first=headers._url_pair("https://a.test/x"),
+                           second=headers._url_pair("https://a.test/y"))
+    assert "(https://a.test/x and https://a.test/y)" in en
+    assert f"({iso('https://a.test/x')}، ثم {iso('https://a.test/y')})" in ar

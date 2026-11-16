@@ -242,6 +242,25 @@ def eol_verdict(product: dict, version: str, today: date) -> tuple[str, str, str
     return "ok", str(cyc["cycle"]), ""
 
 
+def supported_release(product: dict, version: str, today: date) -> str:
+    """The oldest still-supported release newer than ``version``'s branch (its latest patch when known, else the cycle
+    name); "" when the data names none. Used when the branch itself is end of life: its last patch is no fix."""
+    vk = version_key(version)
+    best: dict | None = None
+    for c in product.get("cycles", []):
+        cyc = str(c.get("cycle", ""))
+        if not numeric_parts(cyc) or _eol_past(c.get("eol"), today)[0]:
+            continue
+        if version_key(cyc) <= vk and find_cycle({"cycles": [c]}, version) is None:
+            continue
+        if best is None or version_key(cyc) < version_key(str(best["cycle"])):
+            best = c
+    if best is None:
+        return ""
+    latest = str(best.get("latest") or "")
+    return latest if re.match(r"^\d+(\.\d+)+$", latest) else str(best["cycle"])
+
+
 def _eol_past(value: Any, today: date) -> tuple[bool, str]:
     if value is True:
         return True, ""
@@ -963,11 +982,18 @@ class _Run:
         self.failed: set[str] = set()
         self.evaluated: set[str] = set()
         self.today = ctx.now.date()
+        # check → coverage reason when a check matched only below the sensitivity, or was skipped for a build
+        self.inconclusive: dict[str, str] = {}
+        self.not_tested: dict[str, str] = {}
 
-    def emit(self, issue: Issue) -> None:
+    def emit(self, issue: Issue, hidden_reason: str = "sensitivity") -> None:
         self.issues.append(issue)
+        check = RULES[issue.rule].check_id
         if self.ctx.options.reports(issue.confidence):
-            self.failed.add(RULES[issue.rule].check_id)
+            self.failed.add(check)
+        else:
+            # a possible match the sensitivity hides is not a pass: it was not ruled out (§3.8)
+            self.inconclusive.setdefault(check, hidden_reason)
 
 
 def _platform_issues(st: _Run, found: dict[str, Detected], eol_data: dict | None) -> None:
@@ -1071,18 +1097,39 @@ def _server_issues(st: _Run, cve_data: dict | None, eol_data: dict | None) -> No
                 fixed = _fixed_version(b, matches) or "the latest release"
                 params = {"product": b.display, "version": b.version, "fixed": fixed,
                           "cves": [c["id"] for c, _r in ordered][:50]}
+                # an end-of-life branch (the data WEB801 uses): its last patch closes these CVEs but is itself
+                # unsupported, so the advice points to a supported release
+                eol_product = eols.get(b.product)
+                verdict = eol_verdict(eol_product, b.base, st.today) if eol_product and b.base else None
+                supported = supported_release(eol_product, b.base, st.today) if verdict and verdict[0] == "eol" else ""
                 if tentative:
                     params["variant"] = "tentative"
+                    if supported:
+                        params["fixed"] = supported
+                elif supported:
+                    params["supported"] = supported
+                    # "{fixed} only closes these CVEs" is true only when the dead branch has a patch for every one
+                    branch = numeric_parts(b.base)[:2]
+                    closes_all = bool(matches) and all(numeric_parts(str(r.get("below")))[:2] == branch
+                                                       for _c, r in matches)
+                    if "eol" in RULES["WEB800"].variants and closes_all and fixed != "the latest release":
+                        params["variant"] = "eol"
+                    else:
+                        params["fixed"] = supported
                 st.emit(Issue(rule="WEB800", url=b.response.url, confidence="tentative" if tentative else "firm",
                               evidence=ev, params=params, severity=sev if sev in RULES["WEB800"].allowed_severities else
-                              "medium", group_value=f"{b.product}@{b.version}", notes=notes, host=b.response.host))
+                              "medium", group_value=f"{b.product}@{b.version}", notes=notes, host=b.response.host),
+                        hidden_reason="distro_backport" if b.distro else "sensitivity")
         # WEB801
         product = eols.get(b.product)
         if product and key not in seen801 and (b.base or b.product == "centos"):
             seen801.add(key)
             st.evaluated.add("WEB801")
             if b.distro and b.product != "centos":
-                continue                 # the distribution supports its own build (backports): not upstream EOL
+                # the distribution supports its own build (backports): upstream EOL says nothing, and nothing was
+                # checked either (never a pass)
+                st.not_tested.setdefault("WEB801", "distro_support")
+                continue
             if b.product == "centos":
                 if b.version:
                     verdict = eol_verdict(product, b.version, st.today)
@@ -1148,12 +1195,17 @@ def run(ctx: ScanContext) -> list[Issue]:
         for c in CHECKS:
             if missing.get(c):
                 cov.not_tested(c, "data_missing", host=host)
-            elif c in st.failed:
+                continue
+            if c in st.failed:
                 cov.failed(c, host)
             elif c == "WEB802" and not ctx.pages:
                 cov.not_tested(c, "no_document", host=host)
-            else:
+            elif c not in st.inconclusive and c not in st.not_tested:
                 cov.passed(c, host)
+            if c in st.inconclusive:
+                cov.inconclusive(c, st.inconclusive[c], host=host)
+            if c in st.not_tested:
+                cov.not_tested(c, st.not_tested[c], host=host)
     return st.issues
 
 
@@ -1171,5 +1223,5 @@ def i18n_catalog() -> tuple[dict[str, str], list[tuple[str, str]]]:
 
 
 __all__ = ["CHECKS", "run", "detect", "load_db", "build_db", "banners", "parse_banner", "cve_matches", "eol_verdict",
-           "find_cycle", "version_key", "numeric_parts", "plugin_elements", "own_responses", "Detected", "TechDB",
+           "find_cycle", "supported_release", "version_key", "numeric_parts", "plugin_elements", "own_responses", "Detected", "TechDB",
            "Banner", "PLATFORM_CATEGORIES", "STR", "i18n_catalog"]

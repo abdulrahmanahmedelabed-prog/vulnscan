@@ -726,7 +726,7 @@ _s("S-ERR",
        _b("iis", '<httpErrors errorMode="DetailedLocalOnly" />', "xml",
          ("Inside <system.webServer> of web.config: detailed errors only on the server itself.",
           "داخل <system.webServer> في ملف web.config: الأخطاء التفصيلية على الخادم نفسه فقط.")),
-       _b("express", "NODE_ENV=production", "shell",
+       _b("express", "NODE_ENV=production", "shell", label=("Express", "Express"), note=
          ("Set it in the service environment (systemd Environment=, docker run -e, your host's settings): Express then "
           "stops sending stack traces; log errors in your own error handler.",
           "اضبطه في بيئة الخدمة (Environment= في systemd أو docker run -e أو إعدادات الاستضافة)، فيتوقف Express عن إرسال "
@@ -752,7 +752,7 @@ ssl_protocols TLSv1.2 TLSv1.3;
 ssl_ciphers {_TLS_CIPHERS};
 ssl_prefer_server_ciphers off;
 ssl_ecdh_curve X25519:prime256v1:secp384r1;
-# with OpenSSL >= 3.5, add the post-quantum hybrid group instead:
+# with OpenSSL >= 3.5, use this line instead (it adds the post-quantum hybrid group):
 # ssl_ecdh_curve X25519MLKEM768:X25519:prime256v1:secp384r1;
 ssl_session_tickets off;
 ssl_stapling on; ssl_stapling_verify on;                     # only if the certificate has an OCSP URL""", "nginx",

@@ -1109,3 +1109,19 @@ def test_review_web517_dns_filter_on_a_tracker_means_untrusted_resolver(hooked):
                         dns("static.hotjar.com"), dns("cdn.gone-domain.com", "nxdomain", "nxdomain")])
     assert not [i for i in run(ctx) if i.rule == "WEB517"]
     assert ctx.coverage.state("WEB517").reasons[0][0] == "resolver"
+
+
+# ============================================================================================ 1.1.0 accuracy round
+
+def test_web052_evidence_names_where_the_password_goes_and_keeps_its_group():
+    from vulnscan.webscan import group
+    html = page('<form method="post" action="/login"><input type="password" name="p"></form>')
+    ctx = ctx_for(html, url="http://www.example.com/")
+    (i,) = rules(run(ctx))["WEB052"]
+    assert i.evidence.match["value"] == "<input type=password name=p> in form → http://www.example.com/login"
+    assert i.group_value == "input[type=password]=p"           # what the evidence match gave before: same fp_key
+    (g,) = group.group_issues([i], ctx)
+    assert g.fp_key.endswith("|input[type=password]=p")
+    lone = page('<input type="password">')
+    (i,) = rules(run(ctx_for(lone, url="http://www.example.com/")))["WEB052"]
+    assert i.evidence.match["value"] == "<input type=password> (no form)"

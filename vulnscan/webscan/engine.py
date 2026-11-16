@@ -77,7 +77,7 @@ _PLATFORM_RULES = frozenset({"WEB080", "WEB081"})
 # bilingual texts of the engine (scan notes, WEB990/WEB991 notes); ``{x}`` placeholders, counts via _count()
 STR: dict[str, tuple[str, str]] = {
     "profile": ("Passive web scan, profile {profile}: {requests} sent, no active test.",
-                "فحص ويب سلبي بالملف {profile}: أُرسل {requests}، بلا أي اختبار نشط."),
+                "فحص ويب سلبي بنمط الفحص {profile}: أُرسل {requests}، بلا أي اختبار نشط."),
     "crawl": ("Crawled {pages} of the same site ({delay} or more between requests to a host).",
               "زحف الفحص على {pages} من الموقع نفسه (بفاصل {delay} على الأقل بين الطلبات إلى المضيف الواحد)."),
     "crawl_failed": ("{pages} could not be fetched during the crawl and were not checked: {paths}",

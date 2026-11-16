@@ -74,8 +74,8 @@ def test_bidi_html_keeps_each_grade_in_its_own_left_to_right_run():
     ar = report._Lang("ar")
     got = report._bidi_html(ar, GRADES_AR)
     runs = re.findall(r"<bdi dir='ltr'>(.*?)</bdi>", got)
-    assert runs == ["F*", "Observatory 0", "F", "SSL Labs A+"]         # "F*" and "A+" whole, never "+A"
-    assert "(<bdi dir='ltr'>F</bdi>)" in got                           # the brackets follow the Arabic sentence
+    # the shared rule of vulnscan/i18n/bidi.py: "F*" and "A+" whole (never "+A"); a balanced "(F)" stays in its run
+    assert runs == ["F*", "Observatory 0 (F)", "SSL Labs A+"]
     assert re.findall(r"<bdi dir='ltr'>(.*?)</bdi>", report._bidi_html(ar, "درجة كاشف للويب (من A+ إلى F): ست")) \
         == ["A+", "F"]
     assert report._bidi_html(ar, "عدد 2024 فقط") == "عدد 2024 فقط"     # a plain number needs no isolate
@@ -87,7 +87,8 @@ def test_bidi_html_keeps_each_grade_in_its_own_left_to_right_run():
 def test_arabic_html_report_isolates_notes_grade_texts_and_tab_names(lang):
     web = _web()
     html = report.render_html([], "http://127.0.0.1:1/", 1, [GRADES_AR], lang=lang, web=web)
-    assert "<li>الدرجات: كاشف <bdi dir='ltr'>F*</bdi> · <bdi dir='ltr'>Observatory 0</bdi>" in html
+    # the "Grades: …" scan note is not repeated under the grade cards (report.py _note_shown_elsewhere)
+    assert "<li>الدرجات:" not in html and "<span class='letter g-n' dir='ltr'>?</span>" in html
     assert "(من <bdi dir='ltr'>A+</bdi> إلى <bdi dir='ltr'>F</bdi>)" in html           # grade label
     assert "<li>تتطلب الدرجة <bdi dir='ltr'>A+</bdi> أيضًا" in html                   # grade caps
     assert "><bdi dir='auto'>ترويسات الأمان</bdi></label>" in html                     # tab names
@@ -96,8 +97,11 @@ def test_arabic_html_report_isolates_notes_grade_texts_and_tab_names(lang):
 def test_english_html_report_has_no_isolates_in_notes():
     web = _web()
     note = web["notes"][0]["en"]
-    html = report.render_html([], "http://127.0.0.1:1/", 1, [GRADES_AR], lang="en", web=web)
-    assert f"<li>{note}</li>" in html
+    web["notes"].append({"en": "Scanning through a proxy: TLS is seen through the proxy.",
+                         "ar": "يمر الفحص عبر وكيل (proxy): يُرى TLS عبر الوكيل."})
+    html = report.render_html([], "http://127.0.0.1:1/", 1, [GRADES_AR, web["notes"][1]["ar"]], lang="en", web=web)
+    assert note not in html                                           # shown by the grade cards instead
+    assert f"<li>{web['notes'][1]['en']}</li>" in html
 
 
 def test_budget_note_does_not_put_the_request_count_beside_the_profile_label():
@@ -125,8 +129,9 @@ def test_html_report_tables_scroll_inside_their_box():
 
 def test_ui_web_tables_keep_short_words_whole():
     assert re.search(r"\.web-table th,\.web-table td\{min-width:[\d.]+em\}", CSS)
-    assert ".cov-table td:nth-child(2){white-space:nowrap}" in CSS
-    assert "'cov-table')" in JS
+    # the coverage table: check IDs never wrap (nowrap <code dir=ltr>), rows grouped by state
+    assert ".cov-table .cid code{white-space:nowrap}" in CSS
+    assert 'class="web-table cov-table"' in JS and '<td class="cid"><code dir="ltr">' in JS
 
 
 @pytest.mark.parametrize("lang", ["ar", "en"])
@@ -146,8 +151,8 @@ def test_inventory_tokens_are_arabic_in_arabic_and_unchanged_in_english():
     assert [r[1] for r in ar["third_parties"][1]] == ["سكربت", "ملف أنماط"]
     assert [r[1] for r in en["third_parties"][1]] == ["script", "style"]
     assert ar["technologies"][1][0][2] == "خادم ويب" and en["technologies"][1][0][2] == "web-server"
-    # the server software row names where the banner was seen (it said "server" for every row)
-    assert en["technologies"][1][1][2] == "X-Powered-By"
+    # the server software row names where the banner was seen, in the "Seen in" column
+    assert en["technologies"][0][3] == "Seen in" and en["technologies"][1][1][3] == "X-Powered-By"
 
 
 def test_grade_cards_say_why_there_is_no_grade():
@@ -177,19 +182,20 @@ process.stdout.write(JSON.stringify([%s].map((s) => bidi(s))));
     res = subprocess.run([NODE, "-"], input=script, capture_output=True, text=True, encoding="utf-8", timeout=60)
     assert res.returncode == 0, res.stderr
     runs = [re.findall(r'<bdi dir="ltr">(.*?)</bdi>', h) for h in json.loads(res.stdout)]
-    assert runs == [["F*", "Observatory 0", "F", "SSL Labs A+"], ["A+", "F"], ["C++"]]
+    # the one shared run rule (vulnscan/i18n/bidi.py): brackets stay in the run, "+" and "*" stay with the grade
+    assert runs == [["F*", "Observatory 0 (F)", "SSL Labs A+"], ["A+", "F"], ["C++"]]
 
 
 def test_ui_panel_isolates_engine_text_and_tab_names():
     sec = JS[JS.index("/* ------------------------------------------------------- web scan (1.1.0) */"):
              JS.index("/* -------------------------------------------------------------- triage */")]
-    for needle in ("bidi(g.label)", "bidi(c)", "bidi(n)", "strList(g.notes)", "bidi(g)}</bdi>", "bidi(sn.summary)",
+    for needle in ("bidi(g.label)", "bidi(c)", "bidi(n)", "strList(g.notes)", "<span>${bidi(g)}</span>", "bidi(sn.summary)",
                    "bidi(sn.caveat)", "bidi(b.note)",
-                   '<bdi dir="auto">${esc(tb.label)}</bdi>'):
+                   '<bdi dir="${dirOf(tb.label)}">${esc(tb.label)}</bdi>'):
         assert needle in sec, needle
     # .snip h3 and .caveat are flex boxes: the isolates of bidi() must sit in one span, or every word becomes a flex
     # item on one line (an Arabic page at 360 px scrolled sideways to 819 px)
-    assert "<span>${bidi(sn.title)}</span></h3>" in sec
+    assert "<span>${bidi(sn.title)}</span></summary>" in sec
     assert "<span><b>${esc(t('web.caution'))}:</b> ${bidi(sn.caveat)}</span></p>" in sec
 
 

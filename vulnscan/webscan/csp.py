@@ -56,6 +56,7 @@ from .types import (
     ParsedHTML,
     Response,
     ScanContext,
+    iso,
     strip_controls,
     url_origin,
 )
@@ -216,7 +217,7 @@ STR: dict[str, tuple[str, str]] = {
     "uir_mitigates": ("upgrade-insecure-requests upgrades these requests to HTTPS, which limits the risk.",
                       "التوجيه upgrade-insecure-requests يرقّي هذه الطلبات إلى HTTPS، مما يحدّ من الخطر."),
     "static_nonce": ("The nonce {nonce} appeared in two separate responses ({first} and {second}).",
-                     "ظهرت قيمة nonce نفسها {nonce} في استجابتين منفصلتين ({first} و{second})."),
+                     "ظهرت قيمة nonce نفسها {nonce} في استجابتين منفصلتين ({first}، ثم {second})."),
     "cached_nonce": ("The page carries a nonce and shared caches may store it ({cache}), so many users get the same "
                      "nonce.",
                      "الصفحة تحمل nonce ويمكن للذاكرات المؤقتة المشتركة تخزينها ({cache})، فيحصل مستخدمون كثيرون على nonce نفسه."),
@@ -1957,8 +1958,10 @@ def _static_nonces(st: _Run, docs) -> None:
             ft = fa if target is a else fb
             pol = next((p for p in ft.enforced if shared[0] in valid_nonces(p)), ft.enforced[0] if ft.enforced else None)
             st.emit("WEB212", target, _ev(ctx, target, pol, doc=st.doc_of(target)),
-                    notes=[_note("static_nonce", nonce=nonce, first=_short(target.url, 100),
-                                 second=_short(other.url, 100) + f" ({other.source})")], group_value="static")
+                    notes=[_note("static_nonce", nonce=(nonce, iso(nonce)), first=(_short(target.url, 100),
+                                                                                  iso(_short(target.url, 100))),
+                                 second=(_short(other.url, 100) + f" ({other.source})",
+                                         iso(_short(other.url, 100)) + f" ({other.source})"))], group_value="static")
 
 
 def _inventory_entry(r: Response, facts: CspFacts, bypass: BypassData | None = None) -> dict:

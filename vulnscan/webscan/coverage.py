@@ -25,7 +25,7 @@ PRECEDENCE = {"fail": 4, "inconclusive": 3, "not_tested": 2, "pass": 1, "not_app
 # another check's result or from passive scanning by design never trigger WEB991 (it lists limitations of this run)
 REASONS: dict[str, tuple[str, str, bool]] = {
     "not_run": ("the check did not run", "لم يُجرَ هذا الفحص", False),
-    "profile": ("not part of the selected scan profile", "ليس ضمن ملف الفحص المختار", True),
+    "profile": ("not part of the selected scan profile", "ليس ضمن نمط الفحص المختار", True),
     "deep_off": ("deep mode off", "الوضع العميق غير مفعّل", True),
     "crawl_off": ("crawling off", "الزحف غير مفعّل", True),
     "sensitivity": ("shown only at paranoid sensitivity", "يظهر فقط بحساسية paranoid", True),

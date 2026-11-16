@@ -119,7 +119,7 @@ html[lang="ar"] body{font-family:var(--font-ar);line-height:1.8}
 a{color:var(--accent-ink)}
 a:hover{text-decoration-thickness:2px}
 img{max-width:100%}
-code,pre,.mono{font-family:var(--mono)}
+code,pre,.mono,.term{font-family:var(--mono);font-feature-settings:"calt" 0}
 .wrap{max-width:var(--wrap);margin:0 auto;padding:0 24px}
 .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
@@ -327,6 +327,7 @@ p code,.note code,.faq code,.honest li code{font-size:.88em;background:var(--chi
 .more{display:inline-flex;align-items:center;gap:6px;margin-top:16px;font-weight:600;font-size:14.5px;color:var(--accent-ink);text-decoration:none}
 .more:hover{text-decoration:underline;text-underline-offset:3px}
 .more .ic{width:16px;height:16px}
+.mores{display:flex;flex-wrap:wrap;column-gap:22px}
 
 /* accuracy */
 .acc{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr);gap:20px;align-items:start}
@@ -686,7 +687,8 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></div><h3 data-i18n="f5.h">Secrets, now and in git history</h3><p data-i18n="f5.p">Provider-specific patterns for cloud, payment and messaging keys, plus entropy analysis that catches keys with no known format. kashif history finds every secret ever committed, even if a later commit deleted it.</p></div>
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-pkg"/></svg></div><h3 data-i18n="f6.h">Dependencies with reachability</h3><p data-i18n="f6.p">Reads 23 manifest and lockfile types, looks up known vulnerabilities in OSV.dev, and tells you whether your code imports the package and calls the vulnerable function. The lookup is optional and the only network call a code scan makes.</p></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-archive"/></svg></div><h3 data-i18n="f7.h">Archives, APK and JAR</h3><p data-i18n="f7.p">Scan a zip, tar.gz, APK, JAR, AAR or DEX directly. With jadx installed, Android and Java bytecode is decompiled and analyzed.</p></div>
-      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></div><h3 data-i18n="f8.h">Passive web checks</h3><p data-i18n="f8.p">184 read-only checks of redirects and HSTS, CSP, headers, CORS, cookies, page content, TLS and certificates, libraries and exposed files, with Kashif and MDN Observatory grades and a coverage table that never shows an untested check as passed.</p></div>
+      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></div><h3 data-i18n="f8.h">Passive web checks</h3><p data-i18n="f8.p">184 read-only checks of redirects and HSTS, CSP, headers, CORS, cookies, page content, TLS and certificates, libraries and exposed files, with Kashif and MDN Observatory grades and a coverage table that never shows an untested check as passed.</p>
+        <a class="more" href="web-checks.html?lang=en" data-i18n-attr="href:f8.href"><span data-i18n="f8.more">All 184 checks and their fixes</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-query"/></svg></div><h3 data-i18n="f9.h">Your own rules</h3><p data-i18n="f9.p">Write checks in VQL, a declarative from/where/select language over the program database in the style of CodeQL, then test, pack and share them with kashif rules.</p></div>
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></div><h3 data-i18n="f10.h">Verified autofix</h3><p data-i18n="f10.p">Deterministic fixes for 39 rules, from parameterized SQL to yaml.safe_load. A fix is offered only after the patched file parses and the rule no longer matches; review the diff, or apply it with --fix.</p></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></div><h3 data-i18n="f11.h">Triage, policy and compliance</h3><p data-i18n="f11.p">Triage decisions kept in the repository, a kashif.yml policy gate, mapping to 10 frameworks (OWASP, ASVS, CWE Top 25, PCI DSS, NIST, ISO 27001…) with an auditor report, and an attack-surface map.</p></div>
@@ -709,7 +711,8 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
     <div class="grid">
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg></div><h3 data-i18n="cov1.h">Oracle APEX and ORDS</h3><p data-i18n="cov1.p">Analyzes APEX application exports, plug-ins and PL/SQL packages for SQL injection, substitution strings, XSS and AI-assistant prompt injection, and points to the page and component.</p></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-archive"/></svg></div><h3 data-i18n="cov2.h">Android APK and JAR via jadx</h3><p data-i18n="cov2.p">Unpacks APK, JAR, AAR and DEX files and runs dataflow analysis on the decompiled code. Third-party libraries are excluded by default.</p></div>
-      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></div><h3 data-i18n="cov3.h">Passive web scan</h3><p data-i18n-html="cov3.p">Plain GET requests to a site you are authorized to test, within a stated budget (<code>minimal</code>: the page and its redirects, <code>standard</code>: up to 45, <code>deep</code>: up to 150), at least 0.2 s apart: no payloads, no form submission, no brute forcing. Requires <code>--authorized</code>.</p></div>
+      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></div><h3 data-i18n="cov3.h">Passive web scan</h3><p data-i18n-html="cov3.p">Plain GET requests to a site you are authorized to test, within a stated budget (<code>minimal</code>: the page and its redirects, <code>standard</code>: up to 45, <code>deep</code>: up to 150), at least 0.2 s apart: no payloads, no form submission, no brute forcing. Requires <code>--authorized</code>.</p>
+        <div class="mores"><a class="more" href="web-scanning.html?lang=en" data-i18n-attr="href:cov3.href"><span data-i18n="cov3.more">Web scanning guide</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a><a class="more" href="scanner.html" data-i18n-attr="href:cov3.sends.href"><span data-i18n="cov3.sends">What Kashif sends</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a></div></div>
     </div>
   </div>
 </section>
@@ -839,6 +842,7 @@ kashif . --baseline .vulnscan-baseline.json --fail-on high</div></div>
           <li data-i18n="lim.2">Far fewer library models than the established tools, and less tuning on large real-world codebases.</li>
           <li data-i18n="lim.3">Not yet modeled: templates other than Jinja (EJS, ERB) and values passed between PHP files through include.</li>
           <li data-i18n="lim.4">Without jadx, APK and JAR contents are scanned as text only.</li>
+          <li data-i18n="lim.5">A passive web scan sees anonymous pages only and does not test injection, XSS, authentication, access control or business logic; its grade measures configuration hygiene, not the absence of vulnerabilities.</li>
         </ul>
       </div>
     </div>
@@ -1091,7 +1095,7 @@ en: {
   "f5.h":"Secrets, now and in git history","f5.p":"Provider-specific patterns for cloud, payment and messaging keys, plus entropy analysis that catches keys with no known format. kashif history finds every secret ever committed, even if a later commit deleted it.",
   "f6.h":"Dependencies with reachability","f6.p":"Reads 23 manifest and lockfile types, looks up known vulnerabilities in OSV.dev, and tells you whether your code imports the package and calls the vulnerable function. The lookup is optional and the only network call a code scan makes.",
   "f7.h":"Archives, APK and JAR","f7.p":"Scan a zip, tar.gz, APK, JAR, AAR or DEX directly. With jadx installed, Android and Java bytecode is decompiled and analyzed.",
-  "f8.h":"Passive web checks","f8.p":"184 read-only checks of redirects and HSTS, CSP, headers, CORS, cookies, page content, TLS and certificates, libraries and exposed files, with Kashif and MDN Observatory grades and a coverage table that never shows an untested check as passed.",
+  "f8.h":"Passive web checks","f8.p":"184 read-only checks of redirects and HSTS, CSP, headers, CORS, cookies, page content, TLS and certificates, libraries and exposed files, with Kashif and MDN Observatory grades and a coverage table that never shows an untested check as passed.","f8.more":"All 184 checks and their fixes","f8.href":"web-checks.html?lang=en",
   "f9.h":"Your own rules","f9.p":"Write checks in VQL, a declarative from/where/select language over the program database in the style of CodeQL, then test, pack and share them with kashif rules.",
   "f10.h":"Verified autofix","f10.p":"Deterministic fixes for 39 rules, from parameterized SQL to yaml.safe_load. A fix is offered only after the patched file parses and the rule no longer matches; review the diff, or apply it with --fix.",
   "f11.h":"Triage, policy and compliance","f11.p":"Triage decisions kept in the repository, a kashif.yml policy gate, mapping to 10 frameworks (OWASP, ASVS, CWE Top 25, PCI DSS, NIST, ISO 27001…) with an auditor report, and an attack-surface map.",
@@ -1100,7 +1104,7 @@ en: {
   "lang.sub":"The same taint engine runs on every language below, alongside pattern rules for configuration, containers and CI files.",
   "cov1.h":"Oracle APEX and ORDS","cov1.p":"Analyzes APEX application exports, plug-ins and PL/SQL packages for SQL injection, substitution strings, XSS and AI-assistant prompt injection, and points to the page and component.",
   "cov2.h":"Android APK and JAR via jadx","cov2.p":"Unpacks APK, JAR, AAR and DEX files and runs dataflow analysis on the decompiled code. Third-party libraries are excluded by default.",
-  "cov3.h":"Passive web scan","cov3.p":"Plain GET requests to a site you are authorized to test, within a stated budget (<code>minimal</code>: the page and its redirects, <code>standard</code>: up to 45, <code>deep</code>: up to 150), at least 0.2 s apart: no payloads, no form submission, no brute forcing. Requires <code>--authorized</code>.",
+  "cov3.h":"Passive web scan","cov3.p":"Plain GET requests to a site you are authorized to test, within a stated budget (<code>minimal</code>: the page and its redirects, <code>standard</code>: up to 45, <code>deep</code>: up to 150), at least 0.2 s apart: no payloads, no form submission, no brute forcing. Requires <code>--authorized</code>.","cov3.more":"Web scanning guide","cov3.href":"web-scanning.html?lang=en","cov3.sends":"What Kashif sends","cov3.sends.href":"scanner.html",
   "int.eyebrow":"CI/CD and SARIF","int.h2":"Fits the pipeline you already have.",
   "int.sub":"Upload SARIF to GitHub Code Scanning and findings appear in the Security tab and inline on pull requests, with severity, CWE and the data-flow path.",
   "copy":"Copy","copied":"Copied","int.yaml":"GitHub Actions workflow","copied.sr":"Copied to clipboard",
@@ -1138,7 +1142,7 @@ en: {
   "cmp.r12":"Price","cmp.r12.us":"Free (MIT)","cmp.freepaid":"Free tier + paid","cmp.oss":"Free for public repos","cmp.free":"Free",
   "cmp.they.h":"Where the established tools lead","cmp.they.p":"Semgrep, SonarQube, Snyk Code and CodeQL have far more rules and library models, IDE and pull-request integrations, and years of tuning on real codebases. If you already run them, keep them.",
   "cmp.we.h":"Where Kashif fits","cmp.we.p":"Fully local with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard.",
-  "lim.h":"Known limitations","lim.1":"Static analysis does not replace human review or penetration testing.","lim.2":"Far fewer library models than the established tools, and less tuning on large real-world codebases.","lim.3":"Not yet modeled: templates other than Jinja (EJS, ERB) and values passed between PHP files through include.","lim.4":"Without jadx, APK and JAR contents are scanned as text only.",
+  "lim.h":"Known limitations","lim.1":"Static analysis does not replace human review or penetration testing.","lim.2":"Far fewer library models than the established tools, and less tuning on large real-world codebases.","lim.3":"Not yet modeled: templates other than Jinja (EJS, ERB) and values passed between PHP files through include.","lim.4":"Without jadx, APK and JAR contents are scanned as text only.","lim.5":"A passive web scan sees anonymous pages only and does not test injection, XSS, authentication, access control or business logic; its grade measures configuration hygiene, not the absence of vulnerabilities.",
   "sec.eyebrow":"Security and supply chain","sec.h2":"Verify every byte you run.",
   "sec.sub":"A security tool should meet the bar it sets. Every release is built in GitHub Actions and ships with the evidence you need to check it.",
   "sec.slsa.h":"SLSA build provenance","sec.slsa.p":"Signed attestations prove each binary was built from this repository by its release workflow.",
@@ -1198,7 +1202,7 @@ ar: {
   "shot.trace.cap":"كل نتيجة من تحليل التدفق تعرض المسار من المصدر إلى نقطة الخطر خطوةً خطوة، مع الكود في كل مرحلة.",
   "shot.findings.cap":"نتائج مرتّبة من الحرجة إلى المعلوماتية، مع القاعدة وCWE والموقع وتوصية الإصلاح. صفِّ وابحث وأخفِ ما راجعته.",
   "shot.dashboard.cap":"إجمالي النتائج حسب الخطورة، والقواعد الأكثر تكرارًا، وآخر الفحوصات في نظرة واحدة.",
-  "shot.scan.cap":"افحص مجلدًا أو أرشيفًا أو ملف APK أو JAR، أو موقعًا مصرَّحًا لك بفحصه. اختر ملف الفحص وابدأ.",
+  "shot.scan.cap":"افحص مجلدًا أو أرشيفًا أو ملف APK أو JAR، أو موقعًا مصرَّحًا لك بفحصه. اختر نمط الفحص وابدأ.",
   "shot.reports.cap":"صدّر تقارير HTML وMarkdown وJSON وSARIF لفريقك أو للمدققين أو لـ GitHub Code Scanning.",
   "shot.trace.alt":"واجهة كاشِف: نتيجة مع مسار تدفق البيانات من المصدر إلى نقطة الخطر",
   "shot.findings.alt":"واجهة كاشِف: قائمة النتائج مرتّبة حسب الخطورة مع توصيات الإصلاح",
@@ -1223,7 +1227,7 @@ ar: {
   "f5.h":"الأسرار، الآن وفي تاريخ git","f5.p":"أنماط خاصة بمزوّدي السحابة والدفع والمراسلة، مع تحليل العشوائية (الإنتروبيا) لالتقاط مفاتيح بلا صيغة معروفة. ويجد kashif history كل سرّ أُودِع يومًا ولو حذفه إيداع لاحق.",
   "f6.h":"الاعتماديات مع قابلية الوصول","f6.p":"يقرأ 23 نوعًا من ملفات التبعيات والقفل، ويستعلم OSV.dev عن الثغرات المعروفة، ويخبرك هل يستورد كودك الحزمة وهل يستدعي الدالة المصابة. الاستعلام اختياري، وهو الاتصال الشبكي الوحيد في فحص الكود.",
   "f7.h":"الأرشيفات وAPK وJAR","f7.p":"افحص ملفات zip وtar.gz وAPK وJAR وAAR وDEX مباشرة. ومع تثبيت jadx يُفكّ تجميع كود أندرويد وJava ويُحلَّل.",
-  "f8.h":"فحص ويب سلبي","f8.p":"184 فحصًا للقراءة فقط: التوجيه وHSTS وCSP والترويسات وCORS والكوكيز ومحتوى الصفحة وTLS والشهادات والمكتبات والملفات المكشوفة، مع درجة كاشِف ودرجة MDN Observatory وجدول تغطية لا يُظهر فحصًا لم يُجرَ ناجحًا.",
+  "f8.h":"فحص ويب سلبي","f8.p":"184 فحصًا للقراءة فقط: التوجيه وHSTS وCSP والترويسات وCORS والكوكيز ومحتوى الصفحة وTLS والشهادات والمكتبات والملفات المكشوفة، مع درجة كاشِف ودرجة MDN Observatory وجدول تغطية لا يُظهر فحصًا لم يُجرَ ناجحًا.","f8.more":"الفحوص الـ 184 وإصلاحاتها","f8.href":"web-checks.html?lang=ar",
   "f9.h":"قواعدك الخاصة","f9.p":"اكتب فحوصك بلغة VQL التصريحية (from/where/select) فوق قاعدة بيانات البرنامج على نهج CodeQL، ثم اختبرها واحزمها وشاركها عبر kashif rules.",
   "f10.h":"إصلاح تلقائي مُتحقَّق منه","f10.p":"إصلاحات حتمية لـ 39 قاعدة، من استعلامات SQL بمعاملات إلى yaml.safe_load. لا يُعرض الإصلاح إلا بعد التأكد أن الملف المعدَّل سليم وأن القاعدة لم تعد تنطبق؛ راجع الفرق أو طبّقه بـ ‎--fix.",
   "f11.h":"الفرز والسياسة والامتثال","f11.p":"قرارات فرز تعيش داخل المستودع، وبوابة سياسة في kashif.yml، وربط بعشرة أطر (OWASP وASVS وCWE Top 25 وPCI DSS وNIST وISO 27001…) مع تقرير للمدقق، وخريطة لسطح الهجوم.",
@@ -1232,7 +1236,7 @@ ar: {
   "lang.sub":"محرّك التلوّث نفسه يعمل على كل اللغات أدناه، إلى جانب قواعد أنماط للإعدادات والحاويات وملفات CI.",
   "cov1.h":"Oracle APEX وORDS","cov1.p":"يحلّل ملفات تصدير تطبيقات APEX والإضافات وحزم PL/SQL بحثًا عن حقن SQL والاستبدال النصي وXSS وحقن تعليمات المساعد الذكي، ويشير إلى الصفحة والمكوّن.",
   "cov2.h":"أندرويد APK وJAR عبر jadx","cov2.p":"يفكّ ملفات APK وJAR وAAR وDEX ويشغّل تحليل التدفق على الكود المفكوك، مع استبعاد مكتبات الطرف الثالث افتراضيًا.",
-  "cov3.h":"فحص ويب سلبي","cov3.p":"طلبات GET عادية لموقع مصرَّح لك باختباره ضمن حدّ معلَن (<code>minimal</code>: الصفحة وتوجيهاتها، و<code>standard</code>: حتى 45 طلبًا، و<code>deep</code>: حتى 150)، بفاصل لا يقل عن 0.2 ثانية: بلا حمولات ولا إرسال نماذج ولا تخمين. يتطلب <code>--authorized</code>.",
+  "cov3.h":"فحص ويب سلبي","cov3.p":"طلبات GET عادية لموقع مصرَّح لك باختباره ضمن حدّ معلَن (<code>minimal</code>: الصفحة وتوجيهاتها، و<code>standard</code>: حتى 45 طلبًا، و<code>deep</code>: حتى 150)، بفاصل لا يقل عن 0.2 ثانية: بلا حمولات ولا إرسال نماذج ولا تخمين. يتطلب <code>--authorized</code>.","cov3.more":"دليل فحص المواقع","cov3.href":"web-scanning.html?lang=ar","cov3.sends":"ما يرسله كاشِف","cov3.sends.href":"scanner.html#ar",
   "int.eyebrow":"التكامل المستمر وSARIF","int.h2":"يندمج في خط العمل الذي تستخدمه.",
   "int.sub":"ارفع تقرير SARIF إلى GitHub Code Scanning فتظهر النتائج في تبويب Security وعلى أسطر طلبات الدمج، مع الخطورة وCWE ومسار تدفق البيانات.",
   "copy":"نسخ","copied":"نُسخ","int.yaml":"سير عمل GitHub Actions","copied.sr":"نُسخ إلى الحافظة",
@@ -1270,7 +1274,7 @@ ar: {
   "cmp.r12":"السعر","cmp.r12.us":"مجاني (MIT)","cmp.freepaid":"مجاني محدود + مدفوع","cmp.oss":"مجاني للمستودعات العامة","cmp.free":"مجاني",
   "cmp.they.h":"أين تتقدّم الأدوات الراسخة","cmp.they.p":"لدى Semgrep وSonarQube وSnyk Code وCodeQL قواعد ونماذج مكتبات أكثر بكثير، وتكاملات IDE وطلبات الدمج، وسنوات من الضبط على مشاريع حقيقية. إن كنت تستخدمها فاحتفظ بها.",
   "cmp.we.h":"أين يناسب كاشِف","cmp.we.p":"محلي بالكامل بلا اعتماديات، ويغطي Oracle APEX وPL/SQL والأرشيفات وتطبيقات أندرويد وفحص الويب السلبي بواجهة عربية في أداة واحدة. ويستطيع دمج نتائج Semgrep وBandit وgitleaks وnpm audit في لوحته.",
-  "lim.h":"حدود معروفة","lim.1":"التحليل الساكن لا يغني عن المراجعة البشرية ولا عن اختبار الاختراق.","lim.2":"نماذج مكتبات أقل بكثير من الأدوات الراسخة، وضبط أقل على قواعد كود حقيقية كبيرة.","lim.3":"لم يُنمذج بعد: القوالب غير Jinja (مثل EJS وERB)، والقيم التي تنتقل بين ملفات PHP عبر include.","lim.4":"دون jadx تُفحص محتويات APK وJAR كنصوص فقط.",
+  "lim.h":"حدود معروفة","lim.1":"التحليل الساكن لا يغني عن المراجعة البشرية ولا عن اختبار الاختراق.","lim.2":"نماذج مكتبات أقل بكثير من الأدوات الراسخة، وضبط أقل على قواعد كود حقيقية كبيرة.","lim.3":"لم يُنمذج بعد: القوالب غير Jinja (مثل EJS وERB)، والقيم التي تنتقل بين ملفات PHP عبر include.","lim.4":"دون jadx تُفحص محتويات APK وJAR كنصوص فقط.","lim.5":"لا يرى الفحص السلبي للمواقع إلا الصفحات العامة، ولا يختبر الحقن ولا XSS ولا المصادقة ولا التحكم في الوصول ولا منطق العمل؛ ودرجته تقيس سلامة الإعدادات لا خلوّ الموقع من الثغرات.",
   "sec.eyebrow":"الأمان وسلسلة التوريد","sec.h2":"تحقّق من كل بايت تشغّله.",
   "sec.sub":"على أداة الأمان أن تلتزم بما تطلبه من غيرها. كل إصدار يُبنى في GitHub Actions ويُرفق بالأدلة التي تحتاجها للتحقق منه.",
   "sec.slsa.h":"شهادة منشأ SLSA","sec.slsa.p":"شهادات موقَّعة تُثبت أن كل ملف تنفيذي بُني من هذا المستودع بسير عمل الإصدار نفسه.",

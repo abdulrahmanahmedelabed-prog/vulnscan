@@ -29,7 +29,7 @@ PROXY_VARS = ("http_proxy", "https_proxy", "all_proxy", "no_proxy", "HTTP_PROXY"
 ARABIC = re.compile(r"[؀-ۿ]")
 WEB_OPTIONS = ("--web-profile", "--web-sensitivity", "--ignore-robots", "--third-party-lookups", "--compare-previous",
                "--compare", "--web-cookie-ignore", "--no-proxy", "--deep", "--crawl", "--max-pages", "--max-depth",
-               "--delay", "--timeout")
+               "--delay", "--timeout", "--fail-on-inconclusive")
 
 
 @pytest.fixture(autouse=True)
@@ -109,10 +109,11 @@ def test_every_web_option_exists_with_help_in_both_languages():
         assert ARABIC.search(ar_opts[opt].help), opt
     assert opts["--web-profile"].choices == ("minimal", "standard", "deep")
     assert opts["--web-sensitivity"].choices == ("strict", "default", "paranoid")
-    assert opts["--web-sensitivity"].default == "default" and opts["--web-profile"].default is None
+    # None until _web_options applies "default": an explicit --web-sensitivity on a local path is then a usage error
+    assert opts["--web-sensitivity"].default is None and opts["--web-profile"].default is None
     assert not ARABIC.search(en.format_help())
     both = build_parser("both").format_help()
-    assert "--web-profile" in both and "ملف الفحص السلبي" in both and "passive scan profile" in both
+    assert "--web-profile" in both and "نمط الفحص السلبي" in both and "passive scan profile" in both
     # the 1.0 "one request only" wording is gone from the help
     assert "single request" not in en.format_help() and "طلب واحد فقط" not in ar.format_help()
 
@@ -190,10 +191,10 @@ def test_web_scan_passes_every_option_to_the_engine(site, monkeypatch):
         kw["options"] = dataclasses.replace(kw["options"], profile="minimal", crawl=False)   # fast: one request
         return real(url, **kw)
     monkeypatch.setattr(web, "scan_web", spy)
-    main([site, "--authorized", "--web-profile", "minimal", "--web-sensitivity", "paranoid", "--ignore-robots",
+    main([site, "--authorized", "--web-profile", "standard", "--web-sensitivity", "paranoid", "--ignore-robots",
           "--third-party-lookups", "--web-cookie-ignore", "a", "--web-cookie-ignore", "b", "--no-proxy", "--delay",
           "0.3", "--timeout", "7", "--crawl", "--max-pages", "3", "--max-depth", "1", "-f", "json", "-o", os.devnull])
-    assert seen["profile"] == "minimal" and seen["sensitivity"] == "paranoid" and seen["respect_robots"] is False
+    assert seen["profile"] == "standard" and seen["sensitivity"] == "paranoid" and seen["respect_robots"] is False
     assert seen["third_party_lookups"] is True and seen["cookie_ignore"] == ("a", "b") and seen["use_proxy"] is False
     assert seen["delay"] == 0.3 and seen["timeout"] == 7 and seen["crawl"] is True and seen["max_pages"] == 3
     assert seen["max_depth"] == 1
@@ -209,9 +210,12 @@ def test_json_report_and_english_output_of_a_web_scan(site, tmp_path, capsys):
     assert code == 0
     doc = json.loads((tmp_path / "r.json").read_text(encoding="utf-8"))
     assert doc["web"]["profile"] == "standard" and doc["web"]["grades"]["kashif"]["grade"]
-    assert doc["notes_en"][0] == "Profile standard: at most 45 requests; no active test."
-    # "standard: 45" no longer joins into one left-to-right run that shows 45 beside "ملف الفحص" (ux-i18n review)
-    assert doc["notes"][0].startswith("ملف الفحص standard: بحدٍّ أقصى 45 طلبًا")
+    # one note for the budget and the requests sent (the engine's own "N requests sent" note is merged into it)
+    sent = doc["web"]["inventory"]["requests"]["core_requests"]
+    assert doc["notes_en"][0] == f"Passive scan, profile standard: {sent} of at most 45 requests sent; no active test."
+    assert sum("no active test" in n for n in doc["notes_en"]) == 1
+    # "standard: 45" no longer joins into one left-to-right run that shows 45 beside "نمط الفحص" (ux-i18n review)
+    assert doc["notes"][0].startswith("فحص سلبي بنمط الفحص standard: أُرسل ") and "من 45 طلبًا على الأكثر" in doc["notes"][0]
     for text in (out, *(prefix.with_suffix(f".{x}").read_text(encoding="utf-8") for x in ("md", "html", "sarif"))):
         assert not ARABIC.search(text), sorted(set(ARABIC.findall(text)))[:20]
     assert "Kashif Web Grade" in prefix.with_suffix(".html").read_text(encoding="utf-8")

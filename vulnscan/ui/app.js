@@ -5,11 +5,11 @@ const I18N = {
   ar: {
     brand: 'كاشِف',
     sev: {critical: 'حرج', high: 'عالٍ', medium: 'متوسط', low: 'منخفض', info: 'معلوماتي'},
-    status: {running: 'جارٍ', done: 'مكتمل', error: 'خطأ'},
+    status: {running: 'جارٍ', done: 'مكتمل', error: 'خطأ', cancelled: 'أُلغي'},
     theme: {auto: 'المظهر: تلقائي', light: 'المظهر: فاتح', dark: 'المظهر: داكن'},
     src: {vulnscan: 'قواعد الأنماط', taint: 'محرك تدفق البيانات', vql: 'استعلامات VQL', web: 'فحص الويب', apex: 'محلل Apex', osv: 'OSV (الاعتماديات)', npm: 'npm audit'},
     'a11y.skip': 'انتقل إلى المحتوى', 'a11y.nav': 'التنقل الرئيسي', 'a11y.sevFilter': 'تصفية حسب الخطورة',
-    err: {'authorization required': 'يجب تأكيد أنك مخوّل بفحص هذا الموقع قبل البدء.', 'target required': 'أدخل مسارًا أو عنوانًا للفحص.', 'bad upload': 'تعذّر قبول الملف المرفوع (الحجم كبير جدًا أو الطلب غير صالح).', 'file required': 'اختر ملفًا واحدًا على الأقل.', forbidden: 'رُفض الطلب: يجب أن يصدر من هذه الواجهة نفسها.', 'not found': 'العنصر غير موجود (ربما حُذف).'},
+    err: {'authorization required': 'يجب تأكيد أنك مخوّل بفحص هذا الموقع قبل البدء.', 'target required': 'أدخل مسارًا أو عنوانًا للفحص.', 'bad upload': 'تعذّر قبول الملف المرفوع (الحجم كبير جدًا أو الطلب غير صالح).', 'file required': 'اختر ملفًا واحدًا على الأقل.', forbidden: 'رُفض الطلب: يجب أن يصدر من هذه الواجهة نفسها.', 'not found': 'العنصر غير موجود (ربما حُذف).', 'invalid url': 'العنوان غير صالح: يقبل فحص الويب عناوين http:// و https:// فقط.', 'scan already running': 'يجري فحص هذا الموقع الآن؛ انتظر حتى ينتهي أو ألغِه.', 'scan not running': 'الفحص لم يعد جاريًا.', 'invalid setting': 'قيمة أحد الإعدادات خارج الحدود المسموح بها.'},
     'nav.dashboard': 'لوحة التحكم', 'nav.scan': 'فحص جديد', 'nav.findings': 'النتائج', 'nav.reports': 'التقارير', 'nav.rules': 'القواعد', 'nav.settings': 'الإعدادات',
     'dash.title': 'لوحة التحكم', 'dash.sub': 'نظرة عامة على آخر فحص والاتجاه العام.', 'dash.empty': 'لا توجد فحوصات بعد', 'dash.emptyHint': 'ابدأ بفحص مجلد مشروع أو ارفع ملفًا مضغوطًا.',
     'dash.donut': 'توزيع الخطورة (آخر فحص)', 'dash.trend': 'اتجاه النتائج عبر الفحوصات الأخيرة', 'dash.topRules': 'أكثر الثغرات تكرارًا', 'dash.topFiles': 'أكثر الملفات تأثرًا', 'dash.recent': 'الفحوصات الأخيرة',
@@ -18,7 +18,7 @@ const I18N = {
     'scan.tabPath': 'مسار على الجهاز', 'scan.tabUpload': 'رفع ملفات / أرشيف', 'scan.tabUrl': 'عنوان ويب', 'scan.pathLabel': 'مسار المجلد أو الملف أو الأرشيف', 'scan.start': 'ابدأ الفحص',
     'scan.pathHint': 'يُفحص المجلد بكل محتوياته (تُتجاهل node_modules و .git و build تلقائيًا).', 'scan.drop': 'اسحب وأفلت هنا برنامجًا مضغوطًا (zip / apk / jar / tar.gz / whl) أو أي ملفات',
     'scan.chooseFiles': 'اختر ملفات', 'scan.chooseFolder': 'اختر مجلدًا كاملًا', 'scan.uploadStart': 'ارفع وافحص', 'scan.urlLabel': 'عنوان الموقع (فحص سلبي: طلبات GET محدودة، بلا أي اختبار نشط)',
-    'scan.authorize': 'أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه', 'scan.deep': 'فحص أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)', 'scan.crawl': 'زحف على صفحات الموقع وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)', 'scan.legal': 'فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.', 'scan.viewResults': 'عرض النتائج',
+    'scan.authorize': 'أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه', 'scan.crawl': 'الزحف على صفحات الموقع وفحص كل منها (لتطبيقات مثل Moodle وبوابات الجامعات)', 'scan.legal': 'فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.', 'scan.viewResults': 'عرض النتائج',
     'scan.running': 'جارٍ الفحص…', 'scan.done': 'اكتمل الفحص', 'scan.failed': 'فشل الفحص', 'scan.needAuth': 'يجب تأكيد الصلاحية أولًا', 'scan.uploading': 'جارٍ الرفع…', 'scan.uploadFailed': 'تعذّر الرفع',
     'scan.jadxOn': 'jadx مثبّت: سيُفكّ تجميع APK/JAR/AAR/DEX ويُفحص الكود الناتج أيضًا.', 'scan.jadxOff': 'jadx غير مثبّت: تُفحص الملفات النصية داخل APK/JAR فقط. ثبّت jadx (يحتاج Java) لفك تجميع الكود.',
     'find.title': 'النتائج', 'find.sub': 'مرتبة من الأعلى خطورة إلى الأقل. اضغط على أي نتيجة لعرض التفاصيل وطريقة الإصلاح.', 'find.search': 'ابحث في الملف أو القاعدة أو النص…', 'find.allSources': 'كل المصادر',
@@ -97,9 +97,9 @@ const I18N = {
     'sf.builtAt': 'بُنيت {when}', 'sf.unauthOnly': 'بلا مصادقة فقط', 'sf.empty': 'لم يُعثر على نقاط دخول.', 'sf.search': 'ابحث في المسار أو المعالج…', 'sf.shown': 'عرض {n} من {total}', 'sf.noMatch': 'لا نقاط دخول تطابق المرشحات.',
     'reach.imported': 'مستوردة في كودك', 'reach.not_imported': 'غير مستوردة', 'reach.vulnerable_function_called': 'دالة مصابة مُستدعاة', 'reach.label': 'قابلية الوصول',
     /* 1.1.0 passive web scanning */
-    'scan.profile': 'ملف الفحص', 'scan.pMinimal': 'minimal: الصفحة وتوجيهاتها فقط (10 طلبات على الأكثر)',
-    'scan.pStandard': 'standard (الافتراضي): الملفات المعروفة وسكربتات الصفحة (45 طلبًا على الأكثر)',
-    'scan.pDeep': 'deep: يضيف الملفات المكشوفة الشائعة (150 طلبًا على الأكثر)', 'scan.sens': 'الحساسية', 'scan.sStrict': 'strict: المؤكَّدة فقط',
+    'scan.profile': 'نمط الفحص', 'scan.pMinimal': 'أدنى (minimal)',
+    'scan.pStandard': 'قياسي (standard)، الافتراضي',
+    'scan.pDeep': 'عميق (deep)', 'scan.sens': 'الحساسية', 'scan.sStrict': 'strict: المؤكَّدة فقط',
     'scan.sDefault': 'default: المؤكَّدة والمرجَّحة', 'scan.sParanoid': 'paranoid: كل شيء مع الفحوص الإضافية', 'scan.compare': 'قارن بآخر فحص لهذا الموقع',
     'scan.robots': 'تجاهل robots.txt عند الزحف (لمالك الموقع)', 'scan.thirdParty': 'اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (مثل hstspreload.org)',
     'scan.noProxy': 'لا تستخدم الوكيل (proxy) المعرَّف في النظام', 'web.grades': 'الدرجات',
@@ -109,11 +109,29 @@ const I18N = {
     'web.remediation': 'إصلاحات جاهزة للنسخ', 'web.remHint': 'إعدادات المنصّات المكتشفة في الموقع تظهر أولًا.', 'web.caution': 'تنبيه',
     'web.diff': 'مقارنة بالفحص السابق', 'web.dNew': 'نتائج جديدة', 'web.dResolved': 'نتائج حُلّت', 'web.dUnchanged': 'نتائج لم تتغير',
     'web.dPosture': 'تغييرات في الوضع الأمني', 'web.dGrades': 'تغيّر الدرجات', 'web.dNone': 'لا تغييرات', 'web.confidence': 'الثقة', 'web.c_certain': 'مؤكَّدة',
-    'web.c_firm': 'مرجَّحة', 'web.c_tentative': 'محتملة', 'web.page': 'الصفحة', 'web.curl': 'أمر يعيد الطلب نفسه', 'web.mapping': 'ربط المحللين (WSTG وASVS)',
+    'web.c_firm': 'مرجَّحة', 'web.c_tentative': 'محتملة', 'web.page': 'الصفحة', 'web.curl': 'أمر يعيد الطلب نفسه', 'web.mapping': 'الربط بمعايير الاختبار (WSTG وASVS)',
     'web.profile': 'ملف الفحص', 'web.requests': 'الطلبات', 'web.final': 'العنوان النهائي', 'web.data': 'بيانات الويب بتاريخ',
     'web.loadFail': 'تعذّر تحميل تفاصيل فحص الموقع: {err}', 'set.webProfile': 'ملف فحص المواقع الافتراضي', 'set.webSens': 'الحساسية الافتراضية',
     'set.webCompare': 'قارن كل فحص بآخر فحص للموقع نفسه', 'set.webRobots': 'احترم robots.txt عند الزحف',
     'set.web3p': 'اسمح باستعلامات لدى أطراف ثالثة (مثل hstspreload.org)', 'set.webProxy': 'استخدم الوكيل (proxy) المعرَّف في النظام',
+    'scan.hMinimal': 'الصفحة وسلسلة توجيهاتها فقط: {budget} على الأكثر.',
+    'scan.hStandard': 'الصفحة والملفات المعروفة (مثل robots.txt وsecurity.txt) وسكربتات الصفحة نفسها: {budget} على الأكثر.',
+    'scan.hDeep': 'ما في القياسي، مع ملفات مكشوفة شائعة من قائمة ثابتة وسكربتات الأطراف الثالثة: {budget} على الأكثر.',
+    'scan.hCrawl': '+ ما يصل إلى {pages} من الزحف، بعمق مستويين.', 'scan.webMore': 'خيارات متقدمة',
+    'scan.tabPathShort': 'مسار', 'scan.tabUploadShort': 'رفع', 'scan.tabUrlShort': 'ويب', 'a11y.scanTabs': 'نوع الهدف',
+    'scan.badUrl': 'هذا ليس عنوان ويب صالحًا.', 'scan.badScheme': 'يقبل فحص الويب عناوين http:// و https:// فقط.',
+    'scan.willScan': 'سيُفحص العنوان {url}', 'scan.authorizeHost': 'أقرّ بأنني مالك {host} أو لديّ تصريح كتابي بفحصه',
+    'scan.starting': 'جارٍ بدء الفحص…', 'scan.progressLabel': 'تقدّم الفحص', 'scan.cancel': 'إلغاء الفحص', 'scan.cancelling': 'جارٍ الإلغاء…',
+    'scan.cancelled': 'أُلغي الفحص', 'scan.cancelledSub': 'لم تُحفظ أي نتيجة جزئية لهذا الفحص.', 'scan.grade': 'درجة كاشِف',
+    'scan.errDetails': 'تفاصيل الخطأ:',
+    'web.gm_a': 'جيدة', 'web.gm_b': 'مقبولة', 'web.gm_c': 'ضعيفة', 'web.gm_d': 'ضعيفة جدًا', 'web.gm_f': 'راسبة', 'web.gm_none': 'بلا درجة',
+    'web.reqFact': '{req} ({profile}، الحساسية {sens})', 'web.evidence': 'الدليل', 'web.evStatus': 'حالة الاستجابة', 'web.evRequest': 'الطلب',
+    'web.evChain': 'سلسلة التوجيه', 'web.evHeaders': 'ترويسات الاستجابة', 'web.evMatch': 'المقتطف المطابق', 'web.evMatchName': 'العنصر المطابق',
+    'web.fix': 'إصلاح جاهز للنسخ', 'web.fixAll': 'كل المنصّات في قسم الإصلاحات', 'web.detected': 'مكتشفة',
+    'web.baseline': 'لا يوجد فحص سابق لهذا الموقع؛ سيكون هذا الفحص أساس المقارنة في الفحوص القادمة.',
+    'web.dNotRetested': 'لم يُعَد فحصها', 'web.dNotRetestedHint': 'لا تُعدّ محلولة: لم يُعِد هذا الفحص فحصها (بسبب نمط الفحص أو الحساسية أو حدّ الطلبات مثلًا).',
+    'web.covTable': 'الفحوص التي لم تنجح أو لم تُجرَ', 'web.invTabs': 'جداول جرد الموقع', 'web.remTabs': 'منصّات الإصلاح {id}', 'web.title': 'العنوان',
+    'web.more': 'تفاصيل فحص الموقع', 'web.covProblems': 'الفحوص التي لم تنجح أو لم تُجرَ',
     /* Count strings, read with tn(key, count). Arabic nouns take a different form after 1, 2, 3–10, 11–99 and
        100+ (and 0): keys one, two, few, many, other (see pluralCat). The keys marked "by total" agree with {total}. */
     pl: {
@@ -139,16 +157,20 @@ const I18N = {
       'comp.unmapped': {one: 'نتيجة واحدة غير مربوطة', two: 'نتيجتان غير مربوطتين', few: '{n} نتائج غير مربوطة', many: '{n} نتيجةً غير مربوطة', other: '{n} نتيجة غير مربوطة'},
       'comp.hidden': {one: 'ضابط واحد بلا نتائج مخفي.', two: 'ضابطان بلا نتائج مخفيان.', few: '{n} ضوابط بلا نتائج مخفية.', many: '{n} ضابطًا بلا نتائج مخفية.', other: '{n} ضابط بلا نتائج مخفية.'},
       'rules.n': {one: 'قاعدة واحدة', two: 'قاعدتان', few: '{n} قواعد', many: '{n} قاعدةً', other: '{n} قاعدة'},
+      'scan.budget': {one: 'طلب واحد', two: 'طلبان', few: '{n} طلبات', many: '{n} طلبًا', other: '{n} طلب'},
+      'scan.pagesUpTo': {one: 'صفحة واحدة', two: 'صفحتين', few: '{n} صفحات', many: '{n} صفحةً', other: '{n} صفحة'},
+      'scan.reqOf': {one: '{n} من طلب واحد', two: '{n} من طلبين', few: '{n} من {total} طلبات', many: '{n} من {total} طلبًا', other: '{n} من {total} طلب'},
+      'scan.crawled': {one: 'صفحة واحدة من الزحف', two: 'صفحتان من الزحف', few: '{n} صفحات من الزحف', many: '{n} صفحةً من الزحف', other: '{n} صفحة من الزحف'},
     },
   },
   en: {
     brand: 'Kashif',
     sev: {critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info'},
-    status: {running: 'Running', done: 'Completed', error: 'Failed'},
+    status: {running: 'Running', done: 'Completed', error: 'Failed', cancelled: 'Cancelled'},
     theme: {auto: 'Theme: system', light: 'Theme: light', dark: 'Theme: dark'},
     src: {vulnscan: 'Pattern rules', taint: 'Data-flow engine', vql: 'VQL queries', web: 'Web checks', apex: 'Apex analyzer', osv: 'OSV (dependencies)', npm: 'npm audit'},
     'a11y.skip': 'Skip to content', 'a11y.nav': 'Main navigation', 'a11y.sevFilter': 'Filter by severity',
-    err: {'authorization required': 'Confirm that you are authorized to test this site before scanning it.', 'target required': 'Enter a path or URL to scan.', 'bad upload': 'The upload was rejected (too large or malformed).', 'file required': 'Choose at least one file.', forbidden: 'Request refused: it must come from this UI.', 'not found': 'Not found (it may have been deleted).'},
+    err: {'authorization required': 'Confirm that you are authorized to test this site before scanning it.', 'target required': 'Enter a path or URL to scan.', 'bad upload': 'The upload was rejected (too large or malformed).', 'file required': 'Choose at least one file.', forbidden: 'Request refused: it must come from this UI.', 'not found': 'Not found (it may have been deleted).', 'invalid url': 'Invalid URL: web scans accept http:// and https:// addresses only.', 'scan already running': 'This site is being scanned right now; wait for that scan to finish or cancel it.', 'scan not running': 'The scan is no longer running.', 'invalid setting': 'A setting is outside its allowed range.'},
     'nav.dashboard': 'Dashboard', 'nav.scan': 'New scan', 'nav.findings': 'Findings', 'nav.reports': 'Reports', 'nav.rules': 'Rules', 'nav.settings': 'Settings',
     'dash.title': 'Dashboard', 'dash.sub': 'Overview of the latest scan and how findings trend over time.', 'dash.empty': 'No scans yet', 'dash.emptyHint': 'Scan a project folder or upload an archive to get started.',
     'dash.donut': 'Severity distribution', 'dash.trend': 'Findings over recent scans', 'dash.topRules': 'Most frequent issues', 'dash.topFiles': 'Most affected files', 'dash.recent': 'Recent scans',
@@ -157,7 +179,7 @@ const I18N = {
     'scan.tabPath': 'Local path', 'scan.tabUpload': 'Upload files / archive', 'scan.tabUrl': 'Web URL', 'scan.pathLabel': 'Folder, file or archive path', 'scan.start': 'Start scan',
     'scan.pathHint': 'The whole folder is scanned recursively (node_modules, .git and build are skipped).', 'scan.drop': 'Drop an archive (zip / apk / jar / tar.gz / whl) or any files here',
     'scan.chooseFiles': 'Choose files', 'scan.chooseFolder': 'Choose a folder', 'scan.uploadStart': 'Upload and scan', 'scan.urlLabel': 'Site URL (passive: a bounded number of GET requests, no active test)',
-    'scan.authorize': 'I own this site or have written permission to test it', 'scan.deep': 'Deeper scan: analyze the page and probe common exposed paths (a few extra requests)', 'scan.crawl': 'Crawl same-site pages and scan each one (for apps such as Moodle and university portals)', 'scan.legal': 'Testing systems without permission may be illegal.', 'scan.viewResults': 'View findings',
+    'scan.authorize': 'I own this site or have written permission to test it', 'scan.crawl': 'Crawl the site\'s pages and scan each one (for apps such as Moodle and university portals)', 'scan.legal': 'Testing systems without permission may be illegal.', 'scan.viewResults': 'View findings',
     'scan.running': 'Scanning…', 'scan.done': 'Scan complete', 'scan.failed': 'Scan failed', 'scan.needAuth': 'Confirm that you are authorized to test this site first', 'scan.uploading': 'Uploading…', 'scan.uploadFailed': 'Upload failed',
     'scan.jadxOn': 'jadx is installed: APK/JAR/AAR/DEX files are decompiled and the resulting code is scanned too.', 'scan.jadxOff': 'jadx is not installed: only text files inside APK/JAR are scanned. Install jadx (requires Java) to decompile bytecode.',
     'find.title': 'Findings', 'find.sub': 'Sorted from highest to lowest severity. Select a finding to see its details and remediation.', 'find.search': 'Search file, rule or text…', 'find.allSources': 'All sources',
@@ -236,9 +258,9 @@ const I18N = {
     'sf.builtAt': 'Built {when}', 'sf.unauthOnly': 'Unauthenticated only', 'sf.empty': 'No entry points were found.', 'sf.search': 'Search path or handler…', 'sf.shown': 'Showing {n} of {total}', 'sf.noMatch': 'No entry point matches the filters.',
     'reach.imported': 'Imported by your code', 'reach.not_imported': 'Not imported', 'reach.vulnerable_function_called': 'Vulnerable function called', 'reach.label': 'Reachability',
     /* 1.1.0 passive web scanning */
-    'scan.profile': 'Scan profile', 'scan.pMinimal': 'minimal: the page and its redirects only (at most 10 requests)',
-    'scan.pStandard': 'standard (default): well-known files and the page\'s own scripts (at most 45 requests)',
-    'scan.pDeep': 'deep: adds commonly exposed files (at most 150 requests)', 'scan.sens': 'Sensitivity', 'scan.sStrict': 'strict: certain findings only',
+    'scan.profile': 'Scan profile', 'scan.pMinimal': 'Minimal',
+    'scan.pStandard': 'Standard (default)',
+    'scan.pDeep': 'Deep', 'scan.sens': 'Sensitivity', 'scan.sStrict': 'strict: certain findings only',
     'scan.sDefault': 'default: certain and firm', 'scan.sParanoid': 'paranoid: everything, with the extra checks',
     'scan.compare': 'Compare with the last scan of this site', 'scan.robots': 'Ignore robots.txt when crawling (for the site\'s owner)',
     'scan.thirdParty': 'Allow third-party lookups that reveal the site\'s name (such as hstspreload.org)', 'scan.noProxy': 'Do not use the system\'s proxy',
@@ -251,11 +273,29 @@ const I18N = {
     'web.diff': 'Compared with the previous scan', 'web.dNew': 'New findings', 'web.dResolved': 'Resolved findings', 'web.dUnchanged': 'Unchanged findings',
     'web.dPosture': 'Posture changes', 'web.dGrades': 'Grade changes', 'web.dNone': 'No changes', 'web.confidence': 'Confidence', 'web.c_certain': 'Certain',
     'web.c_firm': 'Firm', 'web.c_tentative': 'Tentative', 'web.page': 'Page', 'web.curl': 'Command that repeats the request',
-    'web.mapping': 'Analyst mapping (WSTG and ASVS)', 'web.profile': 'Profile', 'web.requests': 'Requests', 'web.final': 'Final URL',
+    'web.mapping': 'Mapping to testing standards (WSTG and ASVS)', 'web.profile': 'Profile', 'web.requests': 'Requests', 'web.final': 'Final URL',
     'web.data': 'Web data as of', 'web.loadFail': 'Could not load the details of the web scan: {err}', 'set.webProfile': 'Default web scan profile',
     'set.webSens': 'Default sensitivity', 'set.webCompare': 'Compare every scan with the last scan of the same site',
     'set.webRobots': 'Honour robots.txt when crawling', 'set.web3p': 'Allow third-party lookups (such as hstspreload.org)',
     'set.webProxy': 'Use the system\'s proxy',
+    'scan.hMinimal': 'The page and its redirect chain only: at most {budget}.',
+    'scan.hStandard': 'The page, its well-known files (such as robots.txt and security.txt) and the page\'s own scripts: at most {budget}.',
+    'scan.hDeep': 'Everything in Standard, plus commonly exposed files from a fixed list and third-party scripts: at most {budget}.',
+    'scan.hCrawl': '+ up to {pages} crawled, depth 2.', 'scan.webMore': 'Advanced options',
+    'scan.tabPathShort': 'Path', 'scan.tabUploadShort': 'Upload', 'scan.tabUrlShort': 'Web', 'a11y.scanTabs': 'Target type',
+    'scan.badUrl': 'This is not a valid web address.', 'scan.badScheme': 'Web scans accept http:// and https:// addresses only.',
+    'scan.willScan': 'Will scan {url}', 'scan.authorizeHost': 'I own {host} or have written permission to test it',
+    'scan.starting': 'Starting the scan…', 'scan.progressLabel': 'Scan progress', 'scan.cancel': 'Cancel scan', 'scan.cancelling': 'Cancelling…',
+    'scan.cancelled': 'Scan cancelled', 'scan.cancelledSub': 'No partial result of this scan was kept.', 'scan.grade': 'Kashif grade',
+    'scan.errDetails': 'Error details:',
+    'web.gm_a': 'Good', 'web.gm_b': 'Fair', 'web.gm_c': 'Weak', 'web.gm_d': 'Poor', 'web.gm_f': 'Failing', 'web.gm_none': 'Not graded',
+    'web.reqFact': '{req} ({profile}, sensitivity {sens})', 'web.evidence': 'Evidence', 'web.evStatus': 'Status', 'web.evRequest': 'Request',
+    'web.evChain': 'Redirect chain', 'web.evHeaders': 'Response headers', 'web.evMatch': 'Matched excerpt', 'web.evMatchName': 'Matched',
+    'web.fix': 'Copy-paste fix', 'web.fixAll': 'All platforms in the fixes section', 'web.detected': 'detected',
+    'web.baseline': 'No previous scan of this site; this one becomes the baseline for the next comparisons.',
+    'web.dNotRetested': 'Not re-checked', 'web.dNotRetestedHint': 'Not counted as resolved: this scan did not check them again (for example because of the profile, the sensitivity or a request budget).',
+    'web.covTable': 'Checks that did not pass or did not run', 'web.invTabs': 'Site inventory tables', 'web.remTabs': 'Fix platforms for {id}', 'web.title': 'Title',
+    'web.more': 'Web scan details', 'web.covProblems': 'Checks that did not pass or did not run',
     pl: {
       'scan.uploaded': {one: '{n} uploaded file', other: '{n} uploaded files'},
       'scan.nSelected': {one: '{n} file selected', other: '{n} files selected'},
@@ -279,6 +319,10 @@ const I18N = {
       'comp.unmapped': {one: '{n} not mapped', other: '{n} not mapped'},
       'comp.hidden': {one: '{n} control without findings is hidden.', other: '{n} controls without findings are hidden.'},
       'rules.n': {one: '{n} rule', other: '{n} rules'},
+      'scan.budget': {one: '{n} request', other: '{n} requests'},
+      'scan.pagesUpTo': {one: '{n} page', other: '{n} pages'},
+      'scan.reqOf': {one: '{n} / {total} request', other: '{n} / {total} requests'},
+      'scan.crawled': {one: '{n} crawled page', other: '{n} crawled pages'},
     },
   },
 };
@@ -337,33 +381,59 @@ const toast = (msg) => { const el = $('#toast'); el.textContent = msg; el.classL
 const total = (s) => SEV.reduce((a, k) => a + (s[k] || 0), 0);
 const ic = (name, cls = '') => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const pill = (s) => `<span class="pill sev-${s}"><span class="dot"></span>${esc(sevName(s))}</span>`;
-/* In Arabic text, isolate each Latin run so the bidi algorithm neither mirrors its brackets (order_query()) nor
-   reorders its words: a run is words of letters, digits and code punctuation joined by spaces, so the numbers of
-   "OWASP Top 10:2021", "45 CFR 164.312" or "NIST SP 800-53 Rev. 5" and the dashes of "--sha256" stay in place.
-   Trailing punctuation is left to the Arabic sentence, but a grade's "+" or "*" stays in its run ("A+", "F*", which
-   otherwise display as "+A", "*F"); a run without a Latin letter (a plain number) needs no isolate. */
-const bidi = (text) => {
-  const str = String(text ?? '');
-  if (lang !== 'ar' || !/[؀-ۿ]/.test(str)) return esc(str);
-  const word = String.raw`(?:--?)?[A-Za-z0-9_$./~][\w$:/.~-]*[+*]*(?:\([^()؀-ۿ]*\))*`;
-  const rx = new RegExp(String.raw`${word}(?:\.? +${word})*`, 'g');
-  let out = '', last = 0, m;
-  while ((m = rx.exec(str))) {
-    const run = m[0].replace(/[.:,;-]+$/, '');
-    if (!/[A-Za-z]/.test(run)) continue;
-    out += esc(str.slice(last, m.index)) + `<bdi dir="ltr">${esc(run)}</bdi>`; last = m.index + run.length;
+/* In Arabic text, isolate each Latin run (code, header values, URLs, versions, dates) as left-to-right so the bidi
+   algorithm neither reorders it nor mirrors its brackets: "SameSite=Lax", 'method="post"' and "max-age=63072000;
+   includeSubDomains" stay in one run with their = ; ' " < > ( ), and "2026-11-12" or "1.2.3" keep their order. The
+   run rule is the one of vulnscan/i18n/bidi.py (LTR_RUN_PATTERN / trim_run), pasted below from its JS_BIDI and kept
+   identical by tests/test_ui_bidi_110.py; the HTML report applies the same rule. English text is only escaped. */
+const bidi = (text) => (lang === 'ar' ? bidiHtml(text, esc) : esc(text));
+// BEGIN JS_BIDI (generated from vulnscan/i18n/bidi.py: do not edit here)
+/* Generated from vulnscan/i18n/bidi.py (JS_BIDI): keep in sync with LTR_RUN_PATTERN and trim_run there. */
+const LTR_RUN_SRC = "(?:[A-Za-z0-9_$./~'\\x22<#@\\[{\\\\]|[-*+](?=[^\\s]))[^\\s\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF\\u00AB\\u00BB\\u00B7\\u2022\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]*(?:[ \\t\\u00A0\\u202F]+[^\\s\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF\\u00AB\\u00BB\\u00B7\\u2022\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]+)*";
+const LTR_TAIL_SPACE = new RegExp("[ \\t\\u00A0\\u202F]+$");
+const LTR_TAIL_TOKEN = new RegExp("[ \\t\\u00A0\\u202F]+[(\\[{<\\u2014\\u2013\\u2192\\u2190\\u21D2|-]+$");
+const LTR_PAIRS = {')': '(', ']': '[', '}': '{'};
+const ARABIC_RX = new RegExp('[' + "\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF" + ']');
+const trimRun = (run) => {
+  for (;;) {
+    const prev = run;
+    run = run.replace(LTR_TAIL_SPACE, '').replace(/[.:]+$/, '');
+    const last = run.slice(-1);
+    const count = (ch) => run.split(ch).length - 1;
+    if (LTR_TAIL_TOKEN.test(run)) run = run.replace(LTR_TAIL_TOKEN, '');
+    else if (last && LTR_PAIRS[last] && count(last) > count(LTR_PAIRS[last])) run = run.slice(0, -1);
+    else if (last && '([{<'.includes(last)) run = run.slice(0, -1);
+    if (run === prev) return run;
   }
+};
+const keepRun = (run) => /[A-Za-z]/.test(run) || /^[0-9]+(?:[-\/:.][0-9]+)+$/.test(run);
+const ltrRuns = (text) => {
+  const str = String(text ?? ''), rx = new RegExp(LTR_RUN_SRC, 'g'), out = [];
+  let m;
+  while ((m = rx.exec(str))) {
+    const run = trimRun(m[0]);
+    if (run && keepRun(run)) out.push([m.index, m.index + run.length]);
+  }
+  return out;
+};
+const bidiHtml = (text, esc) => {
+  const str = String(text ?? '');
+  if (!ARABIC_RX.test(str)) return esc(str);
+  let out = '', last = 0;
+  for (const [a, b] of ltrRuns(str)) { out += esc(str.slice(last, a)) + `<bdi dir="ltr">${esc(str.slice(a, b))}</bdi>`; last = b; }
   return out + esc(str.slice(last));
 };
+// END JS_BIDI
 const ARABIC = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
 /* Explicit direction of a short text (a control title, a finding title) from its first strong letter after leading
    identifiers, numbers and acronyms, never the browser's first-letter guess of dir="auto": "A01:2021 تحكم وصول معطوب"
    and "ISO/IEC 27001:2022 الملحق أ" are right-to-left, "OWASP Top 10:2021" left-to-right (same rule as the auditor
-   report, vulnscan/compliance.py _direction). */
+   report, vulnscan/compliance.py _direction). Punctuation is "no letter at all" (\p{L}, Unicode-aware): JavaScript's \W
+   is ASCII-only and once counted Arabic words as punctuation, so "اضبط SameSite=Lax" came out left-to-right. */
 const dirOf = (text) => {
   const str = String(text ?? '');
   for (const tok of str.split(/\s+/)) {
-    if (!tok || /^[^؀-ۿ]*\d[^؀-ۿ]*$/.test(tok) || /^[\W_]*[A-Z][A-Z0-9/&._-]+[\W_]*$/.test(tok) || /^[\W\d_]*$/.test(tok)) continue;
+    if (!tok || /^[^؀-ۿ]*\d[^؀-ۿ]*$/.test(tok) || /^[^\p{L}]*[A-Z][A-Z0-9/&._-]+[^\p{L}]*$/u.test(tok) || /^[^\p{L}]*$/u.test(tok)) continue;
     for (const ch of tok) {
       if (ARABIC.test(ch)) return 'rtl';
       if (/[A-Za-zÀ-ɏ]/.test(ch)) return 'ltr';
@@ -431,6 +501,9 @@ function applyLang() {
   $('#fix-filter').title = t('tri.fixOnly');
   $('#export-btn').title = t('a11y.export');
   $('#fw-grid').setAttribute('aria-label', t('comp.frameworks'));
+  $('#scan-tabs').setAttribute('aria-label', t('a11y.scanTabs'));
+  $('#scan-bar').setAttribute('aria-label', t('scan.progressLabel'));
+  renderAuthLabel(); renderProfileHint();
   applyThemeUI();
 }
 $('#lang-btn').onclick = () => { lang = lang === 'ar' ? 'en' : 'ar'; store.set('vs.lang', lang); applyLang(); jadxHint(); renderPill(); route(); };
@@ -455,13 +528,16 @@ $('.skip').addEventListener('click', (e) => { e.preventDefault(); $('#main').foc
 /* ------------------------------------------------------------- routing */
 let webDefaultsSet = false;
 async function loadScanPage() {             // the web-scan options start from the settings (once per visit of the app)
-  if (webDefaultsSet) return;
+  renderAuthLabel(); renderProfileHint();
   const s = await api('/api/settings');
+  webSettings = s;                          // the authorized targets need no ticked box (refreshed on every visit)
+  if (webDefaultsSet) return;
   webDefaultsSet = true;
   if (['minimal', 'standard', 'deep'].includes(s.web_profile)) $('#url-profile').value = s.web_profile;
   if (['strict', 'default', 'paranoid'].includes(s.web_sensitivity)) $('#url-sens').value = s.web_sensitivity;
   $('#url-compare').checked = s.web_compare_previous !== false; $('#url-3p').checked = !!s.web_third_party_lookups;
   $('#url-noproxy').checked = s.web_use_proxy === false; $('#url-robots').checked = s.web_respect_robots === false;
+  renderProfileHint();
 }
 const pages = {dashboard: loadDashboard, projects: loadProjects, scan: loadScanPage, findings: loadFindings, compliance: loadCompliance, reports: loadReports, rules: loadRules, settings: loadSettings};
 let curPage = '';
@@ -511,7 +587,7 @@ async function loadDashboard(arg) {
   if (empty) return;
   const L = st.latest; const sum = L.summary;
   $('#dash-open').href = `#findings/${L.id}`;
-  setHTML($('#dash-context'), `<span class="ctx" title="${esc(L.target)}">${ic(L.kind === 'url' ? 'globe' : 'folder', 'sm')}<span class="muted">${esc(t('dash.latest'))}:</span> <b class="ellipsis" dir="auto">${esc(scanName(L))}</b></span>`
+  setHTML($('#dash-context'), `<span class="ctx" title="${esc(L.target)}">${ic(L.kind === 'url' ? 'globe' : 'folder', 'sm')}<span class="muted">${esc(t('dash.latest'))}:</span> <b class="ellipsis" dir="${dirOf(scanName(L))}">${esc(scanName(L))}</b></span>`
     + `<span class="ctx">${ic('file', 'sm')}${esc(tn(L.kind === 'url' ? 'find.nPages' : 'find.nFiles', L.files_scanned))}</span>`
     + `<span class="ctx">${ic('clock', 'sm')}${esc(fmtDate(L.finished_at))}</span>`);
   setHTML($('#tiles'), tilesHTML(sum));
@@ -626,7 +702,7 @@ function renderProjects() {
     return `<article class="card proj" aria-labelledby="pj-${esc(p.id)}">
       <header class="pj-head">
         <span class="pj-icon">${ic(p.kind === 'url' ? 'globe' : p.kind === 'upload' ? 'upload' : 'folder')}</span>
-        <div class="pj-name"><h2 id="pj-${esc(p.id)}"><a href="#projects/${esc(p.id)}" dir="auto">${esc(projName(p))}</a></h2><small class="pj-target" dir="ltr" title="${esc(p.target)}"><bdi>${esc(p.kind === 'upload' ? (p.label || '') : p.target)}</bdi></small></div>
+        <div class="pj-name"><h2 id="pj-${esc(p.id)}"><a href="#projects/${esc(p.id)}" dir="${dirOf(projName(p))}">${esc(projName(p))}</a></h2><small class="pj-target" dir="ltr" title="${esc(p.target)}"><bdi>${esc(p.kind === 'upload' ? (p.label || '') : p.target)}</bdi></small></div>
         ${bad ? `<span class="status ${esc(ls.status)}"><span class="dot"></span>${esc(I18N[lang].status[ls.status] || ls.status)}</span>` : ''}
       </header>
       <div class="pj-stats">
@@ -660,6 +736,7 @@ async function loadProjects(arg) {
     const url = p.kind === 'url';
     $(`#scan-tabs .tab[data-tab="${url ? 'url' : 'path'}"]`).click();
     $(url ? '#url-input' : '#path-input').value = p.target;
+    if (url) onUrlInput();
     location.hash = 'scan';
     if (!url) $('#path-btn').click();          // a web target still needs the authorization box ticked
   };
@@ -669,7 +746,7 @@ async function loadProjects(arg) {
   setHTML($('#pd-tiles'), tilesHTML(p.summary, !!p.latest));
   if (p.latest) $$('#pd-tiles .tile').forEach((el) => { el.onclick = () => { location.hash = `findings/${p.latest}?sev=${el.dataset.sev}`; }; });
   const done = p.scans.filter((s) => s.status === 'done');
-  const li = (f) => `<li class="sev-${esc(f.severity)}"><span class="main">${pill(f.severity)}<span class="title" dir="auto" title="${esc(titleOf(f))}">${esc(titleOf(f))}</span></span>${fpath(f.file, f.line)}</li>`;
+  const li = (f) => `<li class="sev-${esc(f.severity)}"><span class="main">${pill(f.severity)}<span class="title" dir="${dirOf(titleOf(f))}" title="${esc(titleOf(f))}">${bidi(titleOf(f))}</span></span>${fpath(f.file, f.line)}</li>`;
   const col = (cls, icon, title, n, items) => `<div class="diff-col ${cls}"><h3>${ic(icon)}<span>${esc(title)}</span> <span class="count">${n}</span></h3><ul class="rank">${items.slice(0, 8).map(li).join('') || `<li class="empty-li">${esc(t('rep.nothing'))}</li>`}${n > 8 ? `<li class="empty-li">${esc(tn('proj.more', n - 8))}</li>` : ''}</ul></div>`;
   setHTML($('#pd-changes'), p.new == null
     ? `<div class="empty inline"><span class="e-icon">${ic('compare', 'lg')}</span><p><b>${esc(t(p.done_scans ? 'proj.firstScan' : 'proj.neverDone'))}</b></p><p class="muted">${esc(t('proj.firstScanHint'))}</p></div>`
@@ -784,7 +861,7 @@ function scanRows(scans) {
   return head + '<tbody>' + scans.map((s) => {
     const err = errorOf(s);
     return `<tr>
-    <td><div class="target"><b dir="auto">${esc(scanName(s))}</b><small title="${esc(s.target)}">${esc(s.target)}</small></div></td>
+    <td><div class="target"><b dir="${dirOf(scanName(s))}">${esc(scanName(s))}</b><small title="${esc(s.target)}">${esc(s.target)}</small></div></td>
     <td><span class="muted" style="white-space:nowrap">${esc(fmtDate(s.finished_at || s.started_at))}</span></td>
     <td><span class="status ${esc(s.status)}"><span class="dot"></span>${esc(I18N[lang].status[s.status] || s.status)}</span>${err ? `<small class="status-err" title="${esc(err)}">${esc(err)}</small>` : ''}</td>
     ${SEV.map((k) => { const v = (s.summary || {})[k] || 0; return `<td class="num sev-${k}${v ? '' : ' z'}">${v ? `<b>${v}</b>` : '0'}</td>`; }).join('')}<td class="num"><b>${total(s.summary || {})}</b></td>
@@ -809,8 +886,9 @@ document.addEventListener('click', async (e) => {
   if (cp) {
     e.stopPropagation();
     if (await copyText(cp.dataset.copy)) {
-      cp.classList.add('done'); setHTML(cp, ic('check')); cp.title = t('find.copied');
-      setTimeout(() => { cp.classList.remove('done'); setHTML(cp, ic('copy')); cp.title = t('find.copy'); }, 1400);
+      cp.classList.add('done'); setHTML(cp, ic('check')); cp.title = t('find.copied'); cp.setAttribute('aria-label', t('find.copied'));
+      toast(t('find.copied'));
+      setTimeout(() => { cp.classList.remove('done'); setHTML(cp, ic('copy')); cp.title = t('find.copy'); cp.setAttribute('aria-label', t('find.copy')); }, 1400);
     }
     return;
   }
@@ -820,25 +898,122 @@ document.addEventListener('click', async (e) => {
 });
 
 /* ---------------------------------------------------------------- scan */
-$$('#scan-tabs .tab').forEach((b) => { b.onclick = () => {
-  $$('#scan-tabs .tab').forEach((x) => { x.classList.toggle('active', x === b); x.setAttribute('aria-selected', String(x === b)); });
-  $$('.tab-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== b.dataset.tab));
-}; });
+/* An ARIA tab list (WAI-ARIA Authoring Practices "tabs with automatic activation"): one tab in the tab order (roving
+   tabindex), arrow keys move between tabs (reversed in right-to-left text, where "next" is on the left), Home and End
+   go to the first and last tab, each tab controls its panel (aria-controls) and the panel is labelled by its tab. */
+let tabSeq = 0;
+function setupTabs(list, label, onSelect) {
+  const tabs = $$(':scope > [role="tab"]', list);
+  const panels = tabs.map((tb) => document.getElementById(tb.getAttribute('aria-controls')));
+  if (label) list.setAttribute('aria-label', label);
+  const select = (tb, focus) => {
+    tabs.forEach((x, i) => {
+      const on = x === tb;
+      x.classList.toggle('active', on); x.setAttribute('aria-selected', String(on)); x.tabIndex = on ? 0 : -1;
+      if (panels[i]) panels[i].classList.toggle('hidden', !on);
+    });
+    if (focus) tb.focus();
+    if (onSelect) onSelect(tb);
+  };
+  tabs.forEach((tb) => {
+    tb.onclick = () => select(tb, false);
+    tb.onkeydown = (e) => {
+      const i = tabs.indexOf(tb); const rtl = getComputedStyle(list).direction === 'rtl';
+      const step = {ArrowRight: rtl ? -1 : 1, ArrowLeft: rtl ? 1 : -1}[e.key];
+      let next = null;
+      if (step) next = tabs[(i + step + tabs.length) % tabs.length];
+      else if (e.key === 'Home') next = tabs[0];
+      else if (e.key === 'End') next = tabs[tabs.length - 1];
+      if (next) { e.preventDefault(); select(next, true); }
+    };
+  });
+  const cur = tabs.find((x) => x.getAttribute('aria-selected') === 'true') || tabs[0];
+  tabs.forEach((x) => { x.tabIndex = x === cur ? 0 : -1; });
+  return select;
+}
+const selectScanTab = setupTabs($('#scan-tabs'), null);
+/* The scan buttons are disabled (aria-busy) from the POST until the scan is done, failed or cancelled. */
+const SCAN_BTNS = ['#path-btn', '#url-btn', '#upload-btn'];
+const setScanBusy = (busy) => SCAN_BTNS.forEach((s) => { const b = $(s); b.disabled = busy; b.setAttribute('aria-busy', String(busy)); });
 async function startScan(body) {
-  try { const scan = await api('/api/scan', {method: 'POST', body: JSON.stringify(body)}); watchScan(scan.id); } catch (err) { toast(err.message); }
+  $('#toast').classList.add('hidden');
+  setScanBusy(true);
+  try { const scan = await api('/api/scan', {method: 'POST', body: JSON.stringify(body)}); watchScan(scan.id); } catch (err) { setScanBusy(false); toast(err.message); }
 }
 $('#path-btn').onclick = () => { const v = $('#path-input').value.trim(); if (v) startScan({target: v}); else $('#path-input').focus(); };
-$('#path-input').onkeydown = (e) => { if (e.key === 'Enter') $('#path-btn').click(); };
-$('#url-auth').onchange = (e) => { e.target.removeAttribute('aria-invalid'); e.target.closest('.check').classList.remove('invalid'); };
-$('#url-input').onkeydown = (e) => { if (e.key === 'Enter') $('#url-btn').click(); };
+$('#path-input').onkeydown = (e) => { if (e.key === 'Enter' && !$('#path-btn').disabled) $('#path-btn').click(); };
+
+/* The URL field: an address without a scheme gets https://; any scheme other than http or https is refused in the
+   field itself (aria-invalid and a message read with it), never sent and never scanned as a path. */
+const SCHEME = /^([a-z][a-z0-9+.-]*):(?!\d)/i;   // "localhost:8080" is a host and port, not a scheme
+function parseTarget(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return {empty: true};
+  const m = SCHEME.exec(v);
+  if (m && !/^https?$/i.test(m[1])) return {error: 'scan.badScheme'};
+  let u;
+  try { u = new URL(m ? v : `https://${v}`); } catch { return {error: 'scan.badUrl'}; }
+  if (!/^https?:$/.test(u.protocol)) return {error: 'scan.badScheme'};
+  if (!u.hostname || /\s/.test(v)) return {error: 'scan.badUrl'};
+  return {url: u.href, host: u.host};
+}
+const urlKey = (href) => { try { const u = new URL(href); return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`.toLowerCase(); } catch { return ''; } };
+let webSettings = null;                 // GET /api/settings, for the authorized targets
+const listedTarget = (href) => !!(webSettings && Array.isArray(webSettings.authorized_targets)
+  && webSettings.authorized_targets.some((x) => { const p = parseTarget(x); return p.url && urlKey(p.url) === urlKey(href); }));
+function urlMsg(text, bad) {
+  const inp = $('#url-input'); const msg = $('#url-msg');
+  setHTML(msg, bidi(text || '')); msg.classList.toggle('err', !!bad); msg.classList.toggle('hidden', !text);
+  if (bad) inp.setAttribute('aria-invalid', 'true'); else inp.removeAttribute('aria-invalid');
+}
+let authHost = '';                     // the host the authorization box was ticked for
+function renderAuthLabel() {
+  const p = parseTarget($('#url-input').value); const host = p.host || '';
+  const lbl = $('#url-auth-text');
+  if (!host) { lbl.textContent = t('scan.authorize'); return; }
+  setHTML(lbl, esc(t('scan.authorizeHost', {host: '\u0001'})).replace('\u0001', `<bdi dir="ltr">${esc(host)}</bdi>`));
+}
+function onUrlInput() {
+  const p = parseTarget($('#url-input').value);
+  if ($('#url-input').getAttribute('aria-invalid') === 'true' && !p.error) urlMsg('');
+  const host = p.host || '';
+  if ($('#url-auth').checked && host !== authHost) { $('#url-auth').checked = false; authHost = ''; }   // another site: ask again
+  renderAuthLabel();
+}
+$('#url-input').addEventListener('input', onUrlInput);
+$('#url-auth').onchange = (e) => {
+  e.target.removeAttribute('aria-invalid'); e.target.closest('.check').classList.remove('invalid');
+  $('#toast').classList.add('hidden');
+  authHost = e.target.checked ? (parseTarget($('#url-input').value).host || '') : '';
+};
+$('#url-input').onkeydown = (e) => { if (e.key === 'Enter' && !$('#url-btn').disabled) $('#url-btn').click(); };
+/* The profile's request budget, explained under the select (plural forms by count) */
+const PROFILE_BUDGET = {minimal: 10, standard: 45, deep: 150};
+function renderProfileHint() {
+  const prof = $('#url-profile').value; const minimal = prof === 'minimal';
+  const crawl = $('#url-crawl');
+  crawl.disabled = minimal; crawl.closest('.check').classList.toggle('disabled', minimal);
+  const key = {minimal: 'scan.hMinimal', standard: 'scan.hStandard', deep: 'scan.hDeep'}[prof] || 'scan.hStandard';
+  let text = t(key, {budget: tn('scan.budget', PROFILE_BUDGET[prof] || 45)});
+  if (crawl.checked && !minimal) text += ' ' + t('scan.hCrawl', {pages: tn('scan.pagesUpTo', 20)});
+  setHTML($('#url-profile-hint'), bidi(text));
+}
+$('#url-profile').addEventListener('change', renderProfileHint);
+$('#url-crawl').addEventListener('change', renderProfileHint);
 $('#url-btn').onclick = () => {
-  const v = $('#url-input').value.trim(); if (!v) { $('#url-input').focus(); return; }
-  if (!$('#url-auth').checked) {  // refused before any request: mark the consent box itself, not only a transient toast
-    const box = $('#url-auth'); box.setAttribute('aria-invalid', 'true'); box.closest('.check').classList.add('invalid');
+  const inp = $('#url-input'); const p = parseTarget(inp.value);
+  if (p.empty) { inp.focus(); return; }
+  if (p.error) { urlMsg(t(p.error), true); inp.focus(); return; }
+  if (inp.value.trim() !== p.url) { inp.value = p.url; onUrlInput(); }     // show what will be scanned
+  urlMsg('');
+  const box = $('#url-auth');
+  if (!box.checked && !listedTarget(p.url)) {  // refused before any request: mark the consent box itself, not only a transient toast
+    box.setAttribute('aria-invalid', 'true'); box.closest('.check').classList.add('invalid');
     toast(t('scan.needAuth')); box.focus(); return;
   }
-  startScan({target: v, authorized: true, profile: $('#url-profile').value, sensitivity: $('#url-sens').value,
-    crawl: $('#url-crawl').checked, compare_previous: $('#url-compare').checked, ignore_robots: $('#url-robots').checked,
+  const crawl = $('#url-crawl');
+  startScan({target: p.url, kind: 'url', authorized: true, profile: $('#url-profile').value, sensitivity: $('#url-sens').value,
+    crawl: crawl.checked && !crawl.disabled, compare_previous: $('#url-compare').checked, ignore_robots: $('#url-robots').checked,
     third_party_lookups: $('#url-3p').checked, use_proxy: !$('#url-noproxy').checked});
 };
 let pending = [];
@@ -855,37 +1030,88 @@ $('#folder-input').onchange = (e) => setFiles(e.target.files);
 dz.addEventListener('drop', (e) => setFiles(e.dataTransfer.files));
 $('#upload-btn').onclick = () => {
   if (!pending.length) return;
+  $('#toast').classList.add('hidden');
   const fd = new FormData(); pending.forEach((f) => fd.append('file', f, f.webkitRelativePath || f.name));
   const xhr = new XMLHttpRequest(); xhr.open('POST', '/api/upload');
   const prog = $('#upload-progress'); prog.classList.remove('hidden');
+  setScanBusy(true);
   xhr.upload.onprogress = (e) => { if (e.lengthComputable) prog.firstElementChild.style.width = (e.loaded / e.total * 100) + '%'; };
   xhr.onload = () => {
     prog.classList.add('hidden'); prog.firstElementChild.style.width = '0';
     if (xhr.status < 300) { watchScan(JSON.parse(xhr.responseText).id); setFiles([]); return; }
+    setScanBusy(false);
     let msg = xhr.responseText; try { msg = errText(JSON.parse(xhr.responseText).error) || msg; } catch { /* plain text */ }
     toast(`${t('scan.uploadFailed')}: ${msg}`);
   };
-  xhr.onerror = () => { prog.classList.add('hidden'); toast(t('scan.uploadFailed')); };
+  xhr.onerror = () => { prog.classList.add('hidden'); setScanBusy(false); toast(t('scan.uploadFailed')); };
   xhr.send(fd);
 };
+/* The error of a failed scan: the explanation (bidi runs isolated) and, apart in its own left-to-right isolate, the raw
+   error of the operating system or the network. */
+function failureHTML(s) {
+  const msg = errorOf(s); const raw = typeof s.error_raw === 'string' ? s.error_raw : '';
+  let why = msg;
+  if (raw) { const at = msg.lastIndexOf(raw); if (at > 0) { const open = msg.lastIndexOf('(', at); why = msg.slice(0, open > 0 ? open : at).replace(/[\s:—-]+$/, ''); } }
+  return `${esc(t('scan.failed'))}: <span class="fail-why">${bidi(why)}</span>`
+    + (raw ? `<span class="fail-raw"><span class="muted">${esc(t('scan.errDetails'))}</span> <bdi dir="ltr">${esc(raw)}</bdi></span>` : '');
+}
+function progressHTML(p) {
+  const step = p ? loc(p, 'label') : '';
+  const budget = p && Number(p.budget) > 0 ? Number(p.budget) : 0; const sent = p ? Math.min(Number(p.requests) || 0, budget || Infinity) : 0;
+  const req = budget ? tn('scan.reqOf', budget, {n: sent, total: budget}) : '';
+  const crawl = p && Number(p.crawl) > 0 ? tn('scan.crawled', Number(p.crawl)) : '';
+  return {step: step || t('scan.starting'), req, crawl, sent, budget};
+}
+let watching = null;
 async function watchScan(id) {
+  watching = id;
+  setScanBusy(true);
   const box = $('#scan-status'); box.classList.remove('hidden');
-  $('#scan-status-result').classList.add('hidden'); $('#scan-status-open').classList.add('hidden'); $('#scan-bar').classList.remove('hidden');
+  $('#scan-status-result').classList.add('hidden'); $('#scan-status-open').classList.add('hidden');
+  const bar = $('#scan-bar'); bar.classList.remove('hidden'); bar.classList.add('indeterminate'); bar.firstElementChild.style.width = '';
+  bar.removeAttribute('aria-valuenow'); bar.removeAttribute('aria-valuemax'); bar.setAttribute('aria-label', t('scan.progressLabel'));
+  const cancel = $('#scan-cancel'); cancel.classList.remove('hidden'); cancel.disabled = false; $('span', cancel).textContent = t('scan.cancel');
+  cancel.onclick = async () => {
+    cancel.disabled = true; $('span', cancel).textContent = t('scan.cancelling');
+    try { await api(`/api/scans/${encodeURIComponent(id)}/cancel`, {method: 'POST', body: '{}'}); } catch (err) { toast(err.message); }
+  };
   const icon = $('#scan-status-icon'); icon.className = 'status-icon'; setHTML(icon, '<span class="spinner"></span>');
-  $('#scan-status-title').textContent = t('scan.running');
+  $('#scan-status-title').textContent = t('scan.running'); $('#scan-status-step').textContent = '';
+  const done = () => { setScanBusy(false); cancel.classList.add('hidden'); bar.classList.add('hidden'); };
   const poll = async () => {
+    if (watching !== id) return;
     let s;
-    try { s = await api(`/api/scans/${id}`); } catch (err) { toast(err.message); return; }
+    try { s = await api(`/api/scans/${id}`); } catch (err) { done(); toast(err.message); return; }
     $('#scan-status-target').textContent = s.target; $('#scan-status-target').title = s.target;
-    if (s.status === 'running') { $('#scan-status-title').textContent = `${t('scan.running')} ${s.files_scanned ? '(' + s.files_scanned + ')' : ''}`; setTimeout(poll, 700); return; }
-    $('#scan-bar').classList.add('hidden');
+    if (s.status === 'running') {
+      if (s.kind === 'url') {
+        const p = progressHTML(s.progress);
+        $('#scan-status-title').textContent = t('scan.running');
+        setHTML($('#scan-status-step'), [p.step, p.req, p.crawl].filter(Boolean).map((x) => `<span>${bidi(x)}</span>`).join(' · '));
+        if (p.budget) {
+          bar.classList.remove('indeterminate'); bar.firstElementChild.style.width = `${Math.round((p.sent / p.budget) * 100)}%`;
+          bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', String(p.budget)); bar.setAttribute('aria-valuenow', String(p.sent));
+          bar.setAttribute('aria-valuetext', `${p.step} — ${p.req}`); bar.setAttribute('aria-label', `${t('scan.progressLabel')}: ${p.step}`);
+        }
+      } else {
+        $('#scan-status-title').textContent = `${t('scan.running')} ${s.files_scanned ? '(' + s.files_scanned + ')' : ''}`;
+      }
+      setTimeout(poll, 700); return;
+    }
+    done(); $('#scan-status-step').textContent = '';
+    if (s.status === 'cancelled') {
+      icon.className = 'status-icon'; setHTML(icon, ic('x'));
+      $('#scan-status-title').textContent = t('scan.cancelled'); $('#scan-status-step').textContent = t('scan.cancelledSub'); return;
+    }
     if (s.status === 'error') {
       icon.className = 'status-icon err'; setHTML(icon, ic('warning'));
-      $('#scan-status-title').textContent = `${t('scan.failed')}: ${errorOf(s)}`; return;
+      setHTML($('#scan-status-title'), failureHTML(s)); return;
     }
     icon.className = 'status-icon ok'; setHTML(icon, ic('check'));
     $('#scan-status-title').textContent = `${t('scan.done')} — ${scanName(s)} · ${tn(s.kind === 'url' ? 'find.nPages' : 'find.nFiles', s.files_scanned)}`;
-    setHTML($('#scan-status-tiles'), tilesHTML(s.summary, false));
+    const kg = s.web && s.web.grades && s.web.grades.kashif && typeof s.web.grades.kashif === 'object' ? s.web.grades.kashif.grade : null;
+    const grade = s.kind === 'url' && s.web ? `<div class="done-grade ${gradeClass(kg)}"><span class="muted">${esc(t('scan.grade'))}</span><span class="g-letter" dir="ltr">${esc(kg || '—')}</span><span class="g-meaning">${esc(gradeMeaning(kg))}</span></div>` : '';
+    setHTML($('#scan-status-tiles'), grade + tilesHTML(s.summary, false));
     $('#scan-status-open').href = `#findings/${s.id}`;
     $('#scan-status-open').classList.remove('hidden');
     $('#scan-status-result').classList.remove('hidden');
@@ -916,7 +1142,7 @@ async function loadFindings(arg) {
   sel.title = '';
   const chosen = id || (scans[0] && scans[0].id);
   if (!chosen) {
-    cur = null; onlyFp = null; renderChips(); setHTML($('#findings-web'), ''); $('#findings-toolbar2').classList.add('hidden'); $('#findings-comp').classList.add('hidden'); setHTML($('#findings-notes'), ''); setHTML($('#findings-context'), '');
+    cur = null; onlyFp = null; renderChips(); setHTML($('#findings-web'), ''); setHTML($('#findings-web-more'), ''); webView = null; $('#findings-toolbar2').classList.add('hidden'); $('#findings-comp').classList.add('hidden'); setHTML($('#findings-notes'), ''); setHTML($('#findings-context'), '');
     setHTML($('#findings-list'), `<div class="empty inline"><span class="e-icon">${ic('findings', 'lg')}</span><h2>${esc(t('dash.empty'))}</h2><p class="muted">${esc(t('dash.emptyHint'))}</p><a class="btn primary" href="#scan">${ic('plus')}${esc(t('nav.scan'))}</a></div>`);
     return;
   }
@@ -931,11 +1157,14 @@ async function loadFindings(arg) {
   const sources = [...new Set(cur.findings.map((f) => f.source))];
   setHTML($('#source-filter'), `<option value="">${esc(t('find.allSources'))}</option>` + sources.map((s) => `<option value="${esc(s)}">${esc(srcName(s))}</option>`).join(''));
   ['md', 'json', 'html', 'sarif'].forEach((x) => { $(`#dl-${x}`).href = `/api/scans/${chosen}/report.${x}${x === 'json' ? '' : `?lang=${lang}`}`; });
-  setHTML($('#findings-context'), `<span class="ctx" title="${esc(cur.target)}">${ic(cur.kind === 'url' ? 'globe' : 'folder', 'sm')}<b class="ellipsis" dir="auto">${esc(scanName(cur))}</b></span>`
+  setHTML($('#findings-context'), `<span class="ctx" title="${esc(cur.target)}">${ic(cur.kind === 'url' ? 'globe' : 'folder', 'sm')}<b class="ellipsis" dir="${dirOf(scanName(cur))}">${esc(scanName(cur))}</b></span>`
     + `<span class="ctx">${ic('file', 'sm')}${esc(tn(cur.kind === 'url' ? 'find.nPages' : 'find.nFiles', cur.files_scanned))}</span>`
     + `<span class="ctx">${ic('clock', 'sm')}${esc(fmtDate(cur.finished_at))}</span>`
     + `<span class="ctx">${ic('findings', 'sm')}${esc(tn('find.nFindings', total(cur.summary)))}</span>`);
-  setHTML($('#findings-notes'), notesOf(cur).map((n) => `<div class="note">${ic('info')}<span>${bidi(n)}</span></div>`).join('')
+  const covered = new Set(cur.kind === 'url' && cur.web && Array.isArray(cur.web.notes_covered) ? cur.web.notes_covered : []);
+  $('#fix-filter').classList.toggle('hidden', cur.kind === 'url');
+  if (cur.kind === 'url') $('#fix-filter').setAttribute('aria-pressed', 'false');
+  setHTML($('#findings-notes'), notesOf(cur).map((n, i) => (covered.has(i) ? '' : `<div class="note">${ic('info')}<span>${bidi(n)}</span></div>`)).join('')
     + (tri.err ? `<div class="note warn">${ic('warning')}<span>${esc(t('tri.loadFail', {err: tri.err}))}</span></div>` : ''));
   loadWebPanel(cur);
   renderFindings();
@@ -971,8 +1200,8 @@ function renderFindings() {
         <button class="f-row" type="button" aria-expanded="false" aria-controls="fd-${i}" data-i="${i}">
           ${ic('chevron', 'sm chev')}
           ${pill(f.severity)}
-          <span class="f-main"><span class="f-title" dir="auto">${esc(titleOf(f))}</span>
-            <span class="f-meta"><code dir="ltr">${esc(f.rule_id)}</code><span class="sep">·</span><span class="loc">${esc(f.file)}${f.line ? ':' + f.line : ''}</span></span></span>
+          <span class="f-main"><span class="f-title" dir="${dirOf(titleOf(f))}">${bidi(titleOf(f))}</span>
+            <span class="f-meta"><code dir="ltr">${esc(f.rule_id)}</code><span class="sep">·</span>${locMeta(f)}</span></span>
           <span class="f-side">${sideHTML(f, flow)}</span>
         </button>
         <div class="f-detail" id="fd-${i}" hidden></div>
@@ -990,10 +1219,18 @@ function renderFindings() {
     };
   }
 }
+/* Where a finding is: file:line for code; for a web finding the page's path (left to right) and on how many pages. */
+const webPath = (u) => { try { const x = new URL(u); return (x.pathname || '/') + x.search; } catch { return String(u || ''); } };
+const locMeta = (f) => {
+  const x = f.extra || {};
+  if (f.source !== 'web' || typeof x.url !== 'string' || !x.url) return `<span class="loc">${esc(f.file)}${f.line ? ':' + f.line : ''}</span>`;
+  const n = Number(x.page_count) || (Array.isArray(x.pages) ? x.pages.length : 0);
+  return `<span class="loc" dir="ltr" title="${esc(x.url)}">${esc(webPath(x.url))}</span>${n > 1 ? `<span class="sep">·</span><span class="pages">${esc(tn('find.onPages', n))}</span>` : ''}`;
+};
 const confOf = (f) => { const c = f.extra && f.extra.confidence; return ['certain', 'firm', 'tentative'].includes(c) ? c : ''; };
 const CONF_KEY = {certain: 'web.c_certain', firm: 'web.c_firm', tentative: 'web.c_tentative'};
 const confTag = (f) => (confOf(f) ? `<span class="tag conf-${confOf(f)}" title="${esc(t('web.confidence'))}">${esc(t(CONF_KEY[confOf(f)]))}</span>` : '');
-const sideHTML = (f, flow = isFlow(f)) => `${triTag(f)}${reachTag(f)}${confTag(f)}${hasFix(f) ? `<span class="tag fixable" title="${esc(t('fix.badge'))}">${ic('wrench')}<span class="tx">${esc(t('fix.badge'))}</span></span>` : ''}${flow ? `<span class="tag flow">${ic('flow')}${esc(t('find.dataflow'))}</span>` : ''}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ''}`;
+const sideHTML = (f, flow = isFlow(f)) => `${triTag(f)}${reachTag(f)}${confTag(f)}${hasFix(f) && f.source !== 'web' ? `<span class="tag fixable" title="${esc(t('fix.badge'))}">${ic('wrench')}<span class="tx">${esc(t('fix.badge'))}</span></span>` : ''}${flow ? `<span class="tag flow">${ic('flow')}${esc(t('find.dataflow'))}</span>` : ''}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ''}`;
 $('#findings-list').addEventListener('click', (e) => {
   const row = e.target.closest('.f-row'); if (!row) return;
   const box = row.parentElement; const det = box.querySelector('.f-detail');
@@ -1044,8 +1281,8 @@ $('#findings-list').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-patch]'); if (!b) return;
   const f = shown[+b.dataset.patch]; if (!f || !f.fix) return;
   if (await copyText(f.fix.diff)) {
-    const lbl = b.querySelector('span'); lbl.textContent = t('fix.copied'); b.classList.add('done'); toast(t('fix.copied'));
-    setTimeout(() => { lbl.textContent = t('fix.copy'); b.classList.remove('done'); }, 1600);
+    const lbl = b.querySelector('span'); lbl.textContent = t('fix.copied'); b.classList.add('done'); b.setAttribute('aria-label', t('fix.copied')); toast(t('fix.copied'));
+    setTimeout(() => { lbl.textContent = t('fix.copy'); b.classList.remove('done'); b.removeAttribute('aria-label'); }, 1600);
   }
 });
 const stripKind = (s) => String(s || '').replace(/^(Source|Sink|المصدر|نقطة الخطر)\s*:\s*/, '');
@@ -1070,6 +1307,7 @@ function trailHTML(f) {
   }).join('')}</ol>`;
 }
 function detailHTML(f, idx) {
+  if (f.source === 'web') return webFindingHTML(f, idx);
   const flow = isFlow(f); const x = f.extra || {};
   const where = `${f.file}${f.line ? ':' + f.line : ''}`;
   const i = Math.max(f.file.lastIndexOf('/'), f.file.lastIndexOf('!'));
@@ -1090,53 +1328,128 @@ function detailHTML(f, idx) {
   if (adv) body += `<section class="d-sec"><div class="remedy">${ic('bulb')}<div><b>${esc(t('find.advice'))}</b><span>${bidi(adv)}</span></div></div></section>`;
   if (hasFix(f)) body += fixHTML(f, idx);
   body += triageHTML(f, idx);
-  if (f.source === 'web') body += webDetailHTML(f);
-  else if (x.url) body += `<section class="d-sec"><h2>${ic('link')}${esc(t('find.ref'))}</h2><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" dir="ltr">${esc(x.url)} ${ic('external', 'xs')}</a></section>`;
+  if (x.url) body += `<section class="d-sec"><h2>${ic('link')}${esc(t('find.ref'))}</h2><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" dir="ltr">${esc(x.url)} ${ic('external', 'xs')}</a></section>`;
   if (x.pages && x.pages.length > 1) body += `<section class="d-sec"><details><summary>${esc(tn('find.onPages', x.pages.length))}</summary><ul class="pages-list">${x.pages.slice(0, 50).map((u) => `<li>${esc(u)}</li>`).join('')}</ul></details></section>`;
   if (f.fingerprint) body += `<div class="fp">${ic('hash')}<span>${esc(t('find.fingerprint'))}</span><code>${esc(f.fingerprint)}</code>${copyBtn(f.fingerprint)}</div>`;
   return `<div class="sev-${f.severity}"><div class="d-tags">${tags}</div><div class="d-grid">${body}</div></div>`;
 }
 
+/* A web finding: no file location, code snippet or "pattern match" tag; the page, the evidence, the request to
+   reproduce it and the copy-paste fix come before the triage form. */
+function webFindingHTML(f, idx) {
+  const x = f.extra || {};
+  const tags = [pill(f.severity), `<span class="tag code" dir="ltr">${esc(f.rule_id)}</span>`, cweTag(f.cwe),
+    `<span class="tag" title="${esc(f.source)}">${ic('globe')}${esc(srcName(f.source))}</span>`, confTag(f),
+    x.page_count > 1 ? `<span class="tag">${esc(tn('find.onPages', x.page_count))}</span>` : ''].join('');
+  let body = '';
+  const adv = loc(f, 'advice');
+  if (adv) body += `<section class="d-sec"><div class="remedy">${ic('bulb')}<div><b>${esc(t('find.advice'))}</b><span>${bidi(adv)}</span></div></div></section>`;
+  body += webDetailHTML(f);
+  if (x.pages && x.pages.length > 1) body += `<section class="d-sec"><details><summary>${esc(tn('find.onPages', x.pages.length))}</summary><ul class="pages-list" dir="ltr">${x.pages.slice(0, 50).map((u) => `<li>${esc(u)}</li>`).join('')}</ul></details></section>`;
+  body += triageHTML(f, idx);
+  if (f.fingerprint) body += `<div class="fp">${ic('hash')}<span>${esc(t('find.fingerprint'))}</span><code>${esc(f.fingerprint)}</code>${copyBtn(f.fingerprint)}</div>`;
+  return `<div class="sev-${f.severity}"><div class="d-tags">${tags}</div><div class="d-grid">${body}</div></div>`;
+}
+$('#findings-list').addEventListener('click', (e) => {     // "all platforms": open the fix in the fixes section below
+  const b = e.target.closest('[data-snip]'); if (!b) return;
+  const sn = document.getElementById(`snip-${b.dataset.snip}`); const all = $('#web-fixes');
+  if (!sn) return;
+  if (all) all.open = true;
+  sn.open = true; sn.scrollIntoView({block: 'start'}); const sum = $('summary', sn); if (sum) sum.focus();
+});
+
 /* ------------------------------------------------------- web scan (1.1.0) */
 /* GET /api/scans/<id>/web gives grades, coverage, inventory, copy-paste fixes and the diff, already in the UI
    language. Everything in it came from the scanned site: escaped with esc() and shown as text, never as a link. */
 const strList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+const objList = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : []);
+let webView = null;                        // the view of the current scan (cur), for the fixes shown in a finding
+const snipOf = (id) => (webView ? objList(webView.remediation).find((sn) => sn.id === id) : null);
+/* The block of a fix shown first: the first platform detected on the site that has code, else the first with code. */
+const snipBlocks = (sn) => [...objList(sn.detected).map((b) => ({...b, detected: true})), ...objList(sn.other)];
+const firstCode = (blocks) => { let i = blocks.findIndex((b) => b.code && b.detected); if (i < 0) i = blocks.findIndex((b) => b.code); return Math.max(0, i); };
+const codeBlock = (b) => (b.code ? `<div class="code"><div class="code-head"><span class="p" dir="ltr">${esc(b.lang || '')}</span>${copyBtn(b.code)}</div><pre tabindex="0" dir="ltr"><code>${esc(b.code)}</code></pre></div>` : '')
+  + (b.note ? `<p class="muted small">${bidi(b.note)}</p>` : '');
+function evidenceHTML(ev) {
+  const rows = [];
+  if (typeof ev.status === 'number' || typeof ev.status === 'string') rows.push([t('web.evStatus'), `<code dir="ltr">${esc(ev.status)}</code>`]);
+  const rq = ev.request && typeof ev.request === 'object' ? ev.request : {};
+  if (typeof rq.url === 'string' && rq.url) rows.push([t('web.evRequest'), `<code class="wrap" dir="ltr">${esc(rq.method || 'GET')} ${esc(rq.url)}</code>`]);
+  const chain = objList(ev.chain);
+  if (chain.length) rows.push([t('web.evChain'), `<ol class="ev-chain" dir="ltr">${chain.slice(0, 12).map((h) => `<li><code>${esc(h.status ?? '')}</code> <span class="wrap">${esc(h.url || '')}</span>${(h.location) ? ` <span aria-hidden="true">→</span> <span class="wrap">${esc(h.location)}</span>` : ''}</li>`).join('')}</ol>`]);
+  const m = ev.match && typeof ev.match === 'object' ? ev.match : {};
+  if (typeof m.name === 'string' && m.name) rows.push([t('web.evMatchName'), `<code class="wrap" dir="ltr">${esc(m.name)}</code>`]);
+  let out = rows.length ? `<dl class="ev-list">${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>` : '';
+  const hdrs = (Array.isArray(ev.headers) ? ev.headers : []).filter((h) => Array.isArray(h) && h.length >= 2);
+  if (hdrs.length) {
+    const hit = m.where === 'header' && typeof m.name === 'string' ? m.name.toLowerCase() : '';
+    const anyHit = hit && hdrs.some((h) => String(h[0]).toLowerCase() === hit);
+    out += `<details class="ev-headers"${anyHit ? ' open' : ''}><summary>${esc(t('web.evHeaders'))} (${esc(hdrs.length)})</summary><table class="ev-table" dir="ltr"><tbody>${hdrs.slice(0, 60).map((h) => {
+      const on = hit && String(h[0]).toLowerCase() === hit;
+      return `<tr${on ? ' class="hit"' : ''}><th scope="row">${on ? `<mark>${esc(h[0])}</mark>` : esc(h[0])}</th><td>${esc(h[1])}</td></tr>`;
+    }).join('')}</tbody></table></details>`;
+  }
+  if (typeof m.excerpt === 'string' && m.excerpt) out += `<h3 class="ev-h">${esc(t('web.evMatch'))}</h3><pre class="ev-excerpt" tabindex="0" dir="ltr"><code>${esc(m.excerpt)}</code></pre>`;
+  return out;
+}
 function webDetailHTML(f) {
   const x = f.extra || {}; const ev = (x.evidence && typeof x.evidence === 'object') ? x.evidence : {};
   let out = '';
   if (typeof x.url === 'string' && x.url) out += `<section class="d-sec"><h2>${ic('globe')}${esc(t('web.page'))}</h2><div class="locbar"><span class="p" dir="ltr">${esc(x.url)}</span>${copyBtn(x.url)}</div></section>`;
+  const evh = evidenceHTML(ev);
+  if (evh) out += `<section class="d-sec ev"><h2>${ic('search')}${esc(t('web.evidence'))}</h2>${evh}</section>`;
   if (typeof ev.curl === 'string' && ev.curl) out += `<section class="d-sec"><h2>${ic('code')}${esc(t('web.curl'))}</h2><div class="code"><div class="code-head"><span class="p">curl</span>${copyBtn(ev.curl)}</div><pre tabindex="0" dir="ltr"><code>${esc(ev.curl)}</code></pre></div></section>`;
-  const ids = [...strList(x.wstg).map((v) => 'WSTG ' + v), ...strList(x.asvs4).map((v) => 'ASVS 4 ' + v), ...strList(x.asvs5).map((v) => 'ASVS 5 ' + v)];
+  strList(x.remediation).slice(0, 2).forEach((id) => {
+    const sn = snipOf(id); if (!sn) return;
+    const blocks = snipBlocks(sn); const b = blocks[firstCode(blocks)];
+    out += `<section class="d-sec fix"><h2>${ic('wrench')}${esc(t('web.fix'))}: <span>${bidi(sn.title)}</span></h2>`
+      + (b ? `<p class="muted small"><bdi>${esc(b.name || b.platform || '')}</bdi>${(b.detected) ? ` <span class="tag det">${esc(t('web.detected'))}</span>` : ''}</p>${codeBlock(b)}` : `<p>${bidi(sn.summary)}</p>`)
+      + `<button class="btn sm ghost" type="button" data-snip="${esc(sn.id)}">${ic('chevron-down', 'sm')}<span>${esc(t('web.fixAll'))}</span></button></section>`;
+  });
+  const ids = [...strList(x.wstg).map((v) => (/^WSTG-/i.test(v) ? v : 'WSTG ' + v)), ...strList(x.asvs4).map((v) => 'ASVS 4 ' + v), ...strList(x.asvs5).map((v) => 'ASVS 5 ' + v)];
   if (ids.length) out += `<section class="d-sec"><h2>${ic('compliance')}${esc(t('web.mapping'))}</h2><div class="d-tags">${ids.map((v) => `<span class="tag code" dir="ltr">${esc(v)}</span>`).join('')}</div></section>`;
   return out;
 }
 const webTable = (head, rows, cls = '') => (rows.length
-  ? `<div class="tw"><table class="web-table${cls ? ' ' + cls : ''}"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td dir="auto">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+  ? `<div class="tw"><table class="web-table${cls ? ' ' + cls : ''}"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td dir="${dirOf(c)}">${bidi(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
   : `<p class="muted">${esc(t('web.empty'))}</p>`);
-function webTabs(name, tabs) {
+/* Tabs of the panel (inventory tables, platforms of a fix): ids and aria-controls, a labelled tab list, and the tab
+   `sel` selected (the first detected platform that has code, for a fix). Wired by setupTabs in wireTabs. */
+function webTabs(name, tabs, label, sel = 0) {
   if (!tabs.length) return '';
-  return `<div class="wtabs" data-wtabs="${esc(name)}"><div class="tabs" role="tablist">${tabs.map((tb, i) => `<button class="tab${i ? '' : ' active'}" type="button" role="tab" aria-selected="${i ? 'false' : 'true'}" data-wt="${i}"><bdi dir="auto">${esc(tb.label)}</bdi></button>`).join('')}</div>`
-    + tabs.map((tb, i) => `<div class="wpane${i ? ' hidden' : ''}" role="tabpanel" data-wp="${i}">${tb.body}</div>`).join('') + '</div>';
+  const id = (k, i) => `w${k}-${esc(name)}-${i}`;
+  return `<div class="wtabs" data-wtabs="${esc(name)}"><div class="tabs" role="tablist" aria-label="${esc(label)}">${tabs.map((tb, i) => `<button class="tab${i === sel ? ' active' : ''}" type="button" role="tab" id="${id('t', i)}" aria-controls="${id('p', i)}" aria-selected="${i === sel ? 'true' : 'false'}" tabindex="${i === sel ? '0' : '-1'}" data-wt="${i}"><bdi dir="${dirOf(tb.label)}">${esc(tb.label)}</bdi>${(tb.detected) ? ` <span class="tag det">${esc(t('web.detected'))}</span>` : ''}</button>`).join('')}</div>`
+    + tabs.map((tb, i) => `<div class="wpane${i === sel ? '' : ' hidden'}" role="tabpanel" id="${id('p', i)}" aria-labelledby="${id('t', i)}" tabindex="0" data-wp="${i}">${tb.body}</div>`).join('') + '</div>';
 }
 function wireTabs(root) {
-  $$('.wtabs', root).forEach((box) => {
-    $$(':scope > .tabs > .tab', box).forEach((b) => { b.onclick = () => {
-      $$(':scope > .tabs > .tab', box).forEach((x) => { x.classList.toggle('active', x === b); x.setAttribute('aria-selected', String(x === b)); });
-      $$(':scope > .wpane', box).forEach((p) => p.classList.toggle('hidden', p.dataset.wp !== b.dataset.wt));
-    }; });
-  });
+  $$('.wtabs > .tabs[role="tablist"]', root).forEach((list) => setupTabs(list, null));
 }
-function webPanelHTML(v) {
-  const num = (n) => (typeof n === 'number' && Number.isFinite(n) ? String(n) : '');
+/* Grade letter → colour class and meaning (A green … F critical, no grade muted); the meaning is always written out
+   too, so colour is never the only cue. SSL Labs' T (trust) and M (name mismatch) read as failing. */
+const gradeLetter = (g) => { const m = /^[A-FTM]/i.exec(String(g || '').trim()); return m ? m[0].toLowerCase() : ''; };
+const gradeClass = (g) => { const l = gradeLetter(g); return 'g-grade-' + ({a: 'a', b: 'b', c: 'c', d: 'd', e: 'd', f: 'f', t: 'f', m: 'f'}[l] || 'none'); };
+const GRADE_MEANING = {'g-grade-a': 'web.gm_a', 'g-grade-b': 'web.gm_b', 'g-grade-c': 'web.gm_c', 'g-grade-d': 'web.gm_d', 'g-grade-f': 'web.gm_f', 'g-grade-none': 'web.gm_none'};
+const gradeMeaning = (g) => t(GRADE_MEANING[gradeClass(g)]);
+const GRADE_NUM = (n) => (typeof n === 'number' && Number.isFinite(n) ? String(Math.round(n * 100) / 100) : '');
+/* Above the findings list: one facts line, the grade cards and the coverage chips (spec §4.5). */
+function webPanelTop(v) {
+  const num = GRADE_NUM;
   const f = v.facts || {};
-  let html = `<div class="card web-card"><div class="web-facts">${[['web.profile', f.profile], ['web.requests', num(f.requests)], ['web.final', f.final_url], ['web.data', f.data_date]]
-    .filter(([, val]) => val).map(([k, val]) => `<span class="ctx">${esc(t(k))}: <b dir="ltr">${esc(val)}</b></span>`).join('')}</div>`;
-  const grades = Array.isArray(v.grades) ? v.grades : [];
+  const sent = Number(f.core_requests ?? f.requests); const budget = Number(f.budget);
+  const req = Number.isFinite(sent) && budget > 0 ? tn('scan.reqOf', budget, {n: sent, total: budget}) : num(f.requests);
+  const facts = [];
+  if (req) facts.push(`<span class="ctx">${esc(t('web.requests'))}: <span>${bidi(t('web.reqFact', {req, profile: f.profile || '—', sens: f.sensitivity || 'default'}))}</span></span>`);
+  if (f.final_url) facts.push(`<span class="ctx">${esc(t('web.final'))}: <b dir="ltr">${esc(f.final_url)}</b></span>`);
+  if (f.data_date) facts.push(`<span class="ctx">${esc(t('web.data'))} <b dir="ltr">${esc(f.data_date)}</b></span>`);
+  let html = `<div class="card web-card"><div class="web-facts">${facts.join('')}</div>`;
+  const inc = v.inconclusive && typeof v.inconclusive === 'object' ? v.inconclusive : null;
+  if (inc && inc.text) html += `<div class="note warn inconclusive">${ic('warning')}<span>${bidi(inc.text)}</span></div>`;
+  const grades = objList(v.grades);
   html += `<h2 class="web-h">${ic('shield')}${esc(t('web.grades'))}</h2><div class="grade-cards">${grades.map((g) => {
     const score = num(g.score) ? num(g.score) + (num(g.max) ? '/' + num(g.max) : '') : '';
     const caps = strList(g.caps);
-    return `<div class="grade-card g-${esc(g.key)}"><span class="g-name">${esc(g.name)}</span><span class="g-letter" dir="ltr">${esc(g.grade || '—')}</span>`
-      + `<span class="muted" dir="ltr">${esc(score || (g.grade ? '' : t('web.none')))}</span>`
+    return `<div class="grade-card g-${esc(g.key)} ${gradeClass(g.grade)}"><span class="g-name">${bidi(g.name)}</span><span class="g-letter" dir="ltr">${esc(g.grade || '—')}</span>`
+      + `<span class="g-meaning">${esc(g.grade_word || gradeMeaning(g.grade))}${score ? ` <span class="muted" aria-hidden="true">·</span> <span class="muted" dir="ltr">${esc(score)}</span>` : ''}</span>`
       + (g.label ? `<small class="muted">${bidi(g.label)}</small>` : '')
       + strList(g.notes).slice(0, 4).map((n) => `<small class="muted">${bidi(n)}</small>`).join('')
       + (caps.length ? `<details><summary>${esc(t('web.caps'))}</summary><ul>${caps.slice(0, 8).map((c) => `<li>${bidi(c)}</li>`).join('')}</ul></details>` : '') + '</div>';
@@ -1145,43 +1458,84 @@ function webPanelHTML(v) {
   const cov = v.coverage || {}; const counts = cov.counts || {}; const states = cov.states || {};
   html += `<h2 class="web-h">${ic('check')}${esc(t('web.coverage'))}</h2><div class="cov-chips">${['pass', 'fail', 'not_applicable', 'not_tested', 'inconclusive']
     .map((s) => `<span class="chip cov-${s}">${esc(states[s] || s)} <b>${esc(num(counts[s]) || '0')}</b></span>`).join('')}</div><p class="muted small">${esc(t('web.covNote'))}</p>`;
-  const probs = Array.isArray(cov.problems) ? cov.problems : [];
-  if (probs.length) html += `<details class="web-details"><summary>${esc(t('web.covDetails'))} (${probs.length})</summary>${webTable([t('web.check'), t('web.state'), t('web.reason')], probs.map((r) => strList(r)), 'cov-table')}</details>`;
-  const d = v.diff;
-  if (d && typeof d === 'object') {
-    html += `<h2 class="web-h">${ic('compare')}${esc(t('web.diff'))}</h2>` + strList(d.notes).map((n) => `<p class="muted">${bidi(n)}</p>`).join('');
-    if (d.comparable) {
-      const rowsOf = (list) => (Array.isArray(list) ? list : []).map((r) => `<li>${pill(['critical', 'high', 'medium', 'low', 'info'].includes(r.severity) ? r.severity : 'info')} <code dir="ltr">${esc(r.rule)}</code> <span dir="auto">${esc(r.title)}</span></li>`).join('');
-      const post = Array.isArray(d.posture) ? d.posture : [];
-      if (strList(d.grades).length) html += `<p><b>${esc(t('web.dGrades'))}:</b> ${strList(d.grades).map((g) => `<bdi>${bidi(g)}</bdi>`).join(' · ')}</p>`;
-      html += `<div class="diff-grid"><div><h3>${esc(t('web.dNew'))} <span class="count">${esc(String((d.new || []).length))}</span></h3><ul class="diff-list">${rowsOf(d.new)}</ul></div>`
-        + `<div><h3>${esc(t('web.dResolved'))} <span class="count">${esc(String((d.resolved || []).length))}</span></h3><ul class="diff-list">${rowsOf(d.resolved)}</ul></div></div>`
-        + `<p class="muted small">${esc(t('web.dUnchanged'))}: ${esc(num(d.unchanged) || '0')}</p>`
-        + `<h3>${esc(t('web.dPosture'))}</h3>` + (post.length ? `<ul class="posture">${post.map((p) => `<li class="dir-${esc(p.direction)}"><b>${esc(p.label)}</b> <span dir="auto">${bidi(p.text)}</span></li>`).join('')}</ul>` : `<p class="muted">${esc(t('web.dNone'))}</p>`);
-    }
-  }
-  const inv = Array.isArray(v.inventory) ? v.inventory : [];
-  html += `<h2 class="web-h">${ic('search')}${esc(t('web.inventory'))}</h2>` + webTabs('inv', inv.map((tb) => ({label: tb.label, body: webTable(strList(tb.head), (Array.isArray(tb.rows) ? tb.rows : []).map((r) => strList(r)))})));
-  const rem = Array.isArray(v.remediation) ? v.remediation : [];
-  if (rem.length) {
-    html += `<h2 class="web-h">${ic('wrench')}${esc(t('web.remediation'))}</h2><p class="muted small">${esc(t('web.remHint'))}</p>`;
-    html += rem.map((sn, i) => {
-      const blocks = [...(Array.isArray(sn.detected) ? sn.detected : []), ...(Array.isArray(sn.other) ? sn.other : [])];
-      return `<div class="snip"><h3><code dir="ltr">${esc(sn.id)}</code> <span>${bidi(sn.title)}</span></h3><p>${bidi(sn.summary)}</p>`
-        + (sn.caveat ? `<p class="caveat">${ic('warning', 'sm')}<span><b>${esc(t('web.caution'))}:</b> ${bidi(sn.caveat)}</span></p>` : '')
-        + webTabs('rem' + i, blocks.map((b) => ({label: b.name || b.platform || '', body: (b.code ? `<div class="code"><div class="code-head"><span class="p" dir="ltr">${esc(b.lang || '')}</span>${copyBtn(b.code)}</div><pre tabindex="0" dir="ltr"><code>${esc(b.code)}</code></pre></div>` : '') + (b.note ? `<p class="muted small">${bidi(b.note)}</p>` : '')}))) + '</div>';
-    }).join('');
-  }
   return html + '</div>';
 }
+/* The coverage problems as rows {check, title, state, reason}; web_view may give arrays or records, and groups. */
+const covRow = (r) => (Array.isArray(r) ? {check: r[0], state: r[1], reason: r[2], title: r[3]}
+  : r && typeof r === 'object' ? {check: r.check || r.id, state: r.state_label || r.label || r.state, reason: r.reason, title: r.title} : null);
+function coverageTable(cov) {
+  // web_view's groups: one per (state, reason) with its checks [{id, title}]; the reason is said once, in the group's row
+  let groups = objList(cov.groups).map((g) => ({label: [g.state_label || g.label || g.state || '', g.reason || ''].filter(Boolean).join(' — '),
+    rows: (Array.isArray(g.checks) ? objList(g.checks).map((c) => ({check: c.id, title: c.title})) : (Array.isArray(g.rows) ? g.rows : []).map(covRow)).filter(Boolean)}));
+  if (!groups.length) {
+    const by = new Map();
+    (Array.isArray(cov.problems) ? cov.problems : []).map(covRow).filter(Boolean).forEach((r) => { const k = String(r.state || ''); if (!by.has(k)) by.set(k, []); by.get(k).push(r); });
+    groups = [...by].map(([label, rows]) => ({label, rows}));
+  }
+  const n = groups.reduce((a, g) => a + g.rows.length, 0);
+  if (!n) return '';
+  const titled = groups.some((g) => g.rows.some((r) => r.title));
+  const reasons = groups.some((g) => g.rows.some((r) => r.reason));
+  const head = [t('web.check'), ...(titled ? [t('web.title')] : []), ...(reasons ? [t('web.reason')] : [])];
+  const cell = (c) => `<td dir="${dirOf(c)}">${bidi(c || '')}</td>`;
+  const body = groups.map((g) => `<tr class="grp"><th colspan="${head.length}" scope="colgroup"><span>${bidi(g.label)}</span> <span class="count">${esc(g.rows.length)}</span></th></tr>`
+    + g.rows.map((r) => `<tr><td class="cid"><code dir="ltr">${esc(r.check || '')}</code></td>${(titled) ? cell(r.title) : ''}${(reasons) ? cell(r.reason) : ''}</tr>`).join('')).join('');
+  return `<details class="web-details" id="web-cov"><summary>${ic('check', 'sm')}${esc(t('web.covProblems'))} <span class="count">${esc(n)}</span></summary><div class="tw"><table class="web-table cov-table"><thead><tr>${head.map((h) => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div></details>`;
+}
+function diffHTMLWeb(v) {
+  const d = v.diff; const cmp = v.compare || {};
+  if (!d || typeof d !== 'object') {
+    return cmp.asked ? `<details class="web-details" id="web-diff"><summary>${ic('compare', 'sm')}${esc(t('web.diff'))}</summary><p class="note">${ic('info')}<span>${esc(t('web.baseline'))}</span></p></details>` : '';
+  }
+  const SEVS = ['critical', 'high', 'medium', 'low', 'info'];
+  const rowsOf = (list) => objList(list).map((r) => `<li>${pill(SEVS.includes(r.severity) ? r.severity : 'info')} <code dir="ltr">${esc(r.rule)}</code> <span dir="${dirOf(r.title)}">${bidi(r.title)}</span>${(r.reason) ? ` <small class="muted">${bidi(r.reason)}</small>` : ''}</li>`).join('');
+  // web_view gives the not re-checked findings as a count; the server adds their rows (not_retested_rows)
+  const notRows = Array.isArray(d.not_retested) ? objList(d.not_retested) : objList(d.not_retested_rows);
+  const nNew = objList(d.new).length; const nRes = objList(d.resolved).length;
+  const nNot = typeof d.not_retested === 'number' ? d.not_retested : notRows.length;
+  let html = `<details class="web-details" id="web-diff"><summary>${ic('compare', 'sm')}${esc(t('web.diff'))}${(d.comparable) ? ` <span class="count" dir="ltr">+${esc(nNew)} / −${esc(nRes)}</span>` : ''}</summary>`
+    + strList(d.notes).map((n) => `<p class="note">${ic('info')}<span>${bidi(n)}</span></p>`).join('');
+  if (cmp.asked && !cmp.previous && !d.comparable && !strList(d.notes).length) html += `<p class="note">${ic('info')}<span>${esc(t('web.baseline'))}</span></p>`;
+  if (d.comparable) {
+    const post = objList(d.posture);
+    if (strList(d.grades).length) html += `<p><b>${esc(t('web.dGrades'))}:</b> ${strList(d.grades).map((g) => `<span>${bidi(g)}</span>`).join(' · ')}</p>`;
+    html += `<div class="diff-grid"><div><h3>${esc(t('web.dNew'))} <span class="count">${esc(nNew)}</span></h3><ul class="diff-list">${rowsOf(d.new)}</ul></div>`
+      + `<div><h3>${esc(t('web.dResolved'))} <span class="count">${esc(nRes)}</span></h3><ul class="diff-list">${rowsOf(d.resolved)}</ul></div></div>`
+      + (nNot ? `<h3>${esc(t('web.dNotRetested'))} <span class="count">${esc(nNot)}</span></h3><p class="muted small">${esc(t('web.dNotRetestedHint'))}</p><ul class="diff-list">${rowsOf(notRows)}</ul>` : '')
+      + `<p class="muted small">${esc(t('web.dUnchanged'))}: ${esc(GRADE_NUM(d.unchanged) || '0')}</p>`
+      + `<h3>${esc(t('web.dPosture'))}</h3>` + (post.length ? `<ul class="posture">${post.map((p) => `<li class="dir-${esc(p.direction)}"><b>${esc(p.label)}</b> <span>${bidi(p.text)}</span></li>`).join('')}</ul>` : `<p class="muted">${esc(t('web.dNone'))}</p>`);
+  }
+  return html + '</details>';
+}
+/* Below the findings list, collapsed: the coverage problems, the comparison, the inventory and the fixes. */
+function webPanelMore(v) {
+  let html = coverageTable(v.coverage || {}) + diffHTMLWeb(v);
+  const inv = objList(v.inventory);
+  if (inv.length) html += `<details class="web-details" id="web-inv"><summary>${ic('search', 'sm')}${esc(t('web.inventory'))}</summary>`
+    + webTabs('inv', inv.map((tb) => ({label: tb.label, body: webTable(strList(tb.head), (Array.isArray(tb.rows) ? tb.rows : []).map((r) => strList(r)))})), t('web.invTabs')) + '</details>';
+  const rem = objList(v.remediation);
+  if (rem.length) {
+    html += `<details class="web-details" id="web-fixes"><summary>${ic('wrench', 'sm')}${esc(t('web.remediation'))} <span class="count">${esc(rem.length)}</span></summary><p class="muted small">${esc(t('web.remHint'))}</p>`;
+    html += rem.map((sn, i) => {
+      const blocks = snipBlocks(sn);
+      return `<details class="snip" id="snip-${esc(sn.id)}"><summary><code dir="ltr">${esc(sn.id)}</code> <span>${bidi(sn.title)}</span></summary><p>${bidi(sn.summary)}</p>`
+        + (sn.caveat ? `<p class="caveat">${ic('warning', 'sm')}<span><b>${esc(t('web.caution'))}:</b> ${bidi(sn.caveat)}</span></p>` : '')
+        + webTabs('rem' + i, blocks.map((b) => ({label: b.name || b.platform || '', detected: !!b.detected, body: codeBlock(b)})), t('web.remTabs', {id: sn.id}), firstCode(blocks)) + '</details>';
+    }).join('') + '</details>';
+  }
+  return html;
+}
+const webPanelHTML = (v) => webPanelTop(v) + webPanelMore(v);
 async function loadWebPanel(scan) {
-  const box = $('#findings-web');
-  if (!scan || scan.kind !== 'url' || !scan.web) { setHTML(box, ''); return; }
+  const box = $('#findings-web'); const more = $('#findings-web-more');
+  webView = null;
+  if (!scan || scan.kind !== 'url' || !scan.web) { setHTML(box, ''); setHTML(more, ''); return; }
   try {
     const v = await api(`/api/scans/${encodeURIComponent(scan.id)}/web?lang=${lang}`);
     if (cur !== scan) return;              // another scan was chosen meanwhile
-    setHTML(box, webPanelHTML(v)); wireTabs(box);
-  } catch (err) { setHTML(box, `<div class="note warn">${ic('warning')}<span>${esc(t('web.loadFail', {err: err.message}))}</span></div>`); }
+    webView = v;
+    setHTML(box, webPanelTop(v)); setHTML(more, webPanelMore(v)); wireTabs(more);
+  } catch (err) { setHTML(more, ''); setHTML(box, `<div class="note warn">${ic('warning')}<span>${esc(t('web.loadFail', {err: err.message}))}</span></div>`); }
 }
 
 /* -------------------------------------------------------------- triage */
@@ -1417,7 +1771,7 @@ function renderCompliance() {
   if (!ids.includes(comp.fw)) comp.fw = ids[0] || '';
   const risk = d.risk || {}; const rating = ['none', 'low', 'moderate', 'high', 'critical'].includes(risk.rating) ? risk.rating : 'none';
   const sid = encodeURIComponent(s.id);
-  setHTML($('#comp-context'), `<span class="ctx" title="${esc(s.target)}">${ic(s.kind === 'url' ? 'globe' : 'folder', 'sm')}<b class="ellipsis" dir="auto">${esc(scanName(s))}</b></span>`
+  setHTML($('#comp-context'), `<span class="ctx" title="${esc(s.target)}">${ic(s.kind === 'url' ? 'globe' : 'folder', 'sm')}<b class="ellipsis" dir="${dirOf(scanName(s))}">${esc(scanName(s))}</b></span>`
     + `<span class="ctx">${ic('clock', 'sm')}${esc(fmtDate(s.finished_at))}</span>`
     + `<span class="ctx">${ic('findings', 'sm')}${esc(tn('find.nFindings', total(s.summary || {})))}</span>`
     + `<span class="ctx risk r-${rating}">${ic('warning', 'sm')}<span class="muted">${esc(t('comp.risk'))}:</span> <b>${Number(risk.score) || 0}/100</b> <span class="rating">${esc(t('comp.r_' + rating))}</span></span>`
@@ -1496,7 +1850,7 @@ function renderRules() {
   const q = $('#rules-search').value.trim().toLowerCase();
   const rows = rulesCache.filter((r) => !q || [r.id, r.title, r.title_ar, r.cwe, r.advice, r.advice_en, ...(r.langs || []), ...(r.langs_en || [])].join(' ').toLowerCase().includes(q));
   setHTML($('#rules-table'), `<thead><tr><th>${esc(t('rules.id'))}</th><th>${esc(t('rules.sev'))}</th><th>${esc(t('rules.name'))}</th><th>${esc(t('rules.advice'))}</th><th>${esc(t('rules.langs'))}</th></tr></thead><tbody>` +
-    rows.map((r) => `<tr><td class="rid"><code dir="ltr">${esc(r.id)}</code><div style="margin-top:6px">${cweTag(r.cwe)}</div></td><td>${pill(r.severity)}</td><td class="ttl"><b dir="auto">${esc(titleOf(r))}</b></td><td class="adv">${bidi(loc(r, 'advice')) || '<span class="muted">—</span>'}</td><td><div class="langs">${esc(langsOf(r).slice(0, 8).join(' '))}${langsOf(r).length > 8 ? ' …' : ''}</div></td></tr>`).join('') + '</tbody>');
+    rows.map((r) => `<tr><td class="rid"><code dir="ltr">${esc(r.id)}</code><div style="margin-top:6px">${cweTag(r.cwe)}</div></td><td>${pill(r.severity)}</td><td class="ttl"><b dir="${dirOf(titleOf(r))}">${bidi(titleOf(r))}</b></td><td class="adv">${bidi(loc(r, 'advice')) || '<span class="muted">—</span>'}</td><td><div class="langs">${esc(langsOf(r).slice(0, 8).join(' '))}${langsOf(r).length > 8 ? ' …' : ''}</div></td></tr>`).join('') + '</tbody>');
 }
 
 /* ------------------------------------------------------------ settings */
@@ -1530,7 +1884,7 @@ async function loadSettings(arg) {
 $('#settings-form').onsubmit = async (e) => {
   e.preventDefault(); const f = e.target; const lines = (v) => v.split('\n').map((x) => x.trim()).filter(Boolean);
   try {
-    await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, web_timeout: Math.min(120, Math.max(5, +f.web_timeout.value || 20)), web_delay: Math.min(10, Math.max(0, +f.web_delay.value || 0)), fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
+    await api('/api/settings', {method: 'POST', body: JSON.stringify({min_severity: f.min_severity.value, web_timeout: Math.min(120, Math.max(5, +f.web_timeout.value || 20)), web_delay: Math.min(10, Math.max(0.2, +f.web_delay.value || 0.5)), fail_on: f.fail_on.value, keep_scans: +f.keep_scans.value,
       exclude: lines(f.exclude.value), ignore_rules: lines(f.ignore_rules.value), authorized_targets: lines(f.authorized_targets.value), use_osv: f.use_osv.checked, use_external: f.use_external.checked,
       audit: f.audit.checked, use_jadx: f.use_jadx.checked, jadx_include_libs: f.jadx_include_libs.checked, jadx_timeout: +f.jadx_timeout.value,
       models_dir: f.models_dir.value.trim(), queries_dir: f.queries_dir.value.trim(), check_updates: f.check_updates.checked,

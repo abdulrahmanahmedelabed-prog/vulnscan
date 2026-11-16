@@ -68,7 +68,7 @@ STR: dict[str, tuple[str, str]] = {
                  "تحسّنت درجة {algorithm}: من {before} إلى {after}{scores}"),
     "grade_down": ("{algorithm} grade dropped: {before} → {after}{scores}",
                    "انخفضت درجة {algorithm}: من {before} إلى {after}{scores}"),
-    "grade_scores": (" ({before} → {after})", " (من {before} إلى {after})"),
+    "grade_scores": ("({before} → {after})", "(من {before} إلى {after})"),   # appended after a space
     "grade_score_only": ("{algorithm}: {grade} ({before} → {after})", "{algorithm}: {grade} (من {before} إلى {after})"),
     "obs_score_up": ("Observatory score rose: {before} → {after} (grade still {grade})",
                      "ارتفعت درجة Observatory: من {before} إلى {after} (والتقدير ما زال {grade})"),
@@ -79,6 +79,9 @@ STR: dict[str, tuple[str, str]] = {
     "severity_changed": ("{rule} {before} → {after}: {title}", "{rule}: تغيّرت الخطورة من {before} إلى {after} ({title})"),
     "nr_not_run": ("its check did not run in this scan", "لم يُجرَ فحصه في هذا الفحص"),
     "nr_partial": ("its check ran only on part of the site in this scan", "أُجري فحصه على جزء من الموقع فقط في هذا الفحص"),
+    "nr_host": ("its check did not run on this host in this scan", "لم يُجرَ فحصه على هذا المضيف في هذا الفحص"),
+    "nr_sensitivity": ("hidden at the {sensitivity} sensitivity of this scan (the previous scan used {previous})",
+                       "مخفي بحساسية {sensitivity} في هذا الفحص (استخدم الفحص السابق {previous})"),
     "final_url": ("final URL changed: {before} → {after}", "تغيّر الرابط النهائي: من {before} إلى {after}"),
     "chain": ("redirect chain changed: {before} → {after}", "تغيّرت سلسلة التوجيه: من {before} إلى {after}"),
     "header_added": ("header added: {header}: {value}", "أُضيفت ترويسة: {header}: {value}"),
@@ -296,7 +299,8 @@ def _host_of_source(src: str) -> str:
     if "://" in s:
         s = s.split("://", 1)[1]
     host = s.split("/", 1)[0].split(":", 1)[0].lower()
-    return host if "." in host or host == "*" else ""
+    # "*" (any source) is not a third-party host: the CSP directive change itself is reported (csp_added)
+    return host if "." in host else ""
 
 
 def _third_parties(ctx: Any, csp: list[dict]) -> dict[str, list[str]]:
@@ -469,8 +473,9 @@ def _grade_changes(prev: dict, cur: dict) -> tuple[dict, list[dict], list[dict]]
         name = _ALG_NAMES[alg]
         shown_b, shown_a = before or "—", after or "—"
         if change in ("up", "down") and (rb != ra or (rb is None and letter_changed)):
-            scores = ((t("grade_scores", "en", before=_fmt_score(sb), after=_fmt_score(sa)),
-                       t("grade_scores", "ar", before=_fmt_score(sb), after=_fmt_score(sa))) if score_changed else ("", ""))
+            scores = ((" " + t("grade_scores", "en", before=_fmt_score(sb), after=_fmt_score(sa)),
+                       " " + t("grade_scores", "ar", before=_fmt_score(sb), after=_fmt_score(sa))) if score_changed
+                      else ("", ""))
             key = "grade_up" if change == "up" else "grade_down"
             item = _item("improvement" if change == "up" else "regression", "grade", key, algorithm=name,
                          before=shown_b, after=shown_a, scores=scores)
@@ -495,8 +500,8 @@ def _header_changes(p: dict, c: dict) -> list[dict]:
     items: list[dict] = []
     for name in SECURITY_HEADERS:
         b, a = p.get(name), c.get(name)
-        if b == a:
-            continue
+        if b == a or name == "content-security-policy":
+            continue                    # the enforced CSP is compared by _csp_changes (added/removed/directives)
         shown = name.title() if name != "x-xss-protection" else "X-XSS-Protection"
         if b is None:
             weaker = name in ("server", "x-powered-by", "access-control-allow-origin", "access-control-allow-credentials")
@@ -680,12 +685,16 @@ def _check_changes(p: dict, c: dict) -> list[dict]:
         b, a = p[check], c[check]
         if b == a:
             continue
+        # not_applicable → fail (a CSP newly added and weak) is a new finding, never "check regressed"
         if b == "pass" and a == "fail":
             items.append(_item("regression", "check", "check_regressed", check=check))
         elif b == "fail" and a == "pass":
             items.append(_item("improvement", "check", "check_fixed", check=check))
         elif {b, a} & {"not_tested", "inconclusive"} and {b, a} & {"pass", "fail"}:
             items.append(_item("change", "check", "check_coverage", check=check, before=b, after=a))
+        else:
+            continue
+        items[-1]["check"] = check
     return items
 
 
@@ -781,16 +790,27 @@ def _sev_text(sev: str, lang: str) -> str:
 def _retested(row: dict, current: dict) -> tuple[bool, str]:
     """``(re-tested, reason code)`` for a previous row that has no match now: it counts as resolved only when this scan
     ran its check on that host: pass or not_applicable (the precondition is gone), or fail with the check not partly
-    skipped (a budget, a blocked page). A check that is not_tested, inconclusive or missing (not in this profile) gives
-    the reason instead."""
+    skipped (a budget, a blocked page). A check that is not_tested, inconclusive or missing (not in this profile), a
+    check that ran on other hosts only, or a finding whose confidence is below this scan's sensitivity (it would be
+    hidden even if still present) gives the reason instead."""
     rule = row.get("rule", "")
     meta = RULES.get(rule)
     check = meta.check_id if meta is not None else rule
     checks = current.get("checks") or {}
     if check not in checks:
         return False, "not_run"
+    # a finding below this scan's sensitivity would be hidden even if it is still there (paranoid → default)
+    from .group import SENSITIVITY_CONFIDENCES
+    conf = row.get("confidence", "")
+    shown = SENSITIVITY_CONFIDENCES.get(current.get("sensitivity") or "default", SENSITIVITY_CONFIDENCES["default"])
+    if conf and conf not in shown:
+        return False, "sensitivity"
     state = checks[check]
-    host_state = ((current.get("check_hosts") or {}).get(check) or {}).get(row.get("host", ""))
+    per_host = (current.get("check_hosts") or {}).get(check) or {}
+    host = row.get("host", "")
+    if host and per_host and host not in per_host:
+        return False, "host"           # the check ran, but on other hosts only (a redirect or crawl changed)
+    host_state = per_host.get(host)
     if host_state:
         state = host_state
     codes = (current.get("check_reasons") or {}).get(check) or []
@@ -803,11 +823,15 @@ def _retested(row: dict, current: dict) -> tuple[bool, str]:
     return False, next((c for c in codes if c != "not_run"), codes[0] if codes else "not_run")
 
 
-def _reason(code: str) -> dict:
+def _reason(code: str, previous: dict | None = None, current: dict | None = None) -> dict:
     from .coverage import REASONS, reason_text
-    if code in ("not_run", "partial"):
-        key = "nr_partial" if code == "partial" else "nr_not_run"
+    if code in ("not_run", "partial", "host"):
+        key = {"partial": "nr_partial", "host": "nr_host"}.get(code, "nr_not_run")
         return {"code": code, "en": t(key), "ar": t(key, "ar")}
+    if code == "sensitivity":
+        sens, prev = (current or {}).get("sensitivity") or "default", (previous or {}).get("sensitivity") or "?"
+        return {"code": code, "en": t("nr_sensitivity", sensitivity=sens, previous=prev),
+                "ar": t("nr_sensitivity", "ar", sensitivity=sens, previous=prev)}
     if code in REASONS:
         _c, en, ar = reason_text(code)
         return {"code": code, "en": en, "ar": ar}
@@ -859,7 +883,7 @@ def _match_findings(previous: dict, current: dict, out: dict) -> None:
         if ok:
             f["resolved"].append(r)
         else:
-            f["not_retested"].append(dict(r, reason=_reason(code)))
+            f["not_retested"].append(dict(r, reason=_reason(code, previous, current)))
     for bucket in f.values():
         bucket.sort(key=lambda r: (SEV_RANK.get(r.get("severity", ""), 9), r.get("rule", ""), r.get("key", "")))
     out["new_fingerprints"] = [r.get("fingerprint") or r["key"] for r in f["new"]]
@@ -913,7 +937,11 @@ def diff(previous: dict | None, current: dict, *, now: datetime | None = None) -
     if previous.get("profile") == current.get("profile"):
         items += _set_changes(pi.get("deep_hits"), ci.get("deep_hits"), "deep_probe", "deep_new", "deep_gone",
                               "regression", "improvement")
-        items += _check_changes(previous.get("checks") or {}, current.get("checks") or {})
+        # a check that now fails because of a new finding (or passes because one was resolved) is already listed there
+        f = out["findings"]
+        explained = {r.get("rule") for r in f["new"] + f["resolved"]}
+        items += [i for i in _check_changes(previous.get("checks") or {}, current.get("checks") or {})
+                  if not (i["id"] in ("check_regressed", "check_fixed") and i.get("check") in explained)]
     items.sort(key=lambda i: _ORDER[i["direction"]])          # stable: regressions, changes, improvements
     out["posture"] = items
     out["counts"] = {"new": len(out["findings"]["new"]), "resolved": len(out["findings"]["resolved"]),

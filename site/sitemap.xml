@@ -25,6 +25,24 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/docs.html"/>
   </url>
   <url>
+    <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html"/>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html?lang=ar"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html"/>
+  </url>
+  <url>
+    <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html?lang=ar</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html"/>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html?lang=ar"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html"/>
+  </url>
+  <url>
+    <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-checks.html</loc>
+  </url>
+  <url>
+    <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/scanner.html</loc>
+  </url>
+  <url>
     <loc>https://abdulrahmanahmedelabed-prog.github.io/vulnscan/changelog.html</loc>
   </url>
   <url>

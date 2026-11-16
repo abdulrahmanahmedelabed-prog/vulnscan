@@ -39,13 +39,13 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 | `WEB105` | Temporary redirect used for HTTP→HTTPS | توجيه مؤقت من HTTP إلى HTTPS | Info | certain | CWE-319 | WSTG-CONF-07 | — | — | [S-REDIR](#s-redir) |
 | `WEB106` | Redirect response carries a full page | استجابة التوجيه تحمل صفحة كاملة | Low | firm | CWE-698 | WSTG-INFO-05 | — | — | [S-ERR](#s-err) |
 | `WEB-strict-transport-security` | Missing Strict-Transport-Security *(1.0)* | ترويسة HSTS مفقودة | Medium (Info) | firm | CWE-319 | WSTG-CONF-07 | 14.4.5 | 3.4.1 | [S-HSTS](#s-hsts) |
-| `WEB110` | HSTS disabled by max-age=0 | HSTS معطَّل بالقيمة max-age=0 | Medium | certain | CWE-319 | WSTG-CONF-07 | 14.4.5 | 3.4.1 | [S-HSTS](#s-hsts) |
+| `WEB110` | HSTS disabled by max-age=0 | HSTS معطَّلة بالقيمة max-age=0 | Medium | certain | CWE-319 | WSTG-CONF-07 | 14.4.5 | 3.4.1 | [S-HSTS](#s-hsts) |
 | `WEB111` | HSTS max-age too short | مدة HSTS قصيرة | Medium (Low, Info) | certain | CWE-319 | WSTG-CONF-07 | 14.4.5 | 3.4.1 | [S-HSTS](#s-hsts) |
 | `WEB112` | HSTS header invalid (ignored by browsers) | ترويسة HSTS غير صالحة فيتجاهلها المتصفح | Medium | certain | CWE-319 | WSTG-CONF-07 | 14.4.5 | 3.4.1 | [S-HSTS](#s-hsts) |
 | `WEB113` | Multiple HSTS headers | أكثر من ترويسة HSTS | Low (Info) | certain | CWE-319 | WSTG-CONF-07 | 14.4.5 | 3.4.1 | [S-HSTS](#s-hsts) |
 | `WEB114` | HSTS without includeSubDomains | HSTS بلا includeSubDomains | Info (Low) | certain | CWE-319 | WSTG-CONF-07 | 14.4.5 | 3.4.1 | [S-HSTS](#s-hsts) |
-| `WEB115` | HSTS preload: requested but not eligible / eligibility report | طلب الإدراج المسبق لـ HSTS غير مستوفٍ | Low (Info) | certain (firm) | CWE-319 | WSTG-CONF-07 | — | 3.7.4 | [S-HSTS](#s-hsts) |
-| `WEB116` | HSTS where browsers ignore it | HSTS في موضع يتجاهله المتصفح | Info | certain | CWE-319 | WSTG-CONF-07 | — | — | [S-HSTS](#s-hsts) |
+| `WEB115` | HSTS preload requested but requirements not met | طلب الإدراج المسبق لـ HSTS غير مستوفٍ للشروط | Low (Info) | certain (firm) | CWE-319 | WSTG-CONF-07 | — | 3.7.4 | [S-HSTS](#s-hsts) |
+| `WEB116` | HSTS where browsers ignore it | HSTS في موضع يتجاهلها المتصفح | Info | certain | CWE-319 | WSTG-CONF-07 | — | — | [S-HSTS](#s-hsts) |
 | `WEB117` | HTTPS hop without HSTS before redirecting | قفزة HTTPS بلا HSTS قبل التوجيه | Low | certain | CWE-319 | WSTG-CONF-07 | 14.4.5 | 3.4.1 | [S-HSTS](#s-hsts) |
 | `WEB118` | Basic/Digest authentication over plain HTTP | مصادقة Basic أو Digest عبر HTTP غير مشفّر | Medium (High) | certain | CWE-523 | WSTG-ATHN-01 | 9.1.1 | 12.2.1 | [S-REDIR](#s-redir) |
 | `WEB119` | Compression on HTTPS pages that carry secrets (BREACH precondition) | ضغط HTTP على صفحات حساسة (شرط BREACH) | Info (Low) | tentative | CWE-200 | WSTG-CRYP-01 | — | — | [S-BREACH](#s-breach) |
@@ -57,30 +57,30 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 | Id | Check | الفحص | Severity | Confidence | CWE | WSTG | ASVS 4.0.3 | ASVS 5.0.0 | Fix |
 |---|---|---|---|---|---|---|---|---|---|
 | `WEB-content-security-policy` | Missing Content-Security-Policy *(1.0)* | ترويسة CSP مفقودة | Medium (Low) | firm | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB040` | CSP allows inline scripts ('unsafe-inline') *(1.0)* | CSP يسمح بسكربتات inline | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB041` | CSP allows 'unsafe-eval' *(1.0)* | CSP يسمح بـ unsafe-eval | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB042` | CSP lets scripts load from any source *(1.0)* | CSP يسمح بتحميل السكربتات من أي مصدر | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB043` | CSP does not restrict plugins (object-src) *(1.0)* | CSP لا يقيّد الإضافات (object-src) | Low (Info) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB200` | CSP only in report-only mode | CSP في وضع التقرير فقط وغير مُطبَّقة | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB201` | CSP syntax errors | أخطاء صياغة في CSP | Low (Medium, Info) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB202` | Duplicate CSP directive ignored | توجيه مكرر في CSP يُتجاهَل | Low | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB040` | CSP allows inline scripts ('unsafe-inline') *(1.0)* | سياسة CSP تسمح بسكربتات inline ('unsafe-inline') | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB041` | CSP allows 'unsafe-eval' *(1.0)* | سياسة CSP تسمح بـ 'unsafe-eval' | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB042` | CSP lets scripts load from any source *(1.0)* | سياسة CSP تسمح بتحميل السكربتات من أي مصدر | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB043` | CSP does not restrict plugins (object-src) *(1.0)* | سياسة CSP لا تقيّد الإضافات (object-src) | Low (Info) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB200` | CSP only in report-only mode | سياسة CSP في وضع التقرير فقط وغير مُطبَّقة | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB201` | CSP syntax errors | أخطاء صياغة في سياسة CSP | Low (Medium, Info) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB202` | Duplicate CSP directive ignored | توجيه مكرر في سياسة CSP يُتجاهَل | Low | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
 | `WEB203` | 'strict-dynamic' without a nonce or hash | 'strict-dynamic' بلا nonce أو hash | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB204` | CSP base-uri missing or broad | base-uri مفقود أو واسع في CSP | Medium (Info) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB205` | CSP form-action missing or broad (form hijacking) | form-action مفقود أو واسع (اختطاف النماذج) | Medium (Info) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB206` | CSP frame-ancestors allows any site | frame-ancestors يسمح بالتضمين من أي موقع | Medium | certain | CWE-1021 | WSTG-CLNT-09 | 14.4.7 | 3.4.6 | [S-FRAME](#s-frame) |
-| `WEB207` | CSP directive ignored in a meta tag | توجيه CSP لا يعمل داخل وسم meta | Medium (Low) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp), [S-FRAME](#s-frame) |
-| `WEB208` | Meta CSP placed after scripts or styles | وسم CSP يأتي بعد سكربتات أو أنماط | Low | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB209` | CSP allowlists a host that can bypass it (JSONP/AngularJS) | CSP يسمح بمضيف يمكن تجاوزها عبره | Medium (Low) | firm | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB210` | CSP allows 'unsafe-hashes' | CSP يسمح بـ 'unsafe-hashes' | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB211` | CSP allows insecure http: sources on an HTTPS page | CSP يسمح بمصادر http: غير آمنة | Medium (Low) | certain | CWE-319 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB204` | CSP base-uri missing or broad | التوجيه base-uri مفقود أو واسع في سياسة CSP | Medium (Info) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB205` | CSP form-action missing or broad (form hijacking) | التوجيه form-action مفقود أو واسع في سياسة CSP (اختطاف النماذج) | Medium (Info) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB206` | CSP frame-ancestors allows any site | التوجيه frame-ancestors في سياسة CSP يسمح بالتضمين من أي موقع | Medium | certain | CWE-1021 | WSTG-CLNT-09 | 14.4.7 | 3.4.6 | [S-FRAME](#s-frame) |
+| `WEB207` | CSP directive ignored in a meta tag | توجيه في سياسة CSP لا يعمل داخل وسم meta | Medium (Low) | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp), [S-FRAME](#s-frame) |
+| `WEB208` | Meta CSP placed after scripts or styles | وسم meta لسياسة CSP يأتي بعد سكربتات أو أنماط | Low | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB209` | CSP allowlists a host that can bypass it (JSONP/AngularJS) | سياسة CSP تسمح بمضيف يمكن تجاوزها عبره (JSONP أو AngularJS) | Medium (Low) | firm | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB210` | CSP allows 'unsafe-hashes' | سياسة CSP تسمح بـ 'unsafe-hashes' | Medium | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB211` | CSP allows insecure http: sources on an HTTPS page | سياسة CSP تسمح بمصادر http: غير آمنة في صفحة HTTPS | Medium (Low) | certain | CWE-319 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
 | `WEB212` | CSP nonce is static (reused across responses) | قيمة nonce ثابتة لا تتغيّر | Medium | certain (firm) | CWE-330 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
 | `WEB213` | CSP nonce too short | قيمة nonce قصيرة | Medium (Info) | certain | CWE-330 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB214` | CSP allows inline styles | CSP يسمح بأنماط inline | Info | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB215` | CSP reporting not configured | لا يوجد إعداد للإبلاغ عن مخالفات CSP | Info (Low) | certain | CWE-778 | WSTG-CONF-12 | — | 3.4.7 | [S-CSP](#s-csp) |
-| `WEB216` | Deprecated CSP directive | توجيه CSP متقادم | Info | certain | CWE-693 | WSTG-CONF-12 | — | — | [S-CSP](#s-csp) |
+| `WEB214` | CSP allows inline styles | سياسة CSP تسمح بأنماط inline | Info | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
+| `WEB215` | CSP reporting not configured | لا يوجد إعداد للإبلاغ عن مخالفات سياسة CSP | Info (Low) | certain | CWE-778 | WSTG-CONF-12 | — | 3.4.7 | [S-CSP](#s-csp) |
+| `WEB216` | Deprecated CSP directive | توجيه متقادم في سياسة CSP | Info | certain | CWE-693 | WSTG-CONF-12 | — | — | [S-CSP](#s-csp) |
 | `WEB217` | Obsolete X-Content-Security-Policy / X-WebKit-CSP | ترويسة CSP قديمة | Info (Low) | certain | CWE-693 | WSTG-CONF-12 | — | — | [S-CSP](#s-csp) |
 | `WEB218` | Allowlist-only CSP (no nonce/hash) | سياسة CSP قائمة على المضيفين فقط | Info | certain | CWE-693 | WSTG-CONF-12 | 14.4.3 | 3.4.3 | [S-CSP](#s-csp) |
-| `WEB219` | Trusted Types not required (paranoid only) *(paranoid only)* | Trusted Types غير مفعّل | Info | certain | CWE-79 | WSTG-CLNT-01 | — | — | [S-CSP](#s-csp) |
+| `WEB219` | Trusted Types not required *(paranoid only)* | سياسة CSP لا تشترط Trusted Types | Info | certain | CWE-79 | WSTG-CLNT-01 | — | — | [S-CSP](#s-csp) |
 
 <a id="family-c"></a>
 
@@ -88,7 +88,7 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 
 | Id | Check | الفحص | Severity | Confidence | CWE | WSTG | ASVS 4.0.3 | ASVS 5.0.0 | Fix |
 |---|---|---|---|---|---|---|---|---|---|
-| `WEB-x-frame-options` | No clickjacking protection *(1.0)* | لا حماية من Clickjacking | Medium (Low) | firm | CWE-1021 | WSTG-CLNT-09 | 14.4.7 | 3.4.6 | [S-FRAME](#s-frame) |
+| `WEB-x-frame-options` | Missing X-Frame-Options / frame-ancestors *(1.0)* | لا حماية من Clickjacking | Medium (Low) | firm | CWE-1021 | WSTG-CLNT-09 | 14.4.7 | 3.4.6 | [S-FRAME](#s-frame) |
 | `WEB300` | X-Frame-Options value is ineffective | قيمة X-Frame-Options غير فعّالة | Medium (Low) | certain | CWE-1021 | WSTG-CLNT-09 | 14.4.7 | 3.4.6 | [S-FRAME](#s-frame) |
 | `WEB301` | Conflicting or duplicated X-Frame-Options | قيم X-Frame-Options متعارضة أو مكررة | Low (Info) | certain | CWE-1021 | WSTG-CLNT-09 | 14.4.7 | 3.4.6 | [S-FRAME](#s-frame) |
 | `WEB302` | X-Frame-Options in a meta tag (ignored) | X-Frame-Options داخل وسم meta (مُهمَل) | Low | certain | CWE-1021 | WSTG-CLNT-09 | 14.4.7 | 3.4.6 | [S-FRAME](#s-frame) |
@@ -118,10 +118,10 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 
 | Id | Check | الفحص | Severity | Confidence | CWE | WSTG | ASVS 4.0.3 | ASVS 5.0.0 | Fix |
 |---|---|---|---|---|---|---|---|---|---|
-| `WEB320` | Any website can read authenticated responses (Origin reflected with credentials) | أي موقع يستطيع قراءة الاستجابات الموثقة | High | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
-| `WEB321` | Origin reflected without credentials | أصل الطلب يُعاد بلا اعتماديات | Low (Medium) | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
+| `WEB320` | Any website can read authenticated responses (Origin reflected with credentials) | أي موقع يستطيع قراءة الاستجابات الموثقة (إعادة Origin مع السماح ببيانات الاعتماد) | High | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
+| `WEB321` | Origin reflected without credentials | أصل الطلب يُعاد دون السماح ببيانات الاعتماد | Low (Medium) | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
 | `WEB322` | CORS trusts the "null" origin | CORS يثق بالأصل null | Medium (High) | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
-| `WEB323` | ACAO * combined with credentials (invalid) | ACAO * مع الاعتماديات (تركيبة غير صالحة) | Low | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
+| `WEB323` | ACAO * combined with credentials (invalid) | ACAO * مع بيانات الاعتماد (تركيبة غير صالحة) | Low | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
 | `WEB324` | Reflected ACAO without Vary: Origin | إعادة الأصل بلا Vary: Origin | Low | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
 | `WEB325` | Invalid ACAO value | قيمة ACAO غير صالحة | Low | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
 | `WEB326` | CORS trusts an http:// origin on an https site | CORS يثق بأصل http على موقع https | Low | certain | CWE-942 | WSTG-CLNT-07 | 14.5.3 | 3.4.2 | [S-CORS](#s-cors) |
@@ -133,21 +133,21 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 
 | Id | Check | الفحص | Severity | Confidence | CWE | WSTG | ASVS 4.0.3 | ASVS 5.0.0 | Fix |
 |---|---|---|---|---|---|---|---|---|---|
-| `WEB020` | Cookie without Secure flag *(1.0)* | كوكي بدون علامة Secure | High (Medium, Low, Info) | certain (tentative) | CWE-614 | WSTG-SESS-02 | 3.4.1 | 3.3.1 | [S-COOKIE](#s-cookie) |
-| `WEB021` | Session cookie without HttpOnly *(1.0)* | كوكي جلسة بدون HttpOnly | Medium (Info) | firm (certain, tentative) | CWE-1004 | WSTG-SESS-02 | 3.4.2 | 3.3.4 | [S-COOKIE](#s-cookie) |
-| `WEB022` | Cookie without SameSite *(1.0)* | كوكي بدون SameSite | Low (Info) | certain (tentative) | CWE-1275 | WSTG-SESS-02 | 3.4.3 | 3.3.2 | [S-COOKIE](#s-cookie) |
+| `WEB020` | Cookie without Secure flag *(1.0)* | كوكي بلا علامة Secure | High (Medium, Low, Info) | certain (tentative) | CWE-614 | WSTG-SESS-02 | 3.4.1 | 3.3.1 | [S-COOKIE](#s-cookie) |
+| `WEB021` | Session cookie without HttpOnly *(1.0)* | كوكي جلسة بلا HttpOnly | Medium (Info) | firm (certain, tentative) | CWE-1004 | WSTG-SESS-02 | 3.4.2 | 3.3.4 | [S-COOKIE](#s-cookie) |
+| `WEB022` | Cookie without SameSite *(1.0)* | كوكي بلا SameSite | Low (Info) | certain (tentative) | CWE-1275 | WSTG-SESS-02 | 3.4.3 | 3.3.2 | [S-COOKIE](#s-cookie) |
 | `WEB400` | SameSite=None without Secure (cookie rejected) | SameSite=None بلا Secure (يرفضها المتصفح) | Medium | certain | CWE-1275 | WSTG-SESS-02 | 3.4.3 | 3.3.2 | [S-COOKIE](#s-cookie) |
 | `WEB401` | Cookie prefix rules broken (cookie rejected) | قواعد بادئة الكوكي مخالفة (يرفضها المتصفح) | Medium | certain | CWE-614 | WSTG-SESS-02 | 3.4.4 | 3.3.1 | [S-COOKIE](#s-cookie) |
 | `WEB402` | Invalid SameSite value | قيمة SameSite غير صالحة | Low | certain | CWE-1275 | WSTG-SESS-02 | 3.4.3 | 3.3.2 | [S-COOKIE](#s-cookie) |
-| `WEB403` | Partitioned without Secure (cookie rejected) | Partitioned بلا Secure | Medium | certain | CWE-614 | WSTG-SESS-02 | — | 3.3.1 | [S-COOKIE](#s-cookie) |
+| `WEB403` | Partitioned without Secure (cookie rejected) | Partitioned بلا Secure (يرفضها المتصفح) | Medium | certain | CWE-614 | WSTG-SESS-02 | — | 3.3.1 | [S-COOKIE](#s-cookie) |
 | `WEB404` | Cookie scoped too broadly or to a foreign domain | نطاق الكوكي واسع أو لا يطابق المضيف | Low | certain (tentative) | CWE-565 | WSTG-SESS-02 | 3.4.5 | 3.3.3 | [S-COOKIE](#s-cookie) |
 | `WEB405` | Long-lived session cookie | كوكي جلسة طويلة العمر | Low (Info) | certain (tentative) | CWE-613 | WSTG-SESS-02 | — | — | [S-COOKIE](#s-cookie) |
 | `WEB406` | Same cookie set more than once in one response | الكوكي نفسها تُضبط أكثر من مرة | Low | certain | CWE-436 | WSTG-SESS-02 | — | — | [S-COOKIE](#s-cookie) |
 | `WEB407` | Session cookie sent on cross-site requests (SameSite=None) | كوكي الجلسة تُرسل في الطلبات عبر المواقع | Low (Info) | certain (tentative) | CWE-1275 | WSTG-SESS-02 | 3.4.3 | 3.3.2 | [S-COOKIE](#s-cookie) |
 | `WEB408` | Cookie too large (ignored by browsers) | كوكي كبيرة جدًا (يتجاهلها المتصفح) | Low | certain | CWE-436 | WSTG-SESS-02 | — | 3.3.5 | [S-COOKIE](#s-cookie) |
 | `WEB409` | Session cookie without the __Host- prefix *(paranoid only)* | كوكي جلسة بلا البادئة __Host- | Info | certain (tentative) | CWE-614 | WSTG-SESS-02 | 3.4.4 | 3.3.3 | [S-COOKIE](#s-cookie) |
-| `WEB410` | Secure attribute on a cookie set over HTTP (ignored) | سمة Secure على كوكي عبر HTTP (مُهمَلة) | Low | certain | CWE-614 | WSTG-SESS-02 | — | — | [S-COOKIE](#s-cookie) |
-| `WEB411` | Load-balancer cookie reveals an internal address | كوكي موازن الحمل يكشف عنوانًا داخليًا | Low | certain | CWE-200 | WSTG-SESS-02 | — | — | [S-COOKIE](#s-cookie) |
+| `WEB410` | Secure cookie set over HTTP (the browser drops it) | كوكي بسمة Secure تُضبط عبر HTTP (يرفضها المتصفح) | Low | certain | CWE-614 | WSTG-SESS-02 | — | — | [S-COOKIE](#s-cookie) |
+| `WEB411` | Load-balancer cookie reveals an internal address | كوكي موازن الحمل تكشف عنوانًا داخليًا | Low | certain | CWE-200 | WSTG-SESS-02 | — | — | [S-COOKIE](#s-cookie) |
 | `WEB412` | Sensitive data in a cookie value | بيانات حساسة في قيمة الكوكي | Medium (Low) | firm | CWE-315 | WSTG-SESS-02 | 3.5.3 | 14.3.3 | [S-COOKIE](#s-cookie) |
 | `WEB413` | Session cookie issued over plain HTTP | كوكي جلسة تُصدَر عبر HTTP غير مشفّر | High (Low) | certain (tentative) | CWE-319 | WSTG-SESS-02 | 3.4.1 | 3.3.1 | [S-COOKIE](#s-cookie) |
 | `WEB414` | Session token exposed in page content (HttpOnly bypassed) | رمز الجلسة مكشوف داخل محتوى الصفحة | Low | certain | CWE-1004 | WSTG-SESS-02 | 3.4.2 | 3.3.4 | [S-COOKIE](#s-cookie) |
@@ -160,7 +160,7 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 |---|---|---|---|---|---|---|---|---|---|
 | `WEB050` | Mixed content on an HTTPS page *(1.0)* | محتوى مختلط في صفحة HTTPS | Medium (Low, Info) | certain | CWE-319 | WSTG-CRYP-03 | 9.1.1 | 12.2.1 | [S-MIXED](#s-mixed) |
 | `WEB051` | Form submits over plain HTTP *(1.0)* | نموذج يُرسل عبر HTTP | High (Medium) | certain | CWE-319 | WSTG-ATHN-01 | 9.1.1 | 12.2.1 | [S-MIXED](#s-mixed) |
-| `WEB052` | Password field on a non-HTTPS page *(1.0)* | حقل كلمة مرور في صفحة غير HTTPS | High | certain | CWE-523 | WSTG-ATHN-01 | 9.1.1 | 12.2.1 | [S-REDIR](#s-redir) |
+| `WEB052` | Password field on non-HTTPS page *(1.0)* | حقل كلمة مرور في صفحة غير HTTPS | High | certain | CWE-523 | WSTG-ATHN-01 | 9.1.1 | 12.2.1 | [S-REDIR](#s-redir) |
 | `WEB053` | External script or stylesheet without Subresource Integrity *(1.0)* | سكربت أو ملف أنماط خارجي بلا SRI | Low (Info) | certain | CWE-353 | WSTG-CONF-14 | 14.2.3 | 3.6.1 | [S-SRI](#s-sri) |
 | `WEB500` | SRI without crossorigin: the browser blocks the file | SRI بلا crossorigin: المتصفح يحجب الملف | Low | certain | CWE-353 | — | 14.2.3 | 3.6.1 | [S-SRI](#s-sri) |
 | `WEB501` | SRI value malformed or weak | قيمة SRI تالفة أو ضعيفة | Low | certain | CWE-353 | — | 14.2.3 | 3.6.1 | [S-SRI](#s-sri) |
@@ -177,8 +177,8 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 | `WEB512` | Redirect-style parameter with an absolute URL (possible open redirect, not tested) | معامل توجيه بعنوان كامل (احتمال توجيه مفتوح، لم يُختبَر) | Info | tentative | CWE-601 | WSTG-CLNT-04 | 5.1.5 | 3.7.2 | [S-HTML](#s-html) |
 | `WEB513` | File upload form (attack-surface inventory) | نموذج رفع ملفات (حصر لسطح الهجوم) | Info | certain | CWE-434 | WSTG-BUSL-08 | 12.5.2 | 5.3.1 | [S-HTML](#s-html) |
 | `WEB514` | Quirks mode with relative stylesheet (path-relative style import precondition) | وضع quirks مع ملف أنماط نسبي | Info | firm | CWE-436 | — | — | — | [S-HTML](#s-html) |
-| `WEB515` | Inline event handlers or javascript: URLs block a strict CSP *(paranoid only)* | معالجات أحداث مضمّنة تعيق CSP صارمة | Info | certain | CWE-693 | WSTG-CONF-12 | — | — | [S-CSP](#s-csp) |
-| `WEB516` | State-changing form without an anti-CSRF token (paranoid only) *(paranoid only)* | نموذج بلا رمز مضاد لـ CSRF | Info | tentative | CWE-352 | WSTG-SESS-05 | 4.2.2 | 3.5.1 | [S-COOKIE](#s-cookie) |
+| `WEB515` | Inline event handlers or javascript: URLs block a strict CSP *(paranoid only)* | معالجات أحداث مضمّنة تعيق سياسة CSP صارمة | Info | certain | CWE-693 | WSTG-CONF-12 | — | — | [S-CSP](#s-csp) |
+| `WEB516` | State-changing form without an anti-CSRF token *(paranoid only)* | نموذج يغيّر الحالة بلا رمز مضاد لـ CSRF | Info | tentative | CWE-352 | WSTG-SESS-05 | 4.2.2 | 3.5.1 | [S-COOKIE](#s-cookie) |
 | `WEB517` | Page loads code from a host or bucket that does not exist (hijackable) | الصفحة تحمّل كودًا من مضيف أو حاوية تخزين غير موجودة (قابلة للاستيلاء) | High (Medium, Low, Info) | firm (tentative) | CWE-829 | WSTG-CONF-10 | 14.2.3 | 15.2.4 | [S-SRI](#s-sri) |
 | `WEB518` | Password form submits to another site | نموذج كلمة المرور يُرسَل إلى موقع آخر | Low (Medium) | firm | CWE-201 | WSTG-ATHN-01 | — | 14.2.1 | [S-HTML](#s-html) |
 | `WEB519` | Third-party script from a mutable (unpinned) package-CDN URL | سكربت خارجي من رابط CDN غير مثبّت الإصدار | Low | certain | CWE-829 | WSTG-CONF-14 | 14.2.3 | 15.2.4 | [S-SRI](#s-sri) |
@@ -210,7 +210,7 @@ Every rule of the passive web scanner (184 rules), with its default severity and
 | `WEB611` | ViewState without integrity protection | ViewState بلا حماية سلامة | High (Medium) | firm (tentative) | CWE-642 | — | — | — | [S-ERR](#s-err) |
 | `WEB612` | Password hash disclosed | كشف تجزئة كلمة مرور | Medium | firm | CWE-200 | WSTG-INFO-05 | — | — | [S-SECRET](#s-secret) |
 | `WEB613` | Payment card number in a page | رقم بطاقة دفع في الصفحة | Medium (Info) | firm | CWE-359 | WSTG-INFO-05 | — | 14.2.6 | [S-SECRET](#s-secret) |
-| `WEB614` | Sensitive HTML comment (paranoid only) *(paranoid only)* | تعليق HTML حساس | Info | tentative | CWE-615 | WSTG-INFO-05 | — | — | [S-HTML](#s-html) |
+| `WEB614` | Sensitive HTML comment *(paranoid only)* | تعليق HTML حساس | Info | tentative | CWE-615 | WSTG-INFO-05 | — | — | [S-HTML](#s-html) |
 | `WEB615` | OpenSSL version vulnerable to Heartbleed (from banner) | إصدار OpenSSL عرضة لـ Heartbleed (من الترويسة) | High | tentative | CWE-119 | WSTG-CRYP-01 | 9.1.2 | 12.1.2 | [S-TLS](#s-tls) |
 | `WEB616` | Server version shown on error pages | إصدار الخادم يظهر في صفحات الخطأ | Low | certain | CWE-497 | WSTG-INFO-02 | 14.3.3 | 13.4.6 | [S-BANNER](#s-banner) |
 | `WEB617` | Default server page or parked domain | صفحة الخادم الافتراضية أو نطاق مركون | Low (Info) | certain | CWE-1188 | WSTG-CONF-02 | 14.2.2 | — | [S-DOTFILES](#s-dotfiles) |
@@ -325,14 +325,26 @@ add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" alway
 Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains"
 ```
 
-**IIS 10 (web.config)**
+**IIS 10 version 1709+ (native HSTS)**
 
 ```xml
-<!-- IIS 10 1709+: applicationHost.config / site <hsts>, or web.config custom header -->
+<!-- IIS 10 version 1709+: the site's native HSTS (applicationHost.config, or IIS Manager → site → HSTS) -->
+<site name="Default Web Site">
+  <hsts enabled="true" max-age="63072000" includeSubDomains="true" redirectHttpToHttps="true" />
+</site>
+```
+
+IIS sends the header on HTTPS responses only and redirects HTTP to HTTPS; use your site's name.
+
+**Older IIS (web.config custom header)**
+
+```xml
 <system.webServer><httpProtocol><customHeaders>
   <add name="Strict-Transport-Security" value="max-age=63072000; includeSubDomains" />
 </customHeaders></httpProtocol></system.webServer>
 ```
+
+Only for IIS older than 10 version 1709: customHeaders goes out on every binding, so put it only in the web.config of a site that is bound to HTTPS alone.
 
 **Caddy 2**
 
@@ -375,7 +387,7 @@ app.UseHsts();
 
 **Cloudflare**
 
-SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable, Max Age 12 months or more, Apply HSTS policy to subdomains. Add preload only after reading hstspreload.org (removal takes months).
+SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable, Max Age 12 months; turn on Apply HSTS policy to subdomains only after confirming every subdomain serves HTTPS. Add preload only after reading hstspreload.org (removal takes months).
 
 Used by: `WEB-strict-transport-security`, `WEB110`, `WEB111`, `WEB112`, `WEB113`, `WEB114`, `WEB115`, `WEB116`, `WEB117`, `WEB318`
 
@@ -552,10 +564,27 @@ app.Use(async (ctx, next) => {
 **Cloudflare**
 
 ```js
-const r = new Response(res.body, res); r.headers.set("Content-Security-Policy", policy); return r;
+// Cloudflare Worker: a new nonce for every HTML response
+export default {
+  async fetch(req, env) {
+    const res = await fetch(req);
+    if (!(res.headers.get("content-type") || "").includes("text/html")) return res;
+    const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
+    const policy = `script-src 'nonce-${nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`;
+    const out = new HTMLRewriter().on("script[nonce]", {
+      element(e) {   // only scripts your templates marked; any other nonce (e.g. an injected one) is removed
+        if (e.getAttribute("nonce") === env.NONCE_MARK) e.setAttribute("nonce", nonce); else e.removeAttribute("nonce");
+      },
+    }).transform(res);
+    const r = new Response(out.body, out);
+    r.headers.set("Content-Security-Policy", policy);
+    r.headers.set("Cache-Control", "private, no-store");   // a cached page would reuse the nonce
+    return r;
+  },
+};
 ```
 
-Rules → Transform Rules → Modify Response Header → Set static Content-Security-Policy (static policies only). For a nonce use a Worker (code above) and HTMLRewriter to add nonce attributes.
+Your templates mark trusted scripts with nonce="<NONCE_MARK>", a random value you also store as the Worker secret NONCE_MARK; the Worker replaces it with a fresh nonce. For a static policy (no nonce), use Rules → Transform Rules → Modify Response Header → Set static Content-Security-Policy instead.
 
 Used by: `WEB-content-security-policy`, `WEB040`, `WEB041`, `WEB042`, `WEB043`, `WEB200`, `WEB201`, `WEB202`, `WEB203`, `WEB204`, `WEB205`, `WEB207`, `WEB208`, `WEB209`, `WEB210`, `WEB211`, `WEB212`, `WEB213`, `WEB214`, `WEB215`, `WEB216`, `WEB217`, `WEB218`, `WEB219`, `WEB318`, `WEB515`
 
@@ -972,10 +1001,11 @@ A response that sets a session cookie must not be stored by shared caches: send 
 **nginx**
 
 ```nginx
-proxy_cookie_flags ~ secure httponly samesite=lax;
+proxy_cookie_flags sessionid secure httponly samesite=lax;   # each session cookie by name (the first match applies)
+proxy_cookie_flags ~ secure samesite=lax;                     # every other cookie
 ```
 
-nginx 1.19.3+ as a reverse proxy; prefer fixing the application.
+nginx 1.19.3+ as a reverse proxy; prefer fixing the application. Name each session cookie on its own httponly line; never give HttpOnly to a CSRF cookie your JavaScript reads (such as XSRF-TOKEN or csrftoken).
 
 **Apache httpd 2.4**
 
@@ -1343,6 +1373,22 @@ error_page 500 502 503 504 /50x.html;
 ErrorDocument 500 /error.html
 ```
 
+**IIS 10 (web.config)**
+
+```xml
+<httpErrors errorMode="DetailedLocalOnly" />
+```
+
+Inside <system.webServer> of web.config: detailed errors only on the server itself.
+
+**Express**
+
+```shell
+NODE_ENV=production
+```
+
+Set it in the service environment (systemd Environment=, docker run -e, your host's settings): Express then stops sending stack traces; log errors in your own error handler.
+
 **Django**
 
 ```python
@@ -1428,10 +1474,14 @@ Certificates: ACME (Let's Encrypt or another CA) with automatic renewal; RSA 204
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
 ssl_prefer_server_ciphers off;
-ssl_ecdh_curve X25519MLKEM768:X25519:prime256v1:secp384r1;   # X25519MLKEM768 needs OpenSSL >= 3.5; drop it on older builds
+ssl_ecdh_curve X25519:prime256v1:secp384r1;
+# with OpenSSL >= 3.5, use this line instead (it adds the post-quantum hybrid group):
+# ssl_ecdh_curve X25519MLKEM768:X25519:prime256v1:secp384r1;
 ssl_session_tickets off;
 ssl_stapling on; ssl_stapling_verify on;                     # only if the certificate has an OCSP URL
 ```
+
+Check the configuration with nginx -t before reloading (nginx -s reload).
 
 **Apache httpd 2.4**
 
@@ -1507,13 +1557,13 @@ Load third-party scripts and stylesheets from a pinned, versioned URL with an in
 
 **تنبيه:** يمنع المتصفح الملف إذا تغيّر محتواه، لذا ثبّت رابطًا بإصدار محدد؛ أما السكربتات المتغيرة باستمرار (Google Tag Manager وStripe.js) فلا يمكن استخدام SRI معها.
 
-**All platforms**
+**All platforms · HTML**
 
 ```html
 <script src="https://cdn.example.net/lib/1.2.3/lib.min.js" integrity="sha384-<base64>" crossorigin="anonymous"></script>
 ```
 
-**All platforms**
+**All platforms · integrity value**
 
 ```shell
 openssl dgst -sha384 -binary lib.min.js | openssl base64 -A
@@ -1536,18 +1586,11 @@ Upgrade the library or platform to the fixed version, rebuild and redeploy; add 
 **All platforms**
 
 ```shell
-npm install <lib>@<fixed>
+npm install <lib>@<fixed>     # or point the CDN URL at the fixed version
+kashif <project-dir>          # in CI: catches the next vulnerable version before deployment
 ```
 
-Or replace the CDN URL with the fixed version.
-
-**All platforms**
-
-```shell
-kashif <project-dir>
-```
-
-Run in CI so the next vulnerable version is caught before deployment.
+Installed with npm: upgrade the package; loaded from a CDN: replace the URL with the fixed version. Run kashif in CI so the next vulnerable version is caught before deployment.
 
 Used by: `WEB054`, `WEB080`, `WEB081`, `WEB803`
 
@@ -1798,7 +1841,7 @@ Used by: `WEB901`
 
 ### S-INCIDENT · Incident response · الاستجابة للحادث
 
-Treat the site as compromised: take a copy of the evidence, remove the injected code, find how it got in, patch it, rotate credentials and check other pages.
+Treat the site as compromised: preserve a copy of the evidence, find and close the entry point, then remove the injected code (or restore a known-clean copy), rotate credentials and check the other pages.
 
 **Caution:** Restoring a backup without closing the entry point lets the attacker return; patch first.
 

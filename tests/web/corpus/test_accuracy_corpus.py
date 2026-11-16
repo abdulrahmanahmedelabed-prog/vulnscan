@@ -12,7 +12,7 @@ import ssl
 import pytest
 
 import corpus_kit as K
-from vulnscan.webscan import diff, engine
+from vulnscan.webscan import engine
 from vulnscan.webscan.types import ScanOptions
 
 PROXY_VARS = ("http_proxy", "https_proxy", "all_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
@@ -193,6 +193,7 @@ def test_good_server_has_revocation_recorded_as_not_checked(pki):
     rev = states["WEB714-revocation"]
     assert rev["state"] == "not_tested" and rev["reasons"][0]["code"] == "revocation"
     assert "does not contact the CA" in rev["reasons"][0]["en"]
-    assert "certificate revocation" in res.grades["ssllabs"]["label"][0]
-    assert not any(r["check"] == "WEB714-revocation" for r in [])     # WEB991 never lists it (no_web991 reason)
-    assert "WEB991" not in by_rule(res.findings) or "WEB714-revocation" not in str(by_rule(res.findings)["WEB991"])
+    assert "certificate revocation" in res.grades["ssllabs"]["label"]["en"]
+    assert "إلغاء الشهادة" in res.grades["ssllabs"]["label"]["ar"]
+    # by design, not a limitation of this run: WEB991 never lists it
+    assert "WEB714-revocation" not in str(by_rule(res.findings).get("WEB991", ""))

@@ -658,3 +658,76 @@ def test_every_string_is_bilingual():
         assert any("؀" <= ch <= "ۿ" for ch in ar) or set(ar) <= set("{}_:/ abcdefghijklmnopqrstuvwxyz"), key
     exact, patterns = assess.i18n_catalog()
     assert exact and patterns
+
+
+# ----------------------------------------------------------------------------------------------- 1.1.0 accuracy round
+
+def _ssl(ctx, ip="192.0.2.1"):
+    return ctx.inventory["tls"]["localhost"]["ips"][ip]["ssllabs"]
+
+
+def test_revocation_is_recorded_as_not_checked_unless_stapled():
+    good = x509.parse_ocsp_response((CERTS / "ocsp-good.der").read_bytes())
+    _issues, ctx = run(ip_report())                         # no staple
+    st = ctx.coverage.state(assess.REVOCATION_CHECK)
+    assert st.state == "not_tested" and [r[0] for r in st.reasons] == ["revocation"]
+    assert "does not contact the CA" in st.reasons[0][1] and "OCSP" in st.reasons[0][2]
+    assert assess.REVOCATION_CHECK not in {s.check_id for s in ctx.coverage.skipped_for_limitations()}
+    _issues, ctx = run(ip_report(ocsp=_ocsp("ocsp-good.der")), now=good.this_update)
+    assert ctx.coverage.state(assess.REVOCATION_CHECK).state == "not_tested"   # never recorded: not_run
+    assert [r[0] for r in ctx.coverage.state(assess.REVOCATION_CHECK).reasons] == ["not_run"]
+    assert "certificate revocation" in assess.STR["ssllabs_label"][0]
+
+
+def test_web714_carries_its_variant():
+    good = x509.parse_ocsp_response((CERTS / "ocsp-good.der").read_bytes())
+    issues, _ = run(ip_report(ocsp=_ocsp("ocsp-revoked.der")), now=good.this_update)
+    (i,) = fired(issues, "WEB714")
+    assert i.params["variant"] == "revoked" and "revoked" in rules.RULES["WEB714"].title("en", **i.params).lower()
+    issues, _ = run(ip_report(ocsp=_ocsp("ocsp-good.der")), now=good.next_update + timedelta(hours=1))
+    assert fired(issues, "WEB714")[0].params["variant"] == "expired"
+
+
+def test_dhe_without_measured_size_is_provisional_and_web718_not_tested():
+    rep = ip_report(chosen={"TLSv1.2": "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256"})
+    _issues, ctx = run(rep)
+    g = _ssl(ctx)
+    assert g["provisional"] is True
+    assert g["notes"][0]["en"] == "key exchange strength not measured (DHE offered; run --web-profile deep)"
+    assert state(ctx, "WEB718") in ("not_tested", "fail")
+    if state(ctx, "WEB718") == "not_tested":
+        assert [r[0] for r in ctx.coverage.state("WEB718").reasons] == ["dh_unmeasured"]
+    _issues, ctx = run(ip_report(chosen={"TLSv1.2": "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256"}, deep={"dh_bits": 2048}),
+                       profile="deep")
+    assert "notes" not in _ssl(ctx)
+
+
+def test_trust_failure_is_named_first_and_hsts_cap_only_when_judged():
+    leaf = x509.parse_certificate(x509.pem_to_der_list((CERTS / "leaf.pem").read_text(encoding="ascii"))[0])
+    hsts = HstsVerdict(host="localhost", present=False, cert_error=True)
+    _issues, ctx = run(ip_report(verified=False, code=10), now=leaf.not_after + timedelta(days=3), hsts=hsts)
+    g = _ssl(ctx)
+    assert g["grade"] == "T"
+    assert g["caps"][0]["cap"] == "T"
+    assert g["caps"][0]["en"] == "certificate not trusted: the certificate has expired (WEB070)"
+    assert g["caps"][0]["ar"].startswith("الشهادة غير موثوقة: الشهادة منتهية الصلاحية")
+    assert not any("HSTS" in c["en"] for c in g["caps"])
+    _issues, ctx = run(ip_report(), hsts=HstsVerdict(host="localhost", present=False))
+    assert any("HSTS" in c["en"] for c in _ssl(ctx)["caps"])        # judged (valid certificate): the cap stays
+
+
+def test_chain_checks_skipped_after_another_certificate_failure_use_precondition():
+    leaf = x509.parse_certificate(x509.pem_to_der_list((CERTS / "leaf.pem").read_text(encoding="ascii"))[0])
+    _issues, ctx = run(ip_report(verified=False, code=10), now=leaf.not_after + timedelta(days=3))
+    st = ctx.coverage.state("WEB702")
+    assert st.state == "not_tested" and [r[0] for r in st.reasons] == ["precondition"]
+    assert "WEB702" not in {s.check_id for s in ctx.coverage.skipped_for_limitations()}
+
+
+def test_web072_value_explains_the_verify_code_in_both_languages():
+    issues, _ = run(ip_report(verified=False, code=26, message="unsupported certificate purpose"))
+    (i,) = fired(issues, "WEB072")
+    assert i.evidence.match["value"] == "unsupported certificate purpose, verify code 26"
+    en, ar = __import__("vulnscan.webscan.http", fromlist=["verify_text"]).verify_text(10, "certificate has expired")
+    assert en == "the certificate has expired (certificate has expired, verify code 10)"
+    assert ar.startswith("الشهادة منتهية الصلاحية (⁦certificate has expired") and ar.endswith("⁩)")

@@ -891,7 +891,10 @@ def summary(g: dict, lang: str = "en") -> str:
     k = (g.get("kashif") or {}).get("grade") or none
     o = g.get("observatory") or {}
     obs = f"{o['score']} ({o['grade']})" if o.get("score") is not None else none
-    s = (g.get("ssllabs") or {}).get("grade") or none
+    sl = g.get("ssllabs") or {}
+    s = sl.get("grade") or none
+    if s != none and sl.get("provisional") and s not in ("?", "T", "M") and not s.endswith("*"):
+        s += "*"              # provisional, as the Kashif grade marks it (e.g. DHE size not measured)
     if lang == "ar":
         # "C+*" / "A*" / "85 (A-)" inside Arabic: an isolate keeps the "*" and "+" on the right side in RTL terminals
         from .types import iso

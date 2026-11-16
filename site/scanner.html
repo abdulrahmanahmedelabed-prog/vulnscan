@@ -26,6 +26,7 @@ p,li{color:var(--text)}
 a{color:var(--accent)}
 a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 code{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--accent);overflow-wrap:anywhere}
+code.nb{white-space:nowrap}
 pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;direction:ltr;text-align:left}
 pre code{color:var(--text)}
 .ua{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:18px 0}
@@ -56,14 +57,17 @@ footer{color:var(--muted);font-size:14px;margin-top:48px;padding-top:18px;paddin
   <p>Kashif is a program that people run on their own computers. The Kashif project operates no scanning service, does
   not choose targets and never receives scan results: the program has no telemetry, and the report stays with the person
   who ran it. Kashif refuses to scan a website unless that person confirms they own it or are authorized to test it
-  (<code>--authorized</code> on the command line, or the confirmation box in its interface). Scanning a site without
+  (<code class="nb">--authorized</code> on the command line, or the confirmation box in its interface). Scanning a site without
   permission may be illegal where you or the operator live.</p>
 
   <h2>What it checks</h2>
   <p>It is a <strong>passive</strong> scanner: it reads what any browser would receive and reports configuration
   weaknesses, for example missing or invalid security headers (HSTS, Content-Security-Policy, X-Frame-Options), cookie
   attributes, CORS answers, mixed content, outdated JavaScript libraries, information disclosed in headers or error
-  pages, and the TLS protocol and certificate configuration. The owner gets copy-paste fixes for their server.</p>
+  pages, and the TLS protocol and certificate configuration. The owner gets copy-paste fixes for their server.
+  Every check is listed, with its severity and its fix, on the <a href="web-checks.html">web checks page</a>; the
+  <a href="web-scanning.html">web scanning guide</a> explains the options, the reports and what a passive scan cannot
+  find.</p>
 
   <h2>Every request it can send</h2>
   <p>Only <code>GET</code> requests, plus TLS handshakes. The budget is per scan: <strong>minimal</strong> profile at most
@@ -78,7 +82,7 @@ footer{color:var(--muted);font-size:14px;margin-top:48px;padding-top:18px;paddin
       <tr><td>Well-known public files: <code>/robots.txt</code>, <code>/.well-known/security.txt</code> (<code>/security.txt</code> only if that is missing), the icon the page declares or <code>/favicon.ico</code>, <code>/sitemap.xml</code> (only when crawling)</td><td>standard and deep</td><td>≤ 5</td></tr>
       <tr><td>Scripts and stylesheets the page itself loads (as a browser does)</td><td>standard: same site; deep: also third-party</td><td>≤ 15 same-site, ≤ 10 third-party</td></tr>
       <tr><td>Source maps a fetched script or stylesheet names; same-site JPEG images (first 128 KB, to check for GPS metadata)</td><td>deep (images also when crawling)</td><td>≤ 5 maps, ≤ 10 images</td></tr>
-      <tr><td>Links of the same origin (<code>&lt;a href&gt;</code>), breadth-first</td><td>only when the operator enables crawling</td><td>20 pages by default, depth 2</td></tr>
+      <tr><td>Links of the same origin (same scheme, host and port: <code>&lt;a href&gt;</code>), breadth-first</td><td>only when the operator enables crawling (standard and deep)</td><td>20 pages by default, depth 2; never more than 500</td></tr>
       <tr><td>A fixed list of files that are often exposed by accident (for example <code>/.git/HEAD</code>, <code>/.env</code>, backups), and random paths named <code>/kashif-404-&lt;16 hex digits&gt;</code> to learn what your “not found” page looks like</td><td>deep only (opt-in)</td><td>≤ 70 paths; ≤ 5 random paths per host, ≤ 10 in total</td></tr>
       <tr><td>TLS handshakes to the site's HTTPS port: one verified, one unverified and short version/cipher probes that read the server's reply and close</td><td>HTTPS sites</td><td>≈ 14 per address (deep ≈ 60), ≤ 5 per second</td></tr>
       <tr><td>Normal DNS lookups of the site and of the hosts its scripts, styles, frames and forms reference</td><td>always (referenced hosts: standard and deep)</td><td>none sent to your web servers (your DNS servers see ordinary lookups)</td></tr>
@@ -98,7 +102,7 @@ footer{color:var(--muted);font-size:14px;margin-top:48px;padding-top:18px;paddin
     <code>User-Agent</code>, <code>Accept</code>, <code>Accept-Encoding: gzip, deflate</code>,
     <code>Accept-Language: en</code>, and <code>Origin</code> on the single CORS request. Cookies your site sets are kept
     in memory for that scan only, never written to disk and never sent to another host.</li>
-    <li><strong>Limits:</strong> per-response size and time caps, 50 MB and 10 minutes per scan by default.</li>
+    <li><strong>Limits:</strong> per-response size and time caps, and at most 50 MB received and 10 minutes per scan.</li>
   </ul>
 
   <h2>What it never does</h2>
@@ -138,14 +142,16 @@ if ($http_user_agent ~ "^Kashif/") { return 403; }
   <h2>من يشغّله</h2>
   <p>كاشِف برنامج يشغّله الناس على أجهزتهم. لا يدير مشروع كاشِف أي خدمة فحص، ولا يختار المواقع المفحوصة، ولا تصله نتائج أي
   فحص: فالبرنامج لا يرسل أي بيانات استخدام، ويبقى التقرير عند من شغّله. ويرفض كاشِف فحص أي موقع ما لم يؤكد المستخدم أنه
-  مالكه أو أنه مخوَّل باختباره (الخيار <code>--authorized</code> في سطر الأوامر، أو مربع التأكيد في الواجهة). وقد يكون فحص
+  مالكه أو أنه مخوَّل باختباره (الخيار <code class="nb">--authorized</code> في سطر الأوامر، أو مربع التأكيد في الواجهة). وقد يكون فحص
   موقع دون إذن مخالفًا للقانون في بلدك أو بلد من شغّل الفحص.</p>
 
   <h2>ما الذي يفحصه</h2>
   <p>هو فاحص <strong>سلبي</strong>: يقرأ ما يستقبله أي متصفح، ويبلّغ عن نقاط الضعف في الإعدادات، مثل ترويسات الأمان المفقودة أو
   غير الصالحة (HSTS وContent-Security-Policy وX-Frame-Options)، وسمات الكوكيز، وردود CORS، والمحتوى المختلط، ومكتبات
   JavaScript القديمة، والمعلومات المكشوفة في الترويسات أو صفحات الأخطاء، وإعدادات بروتوكول TLS والشهادة. ويحصل مالك
-  الموقع على مقتطفات إصلاح جاهزة للنسخ لخادمه.</p>
+  الموقع على مقتطفات إصلاح جاهزة للنسخ لخادمه. وكل الفحوص مذكورة بخطورتها وإصلاحها في <a href="web-checks.html?lang=ar">صفحة
+  فحوص الويب</a>، ويشرح <a href="web-scanning.html?lang=ar">دليل فحص المواقع</a> الخيارات والتقارير وما لا يكشفه الفحص
+  السلبي.</p>
 
   <h2>كل الطلبات التي يمكن أن يرسلها</h2>
   <p>طلبات <code>GET</code> فقط، إضافةً إلى مصافحات TLS. والحد الأقصى لكل فحص: في نمط <strong>minimal</strong> عشرة طلبات
@@ -160,7 +166,7 @@ if ($http_user_agent ~ "^Kashif/") { return 403; }
       <tr><td>الملفات العامة المعروفة: <code>/robots.txt</code> و<code>/.well-known/security.txt</code> (و<code>/security.txt</code> فقط إن لم يوجد الأول)، والأيقونة التي تعلنها الصفحة أو <code>/favicon.ico</code>، و<code>/sitemap.xml</code> (عند الزحف فقط)</td><td>نمطا standard وdeep</td><td>5 طلبات على الأكثر</td></tr>
       <tr><td>السكربتات وملفات الأنماط التي تحمّلها الصفحة نفسها (كما يفعل المتصفح)</td><td>standard: من الموقع نفسه؛ deep: ومن مواقع خارجية أيضًا</td><td>15 من الموقع نفسه و10 خارجية على الأكثر</td></tr>
       <tr><td>خرائط المصدر التي يذكرها سكربت أو ملف أنماط، وصور JPEG من الموقع نفسه (أول 128 كيلوبايت فقط، للتحقق من بيانات الموقع الجغرافي)</td><td>نمط deep (والصور عند الزحف أيضًا)</td><td>5 خرائط و10 صور على الأكثر</td></tr>
-      <tr><td>روابط المصدر نفسه (<code>&lt;a href&gt;</code>) بالعرض أولًا</td><td>فقط إذا فعّل المشغّل الزحف</td><td>20 صفحةً افتراضيًا، بعمق 2</td></tr>
+      <tr><td>روابط الأصل نفسه (المخطط والمضيف والمنفذ أنفسها: <code>&lt;a href&gt;</code>) بالعرض أولًا</td><td>فقط إذا فعّل المشغّل الزحف (نمطا standard وdeep)</td><td>20 صفحةً افتراضيًا، بعمق 2؛ ولا تتجاوز 500 صفحة أبدًا</td></tr>
       <tr><td>قائمة ثابتة من الملفات التي تُكشف كثيرًا بالخطأ (مثل <code>/.git/HEAD</code> و<code>/.env</code> والنسخ الاحتياطية)، ومسارات عشوائية باسم <code>/kashif-404-&lt;16 رقمًا ست عشريًا&gt;</code> لمعرفة شكل صفحة «غير موجود» لديك</td><td>نمط deep فقط (باختيار المشغّل)</td><td>70 مسارًا على الأكثر؛ و5 مسارات عشوائية لكل مضيف و10 في المجموع على الأكثر</td></tr>
       <tr><td>مصافحات TLS مع منفذ HTTPS للموقع: واحدة مع التحقق من الشهادة، وواحدة دونه، وفحوص قصيرة للإصدارات ومجموعات التشفير تقرأ رد الخادم ثم تغلق الاتصال</td><td>مواقع HTTPS</td><td>نحو 14 لكل عنوان (ونحو 60 في deep)، و5 في الثانية على الأكثر</td></tr>
       <tr><td>استعلامات DNS عادية عن الموقع وعن المضيفين الذين تشير إليهم سكربتاته وأنماطه وإطاراته ونماذجه</td><td>دائمًا (المضيفون المشار إليهم: standard وdeep)</td><td>لا يُرسل أي طلب إلى خوادم الويب لديك (وترى خوادم DNS استعلامات عادية فقط)</td></tr>
@@ -181,7 +187,7 @@ if ($http_user_agent ~ "^Kashif/") { return 403; }
     <code>User-Agent</code> و<code>Accept</code> و<code>Accept-Encoding: gzip, deflate</code> و<code>Accept-Language: en</code>،
     و<code>Origin</code> في طلب CORS الوحيد. والكوكيز التي يضبطها موقعك تُحفظ في الذاكرة طوال ذلك الفحص فقط، ولا تُكتب على
     القرص، ولا تُرسل إلى مضيف آخر أبدًا.</li>
-    <li><strong>حدود:</strong> حد لحجم كل استجابة ومدتها، و50 ميغابايت و10 دقائق لكل فحص افتراضيًا.</li>
+    <li><strong>حدود:</strong> حد لحجم كل استجابة ومدتها، و50 ميغابايت مستقبَلة و10 دقائق لكل فحص على الأكثر.</li>
   </ul>
 
   <h2>ما لا يفعله أبدًا</h2>

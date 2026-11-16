@@ -200,7 +200,7 @@ def test_result_carries_grades_coverage_inventory_and_notes(site):
     states = {c["check"]: c["state"] for c in res.coverage["checks"]}
     assert set(states) >= set(rules.all_check_ids())
     assert sum(res.coverage["counts"].values()) == len(states)
-    assert res.notes[0].startswith("فحص ويب سلبي بالملف standard")
+    assert res.notes[0].startswith("فحص ويب سلبي بنمط الفحص standard")
     assert any(n.startswith("التغطية: ") for n in res.notes)
     inv = res.inventory
     assert inv["notes"][0]["en"].startswith("Passive web scan, profile standard") and "engine_errors" not in inv
