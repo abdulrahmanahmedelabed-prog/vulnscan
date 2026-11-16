@@ -202,6 +202,7 @@ def score(labels: dict, run: dict) -> dict:
     verdicts: dict[str, dict] = {}
     conf: dict[str, dict] = {c: {"tp": 0, "fp": 0} for c in CONF_ORDER + ("unknown",)}
     skipped, errors, exp_fail, exp_pending = {}, {}, [], []
+    skipped_rules: dict[str, int] = {}
     inconclusive = 0
     total_labels = 0
     raw_instances = grouped = 0
@@ -216,6 +217,7 @@ def score(labels: dict, run: dict) -> dict:
             skipped[cid] = res.get("reason", "")
             for rule in lab["labels"]:
                 verdicts[cid][rule] = "skipped"
+                skipped_rules[rule] = skipped_rules.get(rule, 0) + 1
             continue
         ok_run = ran_ok(lab, res)
         if not ok_run:
@@ -262,7 +264,8 @@ def score(labels: dict, run: dict) -> dict:
             tot[k] += r[k]
         m = metrics(r["tp"], r["fp"], r["fn"], r["tn"])
         rules_out[rule] = {**{k: r[k] for k in ("tp", "fp", "fn", "tn", "inconclusive", "error")}, **m,
-                           "wrong": r["cases"][:12], "zap_fp_family": rule in ZAP_FP_FAMILY}
+                           "wrong": r["cases"][:12], "zap_fp_family": rule in ZAP_FP_FAMILY,
+                           "skipped": skipped_rules.get(rule, 0)}
         if r["tp"] + r["fn"] > 0 and m["f1"] is not None:
             f1s.append(m["f1"])
     micro = metrics(tot["tp"], tot["fp"], tot["fn"], tot["tn"])
@@ -391,9 +394,9 @@ def gate(summary: dict, mins: dict, defects: list[dict]) -> list[str]:
         if r is None:
             fails.append(f"{rule}: no longer scored (was in min-score.json)")
             continue
-        if not any(r.get(c) for c in ("tp", "fp", "fn", "tn")) and r.get("precision") is None and summary.get("skipped"):
-            continue    # every case labelling this rule was skipped on this platform (e.g. no 127.0.0.2 on macOS)
         for k in ("precision", "recall"):
+            if r[k] is None and r.get("skipped"):
+                continue    # its measurable cases were skipped on this platform (e.g. no 127.0.0.2 on macOS)
             if floor.get(k) is not None and (r[k] is None or r[k] < floor[k]):
                 fails.append(f"{rule}: {k} {r[k]} < recorded {floor[k]}")
     return fails
