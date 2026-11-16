@@ -49,6 +49,8 @@ TRANSIENT = _TIMEOUT + _RESET + ("temporarily",)
 
 _PROXY_ERR = re.compile(r"(?i)\bthe proxy (?P<proxy>\S+) (?P<what>refused the tunnel|could not be reached|closed the connection)"
                         r"(?: \(HTTP (?P<status>\d{3})\))?")
+# webscan.http._unusable_proxy_message: a configured proxy Kashif cannot use (socks5://, a bad port …)
+_PROXY_UNSUPPORTED = re.compile(r"(?i)\bproxy (?P<proxy>\S+) is not supported \(only http:// proxies")
 _PROXY_CODES = {"refused the tunnel": "proxy_refused", "could not be reached": "proxy_unreachable",
                 "closed the connection": "proxy_reset"}
 _DEADLINE = re.compile(r"(?i)response deadline exceeded \((?P<secs>\d+(?:\.\d+)?) s\)")
@@ -71,6 +73,9 @@ def _failure_code(low: str, code: str, proxy: str) -> tuple[str, str, int | None
     the error text (``webscan.http.classify_error`` writes the proxy failures as "the proxy P refused the tunnel …")."""
     m = _PROXY_ERR.search(low)
     status = int(m.group("status")) if m and m.group("status") else None
+    u = _PROXY_UNSUPPORTED.search(low)
+    if u and (not code or code in ("proxy", "network", "proxy_refused")):
+        return "proxy_unsupported", proxy or u.group("proxy"), None
     if m:
         proxy = proxy or m.group("proxy")
         if not code or code in ("proxy", "network"):
@@ -144,7 +149,9 @@ def describe_failure(err: str, url: str, timeout: float, surface: str = "ui", *,
     keys: list[str] = []
     fix = "proxy_fix_cli" if cli else "proxy_fix_ui"
     more = "timeout_cli" if cli else "timeout_ui"
-    if code == "proxy_unreachable":
+    if code == "proxy_unsupported":
+        keys = ["proxy_unsupported", fix]
+    elif code == "proxy_unreachable":
         keys = ["proxy_unreachable", fix]
     elif code == "proxy_refused":
         keys = ["proxy_refused" if status else "proxy_refused_any", fix]

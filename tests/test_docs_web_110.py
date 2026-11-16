@@ -143,9 +143,9 @@ def test_policy_example_is_a_valid_policy(tmp_path):
 
 def test_proxy_and_limits_are_documented():
     for half, heading, facts in (
-            (EN, "Proxies", ("http://", "CONNECT", "error:proxy", "tentative", "--web-sensitivity paranoid",
+            (EN, "Proxies", ("http://", "CONNECT", "`web.error.code`", "tentative", "--web-sensitivity paranoid",
                              "--no-proxy", "NO_PROXY", "not tested")),
-            (AR, "الوكيل (Proxy)", ("http://", "CONNECT", "error:proxy", "محتملة", "--web-sensitivity paranoid",
+            (AR, "الوكيل (Proxy)", ("http://", "CONNECT", "`web.error.code`", "محتملة", "--web-sensitivity paranoid",
                                      "--no-proxy", "NO_PROXY", "لم تُجرَ"))):
         sec = _section(half, heading)
         for fact in facts:
@@ -238,11 +238,11 @@ def test_upgrade_notes_have_the_severity_table_and_the_breaking_changes():
             assert meta.severity in new or (rid == "WEB054"), (rid, meta.severity, new)
     assert rows["WEB-strict-transport-security"] == ("high", "medium")
     for fact in ("Default profile `standard`", "Recalibrated severities", "CSV column", "`Confidence`",
-                 "Proxy failure", "error:proxy", "--write-baseline"):
+                 "Proxy failure", "exit code 2", "--write-baseline"):
         assert fact in up, fact
     up_ar = _section(AR, "الترقية من 1.0")
     assert up_ar.count("\n  | `WEB") == up.count("\n  | `WEB")
-    for fact in ("نمط الفحص الافتراضي", "إعادة معايرة الخطورة", "عمود CSV", "فشل الوكيل", "error:proxy"):
+    for fact in ("نمط الفحص الافتراضي", "إعادة معايرة الخطورة", "عمود CSV", "فشل الوكيل", "رمز الخروج 2"):
         assert fact in up_ar, fact
 
 
@@ -264,13 +264,13 @@ def test_readme_web_section():
     for fact in ("**What a passive scan cannot find:**", "revocation", "configuration hygiene", "**In CI**",
                  "--fail-on high", "-f sarif", "category: kashif-web", "--fail-on-inconclusive", '"unreachable"',
                  "--compare previous.json", "--policy kashif.yml", "gate:", "fail_on:", "--ignore-rule",
-                 "error:proxy", "`/sitemap.xml` (with `--crawl`)", "18\nplatforms", "600 s", "50 MB",
+                 "`web.error.code` starts with `proxy`", "`/sitemap.xml` (with `--crawl`)", "18\nplatforms", "600 s", "50 MB",
                  "`minimal` cannot crawl", "`kashif history` is unrelated"):
         assert fact in en, fact
     ar = _section(README_AR, "فحص المواقع السلبي")
     for fact in ("**ما لا يكشفه الفحص السلبي:**", "إلغاء الشهادة", "سلامة الإعدادات", "**في CI**",
                  "category: kashif-web", "--fail-on-inconclusive", '"unreachable"', "--compare previous.json",
-                 "--policy kashif.yml", "gate:", "fail_on:", "--ignore-rule", "error:proxy", "`/sitemap.xml` (مع `--crawl`)",
+                 "--policy kashif.yml", "gate:", "fail_on:", "--ignore-rule", "`web.error.code`", "`/sitemap.xml` (مع `--crawl`)",
                  ar_count(18, PLATFORMS_AR), ar_count(600, SECONDS_AR), "kashif history"):
         assert fact in ar, fact
     assert "injection, XSS, authentication, access control or business logic" in _section(README_EN, "Limitations")
@@ -365,3 +365,23 @@ def test_sitemap_lists_the_new_pages():
     assert len(locs) == len(set(locs))
     for loc in locs:
         assert loc.startswith(SITE) and "github.com" not in loc
+
+
+def test_docs_name_only_user_visible_tokens_and_no_stale_lookup_claims():
+    """``error:proxy`` is an internal response flag (users see ``web.error.code``), and in 1.1 no check makes a
+    third-party lookup, so no page may promise one (hstspreload.org, CT search, OCSP requests)."""
+    for name, text in (("docs", EN + AR), ("README", README_EN + README_AR), ("CHANGELOG", CHANGELOG)):
+        assert "error:proxy" not in text, name
+        assert "hstspreload.org" not in text, name
+    for p in ("scanner.html", "index.html"):
+        assert "error:proxy" not in (ROOT / "site" / p).read_text(encoding="utf-8"), p
+
+
+def test_deep_platform_paths_are_disclosed():
+    """``--deep`` fetches the login/admin pages of a detected platform (tech.json ``deep_paths``): every page that
+    describes the deep traffic must say so, the site owner's page included."""
+    assert "/wp-login.php" in _section(EN, "What Kashif sends") and "/wp-login.php" in _section(AR, "ما يرسله كاشِف")
+    scanner = (ROOT / "site" / "scanner.html").read_text(encoding="utf-8")
+    assert scanner.count("/wp-login.php") >= 2
+    assert "login and administration pages" in _section(README_EN, "Passive web scanning")
+    assert "صفحات الدخول والإدارة" in _section(README_AR, "فحص المواقع السلبي")

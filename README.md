@@ -365,15 +365,15 @@ kashif update-data --web                                           # newer web d
 
 | Option | Meaning |
 |---|---|
-| `--web-profile minimal\|standard\|deep` | `minimal` is the 1.0 single fetch (the entry chain, at most 10 requests); `standard` (default) adds the http/https counterpart, one cookieless CORS GET with `Origin: https://kashif-cors-check.invalid`, `robots.txt`, `security.txt`, the favicon, `/sitemap.xml` (with `--crawl`) and up to 15 of the page's own scripts and styles (at most 45); `deep` (`--deep`) adds a fixed list of commonly exposed files with soft-404 baselines, third-party scripts, source maps and images (at most 150). Crawled pages come on top. |
+| `--web-profile minimal\|standard\|deep` | `minimal` is the 1.0 single fetch (the entry chain, at most 10 requests); `standard` (default) adds the http/https counterpart, one cookieless CORS GET with `Origin: https://kashif-cors-check.invalid`, `robots.txt`, `security.txt`, the favicon, `/sitemap.xml` (with `--crawl`) and up to 15 of the page's own scripts and styles (at most 45); `deep` (`--deep`) adds a fixed list of commonly exposed files, the login and administration pages of a detected platform (fetched once, nothing submitted), soft-404 baselines, third-party scripts, source maps and images (at most 150). Crawled pages come on top. |
 | `--web-sensitivity strict\|default\|paranoid` | `strict` reports certain findings only, `default` certain and firm, `paranoid` everything, including the paranoid-only checks. Every finding carries its confidence (`certain`, `firm` or `tentative`). |
 | `--crawl`, `--max-pages N`, `--max-depth N`, `--ignore-robots` | Breadth-first crawl of same-origin links (same scheme, host and port), at most 500 pages (default 20, depth 2); `robots.txt` is honoured unless you own the site and pass `--ignore-robots`. Needs `standard` or `deep`: `minimal` cannot crawl. A scan stops sending after 600 s or 50 MB received. |
 | `--compare-previous`, `--compare ID\|FILE` | New, resolved and unchanged findings, grade changes and posture changes ("CSP changed", "new third-party script host", "certificate renewed"). `--compare-previous` keeps the scan in the local history (`~/.vulnscan`, or `$VULNSCAN_HOME`) and prints its id on stderr; `--compare` takes such an id (also on the UI's Reports page and in `$VULNSCAN_HOME/index.json`) or a JSON report (`-f json`). In CI, use `--compare previous.json`. `kashif history` is unrelated (it searches git history for secrets). |
 | `--fail-on-inconclusive` | Exit code 1 when a WAF, challenge or rate limit answered instead of the site (Kashif grade `?` or WEB990), which `--fail-on` alone lets pass. |
 | `--ignore-rule ID` | Leave a web rule out of the report and of `--fail-on` (the grades still count it). |
 | `--web-cookie-ignore NAME` | Leave a cookie out of the cookie checks (repeatable). |
-| `--third-party-lookups` | Allow lookups that reveal the site's name to a third party (such as hstspreload.org). Off by default. |
-| `--no-proxy` | Do not use `HTTP(S)_PROXY`. Only `http://` proxies are supported; any other proxy setting fails with `error:proxy` (exit code 2), never a silent direct connection. Through a proxy, DNS-based checks are not tested and TLS findings are tentative, so they appear only with `--web-sensitivity paranoid`; use `--no-proxy` or `NO_PROXY` to assess TLS directly. |
+| `--third-party-lookups` | Allow lookups that reveal the site's name to a third party. Off by default; in 1.1 no check makes such a lookup (the HSTS preload list and certificate transparency come from bundled data and the certificate itself). |
+| `--no-proxy` | Do not use `HTTP(S)_PROXY`. Only `http://` proxies are supported; any other proxy setting stops the scan with a proxy error (exit code 2; in the JSON report `web.error.code` starts with `proxy`), never a silent direct connection. Through a proxy, DNS-based checks are not tested and TLS findings are tentative, so they appear only with `--web-sensitivity paranoid`; use `--no-proxy` or `NO_PROXY` to assess TLS directly. |
 
 Every report shows three grades (the Kashif Web Grade A+ to F, an MDN HTTP Observatory-compatible score, and an
 SSL Labs-compatible TLS grade that excludes the attack-only tests Kashif does not perform), an honest coverage table
@@ -405,8 +405,8 @@ gate:
   fail_on: medium             # the default gate fails on high
 rules:
   disable:
-    - id: WEB215
-      reason: "CSP reports are collected by the CDN"
+    - id: WEB071
+      reason: "certificates are renewed automatically 30 days before expiry"
 ```
 
 **What a passive scan cannot find:** it reads anonymous pages only, and it does not test injection, XSS,
@@ -542,15 +542,15 @@ kashif update-data --web                                           # بيانا�
 
 | الخيار | معناه |
 |---|---|
-| `--web-profile minimal\|standard\|deep` | `minimal` هو طلب الإصدار 1.0 الواحد (الصفحة وتوجيهاتها، 10 طلبات على الأكثر)؛ و`standard` (الافتراضي) يضيف نسخة http/https وطلب CORS واحدًا بلا كوكيز والملفين `robots.txt` و`security.txt` والأيقونة و`/sitemap.xml` (مع `--crawl`) وحتى 15 من سكربتات الصفحة وأنماطها (45 طلبًا على الأكثر)؛ و`deep` (أو `--deep`) يضيف قائمة ثابتة من الملفات المكشوفة الشائعة مع خطوط أساس لصفحات 404، وسكربتات الأطراف الثالثة وخرائط المصدر والصور (150 طلبًا على الأكثر). وصفحات الزحف إضافة على ذلك. |
+| `--web-profile minimal\|standard\|deep` | `minimal` هو طلب الإصدار 1.0 الواحد (الصفحة وتوجيهاتها، 10 طلبات على الأكثر)؛ و`standard` (الافتراضي) يضيف نسخة http/https وطلب CORS واحدًا بلا كوكيز والملفين `robots.txt` و`security.txt` والأيقونة و`/sitemap.xml` (مع `--crawl`) وحتى 15 من سكربتات الصفحة وأنماطها (45 طلبًا على الأكثر)؛ و`deep` (أو `--deep`) يضيف قائمة ثابتة من الملفات المكشوفة الشائعة، وصفحات الدخول والإدارة للمنصّة المكتشفة (تُطلب مرة واحدة دون إرسال أي بيانات)، وخطوط أساس لصفحات 404، وسكربتات الأطراف الثالثة وخرائط المصدر والصور (150 طلبًا على الأكثر). وصفحات الزحف إضافة على ذلك. |
 | `--web-sensitivity strict\|default\|paranoid` | `strict` النتائج المؤكَّدة فقط، و`default` المؤكَّدة والمرجَّحة، و`paranoid` كل شيء مع الفحوص الخاصة بهذا المستوى. وكل نتيجة تحمل درجة ثقتها (مؤكَّدة أو مرجَّحة أو محتملة). |
 | `--crawl` و`--max-pages N` و`--max-depth N` و`--ignore-robots` | زحف بالعرض أولًا على روابط الأصل نفسه (المخطط والمضيف والمنفذ أنفسها)، بحدّ أعلى 500 صفحة (الافتراضي 20 صفحةً بعمق 2)؛ ويُحترم `robots.txt` إلا إن كنت مالك الموقع وأضفت `--ignore-robots`. ويحتاج إلى `standard` أو `deep`، فلا زحف في `minimal`. ويتوقف الفحص عن الإرسال بعد 600 ثانية أو بعد استقبال 50 ميغابايت. |
 | `--compare-previous` و`--compare ID\|FILE` | النتائج الجديدة والمحلولة والثابتة، وتغيّر الدرجات وتغييرات الوضع الأمني («تغيّرت سياسة CSP»، «مضيف سكربتات جديد»، «جُدّدت الشهادة»). يحفظ `--compare-previous` الفحص في السجل المحلي (`~/.vulnscan` أو `$VULNSCAN_HOME`) ويطبع معرّفه على stderr، ويقبل `--compare` هذا المعرّف (ويظهر أيضًا في صفحة التقارير في الواجهة وفي `$VULNSCAN_HOME/index.json`) أو تقرير JSON (`-f json`). وفي CI استعمل `--compare previous.json`. ولا علاقة لـ `kashif history` بذلك (فهو يبحث في سجل git عن الأسرار). |
 | `--fail-on-inconclusive` | رمز الخروج 1 إذا أجاب جدار حماية أو تحدٍّ أو تقييد معدل بدل الموقع (درجة كاشِف `?` أو النتيجة WEB990)، وهو ما يمرّره `--fail-on` وحده. |
 | `--ignore-rule ID` | استبعاد قاعدة ويب من التقرير ومن `--fail-on` (وتبقى الدرجات تحسبها). |
 | `--web-cookie-ignore NAME` | استبعاد كوكي من فحوص الكوكيز (يمكن تكراره). |
-| `--third-party-lookups` | السماح باستعلامات تكشف اسم الموقع لطرف ثالث (مثل hstspreload.org)؛ معطّلة افتراضيًا. |
-| `--no-proxy` | عدم استخدام `HTTP(S)_PROXY`. ولا يدعم كاشِف إلا الوكيل من نوع `http://`، وأي إعداد آخر يُفشل الفحص بالخطأ `error:proxy` (رمز الخروج 2) ولا يتصل مباشرةً خفية. وعبر الوكيل تُعدّ الفحوص المعتمدة على DNS «لم تُجرَ» ونتائج TLS «محتملة»، فلا تظهر إلا مع `--web-sensitivity paranoid`؛ ولتقييم TLS مباشرةً استعمل `--no-proxy` أو `NO_PROXY`. |
+| `--third-party-lookups` | السماح باستعلامات تكشف اسم الموقع لطرف ثالث؛ معطّلة افتراضيًا، ولا يجري أي فحص في الإصدار 1.1 استعلامًا كهذا (فقائمة HSTS preload وشفافية الشهادات من بيانات مضمّنة ومن الشهادة نفسها). |
+| `--no-proxy` | عدم استخدام `HTTP(S)_PROXY`. ولا يدعم كاشِف إلا الوكيل من نوع `http://`، وأي إعداد آخر يوقف الفحص بخطأ في الوكيل (رمز الخروج 2، وقيمة `web.error.code` في تقرير JSON تبدأ بـ `proxy`) ولا يتصل مباشرةً خفية. وعبر الوكيل تُعدّ الفحوص المعتمدة على DNS «لم تُجرَ» ونتائج TLS «محتملة»، فلا تظهر إلا مع `--web-sensitivity paranoid`؛ ولتقييم TLS مباشرةً استعمل `--no-proxy` أو `NO_PROXY`. |
 
 يعرض كل تقرير ثلاث درجات (درجة كاشِف للويب من A+ إلى F، ودرجة متوافقة مع MDN HTTP Observatory، ودرجة TLS متوافقة مع
 SSL Labs دون اختبارات الهجوم التي لا يجريها كاشِف)، وجدول تغطية صادقًا (ناجح، فاشل، غير منطبق، لم يُجرَ، غير حاسم: الفحص
@@ -580,8 +580,8 @@ gate:
   fail_on: medium             # البوابة الافتراضية تفشل عند high
 rules:
   disable:
-    - id: WEB215
-      reason: "CSP reports are collected by the CDN"
+    - id: WEB071
+      reason: "certificates are renewed automatically 30 days before expiry"
 ```
 
 **ما لا يكشفه الفحص السلبي:** يقرأ الصفحات العامة فقط، ولا يختبر الحقن ولا XSS ولا المصادقة ولا التحكم في الوصول ولا
@@ -844,9 +844,9 @@ kashif https://lms.jamiah.example --authorized --crawl --deep
 - حدود الزحف: `--max-pages` (الافتراضي 20، والحد الأعلى 500) و`--max-depth` (الافتراضي 2). لا تُتبع روابط الخروج/الحذف
   (logout، delete…) ولا الروابط الخارجة عن الأصل، ولا تُرسَل أي بيانات.
 - **بصمة المنصّة**: تتعرّف الأداة تلقائيًا على Moodle وOracle APEX وWordPress وJoomla وDrupal وphpMyAdmin
-  وLaravel من الصفحة والترويسات، وتنبّه إذا كان الإصدار قديمًا، وتذكّر بتحديث الإضافات والقوالب. ومع `--deep`
-  تفحص مسارات الإدارة والدخول وملفات الإعداد الشائعة لكل منصّة (مثل `/login/index.php` و`/wp-login.php`
-  و`/administrator/`).
+  وLaravel من الصفحة والترويسات، وتنبّه إذا كان الإصدار المكتشف به ثغرات معروفة (WEB800) أو انتهى دعمه (WEB801). ومع
+  `--deep` تجلب مرة واحدة بطلب GET عادي مسارات الإدارة والدخول المعروفة للمنصّة المكتشفة (مثل `/login/index.php`
+  و`/wp-login.php` و`/administrator/`) دون إرسال أي بيانات إليها، مع القائمة الثابتة من الملفات المكشوفة الشائعة.
 
 > ⚠️ الزحف وفحص الويب يتطلبان `--authorized`. افحص فقط الأنظمة التي تملكها أو لديك تصريح كتابي بفحصها —
 > فحص بوابة جامعة أو أي نظام لا تملكه دون إذن قد يكون مخالفًا للقانون.

@@ -111,7 +111,7 @@ STR: dict[str, tuple[str, str]] = {
                     "تبدأ القيمة كمحدِّد (selector)، ولا تفسّره jQuery 1.9 وما بعدها على أنه HTML: لا يُستغل إلا مع إصدار أقدم "
                     "من jQuery."),
     "static": ("Found by static analysis of the served code; Kashif does not run JavaScript.",
-               "اكتُشف بتحليل ثابت للكود المقدَّم؛ لا يشغّل كاشف كود JavaScript."),
+               "اكتُشف بتحليل ثابت للكود المقدَّم؛ لا يشغّل كاشِف كود JavaScript."),
     # coverage details
     "skip_size": ("{url} is larger than 1.5 MB (minified bundle), not analysed",
                   "الملف {url} أكبر من 1.5 ميغابايت (حزمة مصغّرة)، لم يُحلَّل"),

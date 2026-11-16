@@ -184,7 +184,15 @@ def test_panel_top_holds_grades_and_coverage_only_and_the_rest_is_collapsed():
     tabs = re.findall(r'<button class="tab( active)?" type="button" role="tab" id="wt-rem0-(\d)" aria-controls="wp-rem0-\d" '
                       r'aria-selected="(true|false)" tabindex="(0|-1)"', more)
     assert tabs == [("", "0", "false", "-1"), (" active", "1", "true", "0"), ("", "2", "false", "-1")]
-    assert more.count('<span class="tag det">مكتشفة</span>') == 2
+    # only the platform detected on the site (nginx) is marked: the generic block (platform "any") is in web_view's
+    # "detected" list for every site, but it is no detected platform
+    assert more.count('<span class="tag det">مكتشفة</span>') == 1
+    assert re.search(r'id="wt-rem0-1"[^>]*><bdi dir="ltr">nginx</bdi> <span class="tag det">', more)
+    # a generic block with code does not win over a detected platform with code
+    view = {**VIEW, "remediation": [{**VIEW["remediation"][0], "detected": [
+        {"platform": "any", "name": "كل المنصات", "code": "X: 1"}, VIEW["remediation"][0]["detected"][1]]}]}
+    got2 = _node("lang = 'ar'; process.stdout.write(JSON.stringify({more: webPanelMore(D)}));", view)
+    assert 'id="wt-rem0-1" aria-controls="wp-rem0-1" aria-selected="true"' in got2["more"]
     assert 'role="tablist" aria-label="منصّات الإصلاح S-CSP"' in more and 'aria-label="جداول جرد الموقع"' in more
 
 
@@ -242,7 +250,7 @@ def test_copy_buttons_announce_and_relabel():
 def test_failed_scan_title_keeps_the_raw_error_apart():
     fail = _slice("function failureHTML(s)", "function progressHTML(")
     assert "bidi(why)" in fail and '<bdi dir="ltr">${esc(raw)}</bdi>' in fail
-    assert "setHTML($('#scan-status-title'), failureHTML(s))" in JS
+    assert "put($('#scan-status-title'), failureHTML(s))" in JS
 
 
 def test_progress_updates_are_not_announced_on_every_poll():
@@ -258,3 +266,9 @@ def test_progress_updates_are_not_announced_on_every_poll():
 def test_a_fix_in_a_finding_is_drawn_as_good_code():
     # the finding's severity colour marks vulnerable code; a copy-paste fix takes the accent colour
     assert ".d-sec.fix .code{--c:var(--accent)}" in CSS and "p.muted.small{" in CSS
+
+
+def test_toasts_keep_urls_and_code_left_to_right():
+    # server errors are shown in the toast: «عناوين http:// وhttps://» once displayed "//:http" (plain textContent)
+    assert "const toast = (msg) => { const el = $('#toast'); setHTML(el, bidi(msg));" in JS
+    assert "http:// وhttps://" in AR["scan.badScheme"] and " و https://" not in JS         # the waw is attached

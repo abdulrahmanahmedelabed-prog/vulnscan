@@ -243,7 +243,7 @@ request). There is one request at a time per host, with at least <code><span cla
 floor 0.2), raised by a <code>Crawl-delay</code> in <code>robots.txt</code> (capped at 10 s). A <code>429</code>, or a <code>503</code> with <code>Retry-After</code>, is
 waited out once (at most 60 s); a second one stops that host and the rest of its checks are reported as
 <em>inconclusive</em>.</p>
-<div class="tablewrap"><table><thead><tr><th>Profile</th><th>Requests (crawl pages excluded)</th><th>What is fetched</th></tr></thead><tbody><tr><td><code>minimal</code></td><td>at most 10</td><td>the URL and its redirects (the 1.0 behaviour); cannot crawl</td></tr><tr><td><code>standard</code> (default)</td><td>at most 45</td><td>+ the http/https counterpart chain (default ports only), one cookieless GET with <code>Origin: https://kashif-cors-check.invalid</code>, <code>/robots.txt</code>, <code>/.well-known/security.txt</code> (<code>/security.txt</code> only after a 404), the declared icon or <code>/favicon.ico</code>, <code>/sitemap.xml</code> (with <code><span class="nb">--crawl</span></code>), up to 15 same-site scripts and styles the page references</td></tr><tr><td><code>deep</code> (<code><span class="nb">--deep</span></code>)</td><td>at most 150</td><td>+ a fixed list of commonly exposed files (<code>.git/HEAD</code>, <code>.env</code>, <code>server-status</code> …) with soft-404 baselines named <code>/kashif-404-&lt;16 hex&gt;</code>, up to 10 third-party scripts and styles, 5 source maps and 10 JPEG images (first 128 KB)</td></tr><tr><td><code><span class="nb">--crawl</span></code> (standard or deep)</td><td>+ <code><span class="nb">--max-pages</span></code> (default 20, at most 500)</td><td>same-origin (same scheme, host and port) links, breadth first, at most <code><span class="nb">--max-depth</span></code> deep (default 2), <code>robots.txt</code> honoured unless <code><span class="nb">--ignore-robots</span></code></td></tr></tbody></table></div>
+<div class="tablewrap"><table><thead><tr><th>Profile</th><th>Requests (crawl pages excluded)</th><th>What is fetched</th></tr></thead><tbody><tr><td><code>minimal</code></td><td>at most 10</td><td>the URL and its redirects (the 1.0 behaviour); cannot crawl</td></tr><tr><td><code>standard</code> (default)</td><td>at most 45</td><td>+ the http/https counterpart chain (default ports only), one cookieless GET with <code>Origin: https://kashif-cors-check.invalid</code>, <code>/robots.txt</code>, <code>/.well-known/security.txt</code> (<code>/security.txt</code> only after a 404), the declared icon or <code>/favicon.ico</code>, <code>/sitemap.xml</code> (with <code><span class="nb">--crawl</span></code>), up to 15 same-site scripts and styles the page references</td></tr><tr><td><code>deep</code> (<code><span class="nb">--deep</span></code>)</td><td>at most 150</td><td>+ a fixed list of commonly exposed files (<code>.git/HEAD</code>, <code>.env</code>, <code>server-status</code> …) and the login and administration pages of a detected platform (<code>/wp-login.php</code>, <code>/administrator/</code> …; fetched once, nothing submitted), with soft-404 baselines named <code>/kashif-404-&lt;16 hex&gt;</code>, up to 10 third-party scripts and styles, 5 source maps and 10 JPEG images (first 128 KB)</td></tr><tr><td><code><span class="nb">--crawl</span></code> (standard or deep)</td><td>+ <code><span class="nb">--max-pages</span></code> (default 20, at most 500)</td><td>same-origin (same scheme, host and port) links, breadth first, at most <code><span class="nb">--max-depth</span></code> deep (default 2), <code>robots.txt</code> honoured unless <code><span class="nb">--ignore-robots</span></code></td></tr></tbody></table></div>
 <p>TLS is assessed with ordinary handshakes and plaintext ClientHello probes (about 14 per address, about 60 with
 <code>deep</code>). DNS lookups are the ones a browser makes anyway. Kashif never sends payloads, never fuzzes parameters,
 never submits forms, never guesses credentials, never uses another method than GET, never spoofs headers or the
@@ -263,8 +263,8 @@ code 2); use <code>standard</code> or <code>deep</code>.</li></ul>
 <h3 id="proxies">Proxies<a class="hl" href="#proxies" aria-hidden="true" tabindex="-1">#</a></h3>
 <p><code>HTTP(S)_PROXY</code> and <code>NO_PROXY</code> are honoured as in 1.0 (<code><span class="nb">--no-proxy</span></code> turns them off). Only <code>http://</code> proxies are
 supported (HTTPS goes through a <code>CONNECT</code> tunnel); any other proxy setting, such as <code>socks5://</code> or a bad port, makes
-the requests that would use it fail with <code>error:proxy</code> (the scan stops with exit code 2) instead of silently
-connecting directly. Through a proxy the checks that need DNS are reported as <em>not tested</em>, and TLS findings are
+the requests that would use it fail with a proxy error (the scan stops with exit code 2, and <code>web.error.code</code> in the
+JSON report starts with <code>proxy</code>) instead of silently connecting directly. Through a proxy the checks that need DNS are reported as <em>not tested</em>, and TLS findings are
 <em>tentative</em>, because an inspecting proxy replaces the certificate: they appear only with
 <code><span class="nb">--web-sensitivity</span> paranoid</code>. To assess TLS itself, scan with <code><span class="nb">--no-proxy</span></code>, or add the host to <code>NO_PROXY</code>.</p>
 <h2 id="options">Options<a class="hl" href="#options" aria-hidden="true" tabindex="-1">#</a></h2>
@@ -379,12 +379,12 @@ gate:
   fail_on: medium             # the default gate fails on high
 rules:
   disable:
-    - id: WEB215
-      reason: &quot;CSP reports are collected by the CDN&quot;
+    - id: WEB071
+      reason: &quot;certificates are renewed automatically 30 days before expiry&quot;
   severity:
-    - id: WEB-referrer-policy
+    - id: WEB-x-frame-options
       severity: low
-      reason: &quot;no cross-site navigation leaves this intranet site&quot;</code></pre>
+      reason: &quot;static documentation with no actions to click-jack&quot;</code></pre>
 <pre dir="ltr" data-lang="bash"><code class="language-bash">kashif https://intranet.example --authorized --policy kashif.yml</code></pre>
 <h2 id="what-a-passive-scan-cannot-find">What a passive scan cannot find<a class="hl" href="#what-a-passive-scan-cannot-find" aria-hidden="true" tabindex="-1">#</a></h2>
 <p>A passive scan reads what an anonymous visitor receives. That bounds what it can say:</p>
@@ -406,14 +406,15 @@ delay, about 27 s with <code><span class="nb">--deep</span></code>). <code><span
 <div class="tablewrap"><table><thead><tr><th>Rule</th><th>1.0</th><th>1.1</th></tr></thead><tbody><tr><td><code>WEB-strict-transport-security</code> (missing HSTS)</td><td>high</td><td>medium</td></tr><tr><td><code>WEB020</code> (cookie without Secure)</td><td>medium</td><td>high, medium or low, by cookie class and HSTS</td></tr><tr><td><code>WEB021</code> (cookie without HttpOnly)</td><td>medium for every cookie</td><td>medium for session and authentication cookies only</td></tr><tr><td><code>WEB022</code> (cookie without SameSite)</td><td>low for every cookie</td><td>low for session, authentication and CSRF cookies; info (<code>paranoid</code>) for others</td></tr><tr><td><code>WEB050</code> (mixed content)</td><td>medium</td><td>medium for active content, low for passive</td></tr><tr><td><code>WEB053</code> (no Subresource Integrity)</td><td>low</td><td>low where a CDN supports SRI, info elsewhere</td></tr><tr><td><code>WEB054</code> (vulnerable JavaScript library)</td><td>from a hand-made table</td><td>the highest severity in the retire.js data</td></tr><tr><td><code>WEB071</code> (certificate expires soon)</td><td>medium</td><td>medium or low; thresholds relative to the certificate&#x27;s lifetime</td></tr><tr><td><code>WEB-x-frame-options</code>, <code>WEB-content-security-policy</code></td><td>medium</td><td>medium; low on static documents without scripts</td></tr><tr><td><code>WEB-permissions-policy</code>, <code>WEB-x-content-type-options</code></td><td>CWE-16</td><td>CWE-693 (severity unchanged)</td></tr></tbody></table></div></li>
 <li><p><strong>Fewer, grouped findings.</strong> A finding is reported once per host with its instances, the 1.0 false positives are
 gone, and <code>tentative</code> findings appear only with <code><span class="nb">--web-sensitivity</span> paranoid</code>.</p></li>
-<li><p><strong>Fingerprints.</strong> The fingerprints of the 1.0 header, CSP and cookie findings are unchanged, so baselines and
-triage decisions keep working for them. Other web findings now fingerprint on their grouping key (rule, host,
-response kind and a normalised value), which no longer changes with nonces, dates or counts; rewrite a web baseline
-once after the upgrade (<code><span class="nb">--write-baseline</span></code>).</p></li>
+<li><p><strong>Fingerprints.</strong> The six security-header rules, WEB000, WEB010, WEB011, WEB020–WEB022, WEB040–WEB043, WEB052,
+WEB055, WEB056 and WEB060 keep their 1.0 fingerprints, so baselines and triage decisions keep working for them.
+WEB053, WEB054 and the other findings now grouped per host or per library fingerprint on their grouping key, which
+no longer changes with nonces, dates or counts: they appear as new once after the upgrade; rewrite the web
+baseline then (<code><span class="nb">--write-baseline</span></code>).</p></li>
 <li><p><strong>CSV column.</strong> The CSV export has a new last column, <code>Confidence</code> (empty for code findings). Readers that address
 columns by name or position are unaffected; readers that check the number of columns must be updated.</p></li>
-<li><p><strong>Proxy failure.</strong> A proxy setting Kashif cannot use (<code>socks5://</code>, a bad port) now fails the scan with
-<code>error:proxy</code> (exit code 2) instead of connecting to the site directly. Use <code><span class="nb">--no-proxy</span></code> or <code>NO_PROXY</code> to connect
+<li><p><strong>Proxy failure.</strong> A proxy setting Kashif cannot use (<code>socks5://</code>, a bad port) now fails the scan with a
+proxy error (exit code 2) instead of connecting to the site directly. Use <code><span class="nb">--no-proxy</span></code> or <code>NO_PROXY</code> to connect
 directly on purpose.</p></li>
 <li><p><strong>Notes.</strong> The note &quot;passive scan: one request&quot; now states the real request budget of the chosen profile. Scans
 saved before the upgrade keep their old text.</p></li>
@@ -432,7 +433,7 @@ compared with its previous one by default (Settings → Web scanning).</p></li><
 و<code>Accept-Language: en</code> (و<code>Origin</code> في طلب CORS الوحيد). طلب واحد في كل مرة لكل مضيف، وبين طلبين <code><span class="nb">--delay</span></code> ثانية على
 الأقل (الافتراضي 0.5 والحد الأدنى 0.2)، وتزيدها قيمة <code>Crawl-delay</code> في <code>robots.txt</code> (حتى 10 ثوانٍ). وعند <code>429</code>، أو
 <code>503</code> مع <code>Retry-After</code>، ينتظر مرة واحدة (60 ثانيةً على الأكثر)؛ وتكرار ذلك يوقف فحص ذلك المضيف وتُعدّ بقية فحوصه «غير حاسمة».</p>
-<div class="tablewrap"><table><thead><tr><th>نمط الفحص</th><th>الطلبات (عدا صفحات الزحف)</th><th>ما يُجلب</th></tr></thead><tbody><tr><td><code>minimal</code></td><td>10 طلبات على الأكثر</td><td>العنوان وتوجيهاته (سلوك الإصدار 1.0)؛ ولا زحف فيه</td></tr><tr><td><code>standard</code> (الافتراضي)</td><td>45 طلبًا على الأكثر</td><td>مع سلسلة النسخة الأخرى http/https (على المنافذ الافتراضية فقط)، وطلب واحد بلا كوكيز مع <code>Origin: https://kashif-cors-check.invalid</code>، و<code>/robots.txt</code> و<code>/.well-known/security.txt</code> (و<code>/security.txt</code> بعد 404 فقط)، والأيقونة المعلنة أو <code>/favicon.ico</code>، و<code>/sitemap.xml</code> (مع <code><span class="nb">--crawl</span></code>)، وحتى 15 من سكربتات الصفحة وأنماطها من الموقع نفسه</td></tr><tr><td><code>deep</code> (أو <code><span class="nb">--deep</span></code>)</td><td>150 طلبًا على الأكثر</td><td>مع قائمة ثابتة من الملفات المكشوفة الشائعة وخطوط أساس لصفحات 404 باسم <code>/kashif-404-&lt;16 hex&gt;</code>، وحتى 10 سكربتات لأطراف ثالثة و5 خرائط مصدر و10 صور JPEG (أول 128 كيلوبايت)</td></tr><tr><td><code><span class="nb">--crawl</span></code> (مع standard أو deep)</td><td>مع <code><span class="nb">--max-pages</span></code> (الافتراضي 20، والحد الأعلى 500)</td><td>روابط الأصل نفسه (المخطط والمضيف والمنفذ أنفسها)، بالعرض أولًا، بعمق <code><span class="nb">--max-depth</span></code> على الأكثر (الافتراضي 2)، باحترام <code>robots.txt</code> إلا مع <code><span class="nb">--ignore-robots</span></code></td></tr></tbody></table></div>
+<div class="tablewrap"><table><thead><tr><th>نمط الفحص</th><th>الطلبات (عدا صفحات الزحف)</th><th>ما يُجلب</th></tr></thead><tbody><tr><td><code>minimal</code></td><td>10 طلبات على الأكثر</td><td>العنوان وتوجيهاته (سلوك الإصدار 1.0)؛ ولا زحف فيه</td></tr><tr><td><code>standard</code> (الافتراضي)</td><td>45 طلبًا على الأكثر</td><td>مع سلسلة النسخة الأخرى http/https (على المنافذ الافتراضية فقط)، وطلب واحد بلا كوكيز مع <code>Origin: https://kashif-cors-check.invalid</code>، و<code>/robots.txt</code> و<code>/.well-known/security.txt</code> (و<code>/security.txt</code> بعد 404 فقط)، والأيقونة المعلنة أو <code>/favicon.ico</code>، و<code>/sitemap.xml</code> (مع <code><span class="nb">--crawl</span></code>)، وحتى 15 من سكربتات الصفحة وأنماطها من الموقع نفسه</td></tr><tr><td><code>deep</code> (أو <code><span class="nb">--deep</span></code>)</td><td>150 طلبًا على الأكثر</td><td>مع قائمة ثابتة من الملفات المكشوفة الشائعة (<code>.git/HEAD</code> و<code>.env</code> و<code>server-status</code> …)، وصفحات الدخول والإدارة للمنصّة المكتشفة (<code>/wp-login.php</code> و<code>/administrator/</code> …؛ تُطلب مرة واحدة دون إرسال أي بيانات)، وخطوط أساس لصفحات 404 باسم <code>/kashif-404-&lt;16 hex&gt;</code>، وحتى 10 سكربتات لأطراف ثالثة و5 خرائط مصدر و10 صور JPEG (أول 128 كيلوبايت)</td></tr><tr><td><code><span class="nb">--crawl</span></code> (مع standard أو deep)</td><td>مع <code><span class="nb">--max-pages</span></code> (الافتراضي 20، والحد الأعلى 500)</td><td>روابط الأصل نفسه (المخطط والمضيف والمنفذ أنفسها)، بالعرض أولًا، بعمق <code><span class="nb">--max-depth</span></code> على الأكثر (الافتراضي 2)، باحترام <code>robots.txt</code> إلا مع <code><span class="nb">--ignore-robots</span></code></td></tr></tbody></table></div>
 <p>يُقيَّم TLS بمصافحات عادية ورسائل ClientHello تُقرأ استجاباتها غير المشفّرة فقط (نحو 14 لكل عنوان، ونحو 60 مع <code>deep</code>).
 ولا يرسل كاشِف حمولات، ولا يجرّب المعاملات، ولا يرسل النماذج، ولا يخمّن كلمات المرور، ولا يستخدم غير GET، ولا يزوّر
 الترويسات أو معرّف المتصفح، ولا يتصل بمنفذ غير منفذ الهدف (و80/443 للنسخة الأخرى)، ويرفض اتباع توجيه أو رابط إلى عنوان
@@ -448,8 +449,8 @@ compared with its previous one by default (Settings → Web scanning).</p></li><
 <li><strong>لا زحف في <code>minimal</code>:</strong> يُرفض <code><span class="nb">--crawl</span></code> مع <code><span class="nb">--web-profile</span> minimal</code> قبل إرسال أي طلب (رمز الخروج 2)؛ استعمل <code>standard</code> أو <code>deep</code>.</li></ul>
 <h3 id="الوكيل-proxy">الوكيل (Proxy)<a class="hl" href="#الوكيل-proxy" aria-hidden="true" tabindex="-1">#</a></h3>
 <p>يحترم الفحص <code>HTTP(S)_PROXY</code> و<code>NO_PROXY</code> كما في 1.0 (ويعطّلهما <code><span class="nb">--no-proxy</span></code>). ولا يدعم كاشِف إلا الوكيل من نوع <code>http://</code>
-(ويمر HTTPS عبر نفق <code>CONNECT</code>)؛ وأي إعداد آخر، مثل <code>socks5://</code> أو منفذ غير صالح، يُفشل الطلبات التي تمر به بالخطأ
-<code>error:proxy</code> (فيتوقف الفحص برمز الخروج 2) بدل الاتصال المباشر خفية. وعبر الوكيل تُعدّ الفحوص المعتمدة على DNS «لم تُجرَ»،
+(ويمر HTTPS عبر نفق <code>CONNECT</code>)؛ وأي إعداد آخر، مثل <code>socks5://</code> أو منفذ غير صالح، يُفشل الطلبات التي تمر به بخطأ في الوكيل
+(فيتوقف الفحص برمز الخروج 2، وقيمة <code>web.error.code</code> في تقرير JSON تبدأ بـ <code>proxy</code>) بدل الاتصال المباشر خفية. وعبر الوكيل تُعدّ الفحوص المعتمدة على DNS «لم تُجرَ»،
 وتصبح نتائج TLS «محتملة» لأن الوكيل الفاحص يستبدل الشهادة، فلا تظهر إلا مع <code><span class="nb">--web-sensitivity</span> paranoid</code>. ولتقييم TLS
 نفسه افحص مع <code><span class="nb">--no-proxy</span></code>، أو أضف المضيف إلى <code>NO_PROXY</code>.</p>
 <h2 id="الخيارات">الخيارات<a class="hl" href="#الخيارات" aria-hidden="true" tabindex="-1">#</a></h2>
@@ -527,12 +528,12 @@ gate:
   fail_on: medium             # البوابة الافتراضية تفشل عند high
 rules:
   disable:
-    - id: WEB215
-      reason: &quot;CSP reports are collected by the CDN&quot;
+    - id: WEB071
+      reason: &quot;certificates are renewed automatically 30 days before expiry&quot;
   severity:
-    - id: WEB-referrer-policy
+    - id: WEB-x-frame-options
       severity: low
-      reason: &quot;no cross-site navigation leaves this intranet site&quot;</code></pre>
+      reason: &quot;static documentation with no actions to click-jack&quot;</code></pre>
 <pre dir="ltr" data-lang="bash"><code class="language-bash">kashif https://intranet.example --authorized --policy kashif.yml</code></pre>
 <h2 id="ما-لا-يكشفه-الفحص-السلبي">ما لا يكشفه الفحص السلبي<a class="hl" href="#ما-لا-يكشفه-الفحص-السلبي" aria-hidden="true" tabindex="-1">#</a></h2>
 <p>يقرأ الفحص السلبي ما يتلقاه زائر مجهول، وهذا يحدّ ما يمكنه قوله:</p>
@@ -553,13 +554,14 @@ CRL ولا OCSP).</li>
 <div class="tablewrap"><table><thead><tr><th>القاعدة</th><th>1.0</th><th>1.1</th></tr></thead><tbody><tr><td><code>WEB-strict-transport-security</code> (غياب HSTS)</td><td>high</td><td>medium</td></tr><tr><td><code>WEB020</code> (كوكي بلا Secure)</td><td>medium</td><td>high أو medium أو low بحسب فئة الكوكي وHSTS</td></tr><tr><td><code>WEB021</code> (كوكي بلا HttpOnly)</td><td>medium لكل الكوكيز</td><td>medium لكوكيز الجلسة والمصادقة فقط</td></tr><tr><td><code>WEB022</code> (كوكي بلا SameSite)</td><td>low لكل الكوكيز</td><td>low لكوكيز الجلسة والمصادقة وCSRF، وinfo (في <code>paranoid</code>) لغيرها</td></tr><tr><td><code>WEB050</code> (المحتوى المختلط)</td><td>medium</td><td>medium للمحتوى النشط، وlow للسلبي</td></tr><tr><td><code>WEB053</code> (بلا SRI)</td><td>low</td><td>low حيث تدعم شبكة التوزيع SRI، وinfo في غيرها</td></tr><tr><td><code>WEB054</code> (مكتبة JavaScript بها ثغرات)</td><td>من جدول يدوي</td><td>أعلى خطورة في بيانات retire.js</td></tr><tr><td><code>WEB071</code> (قرب انتهاء الشهادة)</td><td>medium</td><td>medium أو low، والعتبات نسبية إلى عمر الشهادة</td></tr><tr><td><code>WEB-x-frame-options</code> و<code>WEB-content-security-policy</code></td><td>medium</td><td>medium، وlow على المستندات الثابتة بلا سكربتات</td></tr><tr><td><code>WEB-permissions-policy</code> و<code>WEB-x-content-type-options</code></td><td>CWE-16</td><td>CWE-693 (الخطورة كما هي)</td></tr></tbody></table></div></li>
 <li><p><strong>نتائج أقل ومجمَّعة.</strong> تظهر النتيجة مرة واحدة لكل مضيف مع مواضعها، وزالت إنذارات 1.0 الكاذبة، ولا تظهر النتائج
 «المحتملة» (<code>tentative</code>) إلا مع <code><span class="nb">--web-sensitivity</span> paranoid</code>.</p></li>
-<li><p><strong>البصمات.</strong> لا تتغير بصمات نتائج الترويسات وCSP والكوكيز من الإصدار 1.0، فيبقى خط الأساس وقرارات الفرز صالحة لها. أما
-بقية نتائج الويب فبصمتها الآن مفتاح تجميعها (القاعدة والمضيف ونوع الاستجابة وقيمة موحَّدة) فلا تتغير مع قيم nonce أو
-التواريخ أو الأعداد؛ أعد كتابة خط أساس الويب مرة واحدة بعد الترقية (<code><span class="nb">--write-baseline</span></code>).</p></li>
+<li><p><strong>البصمات.</strong> تحتفظ قواعد ترويسات الأمان الست وWEB000 وWEB010 وWEB011 وWEB020–WEB022 وWEB040–WEB043 وWEB052 وWEB055
+وWEB056 وWEB060 ببصمات الإصدار 1.0، فيبقى خط الأساس وقرارات الفرز صالحة لها. أما WEB053 وWEB054 وبقية النتائج التي صارت
+تُجمع لكل مضيف أو مكتبة فبصمتها الآن مفتاح تجميعها، فلا تتغير مع قيم nonce أو التواريخ أو الأعداد: تظهر جديدةً مرة واحدة بعد
+الترقية، فأعد حينها كتابة خط أساس الويب (<code><span class="nb">--write-baseline</span></code>).</p></li>
 <li><p><strong>عمود CSV.</strong> في تصدير CSV عمود أخير جديد <code>Confidence</code> (فارغ لنتائج الكود). ومن يقرأ الأعمدة بأسمائها أو مواضعها لا يتأثر،
 ومن يتحقق من عدد الأعمدة يحتاج إلى التحديث.</p></li>
-<li><p><strong>فشل الوكيل.</strong> إعداد الوكيل الذي لا يستطيع كاشِف استعماله (<code>socks5://</code> أو منفذ غير صالح) صار يُفشل الفحص بالخطأ
-<code>error:proxy</code> (رمز الخروج 2) بدل الاتصال المباشر بالموقع. استعمل <code><span class="nb">--no-proxy</span></code> أو <code>NO_PROXY</code> للاتصال المباشر عمدًا.</p></li>
+<li><p><strong>فشل الوكيل.</strong> إعداد الوكيل الذي لا يستطيع كاشِف استعماله (<code>socks5://</code> أو منفذ غير صالح) صار يُفشل الفحص بخطأ
+في الوكيل (رمز الخروج 2) بدل الاتصال المباشر بالموقع. استعمل <code><span class="nb">--no-proxy</span></code> أو <code>NO_PROXY</code> للاتصال المباشر عمدًا.</p></li>
 <li><p><strong>الملاحظات.</strong> ملاحظة «فحص سلبي: طلب واحد» صارت تذكر حدّ الطلبات الفعلي لنمط الفحص المختار. وتبقى الفحوص المحفوظة قبل
 الترقية بنصّها القديم.</p></li>
 <li><p><strong>الواجهة.</strong> في نموذج فحص الويب خيارات نمط الفحص والحساسية والزحف والمقارنة، ويُقارن كل فحص لموقع بالفحص السابق له

@@ -604,7 +604,7 @@ _WEB_LABELS = {
     "d_regression": ("تراجع", "regression"), "d_change": ("تغيير", "change"), "d_improvement": ("تحسّن", "improvement"),
     "d_previous": ("الفحص السابق", "Previous scan"),
     "web_summary": ("ملخص فحص الموقع", "Web scan summary"),
-    "w_profile": ("ملف الفحص", "Profile"), "w_requests": ("الطلبات", "Requests"), "w_final": ("العنوان النهائي", "Final URL"),
+    "w_profile": ("نمط الفحص", "Profile"), "w_requests": ("الطلبات", "Requests"), "w_final": ("العنوان النهائي", "Final URL"),
     "w_data": ("بيانات الويب بتاريخ", "Web data as of"),
     "page_url": ("الصفحة", "Page"),
     # 1.1.0 report layout
@@ -653,7 +653,10 @@ _WEB_LABELS = {
 }
 _STATE_ORDER = ("pass", "fail", "not_applicable", "not_tested", "inconclusive")
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-_]|\x9b[0-?]*[ -/]*[@-~]")
-_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f​-‏‪-‮⁦-⁩]")
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+# invisible format characters (zero-width, bidi marks, embeddings, isolates) are removed, not turned into spaces:
+# Kashif's own texts carry isolates ("من ⁦D⁩ إلى ⁦B⁩"), and the report isolates Latin runs again itself
+_INVISIBLE = re.compile("[\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
 
 
 def _wl(L: "_Lang", key: str) -> str:
@@ -728,7 +731,7 @@ def clean_text(value, limit: int = 300) -> str:
     """Target-controlled text made inert for any report: ANSI escape sequences and C0/C1/bidi control characters
     removed, whitespace collapsed, length capped."""
     text = _ANSI.sub("", "" if value is None else str(value))
-    text = _CTRL.sub(" ", text)
+    text = _CTRL.sub(" ", _INVISIBLE.sub("", text))
     text = " ".join(text.split())
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
@@ -1651,7 +1654,7 @@ td bdi[dir='ltr']{{white-space:nowrap}}td bdi.lr{{white-space:normal}}
 h1{{overflow-wrap:anywhere}}
 .tw{{max-width:100%;overflow-x:auto}}
 td{{min-width:5rem}}td.w{{min-width:12rem}}
-@media (max-width:1000px){{td{{min-width:0}}td.w{{min-width:8rem}}}}
+@media (max-width:1000px){{td{{min-width:0}}td.w{{min-width:6rem}}.ev td.nw{{white-space:normal}}}}
 @media (max-width:640px){{body{{margin:1rem}}h1{{font-size:1.4rem}}.tile{{min-width:5rem;padding:.5rem .8rem}}
 td bdi[dir='ltr']{{white-space:normal}}
 .fd-h+.tw>table,.fd-h+.tw>table>tbody,.fd-h+.tw>table>tbody>tr,.fd-h+.tw>table>tbody>tr>td{{display:block;width:auto;min-width:0}}

@@ -13,7 +13,6 @@ Containment: an unexpected error on one file or one manifest is recorded in the 
 
 import ast
 import pathlib
-import tempfile
 
 import pytest
 

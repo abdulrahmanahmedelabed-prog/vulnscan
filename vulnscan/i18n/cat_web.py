@@ -198,6 +198,8 @@ FAILURE: dict[str, tuple[str, str]] = {
                         "ولا يستطيع كاشِف معرفة أيهما."),
     "proxy_reset": ("The proxy {proxy} closed the connection before the request to {host} was sent.",
                     "أغلق الوكيل {proxy} الاتصال قبل إرسال الطلب إلى {host}."),
+    "proxy_unsupported": ("The proxy {proxy} (from HTTP_PROXY/HTTPS_PROXY) cannot be used: Kashif supports only http:// proxies, and sent nothing directly instead.",
+                          f"لا يمكن استخدام الوكيل {{proxy}} (المعرَّف في {LRI}HTTP_PROXY/HTTPS_PROXY{PDI}): لا يدعم كاشِف إلا وكلاء {LRI}http://{PDI}، ولم يُرسل أي طلب مباشرةً بدلًا منه."),
     "proxy_unreachable": ("Could not connect to the proxy {proxy} (from HTTP_PROXY/HTTPS_PROXY).",
                           f"تعذّر الاتصال بالوكيل {{proxy}} (المعرَّف في {LRI}HTTP_PROXY/HTTPS_PROXY{PDI})."),
     "proxy_refused": ("The proxy {proxy} refused to connect to {host} (HTTP {status}), so Kashif did not reach the site.",
@@ -227,7 +229,7 @@ def _failure_combos() -> tuple[tuple[str, ...], ...]:
             out.append(("timeout", "timeout_cause", "timeout_try", *alt, f"timeout_{more}"))
         out.append(("timeout", "via_proxy", fix, f"timeout_{more}"))
         out += [(k, fix) for k in ("reset_proxy", "proxy_reset_tls", "proxy_reset", "proxy_unreachable",
-                                   "proxy_refused", "proxy_refused_any")]
+                                   "proxy_refused", "proxy_refused_any", "proxy_unsupported")]
     out += [("deadline",), ("dns",), ("dns", "dns_https_proxy"), ("refused", "alt_url"), ("refused", "alt_port"),
             ("refused",), ("route",), ("tls",), ("waf",), ("unsupported",), ("invalid",), ("unreadable",), ("other",)]
     return tuple(dict.fromkeys(out))

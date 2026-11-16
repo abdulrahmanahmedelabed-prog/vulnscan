@@ -88,13 +88,13 @@ STR: dict[str, tuple[str, str]] = {
     "sectxt_html": ("{url} returned an HTML page without any security.txt field.",
                     "أعاد {url} صفحة HTML لا تحوي أي حقل من حقول security.txt."),
     "robots_paths": ("robots.txt names: {paths}. These paths were not requested.",
-                     "يذكر ملف robots.txt المسارات: {paths}. ولم يطلب كاشف هذه المسارات."),
+                     "يذكر ملف robots.txt المسارات: {paths}. ولم يطلب كاشِف هذه المسارات."),
     "baseline_differs": ("A request for a random path in the same directory ({baseline}) answered differently, so this "
                          "is a real file and not a catch-all page.",
                          "أجاب طلب لمسار عشوائي في المجلد نفسه ({baseline}) إجابةً مختلفة، لذا فهذا ملف حقيقي وليس صفحة "
                          "عامة تُعاد لكل المسارات."),
     "actuator_links": ("The Actuator index lists {links}; these endpoints were not requested.",
-                       "يسرد فهرس Actuator النقاط {links}؛ ولم يطلبها كاشف."),
+                       "يسرد فهرس Actuator النقاط {links}؛ ولم يطلبها كاشِف."),
     "public_api_docs": ("The site links to this page itself, so it looks like intentionally published API documentation.",
                         "يشير الموقع نفسه إلى هذه الصفحة، لذا تبدو توثيقًا منشورًا عمدًا لواجهة API."),
     "crossdomain": ("{path} allows every domain: {value}", "يسمح الملف {path} لكل النطاقات: {value}"),

@@ -513,3 +513,9 @@ def test_arabic_report_strings_use_the_brand_spelling():
     import inspect
     src = inspect.getsource(report)
     assert "كاشف" not in src and "كاشِف" in src
+
+
+def test_clean_text_drops_isolates_instead_of_spacing_them():
+    from vulnscan.report import clean_text
+    assert clean_text("(من ⁦57.69⁩ إلى ⁦83.85⁩)") == "(من 57.69 إلى 83.85)"
+    assert clean_text("a\x00b‮X") == "a bX"

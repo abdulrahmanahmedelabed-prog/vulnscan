@@ -23,7 +23,7 @@ waited out once (at most 60 s); a second one stops that host and the rest of its
 |---|---|---|
 | `minimal` | at most 10 | the URL and its redirects (the 1.0 behaviour); cannot crawl |
 | `standard` (default) | at most 45 | + the http/https counterpart chain (default ports only), one cookieless GET with `Origin: https://kashif-cors-check.invalid`, `/robots.txt`, `/.well-known/security.txt` (`/security.txt` only after a 404), the declared icon or `/favicon.ico`, `/sitemap.xml` (with `--crawl`), up to 15 same-site scripts and styles the page references |
-| `deep` (`--deep`) | at most 150 | + a fixed list of commonly exposed files (`.git/HEAD`, `.env`, `server-status` …) with soft-404 baselines named `/kashif-404-<16 hex>`, up to 10 third-party scripts and styles, 5 source maps and 10 JPEG images (first 128 KB) |
+| `deep` (`--deep`) | at most 150 | + a fixed list of commonly exposed files (`.git/HEAD`, `.env`, `server-status` …) and the login and administration pages of a detected platform (`/wp-login.php`, `/administrator/` …; fetched once, nothing submitted), with soft-404 baselines named `/kashif-404-<16 hex>`, up to 10 third-party scripts and styles, 5 source maps and 10 JPEG images (first 128 KB) |
 | `--crawl` (standard or deep) | + `--max-pages` (default 20, at most 500) | same-origin (same scheme, host and port) links, breadth first, at most `--max-depth` deep (default 2), `robots.txt` honoured unless `--ignore-robots` |
 
 TLS is assessed with ordinary handshakes and plaintext ClientHello probes (about 14 per address, about 60 with
@@ -49,8 +49,8 @@ check of that kind can never run without your consent; in 1.1 no check uses it.
 
 `HTTP(S)_PROXY` and `NO_PROXY` are honoured as in 1.0 (`--no-proxy` turns them off). Only `http://` proxies are
 supported (HTTPS goes through a `CONNECT` tunnel); any other proxy setting, such as `socks5://` or a bad port, makes
-the requests that would use it fail with `error:proxy` (the scan stops with exit code 2) instead of silently
-connecting directly. Through a proxy the checks that need DNS are reported as *not tested*, and TLS findings are
+the requests that would use it fail with a proxy error (the scan stops with exit code 2, and `web.error.code` in the
+JSON report starts with `proxy`) instead of silently connecting directly. Through a proxy the checks that need DNS are reported as *not tested*, and TLS findings are
 *tentative*, because an inspecting proxy replaces the certificate: they appear only with
 `--web-sensitivity paranoid`. To assess TLS itself, scan with `--no-proxy`, or add the host to `NO_PROXY`.
 
@@ -222,12 +222,12 @@ gate:
   fail_on: medium             # the default gate fails on high
 rules:
   disable:
-    - id: WEB215
-      reason: "CSP reports are collected by the CDN"
+    - id: WEB071
+      reason: "certificates are renewed automatically 30 days before expiry"
   severity:
-    - id: WEB-referrer-policy
+    - id: WEB-x-frame-options
       severity: low
-      reason: "no cross-site navigation leaves this intranet site"
+      reason: "static documentation with no actions to click-jack"
 ```
 
 ```bash
@@ -272,14 +272,15 @@ authorised active test (a penetration test or a DAST tool run with the owner's p
 
 * **Fewer, grouped findings.** A finding is reported once per host with its instances, the 1.0 false positives are
   gone, and `tentative` findings appear only with `--web-sensitivity paranoid`.
-* **Fingerprints.** The fingerprints of the 1.0 header, CSP and cookie findings are unchanged, so baselines and
-  triage decisions keep working for them. Other web findings now fingerprint on their grouping key (rule, host,
-  response kind and a normalised value), which no longer changes with nonces, dates or counts; rewrite a web baseline
-  once after the upgrade (`--write-baseline`).
+* **Fingerprints.** The six security-header rules, WEB000, WEB010, WEB011, WEB020–WEB022, WEB040–WEB043, WEB052,
+  WEB055, WEB056 and WEB060 keep their 1.0 fingerprints, so baselines and triage decisions keep working for them.
+  WEB053, WEB054 and the other findings now grouped per host or per library fingerprint on their grouping key, which
+  no longer changes with nonces, dates or counts: they appear as new once after the upgrade; rewrite the web
+  baseline then (`--write-baseline`).
 * **CSV column.** The CSV export has a new last column, `Confidence` (empty for code findings). Readers that address
   columns by name or position are unaffected; readers that check the number of columns must be updated.
-* **Proxy failure.** A proxy setting Kashif cannot use (`socks5://`, a bad port) now fails the scan with
-  `error:proxy` (exit code 2) instead of connecting to the site directly. Use `--no-proxy` or `NO_PROXY` to connect
+* **Proxy failure.** A proxy setting Kashif cannot use (`socks5://`, a bad port) now fails the scan with a
+  proxy error (exit code 2) instead of connecting to the site directly. Use `--no-proxy` or `NO_PROXY` to connect
   directly on purpose.
 * **Notes.** The note "passive scan: one request" now states the real request budget of the chosen profile. Scans
   saved before the upgrade keep their old text.
@@ -310,7 +311,7 @@ authorised active test (a penetration test or a DAST tool run with the owner's p
 |---|---|---|
 | `minimal` | 10 طلبات على الأكثر | العنوان وتوجيهاته (سلوك الإصدار 1.0)؛ ولا زحف فيه |
 | `standard` (الافتراضي) | 45 طلبًا على الأكثر | مع سلسلة النسخة الأخرى http/https (على المنافذ الافتراضية فقط)، وطلب واحد بلا كوكيز مع `Origin: https://kashif-cors-check.invalid`، و`/robots.txt` و`/.well-known/security.txt` (و`/security.txt` بعد 404 فقط)، والأيقونة المعلنة أو `/favicon.ico`، و`/sitemap.xml` (مع `--crawl`)، وحتى 15 من سكربتات الصفحة وأنماطها من الموقع نفسه |
-| `deep` (أو `--deep`) | 150 طلبًا على الأكثر | مع قائمة ثابتة من الملفات المكشوفة الشائعة وخطوط أساس لصفحات 404 باسم `/kashif-404-<16 hex>`، وحتى 10 سكربتات لأطراف ثالثة و5 خرائط مصدر و10 صور JPEG (أول 128 كيلوبايت) |
+| `deep` (أو `--deep`) | 150 طلبًا على الأكثر | مع قائمة ثابتة من الملفات المكشوفة الشائعة (`.git/HEAD` و`.env` و`server-status` …)، وصفحات الدخول والإدارة للمنصّة المكتشفة (`/wp-login.php` و`/administrator/` …؛ تُطلب مرة واحدة دون إرسال أي بيانات)، وخطوط أساس لصفحات 404 باسم `/kashif-404-<16 hex>`، وحتى 10 سكربتات لأطراف ثالثة و5 خرائط مصدر و10 صور JPEG (أول 128 كيلوبايت) |
 | `--crawl` (مع standard أو deep) | مع `--max-pages` (الافتراضي 20، والحد الأعلى 500) | روابط الأصل نفسه (المخطط والمضيف والمنفذ أنفسها)، بالعرض أولًا، بعمق `--max-depth` على الأكثر (الافتراضي 2)، باحترام `robots.txt` إلا مع `--ignore-robots` |
 
 يُقيَّم TLS بمصافحات عادية ورسائل ClientHello تُقرأ استجاباتها غير المشفّرة فقط (نحو 14 لكل عنوان، ونحو 60 مع `deep`).
@@ -332,8 +333,8 @@ authorised active test (a penetration test or a DAST tool run with the owner's p
 ### الوكيل (Proxy)
 
 يحترم الفحص `HTTP(S)_PROXY` و`NO_PROXY` كما في 1.0 (ويعطّلهما `--no-proxy`). ولا يدعم كاشِف إلا الوكيل من نوع `http://`
-(ويمر HTTPS عبر نفق `CONNECT`)؛ وأي إعداد آخر، مثل `socks5://` أو منفذ غير صالح، يُفشل الطلبات التي تمر به بالخطأ
-`error:proxy` (فيتوقف الفحص برمز الخروج 2) بدل الاتصال المباشر خفية. وعبر الوكيل تُعدّ الفحوص المعتمدة على DNS «لم تُجرَ»،
+(ويمر HTTPS عبر نفق `CONNECT`)؛ وأي إعداد آخر، مثل `socks5://` أو منفذ غير صالح، يُفشل الطلبات التي تمر به بخطأ في الوكيل
+(فيتوقف الفحص برمز الخروج 2، وقيمة `web.error.code` في تقرير JSON تبدأ بـ `proxy`) بدل الاتصال المباشر خفية. وعبر الوكيل تُعدّ الفحوص المعتمدة على DNS «لم تُجرَ»،
 وتصبح نتائج TLS «محتملة» لأن الوكيل الفاحص يستبدل الشهادة، فلا تظهر إلا مع `--web-sensitivity paranoid`. ولتقييم TLS
 نفسه افحص مع `--no-proxy`، أو أضف المضيف إلى `NO_PROXY`.
 
@@ -457,12 +458,12 @@ gate:
   fail_on: medium             # البوابة الافتراضية تفشل عند high
 rules:
   disable:
-    - id: WEB215
-      reason: "CSP reports are collected by the CDN"
+    - id: WEB071
+      reason: "certificates are renewed automatically 30 days before expiry"
   severity:
-    - id: WEB-referrer-policy
+    - id: WEB-x-frame-options
       severity: low
-      reason: "no cross-site navigation leaves this intranet site"
+      reason: "static documentation with no actions to click-jack"
 ```
 
 ```bash
@@ -506,13 +507,14 @@ kashif https://intranet.example --authorized --policy kashif.yml
 
 * **نتائج أقل ومجمَّعة.** تظهر النتيجة مرة واحدة لكل مضيف مع مواضعها، وزالت إنذارات 1.0 الكاذبة، ولا تظهر النتائج
   «المحتملة» (`tentative`) إلا مع `--web-sensitivity paranoid`.
-* **البصمات.** لا تتغير بصمات نتائج الترويسات وCSP والكوكيز من الإصدار 1.0، فيبقى خط الأساس وقرارات الفرز صالحة لها. أما
-  بقية نتائج الويب فبصمتها الآن مفتاح تجميعها (القاعدة والمضيف ونوع الاستجابة وقيمة موحَّدة) فلا تتغير مع قيم nonce أو
-  التواريخ أو الأعداد؛ أعد كتابة خط أساس الويب مرة واحدة بعد الترقية (`--write-baseline`).
+* **البصمات.** تحتفظ قواعد ترويسات الأمان الست وWEB000 وWEB010 وWEB011 وWEB020–WEB022 وWEB040–WEB043 وWEB052 وWEB055
+  وWEB056 وWEB060 ببصمات الإصدار 1.0، فيبقى خط الأساس وقرارات الفرز صالحة لها. أما WEB053 وWEB054 وبقية النتائج التي صارت
+  تُجمع لكل مضيف أو مكتبة فبصمتها الآن مفتاح تجميعها، فلا تتغير مع قيم nonce أو التواريخ أو الأعداد: تظهر جديدةً مرة واحدة بعد
+  الترقية، فأعد حينها كتابة خط أساس الويب (`--write-baseline`).
 * **عمود CSV.** في تصدير CSV عمود أخير جديد `Confidence` (فارغ لنتائج الكود). ومن يقرأ الأعمدة بأسمائها أو مواضعها لا يتأثر،
   ومن يتحقق من عدد الأعمدة يحتاج إلى التحديث.
-* **فشل الوكيل.** إعداد الوكيل الذي لا يستطيع كاشِف استعماله (`socks5://` أو منفذ غير صالح) صار يُفشل الفحص بالخطأ
-  `error:proxy` (رمز الخروج 2) بدل الاتصال المباشر بالموقع. استعمل `--no-proxy` أو `NO_PROXY` للاتصال المباشر عمدًا.
+* **فشل الوكيل.** إعداد الوكيل الذي لا يستطيع كاشِف استعماله (`socks5://` أو منفذ غير صالح) صار يُفشل الفحص بخطأ
+  في الوكيل (رمز الخروج 2) بدل الاتصال المباشر بالموقع. استعمل `--no-proxy` أو `NO_PROXY` للاتصال المباشر عمدًا.
 * **الملاحظات.** ملاحظة «فحص سلبي: طلب واحد» صارت تذكر حدّ الطلبات الفعلي لنمط الفحص المختار. وتبقى الفحوص المحفوظة قبل
   الترقية بنصّها القديم.
 * **الواجهة.** في نموذج فحص الويب خيارات نمط الفحص والحساسية والزحف والمقارنة، ويُقارن كل فحص لموقع بالفحص السابق له

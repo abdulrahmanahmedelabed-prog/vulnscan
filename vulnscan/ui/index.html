@@ -256,7 +256,7 @@
           <details class="web-more"><summary data-i18n="scan.webMore">خيارات متقدمة</summary>
             <div class="checks">
               <label class="check"><input id="url-robots" type="checkbox"> <span data-i18n="scan.robots">تجاهل robots.txt عند الزحف (لمالك الموقع)</span></label>
-              <label class="check"><input id="url-3p" type="checkbox"> <span data-i18n="scan.thirdParty">اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (مثل hstspreload.org)</span></label>
+              <label class="check"><input id="url-3p" type="checkbox"> <span data-i18n="scan.thirdParty">اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (لا يجري أي فحص في الإصدار 1.1 مثل هذا الاستعلام)</span></label>
               <label class="check"><input id="url-noproxy" type="checkbox"> <span data-i18n="scan.noProxy">لا تستخدم الوكيل (proxy) المعرَّف في النظام</span></label>
             </div>
           </details>
@@ -473,7 +473,7 @@
             <div class="checks">
               <label class="check"><input name="web_compare_previous" type="checkbox"> <span data-i18n="set.webCompare">قارن كل فحص بآخر فحص للموقع نفسه</span></label>
               <label class="check"><input name="web_respect_robots" type="checkbox"> <span data-i18n="set.webRobots">احترم robots.txt عند الزحف</span></label>
-              <label class="check"><input name="web_third_party_lookups" type="checkbox"> <span data-i18n="set.web3p">اسمح باستعلامات لدى أطراف ثالثة (مثل hstspreload.org)</span></label>
+              <label class="check"><input name="web_third_party_lookups" type="checkbox"> <span data-i18n="set.web3p">اسمح باستعلامات لدى أطراف ثالثة (لا يجري أي فحص في الإصدار 1.1 مثل هذا الاستعلام)</span></label>
               <label class="check"><input name="web_use_proxy" type="checkbox"> <span data-i18n="set.webProxy">استخدم الوكيل (proxy) المعرَّف في النظام</span></label>
             </div>
             <div class="field"><label for="f-at" data-i18n="set.authTargets">عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)</label><textarea id="f-at" name="authorized_targets" class="input mono" rows="3" dir="ltr" spellcheck="false"></textarea></div>

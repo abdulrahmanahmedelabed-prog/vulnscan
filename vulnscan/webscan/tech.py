@@ -1106,17 +1106,20 @@ def _server_issues(st: _Run, cve_data: dict | None, eol_data: dict | None) -> No
                     # the CVE data can be newer than the end-of-life data's "latest": never advise a release that
                     # the matched CVEs still affect
                     supported = fixed
+                # "{fixed} only closes these CVEs" is true only when the dead branch has a patch for every one
+                branch = numeric_parts(b.base)[:2]
+                closes_all = bool(supported) and bool(matches) and fixed != "the latest release" and all(
+                    numeric_parts(str(r.get("below")))[:2] == branch for _c, r in matches)
                 if tentative:
                     params["variant"] = "tentative"
-                    if supported:
+                    if supported and closes_all and "tentative_eol" in RULES["WEB800"].variants:
+                        params["variant"] = "tentative_eol"
+                        params["supported"] = supported
+                    elif supported:
                         params["fixed"] = supported
                 elif supported:
                     params["supported"] = supported
-                    # "{fixed} only closes these CVEs" is true only when the dead branch has a patch for every one
-                    branch = numeric_parts(b.base)[:2]
-                    closes_all = bool(matches) and all(numeric_parts(str(r.get("below")))[:2] == branch
-                                                       for _c, r in matches)
-                    if "eol" in RULES["WEB800"].variants and closes_all and fixed != "the latest release":
+                    if "eol" in RULES["WEB800"].variants and closes_all:
                         params["variant"] = "eol"
                     else:
                         params["fixed"] = supported

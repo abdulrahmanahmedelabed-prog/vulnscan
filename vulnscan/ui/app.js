@@ -9,7 +9,7 @@ const I18N = {
     theme: {auto: 'المظهر: تلقائي', light: 'المظهر: فاتح', dark: 'المظهر: داكن'},
     src: {vulnscan: 'قواعد الأنماط', taint: 'محرك تدفق البيانات', vql: 'استعلامات VQL', web: 'فحص الويب', apex: 'محلل Apex', osv: 'OSV (الاعتماديات)', npm: 'npm audit'},
     'a11y.skip': 'انتقل إلى المحتوى', 'a11y.nav': 'التنقل الرئيسي', 'a11y.sevFilter': 'تصفية حسب الخطورة',
-    err: {'authorization required': 'يجب تأكيد أنك مخوّل بفحص هذا الموقع قبل البدء.', 'target required': 'أدخل مسارًا أو عنوانًا للفحص.', 'bad upload': 'تعذّر قبول الملف المرفوع (الحجم كبير جدًا أو الطلب غير صالح).', 'file required': 'اختر ملفًا واحدًا على الأقل.', forbidden: 'رُفض الطلب: يجب أن يصدر من هذه الواجهة نفسها.', 'not found': 'العنصر غير موجود (ربما حُذف).', 'invalid url': 'العنوان غير صالح: يقبل فحص الويب عناوين http:// و https:// فقط.', 'scan already running': 'يجري فحص هذا الموقع الآن؛ انتظر حتى ينتهي أو ألغِه.', 'scan not running': 'الفحص لم يعد جاريًا.', 'invalid setting': 'قيمة أحد الإعدادات خارج الحدود المسموح بها.'},
+    err: {'authorization required': 'يجب تأكيد أنك مخوّل بفحص هذا الموقع قبل البدء.', 'target required': 'أدخل مسارًا أو عنوانًا للفحص.', 'bad upload': 'تعذّر قبول الملف المرفوع (الحجم كبير جدًا أو الطلب غير صالح).', 'file required': 'اختر ملفًا واحدًا على الأقل.', forbidden: 'رُفض الطلب: يجب أن يصدر من هذه الواجهة نفسها.', 'not found': 'العنصر غير موجود (ربما حُذف).', 'invalid url': 'العنوان غير صالح: يقبل فحص الويب عناوين http:// وhttps:// فقط.', 'scan already running': 'يجري فحص هذا الموقع الآن؛ انتظر حتى ينتهي أو ألغِه.', 'scan not running': 'الفحص لم يعد جاريًا.', 'invalid setting': 'قيمة أحد الإعدادات خارج الحدود المسموح بها.'},
     'nav.dashboard': 'لوحة التحكم', 'nav.scan': 'فحص جديد', 'nav.findings': 'النتائج', 'nav.reports': 'التقارير', 'nav.rules': 'القواعد', 'nav.settings': 'الإعدادات',
     'dash.title': 'لوحة التحكم', 'dash.sub': 'نظرة عامة على آخر فحص والاتجاه العام.', 'dash.empty': 'لا توجد فحوصات بعد', 'dash.emptyHint': 'ابدأ بفحص مجلد مشروع أو ارفع ملفًا مضغوطًا.',
     'dash.donut': 'توزيع الخطورة (آخر فحص)', 'dash.trend': 'اتجاه النتائج عبر الفحوصات الأخيرة', 'dash.topRules': 'أكثر الثغرات تكرارًا', 'dash.topFiles': 'أكثر الملفات تأثرًا', 'dash.recent': 'الفحوصات الأخيرة',
@@ -101,7 +101,7 @@ const I18N = {
     'scan.pStandard': 'قياسي (standard)، الافتراضي',
     'scan.pDeep': 'عميق (deep)', 'scan.sens': 'الحساسية', 'scan.sStrict': 'strict: المؤكَّدة فقط',
     'scan.sDefault': 'default: المؤكَّدة والمرجَّحة', 'scan.sParanoid': 'paranoid: كل شيء مع الفحوص الإضافية', 'scan.compare': 'قارن بآخر فحص لهذا الموقع',
-    'scan.robots': 'تجاهل robots.txt عند الزحف (لمالك الموقع)', 'scan.thirdParty': 'اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (مثل hstspreload.org)',
+    'scan.robots': 'تجاهل robots.txt عند الزحف (لمالك الموقع)', 'scan.thirdParty': 'اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (لا يجري أي فحص في الإصدار 1.1 مثل هذا الاستعلام)',
     'scan.noProxy': 'لا تستخدم الوكيل (proxy) المعرَّف في النظام', 'web.grades': 'الدرجات',
     'web.provisional': 'درجة مؤقتة (*): بعض المجموعات لم تُفحص فلم تُحسب', 'web.caps': 'حدود الدرجة', 'web.none': 'لم تُحسب', 'web.coverage': 'تغطية الفحوص',
     'web.covNote': 'الفحص الذي لم يُجرَ أو كان غير حاسم لا يُعدّ ناجحًا ولا يدخل في الدرجة.', 'web.covDetails': 'الفحوص التي لم تنجح أو لم تُجرَ',
@@ -113,13 +113,13 @@ const I18N = {
     'web.profile': 'نمط الفحص', 'web.requests': 'الطلبات', 'web.final': 'العنوان النهائي', 'web.data': 'بيانات الويب بتاريخ',
     'web.loadFail': 'تعذّر تحميل تفاصيل فحص الموقع: {err}', 'set.webProfile': 'نمط فحص المواقع الافتراضي', 'set.webSens': 'الحساسية الافتراضية',
     'set.webCompare': 'قارن كل فحص بآخر فحص للموقع نفسه', 'set.webRobots': 'احترم robots.txt عند الزحف',
-    'set.web3p': 'اسمح باستعلامات لدى أطراف ثالثة (مثل hstspreload.org)', 'set.webProxy': 'استخدم الوكيل (proxy) المعرَّف في النظام',
+    'set.web3p': 'اسمح باستعلامات لدى أطراف ثالثة (لا يجري أي فحص في الإصدار 1.1 مثل هذا الاستعلام)', 'set.webProxy': 'استخدم الوكيل (proxy) المعرَّف في النظام',
     'scan.hMinimal': 'الصفحة وسلسلة توجيهاتها فقط: {budget} على الأكثر.',
     'scan.hStandard': 'الصفحة والملفات المعروفة (مثل robots.txt وsecurity.txt) وسكربتات الصفحة نفسها: {budget} على الأكثر.',
     'scan.hDeep': 'ما في القياسي، مع ملفات مكشوفة شائعة من قائمة ثابتة وسكربتات الأطراف الثالثة: {budget} على الأكثر.',
     'scan.hCrawl': '+ ما يصل إلى {pages} من الزحف، بعمق مستويين.', 'scan.webMore': 'خيارات متقدمة',
     'scan.tabPathShort': 'مسار', 'scan.tabUploadShort': 'رفع', 'scan.tabUrlShort': 'ويب', 'a11y.scanTabs': 'نوع الهدف',
-    'scan.badUrl': 'هذا ليس عنوان ويب صالحًا.', 'scan.badScheme': 'يقبل فحص الويب عناوين http:// و https:// فقط.',
+    'scan.badUrl': 'هذا ليس عنوان ويب صالحًا.', 'scan.badScheme': 'يقبل فحص الويب عناوين http:// وhttps:// فقط.',
     'scan.willScan': 'سيُفحص العنوان {url}', 'scan.authorizeHost': 'أقرّ بأنني مالك {host} أو لديّ تصريح كتابي بفحصه',
     'scan.starting': 'جارٍ بدء الفحص…', 'scan.progressLabel': 'تقدّم الفحص', 'scan.cancel': 'إلغاء الفحص', 'scan.cancelling': 'جارٍ الإلغاء…',
     'scan.cancelled': 'أُلغي الفحص', 'scan.cancelledSub': 'لم تُحفظ أي نتيجة جزئية لهذا الفحص.', 'scan.grade': 'درجة كاشِف',
@@ -263,7 +263,7 @@ const I18N = {
     'scan.pDeep': 'Deep', 'scan.sens': 'Sensitivity', 'scan.sStrict': 'strict: certain findings only',
     'scan.sDefault': 'default: certain and firm', 'scan.sParanoid': 'paranoid: everything, with the extra checks',
     'scan.compare': 'Compare with the last scan of this site', 'scan.robots': 'Ignore robots.txt when crawling (for the site\'s owner)',
-    'scan.thirdParty': 'Allow third-party lookups that reveal the site\'s name (such as hstspreload.org)', 'scan.noProxy': 'Do not use the system\'s proxy',
+    'scan.thirdParty': 'Allow third-party lookups that reveal the site\'s name (no check makes such a lookup in 1.1)', 'scan.noProxy': 'Do not use the system\'s proxy',
     'web.grades': 'Grades', 'web.provisional': 'Provisional grade (*): some families were not tested and do not count', 'web.caps': 'Grade caps',
     'web.none': 'not computed', 'web.coverage': 'Check coverage',
     'web.covNote': 'A check that was not tested or was inconclusive is never shown as passed and never counts in a grade.',
@@ -276,7 +276,7 @@ const I18N = {
     'web.mapping': 'Mapping to testing standards (WSTG and ASVS)', 'web.profile': 'Profile', 'web.requests': 'Requests', 'web.final': 'Final URL',
     'web.data': 'Web data as of', 'web.loadFail': 'Could not load the details of the web scan: {err}', 'set.webProfile': 'Default web scan profile',
     'set.webSens': 'Default sensitivity', 'set.webCompare': 'Compare every scan with the last scan of the same site',
-    'set.webRobots': 'Honour robots.txt when crawling', 'set.web3p': 'Allow third-party lookups (such as hstspreload.org)',
+    'set.webRobots': 'Honour robots.txt when crawling', 'set.web3p': 'Allow third-party lookups (no check makes such a lookup in 1.1)',
     'set.webProxy': 'Use the system\'s proxy',
     'scan.hMinimal': 'The page and its redirect chain only: at most {budget}.',
     'scan.hStandard': 'The page, its well-known files (such as robots.txt and security.txt) and the page\'s own scripts: at most {budget}.',
@@ -377,7 +377,8 @@ const api = async (path, opts = {}) => {
   return r.json();
 };
 const setHTML = (el, html) => { el.innerHTML = html; }; // nosec — every dynamic value is escaped with esc() before reaching here
-const toast = (msg) => { const el = $('#toast'); el.textContent = msg; el.classList.remove('hidden'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.add('hidden'), 3200); };
+/* toast text runs through bidi(): an Arabic message naming http:// or a header keeps those runs left to right */
+const toast = (msg) => { const el = $('#toast'); setHTML(el, bidi(msg)); el.classList.remove('hidden'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.add('hidden'), 3200); };
 const total = (s) => SEV.reduce((a, k) => a + (s[k] || 0), 0);
 const ic = (name, cls = '') => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const pill = (s) => `<span class="pill sev-${s}"><span class="dot"></span>${esc(sevName(s))}</span>`;
@@ -1372,8 +1373,10 @@ const strList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string'
 const objList = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : []);
 let webView = null;                        // the view of the current scan (cur), for the fixes shown in a finding
 const snipOf = (id) => (webView ? objList(webView.remediation).find((sn) => sn.id === id) : null);
-/* The block of a fix shown first: the first platform detected on the site that has code, else the first with code. */
-const snipBlocks = (sn) => [...objList(sn.detected).map((b) => ({...b, detected: true})), ...objList(sn.other)];
+/* The block of a fix shown first: the first platform detected on the site that has code, else the first with code.
+   web_view's "detected" list also holds the generic blocks (platform "any", shown first for every site): they are not
+   a platform detected on the site, so they get no "detected" badge and are not preferred over one. */
+const snipBlocks = (sn) => [...objList(sn.detected).map((b) => ({...b, detected: b.platform !== 'any'})), ...objList(sn.other)];
 const firstCode = (blocks) => { let i = blocks.findIndex((b) => b.code && b.detected); if (i < 0) i = blocks.findIndex((b) => b.code); return Math.max(0, i); };
 const codeBlock = (b) => (b.code ? `<div class="code"><div class="code-head"><span class="p" dir="ltr">${esc(b.lang || '')}</span>${copyBtn(b.code)}</div><pre tabindex="0" dir="ltr"><code>${esc(b.code)}</code></pre></div>` : '')
   + (b.note ? `<p class="muted small">${bidi(b.note)}</p>` : '');

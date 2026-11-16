@@ -652,6 +652,26 @@ def test_web800_eol_variant_when_the_dead_branch_patch_closes_every_cve(make_ctx
     assert "supported release" in en and w.params["supported"] in en and w.params["fixed"] in en
 
 
+
+def test_web800_tentative_eol_variant_for_a_tentative_match_on_a_dead_branch(make_ctx, monkeypatch):
+    # a tentative match (a distribution build) on a dead branch whose own last patch closes every matched CVE:
+    # the tentative title with the end-of-life advice
+    real = tech.cve_matches
+
+    def only_same_branch(cves, b):
+        return [(c, r) for c, r in real(cves, b) if str(r.get("below", "")).startswith("1.26.")]
+    monkeypatch.setattr(tech, "cve_matches", only_same_branch)
+    ctx = _banner_ctx(make_ctx, ("Server", "nginx/1.26.0 (Ubuntu)"), sensitivity="paranoid")
+    ws = [i for i in run(ctx) if i.rule == "WEB800"]
+    if not ws or ws[0].confidence != "tentative":
+        pytest.skip("no tentative 1.26-branch match in the bundled data")
+    (w,) = ws
+    assert w.params["variant"] == "tentative_eol" and w.params["fixed"].startswith("1.26.")
+    assert tech._cmp(w.params["supported"], "1.29") > 0
+    for lang in ("en", "ar"):
+        adv = RULES["WEB800"].advice(lang, **w.params)
+        assert w.params["supported"] in adv and w.params["fixed"] in adv
+
 def test_web800_hidden_by_sensitivity_is_inconclusive_not_pass(make_ctx):
     ctx = _banner_ctx(make_ctx, ("Server", "Apache/2.4.41 (Ubuntu)"))
     run(ctx)

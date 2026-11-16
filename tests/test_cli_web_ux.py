@@ -506,3 +506,33 @@ def test_engine_message_is_the_ui_wording(monkeypatch):
     msg = str(ei.value)
     assert f"تحقّق من أن الخدمة على المنفذ {LRI}{port}{PDI} تعمل" in msg and ei.value.code == "refused"
     assert os.linesep not in msg
+
+
+def test_unsupported_proxy_has_its_own_code_and_names_the_proxy():
+    from vulnscan.i18n import to_en
+    from vulnscan.web import describe_failure
+    from vulnscan.webscan.http import _unusable_proxy_message, unusable_proxy
+    msg = _unusable_proxy_message(unusable_proxy("socks5://127.0.0.1:1080"))
+    for surface in ("cli", "ui"):
+        d = describe_failure(msg, "https://example.com/", 10, surface, code="proxy")
+        assert d["code"] == "proxy_unsupported"
+        assert "The proxy socks5://127.0.0.1:1080 (from" in d["en"] and "  " not in d["en"].split(" (details")[0]
+        assert to_en(d["ar"]) == d["en"]
+
+
+def test_unreachable_tls_probe_findings_are_printed(capsys):
+    from vulnscan import cli
+    from vulnscan.model import Finding
+    from vulnscan.webscan.engine import WebUnreachable
+    e = WebUnreachable("x", code="tls")
+    e.notes = [("No page could be fetched, but the TLS handshake probes ran: WEB706",
+                "تعذّر جلب أي صفحة، لكن فحوص مصافحة TLS أُجريت: WEB706")]
+    e.findings = [Finding(rule_id="WEB706", severity="high", title="Weak cipher suites offered",
+                          title_ar="مجموعات تشفير ضعيفة مسموحة", file="https://x.test/", line=0,
+                          snippet="TLS_RSA_WITH_NULL_SHA256 (TLS 1.2)", advice="", cwe="CWE-327")]
+    cli._print_unreachable_tls(e, "en")
+    err = capsys.readouterr().err
+    assert "TLS handshake probes ran" in err and "high: Weak cipher suites offered · WEB706 — TLS_RSA_WITH_NULL" in err
+    cli._print_unreachable_tls(e, "ar")
+    err = capsys.readouterr().err
+    assert "عالٍ" in err and "⁦WEB706⁩" in err

@@ -73,7 +73,7 @@ _WEB_HELP = {
         "sensitivity": "الحساسية: strict النتائج المؤكَّدة فقط، default (الافتراضي) المؤكَّدة والمرجَّحة، paranoid كل شيء "
                        "مع الفحوص الخاصة بهذا المستوى",
         "ignore_robots": "تجاهل robots.txt عند الزحف (لمالك الموقع فقط)",
-        "third_party": "اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (مثل hstspreload.org)؛ معطّلة افتراضيًا",
+        "third_party": "اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع؛ لا يجري أي فحص في الإصدار 1.1 مثل هذا الاستعلام، ومعطّلة افتراضيًا",
         "compare_previous": "قارن بآخر فحص محفوظ لهذا الموقع (في سجل الفحوص المحلي) واحفظ هذا الفحص فيه: "
                             "نتائج جديدة ومحلولة وتغيّر الدرجات وتغييرات الوضع الأمني",
         "compare": "قارن بفحص سابق: معرّف فحص محفوظ في السجل المحلي، أو ملف تقرير JSON من كاشِف",
@@ -129,7 +129,7 @@ _WEB_HELP = {
         "sensitivity": "sensitivity: strict shows certain findings only, default (the default) certain and firm, paranoid "
                        "everything, including the paranoid-only checks",
         "ignore_robots": "ignore robots.txt when crawling (for the site's owner only)",
-        "third_party": "allow third-party lookups that reveal the site's name (such as hstspreload.org); off by default",
+        "third_party": "allow third-party lookups that reveal the site's name; no check makes such a lookup in 1.1; off by default",
         "compare_previous": "compare with the last saved scan of this site (in the local scan history) and save this "
                             "scan there: new and resolved findings, grade changes and posture changes",
         "compare": "compare with an earlier scan: a scan id from the local history, or a Kashif JSON report file",
@@ -926,6 +926,7 @@ def _run_web(args: argparse.Namespace, target: str, lang: str):
                                 code=getattr(e, "code", ""), proxy=getattr(e, "proxy", ""),
                                 proxy_status=getattr(e, "proxy_status", None), use_proxy=opts.use_proxy)
         print("✖ " + pick(lang, info["ar"], info["en"]).replace("\n", "\n✖ "), file=sys.stderr)
+        _print_unreachable_tls(e, lang)
         _write_unreachable(args, target, info, lang)
         return 2
     finally:
@@ -959,6 +960,25 @@ def _run_web(args: argparse.Namespace, target: str, lang: str):
         args.web_saved_id = _save_web_scan(store, scan_id, target, res, web, notes, findings, pages)
     args.web_report = web
     return findings, target, pages, notes
+
+
+def _print_unreachable_tls(e, lang: str) -> None:
+    """No page could be fetched, but the raw TLS handshake probes ran (an https server offering only NULL or other
+    suites no client accepts): their notes and findings, so the console says what the probes found."""
+    from .i18n.bidi import iso
+    from .model import SEVERITY_AR
+    from .webscan.rules import RULES
+    for en, ar in getattr(e, "notes", None) or []:
+        print(pick(lang, ar, en), file=sys.stderr)
+    for f in getattr(e, "findings", None) or []:
+        meta = RULES.get(f.rule_id)
+        name_en = f.title or (meta.name("en") if meta else f.rule_id)    # the finding's own English title
+        name_ar = f.title_ar or (meta.name("ar") if meta else f.rule_id)
+        snippet = " ".join(str(f.snippet or "").split())[:160]
+        en = f"  \u2022 {f.severity}: {name_en} \u00b7 {f.rule_id}" + (f" \u2014 {snippet}" if snippet else "")
+        ar = (f"  \u2022 {SEVERITY_AR.get(f.severity, f.severity)}: {name_ar} \u00b7 {iso(f.rule_id)}"
+              + (f" \u2014 {iso(snippet)}" if snippet else ""))
+        print(pick(lang, ar, en), file=sys.stderr)
 
 
 def _bad_url(target: str) -> str:
