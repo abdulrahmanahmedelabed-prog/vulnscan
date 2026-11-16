@@ -1223,8 +1223,8 @@ def _worker_run(item):
     try:
         return _stage_cached(pathlib.Path(path), rel, w["rules"], w["ignore_rules"], w["include_tests"], w["cache"],
                              w["salt"], False, True)
-    except (RecursionError, MemoryError):
-        return None                       # handled again in the parent, where it fails the same way it always did
+    except Exception:  # noqa: BLE001 - RecursionError, MemoryError, or a bug on one odd file: redone in the parent,
+        return None    # where _contained_stage records it as a skipped file instead of failing the scan
 
 
 def _mp_context():
@@ -1268,8 +1268,30 @@ def _collect(items: list, rules, ignore_rules, include_tests, jobs: int, cache: 
             _POOL_ERRORS.append(f"{type(e).__name__}: {e}")
     for i, (p, rel) in enumerate(items):
         if out[i] is None:
-            out[i] = _stage_cached(p, rel, rules, ignore_rules, include_tests, cache, salt, True, False)
+            out[i] = _contained_stage(p, rel, rules, ignore_rules, include_tests, cache, salt)
     return out
+
+
+def _error_reason(e: BaseException) -> str:
+    return f"{type(e).__name__}: {e}"[:160]
+
+
+def _contained_stage(p, rel, rules, ignore_rules, include_tests, cache, salt):
+    """_stage_cached for one file; an unexpected error on that file (a frontend or rule bug on odd content) leaves
+    the file out, recorded under "error", instead of failing the whole scan."""
+    try:
+        return _stage_cached(p, rel, rules, ignore_rules, include_tests, cache, salt, True, False)
+    except Exception as e:  # noqa: BLE001 - one file never fails the scan; the reason is reported in the notes
+        return {"vendored": False, "findings": [], "src": None, "config": None, "tree": None,
+                "error": _error_reason(e)}, None
+
+
+def skipped_files_note(skipped: list) -> str | None:
+    """The scan note for files left out after an unexpected analysis error: [(rel, reason)]."""
+    if not skipped:
+        return None
+    shown = ", ".join(f"{rel} ({reason})" for rel, reason in skipped[:5]) + (" …" if len(skipped) > 5 else "")
+    return f"تعذّر تحليل {len(skipped)} من الملفات فتُركت خارج الفحص: {shown} — files skipped after an analysis error"
 
 
 _POOL_ERRORS: list = []
@@ -1350,8 +1372,12 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                 pkey_hit = False
             if not pkey_hit:
                 block_notes: list[str] = []
+                errored: list = []
                 for (p, rel), (rec, _digest) in zip(items, _collect(items, rules, ignore_rules, include_tests, jobs,
                                                                     cache, salt)):
+                    if rec.get("error"):
+                        errored.append((rel, rec["error"]))
+                        continue
                     if rec["vendored"]:
                         vendored += 1
                         continue
@@ -1364,11 +1390,15 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                         config_values.update(rec["config"])
                 findings.extend(hygiene)
                 findings = _dataflow_stage(findings, py_sources, trees, config_values, models_dirs, query_paths,
-                                           queries, audit, ignore_rules, block_notes)
+                                           queries, audit, ignore_rules, block_notes, errored)
                 del py_sources, trees
+                note = skipped_files_note(errored)
+                if note:
+                    block_notes.append(note)
                 if notes is not None:
                     notes.extend(block_notes)
-                if cache is not None and pkey is not None and not any(n == BUDGET_NOTE for n in block_notes):
+                if cache is not None and pkey is not None and not errored \
+                        and not any(n == BUDGET_NOTE for n in block_notes):
                     try:                 # (a result cut short by the time budget is not kept: the next run may finish)
                         cache.put("project", pkey, {"findings": [_enc_finding(f) for f in findings],
                                                     "notes": block_notes, "vendored": vendored})
@@ -1387,13 +1417,21 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
                 notes.append(note)
             if jadx_dir is not None:
                 jadx_ex = excludes + ([] if jadx_include_libs else JADX_LIB_EXCLUDES)
+                jadx_errors: list = []
                 for p, rel in iter_files(jadx_dir, jadx_ex):
                     count += 1
-                    for f in scan_sensitive_names(rel, ignore_rules) + scan_file(p, rel, rules, ignore_rules):
+                    try:
+                        found = scan_sensitive_names(rel, ignore_rules) + scan_file(p, rel, rules, ignore_rules)
+                    except Exception as e:  # noqa: BLE001 - one decompiled file never fails the scan
+                        jadx_errors.append((f"decompiled/{rel}", _error_reason(e)))
+                        continue
+                    for f in found:
                         f.extra.setdefault("archive_member", f"decompiled/{f.file}")
                         f.file = f"{target.name}!decompiled/{f.file}"
                         f.extra["decompiled"] = True
                         findings.append(f)
+                if jadx_errors and notes is not None:
+                    notes.append(skipped_files_note(jadx_errors))
         seen = set()
         unique = []
         for f in findings:
@@ -1409,21 +1447,33 @@ def scan_path(target: pathlib.Path, excludes: list[str] | None = None,
 
 
 def _dataflow_stage(findings, py_sources, trees, config_values, models_dirs, query_paths, queries, audit, ignore_rules,
-                    notes: list[str]) -> list[Finding]:
+                    notes: list[str], errored: list | None = None) -> list[Finding]:
     """Project-wide checks over every file: Java/Kotlin configuration checks, cross-file data-flow (taint) analysis,
-    VQL queries, then the audit profile."""
+    VQL queries, then the audit profile. `errored` receives [(rel, reason)] for files left out after an error."""
     from . import semantic as _sem
+    errored = errored if errored is not None else []
     for rel_j, text_j in py_sources.items():         # Java/Kotlin checks that need project configuration
         if rel_j.endswith((".java", ".kt")):
-            findings.extend(_sem.check_java(rel_j, text_j, config_values, ignore_rules))
+            try:
+                findings.extend(_sem.check_java(rel_j, text_j, config_values, ignore_rules))
+            except Exception as e:  # noqa: BLE001 - one file never fails the scan
+                errored.append((rel_j, _error_reason(e)))
     if not py_sources:
         return findings
+    skipped: list = []
     try:          # whole-project cross-file data-flow (taint) analysis: Python + JS/TS + …, then VQL queries
-        projects, flows = taint.analyze_project_full(py_sources, models_dirs, config_values, trees=trees)
-    except (RecursionError, MemoryError) as e:   # never lose the pattern findings to one hostile file
+        projects, flows = taint.analyze_project_full(py_sources, models_dirs, config_values, trees=trees,
+                                                     skipped=skipped)
+    except Exception as e:  # noqa: BLE001 - never lose the pattern findings to one hostile file or an engine bug
         projects, flows = [], []
         notes.append(f"تعذّر تحليل تدفق البيانات ({type(e).__name__})؛ عُرضت نتائج القواعد فقط — "
                      f"dataflow analysis failed, pattern results only")
+    for kind, what, reason in skipped:
+        if kind == "file":
+            errored.append((what, reason))
+        else:
+            notes.append(f"تعذّر تحليل تدفق البيانات لملفات {what} ({reason.split(':', 1)[0]})؛ عُرضت نتائج القواعد "
+                         f"لها فقط — {what} dataflow analysis failed, pattern results only")
     trees.clear()
     findings.extend(f for f in flows if f.rule_id not in ignore_rules)
     notes.extend(frontend_notes(projects))
@@ -1437,7 +1487,7 @@ def _dataflow_stage(findings, py_sources, trees, config_values, models_dirs, que
         try:
             qf, qnotes = vql.run_queries(projects, flows, query_paths, builtin=queries,
                                          skip_ids=() if audit else AUDIT_ONLY)
-        except (RecursionError, MemoryError):
+        except Exception:  # noqa: BLE001 - RecursionError, MemoryError or a query bug: keep the other results
             qf, qnotes = [], ["تعذّر تشغيل استعلامات VQL — VQL queries failed"]
         findings.extend(f for f in qf if f.rule_id not in ignore_rules)
         notes.extend(qnotes)

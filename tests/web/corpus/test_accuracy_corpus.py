@@ -149,6 +149,11 @@ def test_dhe1024_only_server_falls_back_and_deep_reports_weak_dh(pki):
     assert [r["code"] for r in states["WEB718"]["reasons"]] == ["dh_unmeasured"]
     assert "WEB710" in by_rule(deep.findings)
     assert deep.grades["ssllabs"]["grade"] in ("B", "C", "D", "E", "F")
+    # the standard profile already knows the group is below this client's minimum (the refusal itself): WEB710 with
+    # a bound, and the SSL Labs-compatible B cap (still provisional: the exact size needs the deep probe)
+    (w710,) = by_rule(std.findings)["WEB710"]
+    assert w710.severity in ("medium", "high") and "< " in w710.snippet + str(w710.extra)
+    assert g["grade"] in ("B", "C", "D", "E", "F") and any("Diffie-Hellman" in c["en"] for c in g["caps"])
 
 
 def test_null_only_server_raw_probe_findings_come_with_the_unreachable_error(pki):

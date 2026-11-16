@@ -239,7 +239,7 @@ STR: dict[str, tuple[str, str]] = {
     "ro_weak": ("If enforced, this report-only policy would still have: {rules}.",
                 "لو طُبِّقت سياسة التقرير هذه لبقيت فيها: {rules}."),
     "ro_clean": ("The report-only policy has none of the weaknesses Kashif checks.",
-                 "سياسة التقرير لا تحتوي أيًّا من نقاط الضعف التي يفحصها كاشف."),
+                 "سياسة التقرير لا تحتوي أيًّا من نقاط الضعف التي يفحصها كاشِف."),
     "static_doc": ("The page has no scripts, forms or event handlers, so the risk is lower.",
                    "الصفحة بلا سكربتات ولا نماذج ولا معالجات أحداث، فالخطر أقل."),
     "ceiling": ("Capped at {severity}: a weak policy is never rated worse than no policy on the same page (a missing CSP "

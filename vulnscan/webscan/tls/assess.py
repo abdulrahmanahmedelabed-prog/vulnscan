@@ -83,6 +83,11 @@ STR: dict[str, tuple[str, str]] = {
                        "ترفضها المتصفحات: SHA-1 أو مفتاح ضعيف في السلسلة (رمز التحقق {code})؛ والسلسلة موثوقة فيما عدا ذلك"),
     "dh_unmeasured": ("key exchange strength not measured (DHE offered; run --web-profile deep)",
                       "لم تُقَس قوة تبادل المفاتيح (الخادم يعرض DHE؛ شغّل --web-profile deep)"),
+    "dh_below": ("Diffie-Hellman group smaller than {bits} bits: a modern client refused the handshake "
+                 "(DH_KEY_TOO_SMALL); run --web-profile deep for the exact size",
+                 "مجموعة Diffie-Hellman أصغر من {bits} بت: رفض عميلٌ حديث المصافحة (DH_KEY_TOO_SMALL)؛ "
+                 "شغّل --web-profile deep لمعرفة طولها الدقيق"),
+    "dh_below_cap": ("Diffie-Hellman group below {bits} bits (WEB710)", "مجموعة Diffie-Hellman أقل من {bits} بت (WEB710)"),
     "trust_cap": ("certificate not trusted: {why}", "الشهادة غير موثوقة: {why}"),
     "mismatch_cap": ("certificate does not match the host name (WEB700)", "الشهادة لا تطابق اسم المضيف (WEB700)"),
     "strict_only": ("only Python's strict X.509 mode rejects this certificate (code {code}: {message}); browsers accept it",
@@ -173,7 +178,7 @@ STR: dict[str, tuple[str, str]] = {
     "ssllabs_label": ("SSL Labs-compatible, excluding attack-only tests (Heartbleed, ROBOT, padding oracles, …) and "
                       "certificate revocation (CRL/OCSP), which Kashif does not perform",
                       "متوافق مع SSL Labs، باستثناء اختبارات الهجوم (Heartbleed وROBOT وpadding oracles وغيرها) والتحقق "
-                      "من إلغاء الشهادة (CRL/OCSP)، وهي لا يجريها كاشف"),
+                      "من إلغاء الشهادة (CRL/OCSP)، وهي لا يجريها كاشِف"),
 }
 
 DIFF_WHAT = {"protocols": ("protocol versions", "إصدارات البروتوكول"), "suites": ("cipher-suite categories", "فئات مجموعات التشفير"),
@@ -917,7 +922,14 @@ def _options(out: _Ip, iprep: dict, opts) -> None:
 def _deep(out: _Ip, iprep: dict, opts) -> None:
     deep = iprep.get("deep") or {}
     if not opts.deep:
-        out.state("WEB710", "not_tested", "deep_off")
+        bound = dh_below_client_minimum(iprep)
+        if bound:
+            # the modern handshake was refused for its DH group: smaller than this client's minimum, measured without
+            # the deep probe (the exact size needs it)
+            out.fail("WEB710", "high" if bound <= 1024 else "medium", group="dh_small", notes=[_t("dh_below", bits=bound)],
+                     name="dh", value=f"< {bound} bits")
+        else:
+            out.state("WEB710", "not_tested", "deep_off")
         out.state("WEB719", "not_tested", "deep_off" if opts.paranoid else "sensitivity")
         return
     if "dh_bits" in deep:
@@ -1099,6 +1111,22 @@ def dh_unmeasured(iprep: dict) -> bool:
     return dhe_offered(iprep) and not (iprep.get("deep") or {}).get("dh_bits")
 
 
+# OpenSSL security level → the smallest DH group it accepts (SSL_CTX_set_security_level)
+_SECLEVEL_DH_MIN = {1: 1024, 2: 2048, 3: 3072, 4: 7680, 5: 15360}
+
+
+def dh_below_client_minimum(iprep: dict) -> int | None:
+    """The bit count the server's (unmeasured) DH group is known to be below: the verifying handshake failed with
+    DH_KEY_TOO_SMALL, so the group is smaller than that context's security level allows. None otherwise."""
+    if not dh_unmeasured(iprep):
+        return None
+    ver = iprep.get("verified") or {}
+    if "DH_KEY_TOO_SMALL" not in str(ver.get("error") or ""):
+        return None
+    level = ver.get("security_level")
+    return _SECLEVEL_DH_MIN.get(level if isinstance(level, int) else 2)
+
+
 def _trust_failure(leaf: x509.Certificate, trust: dict, now, host: str) -> tuple[str, tuple[str, str]] | None:
     """``(T or M, (en, ar) reason)`` when the certificate makes SSL Labs grade the server T (not trusted) or M (name
     mismatch), else None."""
@@ -1229,6 +1257,10 @@ def ssllabs_ip(iprep: dict, now, *, hsts: Any = None, host: str = "") -> dict:
     hsts_judged = hsts is not None and not getattr(hsts, "cert_error", False) and special is None
     if hsts_judged and not getattr(hsts, "effective", False):
         cap("A-", "HSTS missing or invalid", "HSTS مفقود أو غير صالح")
+    dh_bound = dh_below_client_minimum(iprep)
+    if dh_bound:
+        # SSL Labs: DH below 2048 bits caps at B, below 1024 at F
+        cap("F" if dh_bound <= 1024 else "B", *_t("dh_below_cap", bits=dh_bound))
     order = ["F", "E", "D", "C", "B", "A-", "A", "A+"]
     final = letter
     for lim, _en, _ar in caps:

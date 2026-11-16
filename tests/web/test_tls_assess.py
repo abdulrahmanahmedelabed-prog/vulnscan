@@ -731,3 +731,20 @@ def test_web072_value_explains_the_verify_code_in_both_languages():
     en, ar = __import__("vulnscan.webscan.http", fromlist=["verify_text"]).verify_text(10, "certificate has expired")
     assert en == "the certificate has expired (certificate has expired, verify code 10)"
     assert ar.startswith("الشهادة منتهية الصلاحية (⁦certificate has expired") and ar.endswith("⁩)")
+
+
+def test_dh_key_too_small_refusal_bounds_the_unmeasured_dh_group():
+    # standard profile: the DH size is not read, but a modern client's DH_KEY_TOO_SMALL refusal bounds it by the
+    # verifying context's security level (2 → 2048 bits, 1 → 1024 bits)
+    from vulnscan.webscan.tls import assess as A
+    base = {"verified": {"ok": None, "error": "SSLError: [SSL: DH_KEY_TOO_SMALL] dh key too small (_ssl.c:1035)",
+                         "security_level": 2},
+            "verified_legacy": {"cipher": "DHE-RSA-AES128-GCM-SHA256"}}
+    assert A.dh_unmeasured(base) and A.dh_below_client_minimum(base) == 2048
+    lvl1 = dict(base, verified=dict(base["verified"], security_level=1))
+    assert A.dh_below_client_minimum(lvl1) == 1024
+    other = dict(base, verified=dict(base["verified"], error="SSLError: [SSL: NO_SHARED_CIPHER] no shared cipher"))
+    assert A.dh_below_client_minimum(other) is None
+    measured = dict(base, deep={"dh_bits": 1024})
+    assert A.dh_below_client_minimum(measured) is None          # the deep probe's exact size wins
+    assert "2048" in A._t("dh_below", bits=2048)[0] and "2048" in A._t("dh_below", bits=2048)[1]

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 import urllib.parse
 from datetime import datetime, timezone
 from typing import Any, Iterable, Sequence
@@ -147,8 +148,36 @@ def t(key: str, lang: str = "en", **params: Any) -> str:
     if not params:
         return text
     if lang == "ar":
-        params = {k: (v if k in _AR_PROSE_PARAMS else iso(v)) for k, v in params.items()}
+        raw = {k: ("" if v is None else str(v)) for k, v in params.items()}
+
+        def ltr(k: str) -> bool:
+            return k in raw and k not in _AR_PROSE_PARAMS and _needs_iso(raw[k])
+
+        # two Latin values side by side ("{name} {version}", "{header}: {value}", "{directive} {sources}") form one
+        # isolate: two separate ones would be laid out right to left ("3.5.1 jquery", "DENY :X-Frame-Options")
+        def join(m: re.Match) -> str:
+            a, sep, b = m.group(1), m.group(2), m.group(3)
+            if not ((ltr(a) or raw.get(a) == "") and (ltr(b) or raw.get(b) == "") and (ltr(a) or ltr(b))):
+                return m.group(0)
+            name = f"{a}__{b}"
+            raw[name] = (raw[a] + sep + raw[b]).strip()
+            return "{" + name + "}"
+        text = _ADJACENT.sub(join, text)
+        params = {k: (iso(v) if ltr(k) else v) for k, v in raw.items()}
     return text.format(**params)
+
+
+# "{a} {b}" / "{a}: {b}" in an Arabic template
+_ADJACENT = re.compile(r"\{(\w+)\}(: | )\{(\w+)\}")
+_ARABIC_LETTER = re.compile(r"[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]")
+
+
+def _needs_iso(value: str) -> bool:
+    """A value that is itself Arabic prose (a severity word such as «منخفضة», a count phrase) needs no isolate: an
+    LTR isolate would even reverse the order of its words. Anything with Latin letters or digits gets one."""
+    if not value:
+        return False
+    return not (_ARABIC_LETTER.search(value) and not re.search(r"[A-Za-z]", value))
 
 
 def _days(n: int, lang: str) -> str:
@@ -691,7 +720,8 @@ def _check_changes(p: dict, c: dict) -> list[dict]:
         elif b == "fail" and a == "pass":
             items.append(_item("improvement", "check", "check_fixed", check=check))
         elif {b, a} & {"not_tested", "inconclusive"} and {b, a} & {"pass", "fail"}:
-            items.append(_item("change", "check", "check_coverage", check=check, before=b, after=a))
+            items.append(_item("change", "check", "check_coverage", check=check, before=_STATE_TEXT.get(b, (b, b)),
+                               after=_STATE_TEXT.get(a, (a, a))))
         else:
             continue
         items[-1]["check"] = check
@@ -699,6 +729,9 @@ def _check_changes(p: dict, c: dict) -> list[dict]:
 
 
 _ORDER = {"regression": 0, "change": 1, "improvement": 2}
+# coverage states in a sentence ("could not be compared (failed → inconclusive)"), never the raw tokens
+_STATE_TEXT = {"pass": ("passed", "«ناجح»"), "fail": ("failed", "«فاشل»"), "not_tested": ("not tested", "«لم يُجرَ»"),
+               "inconclusive": ("inconclusive", "«غير حاسم»"), "not_applicable": ("not applicable", "«غير منطبق»")}
 
 
 # ----------------------------------------------------------------------------------------------- input hygiene
@@ -940,8 +973,11 @@ def diff(previous: dict | None, current: dict, *, now: datetime | None = None) -
         # a check that now fails because of a new finding (or passes because one was resolved) is already listed there
         f = out["findings"]
         explained = {r.get("rule") for r in f["new"] + f["resolved"]}
+        not_rechecked = {(RULES[r["rule"]].check_id if r.get("rule") in RULES else r.get("rule"))
+                         for r in f["not_retested"]}
         items += [i for i in _check_changes(previous.get("checks") or {}, current.get("checks") or {})
-                  if not (i["id"] in ("check_regressed", "check_fixed") and i.get("check") in explained)]
+                  if not (i["id"] in ("check_regressed", "check_fixed") and i.get("check") in explained)
+                  and not (i["id"] == "check_coverage" and i.get("check") in not_rechecked)]
     items.sort(key=lambda i: _ORDER[i["direction"]])          # stable: regressions, changes, improvements
     out["posture"] = items
     out["counts"] = {"new": len(out["findings"]["new"]), "resolved": len(out["findings"]["resolved"]),

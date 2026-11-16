@@ -700,7 +700,14 @@ def _bidi_html(L: "_Lang", text) -> str:
     text = "" if text is None else str(text)
     if L.en:
         return html.escape(text)
-    return wrap_runs(text, lambda run: f"<bdi dir='ltr'>{run}</bdi>", html.escape)
+    # a short run stays on one line in a table cell (td bdi[dir='ltr']); a long one (a URL, a CSP or cookie value)
+    # is marked "lr" and may wrap, or one nowrap URL would widen the whole findings table past the page
+    return wrap_runs(text, lambda run: f"<bdi dir='ltr'{_LONG_RUN if len(html.unescape(run)) > _SHORT_RUN else ''}>"
+                                       f"{run}</bdi>", html.escape)
+
+
+_SHORT_RUN = 32
+_LONG_RUN = " class='lr'"
 
 
 def _pair(L: "_Lang", value) -> str:
@@ -1036,6 +1043,24 @@ def _grade_change_text(L: "_Lang", key: str, ch) -> str:
     return f"{name}: {before} → {after}" if L.en else f"{name}: من {before} إلى {after}"
 
 
+def _grade_changes(L: "_Lang", grades) -> list[str]:
+    """The grade changes of a diff, only the grades that changed ("A → A" is not a change)."""
+    out = []
+    for k, v in (grades or {}).items() if isinstance(grades, dict) else []:
+        if not isinstance(v, dict):
+            continue
+        before, after = v.get("before"), v.get("after")
+        before = before.get("grade") if isinstance(before, dict) else before
+        after = after.get("grade") if isinstance(after, dict) else after
+        if v.get("changed") is False or (v.get("changed") is None and before == after):
+            continue
+        # the engine's own line when it has one: it also carries the scores ("Kashif: F* (59.69 → 65.94)")
+        text = clean_text(_pair(L, v["text"]), 200) if isinstance(v.get("text"), dict) else _grade_change_text(L, k, v)
+        if text:
+            out.append(text)
+    return out
+
+
 # ------------------------------------------------------------------------------------------- web: shared
 
 
@@ -1338,17 +1363,17 @@ def _diff_console(dp: dict, L: "_Lang", width: int) -> list[str]:
     if not dp.get("comparable"):
         return lines
     parts = [_d_count(L, k, len(dp.get(k) or [])) for k in ("new", "resolved", "unchanged", "not_retested")]
-    changes = [c for c in (_grade_change_text(L, k, v) for k, v in (dp.get("grades") or {}).items()
-                           if isinstance(v, dict) and (v.get("changed") or v.get("before") != v.get("after"))) if c]
+    changes = _grade_changes(L, dp.get("grades"))
     parts += changes or [_wl(L, "d_grades_same")]
     lines += _wrapped(L, " · ".join(parts), "     ", width, 7, 1000)
     for sign, key in (("+", "new"), ("−", "resolved")):
         rows = dp.get(key) or []
         for r in rows[:10]:
             rule, title = clean_text(r.get("rule"), 60), _row_title(L, r)
-            # Arabic: the id after the title, or "WEB204 base-uri" would read as one left-to-right run
+            # Arabic: the id after the title and a "·" between them: "WEB204 base-uri" or "base-uri 'none' (WEB204)"
+            # would read as one left-to-right run (the shared rule stops a run at "·", not at "(")
             text = (f"{_sev_word(L, r.get('severity'))} {rule} {title}" if L.en else
-                    f"{_sev_word(L, r.get('severity'))}: {title} ({rule})")
+                    f"{_sev_word(L, r.get('severity'))}: {title} · {rule}")
             lines += _wrapped(L, text, f"     {sign} ", width, 7, 300)
         if len(rows) > 10:
             lines.append("       " + _con(L, _more(L, len(rows) - 10)))
@@ -1617,7 +1642,7 @@ tr.critical td:first-child,tr.high td:first-child{{font-weight:700}}
 .b{{padding:.15rem .5rem;border-radius:.25rem;color:#fff;white-space:nowrap}}
 code{{direction:ltr;unicode-bidi:isolate;font-size:.85em;overflow-wrap:anywhere}}
 bdi,code,.tw td{{overflow-wrap:anywhere;word-break:break-word}}
-td bdi[dir='ltr']{{white-space:nowrap}}
+td bdi[dir='ltr']{{white-space:nowrap}}td bdi.lr{{white-space:normal}}
 h1{{overflow-wrap:anywhere}}
 .tw{{max-width:100%;overflow-x:auto}}
 td{{min-width:5rem}}td.w{{min-width:12rem}}
@@ -2003,7 +2028,9 @@ background:var(--code);cursor:pointer;margin-inline-end:.2rem}.tabs>input:checke
 .tag{margin-inline-end:.3rem}.cp{margin:.4rem 0 0}
 @media (max-width:640px){.cov-d table,.cov-d tbody,.cov-d tr,.cov-d td{display:block;min-width:0}.cov-d thead{display:none}
 .cov-d tr{border:1px solid var(--line);border-radius:.4rem;margin:.5rem 0}.cov-d td{border:none;padding:.3rem .5rem}
-.grade{min-width:0;flex:1 1 100%}}
+.grade{min-width:0;flex:1 1 100%}
+.hdrs td,.gt td,.gt th{min-width:0;padding:.35rem}.hdrs td.nw,.gt td{white-space:normal}.gt table{font-size:.85em}}
+.grade small+small{margin-top:.2rem}
 """
 
 
@@ -2076,10 +2103,9 @@ def _web_html(findings: list[Finding], web: dict, L: "_Lang", part: str = "top",
         for n in dp["notes"]:
             out.append(f"<p>{_bidi_html(L, clean_text(_pair(L, n), 400))}</p>")
         if dp["comparable"]:
-            changes = [_grade_change_text(L, k, v) for k, v in dp["grades"].items()]
-            changes = [c for c in changes if c]
-            if changes:
-                out.append(f"<p><b>{e(_wl(L, 'd_grade'))}:</b> " + " · ".join(f"<bdi>{_bidi_html(L, c)}</bdi>" for c in changes) + "</p>")
+            changes = _grade_changes(L, dp["grades"])
+            out.append(f"<p><b>{e(_wl(L, 'd_grade'))}:</b> " + (" · ".join(f"<bdi>{_bidi_html(L, c)}</bdi>" for c in changes)
+                                                                  or e(_wl(L, "d_grades_same"))) + "</p>")
             if dp["posture"]:
                 out.append(f"<h3>{e(_wl(L, 'd_posture'))}</h3><ul class='posture'>"
                            + "".join(f"<li class='{e(str(p.get('direction')))}'>{e(_wl(L, 'd_' + p['direction']) if ('d_' + str(p.get('direction'))) in _WEB_LABELS else '')}: "
@@ -2159,7 +2185,7 @@ def _headers_html(web: dict, L: "_Lang") -> str:
         cap = f"<code dir='ltr'>{e(clean_text(entry.get('url'), 500))}</code>" + (
             f" · <span class='nw'>HTTP {e(clean_text(status, 4))}</span>" if status else "")
         head = "".join(f"<th>{e(_wl(L, k))}</th>" for k in ("h_header", "h_value", "h_verdict"))
-        out.append(f"<div class='tw'><table><caption>{cap}</caption><thead><tr>{head}</tr></thead>"
+        out.append(f"<div class='tw'><table class='hdrs'><caption>{cap}</caption><thead><tr>{head}</tr></thead>"
                    f"<tbody>{''.join(rows)}</tbody></table></div>")
     return "".join(out) or f"<p>{e(_wl(L, 'inv_empty'))}</p>"
 
@@ -2238,16 +2264,16 @@ def _web_markdown(findings: list[Finding], web: dict, L: "_Lang", part: str = "t
         md += [f"### {_wl(L, 'diff')}", ""]
         md += [f"- {_md_cell(_pair(L, n), 400)}" for n in dp["notes"]]
         if dp["comparable"]:
-            changes = [c for c in (_grade_change_text(L, k, v) for k, v in dp["grades"].items()) if c]
-            if changes:
-                md.append(f"- {_wl(L, 'd_grade')}: " + " · ".join(_md_cell(c, 100) for c in changes))
+            changes = _grade_changes(L, dp["grades"])
+            md.append(f"- {_wl(L, 'd_grade')}: " + (" · ".join(_md_cell(c, 100) for c in changes)
+                                                     or _wl(L, "d_grades_same")))
             for p in dp["posture"][:200]:
                 direction = str(p.get("direction"))
                 label = _wl(L, "d_" + direction) if ("d_" + direction) in _WEB_LABELS else direction
                 md.append(f"- **{label}**: {_md_cell(_pair(L, p), 400)}")
             for key in ("new", "resolved"):
                 md += ["", f"#### {_wl(L, 'd_' + key)} ({len(dp[key])})", ""]
-                md += [f"- `{_md_code(r.get('rule'), 40)}` {_md_cell(_row_title(L, r), 200)} ({_md_cell(r.get('severity'), 10)})"
+                md += [f"- `{_md_code(r.get('rule'), 40)}` {_md_cell(_row_title(L, r), 200)} ({_md_cell(_sev_word(L, r.get('severity')), 12)})"
                        for r in dp[key][:200]]
             md += ["", f"{_wl(L, 'd_unchanged')}: {len(dp['unchanged'])}"]
         md.append("")
@@ -2322,7 +2348,7 @@ def web_view(findings: list[Finding], web: dict, lang: str = "ar", *, compare_pr
                 "posture": [{"direction": str(p.get("direction") or ""),
                              "label": _wl(L, "d_" + str(p.get("direction"))) if ("d_" + str(p.get("direction"))) in _WEB_LABELS else "",
                              "text": clean_text(_pair(L, p), 400)} for p in dp["posture"][:200]],
-                "grades": [c for c in (_grade_change_text(L, k, v) for k, v in dp["grades"].items()) if c]}
+                "grades": _grade_changes(L, dp["grades"])}
     elif web and (compare_previous if compare_previous is not None else web.get("compare_previous") is True):
         diff = {"comparable": False, "baseline": True, "notes": [_wl(L, "d_baseline")], "new": [], "resolved": [],
                 "unchanged": 0, "not_retested": 0, "posture": [], "grades": []}

@@ -148,6 +148,8 @@ def ssl_handshake(connector: Any, host: str, port: int, ip: str | None, *, verif
     except Exception as e:   # noqa: BLE001 - a broken hook file must not crash the scan
         out["error"] = f"context: {e}"
         return out
+    # the verifying context's OpenSSL security level: a DH_KEY_TOO_SMALL refusal then bounds the server's DH group
+    out["security_level"] = getattr(ctx, "security_level", None)
     try:
         ctx.set_alpn_protocols(["h2", "http/1.1"])
     except (NotImplementedError, ssl.SSLError):

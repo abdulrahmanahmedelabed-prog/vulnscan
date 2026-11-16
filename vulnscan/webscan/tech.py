@@ -1102,6 +1102,10 @@ def _server_issues(st: _Run, cve_data: dict | None, eol_data: dict | None) -> No
                 eol_product = eols.get(b.product)
                 verdict = eol_verdict(eol_product, b.base, st.today) if eol_product and b.base else None
                 supported = supported_release(eol_product, b.base, st.today) if verdict and verdict[0] == "eol" else ""
+                if supported and numeric_parts(fixed)[:2] == numeric_parts(supported)[:2] and _cmp(fixed, supported) > 0:
+                    # the CVE data can be newer than the end-of-life data's "latest": never advise a release that
+                    # the matched CVEs still affect
+                    supported = fixed
                 if tentative:
                     params["variant"] = "tentative"
                     if supported:

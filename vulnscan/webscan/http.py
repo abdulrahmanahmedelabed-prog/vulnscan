@@ -134,7 +134,7 @@ EVENTS: dict[str, tuple[str, str]] = {
                  "لم يُطلب {url} لأنه عنوان بيانات وصفية سحابية (حماية الفاحص)."),
     "port": ("Not requested: {url} uses port {port}, which browsers block and Kashif never contacts (scanner safety "
              "guard).",
-             "لم يُطلب {url} لأنه يستخدم المنفذ {port} الذي تحظره المتصفحات ولا يتصل به كاشف (حماية الفاحص)."),
+             "لم يُطلب {url} لأنه يستخدم المنفذ {port} الذي تحظره المتصفحات ولا يتصل به كاشِف (حماية الفاحص)."),
     "scheme": ("A redirect to a non-HTTP(S) address was not followed: {url}",
                "لم يُتبَع توجيه إلى عنوان ليس HTTP أو HTTPS: {url}"),
     "cert_error": ("The TLS certificate of {host} did not validate ({message}); its responses were read over an "
@@ -150,7 +150,7 @@ EVENTS: dict[str, tuple[str, str]] = {
                  "لم تكتمل الاستجابة من {url} خلال المهلة المحددة لكل استجابة ({seconds} ث)؛ فقُطعت."),
     "opaque_coding": ("{url} used the content-coding {coding}, which Kashif does not request; body checks did not run "
                       "on it.",
-                      "استخدم {url} ترميز المحتوى {coding} الذي لا يطلبه كاشف؛ فلم تُجرَ فحوص المحتوى عليه."),
+                      "استخدم {url} ترميز المحتوى {coding} الذي لا يطلبه كاشِف؛ فلم تُجرَ فحوص المحتوى عليه."),
     "budget": ("The request budget of this profile ({limit}) was reached; the remaining checks were not tested.",
                "بلغ الفحص حدّ عدد الطلبات لنمط الفحص هذا ({limit})؛ فلم تُجرَ الفحوص المتبقية."),
     "time_budget": ("The scan's time budget ({limit} s) was reached; the result is partial.",

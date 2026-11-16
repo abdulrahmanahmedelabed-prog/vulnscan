@@ -323,7 +323,7 @@ def test_delay_floor_note_and_max_pages_cap_warning(site, tmp_path, capsys):
     err = capsys.readouterr().err
     assert "--max-pages is capped at 500 pages; 600 was given" in err
     notes = [n["en"] for n in json.loads(out.read_text(encoding="utf-8"))["web"]["notes"]]
-    assert "The delay between requests was raised to its 0.2 s floor (--delay 0.05 was asked)." in notes
+    assert "The delay between requests was raised to its 0.2 s floor (--delay 0.05 was given)." in notes
     assert any("at least 0.2 s between requests" in n for n in notes)
 
 
@@ -378,6 +378,28 @@ def test_unreachable_site_still_writes_a_report_and_exits_2(fmt, tmp_path):
         assert "refused the connection" in inv["toolExecutionNotifications"][0]["message"]["text"]
     else:
         assert "refused the connection" in text and url in text
+
+
+def test_unreachable_site_overwrites_a_console_output_file(tmp_path):
+    out = tmp_path / "r.txt"
+    out.write_text("stale report of an earlier scan", encoding="utf-8")
+    url = f"http://127.0.0.1:{_closed_port()}/"
+    assert main([url, "--authorized", "--timeout", "1", "--lang", "en", "-o", str(out)]) == 2
+    text = out.read_text(encoding="utf-8")
+    assert "stale" not in text and text.startswith("✖ The site was not scanned:") and "\x1b[" not in text
+
+
+@pytest.mark.parametrize("lang,lines", [("ar", 1), ("both", 2)])
+def test_authorized_message_keeps_the_flag_in_order(lang, lines, capsys):
+    with pytest.raises(SystemExit) as e:
+        main(["http://127.0.0.1:9/", "--lang", lang])
+    assert e.value.code == 2
+    err = capsys.readouterr().err.strip().splitlines()
+    assert len(err) == lines and all(line.startswith("✖ ") for line in err)
+    assert f"يتطلب {LRM}--authorized" in err[0]
+    if lang == "both":
+        assert err[1] == "✖ Scanning a web URL requires --authorized (confirmation that you are authorized to scan " \
+                         "this target)."
 
 
 # ----------------------------------------------------------------------------------------------- 10. colour

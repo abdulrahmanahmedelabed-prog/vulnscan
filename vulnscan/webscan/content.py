@@ -113,7 +113,7 @@ STR: dict[str, tuple[str, str]] = {
                         "الصفحة ترتبط أيضًا بمواقع أخرى تستقبل الرابط في ترويسة Referer."),
     "sensitive_param": ("Parameter {name} in {url} ({why}).", "المعامل {name} في {url} ({why})."),
     "redirect_param": ("{name}={value} in {url}; Kashif did not request it.",
-                       "{name}={value} في {url}؛ لم يطلبه كاشف."),
+                       "{name}={value} في {url}؛ لم يطلبه كاشِف."),
     "upload": ("File input {name} in the form posting to {url}.", "حقل رفع الملفات {name} في النموذج المرسل إلى {url}."),
     "quirks": ("No <!doctype html> (quirks mode) and the stylesheet {url} is path-relative.",
                "لا يوجد <!doctype html> (وضع quirks) وملف الأنماط {url} مسار نسبي."),

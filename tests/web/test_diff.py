@@ -291,6 +291,18 @@ def test_headers_redirects_and_check_states():
     d = diff.diff(snap(make_ctx(), coverage=a), snap(make_ctx(), coverage=b))
     ids = {i["id"]: i["direction"] for i in d["posture"] if i["kind"] == "check"}
     assert ids == {"check_regressed": "regression", "check_fixed": "improvement", "check_coverage": "change"}
+    (cov,) = [i for i in d["posture"] if i["id"] == "check_coverage"]
+    # states are words, never the raw tokens (pass/not_tested) in a sentence
+    assert cov["en"] == "check WEB030 could not be compared (passed → not tested)"
+    assert "«ناجح»" in cov["ar"] and "«لم يُجرَ»" in cov["ar"] and "not_tested" not in cov["ar"]
+
+
+def test_a_finding_listed_as_not_rechecked_is_not_also_a_check_coverage_item():
+    a, b = Coverage(["WEB062"]), Coverage(["WEB062"])
+    a.record("WEB062", "fail"), b.record("WEB062", "not_tested", "proxied")
+    d = diff.diff(snap(make_ctx(), [mk("WEB062", SITE + ".env", "/.env")], coverage=a), snap(make_ctx(), [], coverage=b))
+    assert [r["rule"] for r in d["findings"]["not_retested"]] == ["WEB062"] and d["findings"]["resolved"] == []
+    assert [i for i in d["posture"] if i["kind"] == "check"] == []
 
 
 def test_regressions_first_and_json_safe():
@@ -496,7 +508,14 @@ def test_grade_changes_only_changed_with_scores_and_no_change_line():
 def test_arabic_values_are_isolated_and_profile_is_called_scan_mode():
     items = _posture(make_ctx(), make_ctx(headers=[("Server", "nginx")]))
     (added,) = _find(items, "header_added")
-    assert iso("Server") in added["ar"] and iso("nginx") in added["ar"]
+    # "header: value" is one LTR isolate: two separate ones would read "nginx :Server" in an RTL line
+    assert iso("Server: nginx") in added["ar"]
+    # an Arabic value (a severity word) is prose, never put in an LTR isolate
+    sev = diff._item("change", "severity", "severity_changed", rule="WEB315", before=("high", "عالية"),
+                     after=("low", "منخفضة"), title=("t", "عنوان"))
+    assert "من عالية إلى منخفضة" in sev["ar"] and iso("WEB315") in sev["ar"]
+    assert diff.t("lib_new", "ar", name="jquery", version="3.5.1").endswith(iso("jquery 3.5.1"))
+    assert diff.t("lib_new", "ar", name="jquery", version="").endswith(iso("jquery"))
     d = diff.diff(snap(make_ctx(profile="minimal")), snap(make_ctx()))
     assert "نمط الفحص" in d["notes"][0]["ar"] and "ملف الفحص" not in d["notes"][0]["ar"]
 

@@ -622,13 +622,34 @@ def test_web800_on_an_eol_branch_points_to_a_supported_release(make_ctx):
     ctx = _banner_ctx(make_ctx, ("Server", "nginx/1.14.0"))
     issues = run(ctx)
     (w,) = [i for i in issues if i.rule == "WEB800"]
-    assert w.confidence == "firm" and w.params["variant"] == "eol"
+    assert w.confidence == "firm"
     supported = w.params["supported"]
     assert tech._cmp(supported, "1.29") > 0                     # a supported branch, not the dead 1.14 patch
-    assert not w.params["fixed"].startswith("1.14") or tech._cmp(w.params["fixed"], "1.14") >= 0
+    # 1.14.1 does not close every matched CVE (most were fixed only in later branches), so the "eol" variant
+    # ("{fixed} only closes these CVEs") would be false: the advice names the supported release itself
+    assert "variant" not in w.params and w.params["fixed"] == supported
     en, ar = RULES["WEB800"].advice("en", **w.params), RULES["WEB800"].advice("ar", **w.params)
-    assert supported in en and "supported release" in en and supported in ar
+    assert supported in en and supported in ar and "1.14.1" not in en + ar
     assert [i.rule for i in issues].count("WEB801") == 1          # the same end-of-life data
+
+
+def test_web800_eol_variant_when_the_dead_branch_patch_closes_every_cve(make_ctx, monkeypatch):
+    # a dead branch whose own last patch closes every matched CVE: "upgrade to a supported release; 1.26.3 only
+    # closes these CVEs and is itself unsupported"
+    real = tech.cve_matches
+
+    def only_same_branch(cves, b):
+        return [(c, r) for c, r in real(cves, b) if str(r.get("below", "")).startswith("1.26.")]
+    monkeypatch.setattr(tech, "cve_matches", only_same_branch)
+    ctx = _banner_ctx(make_ctx, ("Server", "nginx/1.26.0"))
+    ws = [i for i in run(ctx) if i.rule == "WEB800"]
+    if not ws:
+        pytest.skip("the bundled CVE data has no 1.26-branch fix")
+    (w,) = ws
+    assert w.params["variant"] == "eol" and w.params["fixed"].startswith("1.26.")
+    assert tech._cmp(w.params["supported"], "1.29") > 0
+    en = RULES["WEB800"].advice("en", **w.params)
+    assert "supported release" in en and w.params["supported"] in en and w.params["fixed"] in en
 
 
 def test_web800_hidden_by_sensitivity_is_inconclusive_not_pass(make_ctx):

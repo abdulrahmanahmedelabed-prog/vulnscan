@@ -62,7 +62,7 @@ WEB_SENSITIVITIES = ("strict", "default", "paranoid")
 WEB_BUDGET = {"minimal": 10, "standard": 45, "deep": 150}
 _WEB_HELP = {
     "ar": {
-        "deep": "فحص ويب أعمق (يساوي --web-profile deep): ملفات مكشوفة شائعة من قائمة ثابتة مع خطوط أساس لصفحات 404، "
+        "deep": "فحص ويب أعمق (يساوي ‎--web-profile deep): ملفات مكشوفة شائعة من قائمة ثابتة مع خطوط أساس لصفحات 404، "
                 "وسكربتات الأطراف الثالثة وخرائط المصدر (150 طلبًا على الأكثر، عدا صفحات الزحف)",
         "crawl": "زحف على صفحات الأصل نفسه (المخطط والمضيف والمنفذ) وفحص كل منها مع احترام robots.txt "
                  "(لتطبيقات مثل Moodle وبوابات الجامعات)",
@@ -107,13 +107,14 @@ _WEB_HELP = {
         "inconclusive": "فحص الويب غير حاسم ({why})، فرمز الخروج 1 (‎--fail-on-inconclusive).",
         "no_grade": "بلا درجة من كاشِف",
         "interrupted": "أُوقف الفحص بطلب المستخدم؛ لم يُكتب تقرير.",
+        "authorized": "فحص عنوان ويب يتطلب ‎--authorized (تأكيد أنك مخوَّل بفحص هذا الهدف).",
         "web_rules": "قواعد فحص الويب السلبي ({n}):",
         "paranoid_only": "مع paranoid فقط",
         "ud_desc": "تحديث بيانات فاحص المواقع (مكتبات JavaScript المصابة، وقوائم HSTS والنطاقات العامة، والتقنيات) "
                    "من حزمة آخر إصدار رسمي لكاشِف، بعد التحقق من بصمتها SHA-256. لا يُرسل شيء عن المواقع التي تفحصها.",
         "ud_web": "حدّث بيانات فحص المواقع",
         "ud_check": "تحقّق من وجود بيانات أحدث دون تنزيلها",
-        "ud_what": "حدّد ما يُراد تحديثه: --web",
+        "ud_what": "حدّد ما يُراد تحديثه: ‎--web",
         "ud_path": "المجلد: {path}",
     },
     "en": {
@@ -147,7 +148,7 @@ _WEB_HELP = {
         "budget_crawled": " (plus {pages} crawled on the same origin)",
         "crawl_note": "The crawl stayed on the same origin (same scheme, host and port), with at least {delay} between "
                       "requests to a host.",
-        "delay_floor": "The delay between requests was raised to its {floor} floor (--delay {asked} was asked).",
+        "delay_floor": "The delay between requests was raised to its {floor} floor (--delay {asked} was given).",
         "ignored": "Ignored with --ignore-rule: {rules}; the grades still count them.",
         "max_pages": "maximum pages to crawl (default 20, at most 500)",
         "max_depth": "maximum crawl depth (default 2)",
@@ -163,6 +164,7 @@ _WEB_HELP = {
         "inconclusive": "The web scan is inconclusive ({why}), so the exit code is 1 (--fail-on-inconclusive).",
         "no_grade": "no Kashif grade",
         "interrupted": "Scan interrupted by the user; no report written.",
+        "authorized": "Scanning a web URL requires --authorized (confirmation that you are authorized to scan this target).",
         "web_rules": "Passive web rules ({n}):",
         "paranoid_only": "paranoid only",
         "ud_desc": "Update the web scanner's data (vulnerable JavaScript libraries, HSTS preload and public suffix lists, "
@@ -802,8 +804,7 @@ def run(args: argparse.Namespace) -> tuple[list[Finding], str, int, list[str]] |
     target = args.target
     if target.startswith(("http://", "https://")):
         if not args.authorized:          # exit 2 (the scan could not run), never 1 (= findings, for CI)
-            print(f"✖ {localize('فحص عنوان ويب يتطلب --authorized (تأكيد أنك مخوَّل بفحص هذا الهدف).', lang)}",
-                  file=sys.stderr)
+            print("✖ " + _wh("authorized", lang).replace("\n", "\n✖ "), file=sys.stderr)
             raise SystemExit(2)
         return _run_web(args, target, lang)
 
@@ -979,7 +980,7 @@ def _isatty(stream) -> bool:
 
 
 def _write_unreachable(args: argparse.Namespace, target: str, info: dict, lang: str) -> None:
-    """-o FILE (json, sarif, html, markdown) or --all-formats for a site that could not be scanned: a minimal report
+    """-o FILE (json, sarif, html, markdown, console text) or --all-formats for a site that could not be scanned: a minimal report
     that says so ({target, generated_at, findings: [], web: {schema, status: "unreachable", error}}; SARIF:
     executionSuccessful false with a toolExecutionNotification), so a pipeline never reads an old file or none."""
     import html as _html
@@ -1025,8 +1026,11 @@ def _write_unreachable(args: argparse.Namespace, target: str, info: dict, lang: 
         return (f"# {'Kashif — the site was not scanned' if lang == 'en' else 'كاشِف — لم يُفحص الموقع'}\n\n"
                 f"- {target}\n- {now}\n\n" + "\n\n".join(pick(lang, info["ar"], info["en"]).split("\n")) + "\n")
 
+    def console() -> str:                     # -o FILE with the default console format: the same text as stderr
+        return "✖ " + pick(lang, info["ar"], info["en"]).replace("\n", "\n✖ ") + "\n"
+
     render = {"json": lambda: json.dumps(doc, ensure_ascii=False, indent=2), "sarif": sarif, "html": page,
-              "markdown": markdown}
+              "markdown": markdown, "console": console}
     if args.all_formats:
         for ext, fmt in (("md", "markdown"), ("json", "json"), ("html", "html"), ("sarif", "sarif")):
             _write_file(f"{args.all_formats}.{ext}", render[fmt]())

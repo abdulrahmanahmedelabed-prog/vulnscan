@@ -105,7 +105,7 @@ STR: dict[str, tuple[str, str]] = {
     "unreadable": ("The response from {url} could not be read ({error}); the checks that need it did not run on it.",
                    "تعذّرت قراءة الاستجابة من {url} ({error})؛ فلم تُجرَ عليها الفحوص التي تحتاج إليها."),
     "https_port": ("HTTPS was not checked: the target uses a non-default port and Kashif never contacts another port",
-                   "لم يُفحص HTTPS: يستخدم الهدف منفذًا غير افتراضي، ولا يتصل كاشف بأي منفذ آخر"),
+                   "لم يُفحص HTTPS: يستخدم الهدف منفذًا غير افتراضي، ولا يتصل كاشِف بأي منفذ آخر"),
     "proxied": ("Scanning through a proxy: DNS checks are not tested and TLS is seen through the proxy.",
                 "يمر الفحص عبر وكيل (proxy): لم تُجرَ فحوص DNS، ويُرى TLS عبر الوكيل."),
     "hidden": ("{findings} hidden at the {sensitivity} sensitivity ({by}); show them with --web-sensitivity paranoid",
@@ -113,7 +113,7 @@ STR: dict[str, tuple[str, str]] = {
     "hidden_tls_proxied": ("{findings} of them are TLS findings made tentative because the scan went through a proxy",
                            "منها {findings} عن TLS صارت مبدئية لأن الفحص مرّ عبر وكيل"),
     "unreachable_tls": ("No page could be fetched, but the TLS handshake probes of {host} ran: {rules}",
-                        "تعذّر جلب أي صفحة، لكن مجسّات مصافحة TLS على {host} أُجريت: {rules}"),
+                        "تعذّر جلب أي صفحة، لكن فحوص مصافحة TLS على {host} أُجريت: {rules}"),
 }
 _SEV_EN_AR = {"critical": ("critical", "حرجة"), "high": ("high", "عالية"), "medium": ("medium", "متوسطة"),
               "low": ("low", "منخفضة"), "info": ("info", "معلوماتية")}
@@ -1174,6 +1174,8 @@ def hidden_by_sensitivity(gres: Any, ctx: ScanContext) -> dict:
         parts_ar = "، ".join(f"{_SEV_EN_AR[s][1]}: {n}" for s, n in by.items())
         en, ar = pair("hidden", findings=(_count(key, len(hidden), "en"), _count(key, len(hidden), "ar")),
                       sensitivity=sens, by=(parts_en, parts_ar))
+        if len(hidden) == 1:
+            en = en.replace("show them with", "show it with")
         if tls_proxied:
             en2, ar2 = pair("hidden_tls_proxied", findings=(str(tls_proxied), str(tls_proxied)))
             en, ar = f"{en}. {en2}", f"{ar}. {ar2}"

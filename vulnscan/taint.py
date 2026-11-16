@@ -3615,12 +3615,15 @@ def preparse(rel: str, text: str):
 
 
 def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict | None = None, budget: float | None = None,
-                         trees: dict | None = None):
+                         trees: dict | None = None, skipped: list | None = None):
     """Like analyze_project but also returns the built Project models (for VQL queries).
 
     `config` holds key/values from the project's configuration files (.env, YAML, properties …), used to resolve
     table names and SQL that code reads from configuration. `trees` maps a file to the tree already built for its
-    current text (by the scanner's per-file stage, see preparse); the analysis takes ownership of them."""
+    current text (by the scanner's per-file stage, see preparse); the analysis takes ownership of them.
+    `skipped` receives what was left out after an unexpected error instead of failing the whole analysis:
+    ("file", rel, reason) for a file whose frontend produced a malformed tree, ("language", lang, reason) for a
+    language whose analysis raised (the other languages are still analysed)."""
     if config is None:
         from . import stored as _st
         config = {}
@@ -3633,14 +3636,56 @@ def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict |
     t0 = time.monotonic()
     _BUDGET["deadline"], _BUDGET["hard"] = t0 + budget, t0 + budget * 1.5
     try:
-        return _analyze_groups(files, models_dirs, config, trees or {})
+        return _analyze_groups(files, models_dirs, config, trees or {}, skipped)
     finally:
         _BUDGET["deadline"] = _BUDGET["hard"] = None
 
 
-def _analyze_groups(files, models_dirs, config, trees=None):
+# identifier fields of the trees the frontends build: the engine uses them as strings (dict keys, .endswith …)
+_NAME_FIELDS = ((ast.Name, ("id",)), (ast.Attribute, ("attr",)), (ast.alias, ("name", "asname")),
+                (ast.FunctionDef, ("name",)), (ast.AsyncFunctionDef, ("name",)), (ast.ClassDef, ("name",)),
+                (ast.arg, ("arg",)), (ast.keyword, ("arg",)), (ast.ImportFrom, ("module",)))
+
+
+def _malformed(tree) -> str | None:
+    """Why a frontend's tree cannot be analysed (an identifier that is not a string), or None when it can.
+    A frontend bug on one odd file then leaves out that file, not the whole project."""
+    for node in ast.walk(tree):
+        for cls, fields in _NAME_FIELDS:
+            if isinstance(node, cls):
+                for f in fields:
+                    v = getattr(node, f, None)
+                    if v is not None and not isinstance(v, str):
+                        return f"{type(node).__name__}.{f} is a {type(v).__name__}, line {getattr(node, 'lineno', '?')}"
+    return None
+
+
+def _short_error(e: BaseException) -> str:
+    return f"{type(e).__name__}: {e}"[:160]
+
+
+def _analyze_groups(files, models_dirs, config, trees=None, skipped: list | None = None):
     trees = trees if trees is not None else {}
+    skipped = skipped if skipped is not None else []
     projects: list = []
+    findings: list[Finding] = []
+
+    def contained(lang, build):
+        """Run one language's analysis; an unexpected error leaves that language out instead of failing the scan.
+        (RecursionError / MemoryError keep their own handling in the caller.)"""
+        try:
+            build()
+        except (RecursionError, MemoryError):
+            raise
+        except Exception as e:  # noqa: BLE001 - one language's failure must not lose the others' results
+            skipped.append(("language", lang, _short_error(e)))
+
+    def usable(rel, tree) -> bool:
+        why = _malformed(tree)
+        if why:
+            skipped.append(("file", rel, why))
+        return not why
+
     groups: dict[str, dict[str, str]] = {}
     mybatis: dict = {}
     for rel, text in files.items():
@@ -3654,8 +3699,8 @@ def _analyze_groups(files, models_dirs, config, trees=None):
                 continue
         if lang:
             groups.setdefault(lang, {})[rel] = text
-    findings: list[Finding] = []
-    if "python" in groups:
+
+    def python():
         entries = []
         for rel, text in groups["python"].items():
             tree = trees.pop(rel, None)
@@ -3669,21 +3714,23 @@ def _analyze_groups(files, models_dirs, config, trees=None):
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
-    if "javascript" in groups:
+
+    def javascript():
         from . import js_frontend
         entries = []
         for rel, text in groups["javascript"].items():
             if len(text) > 600_000 or any(len(l) > 5000 for l in text.splitlines()[:50]):
                 continue  # bundles / minified
             tree = trees.pop(rel, None)
-            entries.append(_Entry(js_frontend.module_name(rel), rel, text, tree if tree is not None else js_frontend.parse_js(text, rel)))
+            tree = tree if tree is not None else js_frontend.parse_js(text, rel)
+            if usable(rel, tree):
+                entries.append(_Entry(js_frontend.module_name(rel), rel, text, tree))
         proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_JS_MODELS, "javascript"), entries, config=config)
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
-    for lang in CFAMILY_LANGS:
-        if lang not in groups:
-            continue
+
+    def cfamily(lang):
         from . import cfamily_frontend
         entries, diags = [], {}
         for rel, text in groups[lang].items():
@@ -3692,6 +3739,8 @@ def _analyze_groups(files, models_dirs, config, trees=None):
             tree = trees.pop(rel, None)
             if tree is None:
                 tree = cfamily_frontend.parse_cfamily(_view_code(rel, text), rel, lang)
+            if not usable(rel, tree):
+                continue
             if mybatis and lang in ("java", "kotlin"):
                 cfamily_frontend.apply_mybatis_xml(tree, cfamily_frontend.module_name(rel), mybatis,
                                                    package=cfamily_frontend.jvm_package(text))
@@ -3708,10 +3757,21 @@ def _analyze_groups(files, models_dirs, config, trees=None):
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
-    if "plsql" in groups:
+
+    def plsql():
         p_projects, p_findings = _analyze_plsql(groups["plsql"], models_dirs or ())
         projects.extend(p_projects)
         findings.extend(p_findings)
+
+    if "python" in groups:
+        contained("python", python)
+    if "javascript" in groups:
+        contained("javascript", javascript)
+    for lang in CFAMILY_LANGS:
+        if lang in groups:
+            contained(lang, lambda: cfamily(lang))
+    if "plsql" in groups:
+        contained("plsql", plsql)
     return projects, findings
 
 

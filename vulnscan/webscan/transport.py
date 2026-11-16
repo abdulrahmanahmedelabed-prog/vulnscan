@@ -102,7 +102,7 @@ STR: dict[str, tuple[str, str]] = {
                  "تمر السلسلة بـ {hops} قبل الاستجابة النهائية؛ ولا يقبل hstspreload أكثر من 3."),
     "loop": ("The redirect chain loops ({url} repeats).", "سلسلة التوجيه دائرية (يتكرر {url})."),
     "limit": ("The chain was still redirecting after {hops}; Kashif stops there, as browsers stop after about 20.",
-              "كانت السلسلة ما زالت توجّه بعد {hops}؛ يتوقف كاشف عندها، كما تتوقف المتصفحات بعد نحو 20 قفزةً."),
+              "كانت السلسلة ما زالت توجّه بعد {hops}؛ يتوقف كاشِف عندها، كما تتوقف المتصفحات بعد نحو 20 قفزةً."),
     "temporary": ("The HTTP→HTTPS redirect uses status {status}; browsers do not cache it, so every visit starts on HTTP.",
                   "يستخدم التوجيه من HTTP إلى HTTPS الحالة {status}؛ ولا تخزّنه المتصفحات، فتبدأ كل زيارة عبر HTTP."),
     "big_redirect": ("The {status} response carries {length} of page content ({signals}); first text: {text}",

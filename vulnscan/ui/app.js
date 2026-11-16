@@ -393,11 +393,13 @@ const LTR_RUN_SRC = "(?:[A-Za-z0-9_$./~'\\x22<#@\\[{\\\\]|[-*+](?=[^\\s]))[^\\s\
 const LTR_TAIL_SPACE = new RegExp("[ \\t\\u00A0\\u202F]+$");
 const LTR_TAIL_TOKEN = new RegExp("[ \\t\\u00A0\\u202F]+[(\\[{<\\u2014\\u2013\\u2192\\u2190\\u21D2|-]+$");
 const LTR_PAIRS = {')': '(', ']': '[', '}': '{'};
+const LTR_SCHEME_TAIL = new RegExp("(?:^|[\\s,(])(?:https?|wss?|data|blob|mediastream|filesystem|javascript):$");
 const ARABIC_RX = new RegExp('[' + "\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF" + ']');
 const trimRun = (run) => {
   for (;;) {
     const prev = run;
-    run = run.replace(LTR_TAIL_SPACE, '').replace(/[.:]+$/, '');
+    run = run.replace(LTR_TAIL_SPACE, '');
+    while (run && '.:'.includes(run.slice(-1)) && !(run.slice(-1) === ':' && LTR_SCHEME_TAIL.test(run))) run = run.slice(0, -1);
     const last = run.slice(-1);
     const count = (ch) => run.split(ch).length - 1;
     if (LTR_TAIL_TOKEN.test(run)) run = run.replace(LTR_TAIL_TOKEN, '');
