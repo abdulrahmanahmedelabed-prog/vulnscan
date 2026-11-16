@@ -1470,3 +1470,31 @@ def test_the_cors_source_never_carries_cookies_even_without_an_origin(ka_server)
     f.fetch(srv.url("/set"))
     f.fetch(srv.url("/c"), source="cors")
     assert "Cookie" not in dict(request_headers(srv.requests[1][1])[1]) and f.jar.names("127.0.0.1") == ["sid"]
+
+
+def test_retry_after_a_stale_keepalive_still_keeps_the_host_gap():
+    """The server saw the request on the old connection, so the retry on a new one is a second request: it waits."""
+    seen: list[float] = []
+    ok = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok"
+
+    def handler(c, i):
+        _read_request(c)
+        seen.append(time.monotonic())
+        c.sendall(ok)
+        if i == 0:
+            _read_request(c)                   # the second request arrives on the kept-alive connection ...
+            seen.append(time.monotonic())      # ... and the server drops it without an answer
+            return
+        while _read_request(c):
+            seen.append(time.monotonic())
+            c.sendall(ok)
+    port, stop, conns = one_shot_server(handler)
+    try:
+        f = wh.Fetcher(ScanOptions(delay=0.3), f"http://127.0.0.1:{port}/", proxies={})
+        assert f.fetch(f"http://127.0.0.1:{port}/").status == 200
+        r = f.fetch(f"http://127.0.0.1:{port}/a")
+    finally:
+        stop.set()
+    assert r.status == 200 and len(conns) == 2 and len(seen) == 3
+    gaps = [b - a for a, b in zip(seen, seen[1:])]
+    assert min(gaps) >= 0.3 - 0.02, gaps

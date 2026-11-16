@@ -1723,6 +1723,12 @@ class Fetcher:
         legacy = prep.host in self.legacy_errors
         # stale pooled connection -> one fresh retry; certificate error -> unverified; legacy-only server -> legacy
         for attempt in range(4):
+            if attempt:
+                # a retry is a new request to the host: it keeps the per-host gap too, even when the previous attempt
+                # died on a stale keep-alive connection after the server had already seen it (§4.3)
+                wait = self.limiter.wait_time(prep.host)
+                if wait > 0:
+                    self._sleep(min(wait, max(0.0, self.remaining_time())))
             verified = not verified_failed and not legacy
             conn, key, reused = self._connection(prep, proxy, addrs, verified, timeout, legacy)
             wd = _Watchdog(deadline_s).start()
