@@ -1,0 +1,43 @@
+# ZAP 2.17.0 Automation Framework plan for the Kashif passive web corpus (spec §5.5). PASSIVE ONLY.
+#
+# Template: bench/web/run_zap.py replaces the @…@ markers (context URLs, the exact case URLs, the report folder) and runs
+#   zap.sh -cmd -silent -dir <temporary ZAP home> -autorun <generated plan>
+# Jobs: passiveScan-config (every installed passive rule at its default MEDIUM threshold, the retire.js add-on included),
+# requestor (exactly the case URLs Kashif scans, so crawl differences cannot skew the comparison), passiveScan-wait,
+# report (traditional-json). There is deliberately no spider, no AJAX spider, no fuzzer and no active scan job:
+# tests/web/test_corpus_gate.py fails if any appears here or in a generated plan.
+env:
+  contexts:
+    - name: kashif-corpus
+      urls:
+@CONTEXT_URLS@
+      includePaths:
+@INCLUDE_PATHS@
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+jobs:
+  - type: passiveScan-config
+    parameters:
+      maxAlertsPerRule: 0
+      scanOnlyInScope: true
+      maxBodySizeInBytesToScan: 0
+      enableTags: false
+      disableAllRules: false
+  - type: requestor
+    parameters:
+      user: ""
+    requests:
+@REQUESTS@
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 15
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: "@REPORT_DIR@"
+      reportFile: zap-report
+      reportTitle: Kashif passive corpus (ZAP passive baseline)
+    risks: [info, low, medium, high]
+    confidences: [low, medium, high, confirmed]

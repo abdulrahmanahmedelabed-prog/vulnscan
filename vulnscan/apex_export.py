@@ -61,7 +61,8 @@ CONFIG_RULES = {
                "اجعل Rejoin Sessions = Disabled أو للصفحات العامة فقط."),
     "APX008": ("medium", "CWE-1021", "Application may be embedded in frames from any site", "يمكن تضمين التطبيق في إطار من أي موقع (Clickjacking)",
                "اضبط Embed in Frames على Deny أو Allow from same origin."),
-    "APX009": ("medium", "CWE-489", "Application runs with developer edit links / toolbar", "التطبيق يعمل بروابط تعديل المطوّر في بيئة التشغيل",
+    # only a developer signed in to App Builder sees the edit links / toolbar: information exposure, not an attack path
+    "APX009": ("low", "CWE-489", "Application runs with developer edit links / toolbar", "التطبيق يعمل بروابط تعديل المطوّر في بيئة التشغيل",
                "اجعل Status = Available في الإنتاج."),
     "APX010": ("low", "CWE-328", "Weak checksum hash for bookmarks / URLs", "خوارزمية checksum ضعيفة للروابط",
                "استخدم SH512 في Bookmark Hash Function."),
@@ -86,6 +87,10 @@ CONFIG_RULES = {
                "أسند Authorization Scheme للعملية؛ يمكن لأي جلسة استدعاؤها عبر apex.server.process."),
     "APX021": ("low", "CWE-94", "Substitutions without the trailing dot are allowed", "يُسمح بالاستبدال دون النقطة الختامية (&ITEM)",
                "اجعل Substitutions = Exact substitutions only."),
+    "APX022": ("info", "CWE-656", "Wrapped PL/SQL unit: its code cannot be scanned", "وحدة PL/SQL ملفوفة (wrapped): لا يمكن فحص الكود فيها",
+               "افحص الكود المصدري قبل لفّه (wrap)؛ اللفّ إخفاء لا حماية، ويمكن فكّه."),
+    "APX023": ("low", "CWE-561", "Plug-in defined but not used by any component", "إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق",
+               "احذف الإضافة غير المستخدمة من Shared Components › Plug-ins، أو تأكّد أنها مستخدمة في تطبيق آخر يشترك فيها."),
 }
 for _rid, (_sev, _cwe, _t, _ta, _adv) in CONFIG_RULES.items():
     APEX_RULES.append({"id": _rid, "severity": _sev, "cwe": _cwe, "title": _t, "title_ar": _ta, "advice": _adv})
@@ -105,6 +110,77 @@ def password_findings(code: str, rel: str, base_line: int, label: str = "") -> l
     return out
 
 
+def wrapped_findings(text: str, rel: str) -> list:
+    """One informational finding per unit obfuscated by Oracle's wrap utility: its text cannot be analysed (and is not
+    a secret, whatever its entropy). The pattern rules skip the wrapped lines (scanner._scan_bytes)."""
+    from .plsql_frontend import wrapped_units
+    out = []
+    lines = text.split("\n")
+    for start, end, kind, name in wrapped_units(text):
+        sev, cwe, t, ta, adv = CONFIG_RULES["APX022"]
+        f = _finding("APX022", sev, t, ta, rel, start, lines[start - 1] if 0 < start <= len(lines) else name, adv, cwe, "")
+        f.extra.update({"wrapped_unit": name, "unit_type": kind, "end_line": end})
+        out.append(f)
+    return out
+
+
+# ============================================================ components defined but never used (plug-ins)
+_PLUGIN_DEF = re.compile(r"\bwwv_flow_(?:imp|api)(?:_shared)?\s*\.\s*create_plugin\s*\(", re.I)
+_PLUGIN_NAME = re.compile(r"\bp_name\s*=>\s*'([^'\n]+)'", re.I)
+_NEXT_CALL = re.compile(r"\bwwv_flow_(?:imp|api)(?:_page|_shared)?\s*\.\s*create_\w+\s*\(", re.I)
+# 'PLUGIN_<internal name>' (regions, items, columns, processes, dynamic actions, authentication / authorization
+# schemes …) and 'TMPL_<internal name>' (template component plug-ins, APEX 23.2+)
+_PLUGIN_REF = re.compile(r"'(?:PLUGIN|TMPL)_([^'\n]+)'")
+_FLOW_DEF = re.compile(r"\bwwv_flow_(?:imp|api)\s*\.\s*create_flow\s*\(", re.I)
+_PAGE_DEF = re.compile(r"\bwwv_flow_(?:imp|api)(?:_page)?\s*\.\s*create_page\s*\(", re.I)
+
+
+_APP_ID = re.compile(r"\bp_default_application_id\s*=>\s*(\d+)", re.I)
+
+
+def application_id(text: str) -> str | None:
+    """The application an export (or one file of a split export) belongs to: import_begin's p_default_application_id."""
+    m = _APP_ID.search(text[:200_000])
+    return m.group(1) if m else None
+
+
+def plugin_usage(text: str) -> tuple[list, set, set]:
+    """Plug-ins an export defines [(name, line of p_name, component label)], the plug-ins its components use
+    (`p_plug_source_type` / `p_display_as` / `p_process_type` / `p_action` … => 'PLUGIN_<NAME>'), and what of the
+    application it holds: {"flow"} (the application definition) and/or {"page"} (pages). Only a scan that holds both
+    can say a plug-in is unused: a plug-in export, or a few pages, alone use nothing or not everything."""
+    defs = []
+    holds = ({"flow"} if _FLOW_DEF.search(text) else set()) | ({"page"} if _PAGE_DEF.search(text) else set())
+    if "plugin" not in text.lower():
+        return defs, set(), holds
+    for m in _PLUGIN_DEF.finditer(text):
+        nxt = _NEXT_CALL.search(text, m.end())
+        stop = nxt.start() if nxt else len(text)
+        nm = _PLUGIN_NAME.search(text, m.end(), stop)
+        if nm:
+            name = nm.group(1).strip()
+            defs.append((name, text.count("\n", 0, nm.start()) + 1, f"{COMPONENT_AR['plugin']}: {name}"))
+    refs = {r.upper() for r in _PLUGIN_REF.findall(text)}
+    return defs, refs, holds
+
+
+def unused_plugin_findings(defs_by_file: dict, refs: set, lines_by_file: dict) -> tuple[list, set]:
+    """APX023 for every plug-in defined but used by no region, item, process, dynamic action, authorization or other
+    component of the scanned application; returns (findings, {(file, component label)} of the unused plug-ins)."""
+    out, labels = [], set()
+    sev, cwe, t, ta, adv = CONFIG_RULES["APX023"]
+    for rel, defs in defs_by_file.items():
+        lines = lines_by_file.get(rel) or []
+        for name, line, label in defs:
+            if name.upper() in refs:
+                continue
+            labels.add((rel, label))
+            f = _finding("APX023", sev, t, ta, rel, line, lines[line - 1] if 0 < line <= len(lines) else name, adv, cwe, label)
+            f.extra["unused_component"] = label
+            out.append(f)
+    return out, labels
+
+
 class _ConfigChecks:
     """Security attributes of the application, pages, items, processes and authentication schemes."""
 
@@ -115,6 +191,7 @@ class _ConfigChecks:
         self.auth: dict = {}             # scheme id raw -> (decoded, label)
         self.pages: dict = {}            # page -> {"public", "role", "prot", "line", "label", "dml": [...], "login"}
         self.app_scheme = False
+        self.login_refs: set = set()     # page ids / aliases the application's login URL points to
 
     def _f(self, rid, line, label, snippet=None):
         sev, cwe, t, ta, adv = CONFIG_RULES[rid]
@@ -151,22 +228,28 @@ class _ConfigChecks:
             code = decoded.get("p_plsql_code", (None,))[0]
             if code:
                 self.out.extend(password_findings(code, self.rel, line("p_plsql_code"), label))
+        elif fname in ("create_user_interface", "create_flow") and raw("p_login_url"):
+            self.login_refs |= _login_page_refs(decoded.get("p_login_url", (None,))[0] or raw("p_login_url"))
         elif fname == "create_page":
+            alias = (decoded.get("p_alias", (None,))[0] or "").strip().upper()
             self.pages[pg] = {"public": raw("p_page_is_public_y_n") == "Y", "role": bool(raw("p_required_role")),
                               "prot": raw("p_protection_level"), "line": line("p_id") or line("p_name"), "label": label,
-                              "dml": [], "login": "LOGIN" in (decoded.get("p_name", (None,))[0] or "").upper()}
+                              "dml": [], "alias": alias,
+                              "login": "LOGIN" in (decoded.get("p_name", (None,))[0] or "").upper() or alias in LOGIN_ALIASES}
             self.pages[pg]["prot_line"] = line("p_protection_level")
         elif fname == "create_page_process":
             ptype = raw("p_process_type")
             point = raw("p_process_point")
-            if "LOGIN" in ptype or "LOGOUT" in ptype:
-                if pg in self.pages:
-                    self.pages[pg]["login"] = True
-            elif point in ("", "AFTER_SUBMIT", "ON_SUBMIT_BEFORE_COMPUTATION") and \
+            code = (decoded.get("p_process_sql_clob", (None,))[0] or decoded.get("p_process_sql", (None,))[0] or "")
+            writes = bool(re.search(r"\b(insert\s+into|update\s+\w+\s+set|delete\s+from|merge\s+into|execute\s+immediate|"
+                                    r"apex_collection\.)", code, re.I))
+            signs_in = "LOGIN" in ptype or "LOGOUT" in ptype or bool(_LOGIN_CALL.search(_strip_comments(code)))
+            if signs_in and pg in self.pages:
+                self.pages[pg]["login"] = True           # the sign-in page: public by design, its login process is not DML
+            if (not signs_in or writes) and point in ("", "AFTER_SUBMIT", "ON_SUBMIT_BEFORE_COMPUTATION") and \
                     any(x in ptype for x in ("PLSQL", "FORM_DML", "DML", "IG_DML", "INVOKE_API", "EXECUTE")) and pg in self.pages:
-                code = (decoded.get("p_process_sql_clob", (None,))[0] or decoded.get("p_process_sql", (None,))[0] or "")
-                real_dml = "FORM_DML" in ptype or "IG_DML" in ptype or bool(
-                    re.search(r"\b(insert\s+into|update\s+\w+\s+set|delete\s+from|merge\s+into|execute\s+immediate|apex_collection\.)", code, re.I))
+                # a process that signs in and also writes a table (`insert into …; apex_authentication.login(…)`) writes
+                real_dml = "FORM_DML" in ptype or "IG_DML" in ptype or writes
                 self.pages[pg]["dml"].append((line("p_process_name") or line("p_id"), label, real_dml))
         elif fname == "create_page_item":
             if raw("p_display_as") in ("NATIVE_HIDDEN", "HIDDEN") and raw("p_attribute_01") == "N":
@@ -188,11 +271,13 @@ class _ConfigChecks:
                 if (sd.get("p_use_secure_cookie_yn", (None, 0, ""))[2] or "").upper() == "N":
                     self._f("APX013", sd.get("p_use_secure_cookie_yn", (None, 0))[1], slabel)
         for pg, info in self.pages.items():
+            if str(pg).upper() in self.login_refs or info.get("alias") in self.login_refs and info.get("alias"):
+                info["login"] = True                           # the page the application's login URL opens
             if info["prot"] == "U" and not info["login"]:
                 self._f("APX018", info.get("prot_line") or info["line"], info["label"])
-            if not info["dml"] or info["login"]:
-                continue
             real = [d for d in info["dml"] if d[2]]
+            if not info["dml"] or (info["login"] and not real):
+                continue        # the sign-in page is public by design; a table it writes (alias LOGIN or not) still counts
             ln, plabel, _ = (real or info["dml"])[0]
             if info["public"]:
                 self._f("APX016", ln, plabel)
@@ -201,6 +286,19 @@ class _ConfigChecks:
             elif not info["role"] and not self.app_scheme:
                 self._f("APX017", ln, plabel)
         return self.out
+
+# The sign-in page: an alias APEX gives it, the login URL of the user interface, or a process that signs the user in
+LOGIN_ALIASES = {"LOGIN", "LOGIN_DESKTOP", "LOGIN_MOBILE"}
+_LOGIN_CALL = re.compile(r"\b(?:sys\.)?(?:apex_authentication\.(?:login|send_login_username_cookie)|apex_custom_auth\.login|"
+                         r"wwv_flow_custom_auth_std\.(?:login|login_page)|wwv_flow_custom_auth\.login|"
+                         r"wwv_flow_authentication\.login)\s*\(", re.I)
+
+
+def _login_page_refs(url: str) -> set:
+    """`f?p=&APP_ID.:LOGIN:&APP_SESSION.` / `f?p=&APP_ID.:9999:…` -> {"LOGIN"} / {"9999"}."""
+    m = re.search(r"f\?p=[^:]*:([^:&]+)", url or "", re.I)
+    return {m.group(1).strip().upper()} if m else set()
+
 
 PLSQL_BLOCK = {"p_process_sql_clob", "p_process_sql", "p_plsql_function_body", "p_function_body", "p_plsql_process"}
 PLSQL_DECLS = {"p_plsql_code"}
@@ -756,6 +854,8 @@ class _YamlConfig:
                                                "unrestricted": None, "label": f"صفحة {page_id}"}) if page_id else None
         if page is not None and page_name and "login" in str(page_name).lower():
             page["login"] = True
+        if page is not None and comp == "page" and k == "alias" and v.upper() in LOGIN_ALIASES:
+            page["login"] = True
         if "session-state-protection" in k and app and v in ("false", "no", "disabled", "n"):
             self._f("APX006", line, "التطبيق")
         elif "rejoin-sessions" in k and "all" in v:
@@ -801,6 +901,8 @@ class _YamlConfig:
     def code(self, comp, page_id, code):
         """Process code tells whether a page really changes data."""
         page = self.pages.get(page_id)
+        if page is not None and comp == "process" and _LOGIN_CALL.search(_strip_comments(code)):
+            page["login"] = True                 # the sign-in page: public by design
         if page is not None and comp == "process" and page["dml"] and re.search(
                 r"\b(insert\s+into|update\s+\w+\s+set|delete\s+from|merge\s+into|execute\s+immediate)", code, re.I):
             ln, lab, _ = page["dml"][-1]
@@ -810,9 +912,9 @@ class _YamlConfig:
         for pid, page in self.pages.items():
             if page["unrestricted"] and not page["login"]:
                 self._f("APX018", page["unrestricted"], page["label"])
-            if not page["dml"] or page["login"]:
-                continue
             real = [d for d in page["dml"] if d[2]]
+            if not page["dml"] or (page["login"] and not real):
+                continue        # the sign-in page is public by design; a table it writes (alias LOGIN or not) still counts
             ln, lab, _ = (real or page["dml"])[0]
             if page["public"]:
                 self._f("APX016", ln, lab)

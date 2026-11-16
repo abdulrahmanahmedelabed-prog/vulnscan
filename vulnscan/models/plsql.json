@@ -155,12 +155,8 @@
  ],
  "entry_points": [
   {
-   "param_names": [
-    "p_item",
-    "p_param",
-    "p_region",
-    "p_plugin"
-   ]
+   "param_names": [],
+   "_comment": "APEX plug-in callback parameters (p_region, p_item, p_plugin, p_dynamic_action, p_process) carry attributes the developer set at design time, not user input: only their value attributes are sources (see sources). The legacy p_value parameter of an item plug-in callback is the item's session value (taint.py, _plugin_value_param)."
   }
  ],
  "sinks": [
@@ -174,7 +170,6 @@
    ],
    "names": [
     "execute_immediate",
-    "dbms_sql.parse",
     "open_for",
     "apex_dynamic_query",
     "apex_collection.create_collection_from_query",
@@ -190,7 +185,6 @@
     "apex_region.open_query_context",
     "apex_data_parser.discover",
     "dbms_utility.exec_ddl_statement",
-    "sys.dbms_sql.parse",
     "apex_exec.execute_dml"
    ],
    "title": "Tainted data reaches dynamic SQL",
@@ -206,6 +200,45 @@
     "sqltext",
     "p_sql_statement"
    ]
+  },
+  {
+   "rule": "DF004",
+   "severity": "high",
+   "cwe": "CWE-89",
+   "label": "dynamic SQL",
+   "args": [
+    1
+   ],
+   "names": [
+    "dbms_sql.parse",
+    "sys.dbms_sql.parse"
+   ],
+   "title": "Tainted data reaches dynamic SQL",
+   "title_ar": "بيانات غير موثوقة تصل إلى SQL ديناميكي",
+   "advice": "استخدم متغيرات الربط (USING :x) بدل دمج النص، وطبّق DBMS_ASSERT على أسماء الجداول والأعمدة.",
+   "kwargs": [
+    "statement"
+   ],
+   "_comment": "dbms_sql.parse(c, statement, language_flag): the statement is the 2nd argument; values bound with dbms_sql.bind_variable are not part of it."
+  },
+  {
+   "rule": "DF008",
+   "severity": "medium",
+   "cwe": "CWE-113",
+   "label": "HTTP response header",
+   "args": [
+    0
+   ],
+   "names": [
+    "owa_header_write"
+   ],
+   "title": "Tainted data written to an HTTP response header",
+   "title_ar": "بيانات غير موثوقة تُكتب في ترويسة استجابة HTTP",
+   "advice": "أزل محرفَي CR وLF من القيمة أو ارفضها قبل وضعها في ترويسة الاستجابة.",
+   "kwargs": [
+    "cbuf"
+   ],
+   "_comment": "htp.p/prn/print between owa_util.mime_header(…, bclose_header => false) and owa_util.http_header_close write header lines (plsql_frontend lowers them to owa_header_write): CR/LF there splits the response (header injection), it is not HTML."
   },
   {
    "rule": "DF012",
@@ -438,6 +471,8 @@
   "sys.dbms_assert.simple_sql_name",
   "sys.dbms_assert.sql_object_name",
   "sys.dbms_assert.qualified_sql_name",
+  "sys.dbms_assert.schema_name",
+  "sys.dbms_assert.enquote_name",
   "apex_escape.html",
   "apex_escape.html_attribute",
   "apex_escape.html_trunc",
@@ -478,7 +513,6 @@
  "validators": [
   "regexp_like",
   "apex_string.is_number",
-  "dbms_assert.noop_check",
   "validate",
   "is_valid",
   "check_access",

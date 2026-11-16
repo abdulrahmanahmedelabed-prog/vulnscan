@@ -598,6 +598,7 @@ details summary{cursor:pointer;color:var(--accent-text);font-size:13px}
 .about-list div{display:flex;gap:var(--s3);align-items:baseline}
 .about-list dt{min-width:90px;color:var(--muted)}
 .about-list a{display:inline-flex;align-items:center;gap:6px}
+.about-list dd.about-mails{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:0}
 
 /* ------------------------------------------------ findings: second toolbar, export menu */
 .toolbar.sub{margin-top:calc(var(--s2) * -1)}
@@ -752,6 +753,96 @@ details summary{cursor:pointer;color:var(--accent-text);font-size:13px}
 .sf-empty{padding:var(--s3) 0}
 .sf-notes{margin:var(--s3) 0 0}
 
+
+/* ---------------------------------------------------------------- web scan (1.1.0) */
+.web-opts{margin-top:var(--s3)}
+.web-more{margin:var(--s2) 0 var(--s3)}.web-more summary{cursor:pointer;color:var(--text-2);font-weight:500}
+.web-panel:empty{display:none}
+.web-card .web-h{display:flex;align-items:center;gap:var(--s2);font-size:15px;margin:var(--s5) 0 var(--s3)}
+.web-card .web-h:first-of-type{margin-top:var(--s3)}
+.web-facts{display:flex;flex-wrap:wrap;gap:var(--s3);font-size:12.5px;color:var(--text-2)}
+.web-facts b{font-weight:600;overflow-wrap:anywhere}
+.grade-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s3)}
+.grade-card{display:flex;flex-direction:column;gap:2px;border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--s3) var(--s4);background:var(--surface-2)}
+.grade-card .g-name{font-weight:600;font-size:13px}
+.grade-card .g-letter{font-size:34px;font-weight:800;line-height:1.1;color:var(--accent-text)}
+.grade-card small{font-size:11.5px;line-height:1.4}
+.grade-card details{font-size:12px}.grade-card ul{margin:4px 0 0;padding-inline-start:18px}
+.cov-chips{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.cov-chips .chip{cursor:default}
+.cov-chips .cov-fail{border-color:var(--critical)}
+.cov-chips .cov-not_tested,.cov-chips .cov-inconclusive{border-color:var(--warn)}
+.web-details{margin-top:var(--s2)}.web-details summary{cursor:pointer;font-weight:500}
+.web-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.web-table th,.web-table td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:start;vertical-align:top;overflow-wrap:anywhere}
+.web-table th{color:var(--muted);font-weight:600;background:var(--surface-2)}
+/* overflow-wrap:anywhere lets a cell shrink to one letter: at 360px "فاشل", "missing" and "القيمة" broke into letters.
+   A floor per cell keeps short words whole (long URLs and values still wrap); the state column never wraps. */
+.web-table th,.web-table td{min-width:4.5em}.web-table th{overflow-wrap:normal}
+.wtabs{margin-top:var(--s2)}.wtabs>.tabs{padding:0}
+.wpane{padding:var(--s3) 0}
+.snip{border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--s3) var(--s4);margin-top:var(--s3)}
+.snip h3{font-size:14px;display:flex;gap:var(--s2);align-items:baseline;flex-wrap:wrap}
+.snip .caveat{display:flex;gap:6px;align-items:flex-start;color:var(--warn);font-size:12.5px}
+.diff-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s4)}
+.diff-grid h3{font-size:13.5px;display:flex;gap:var(--s2);align-items:center}
+.diff-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.posture{margin:0;padding-inline-start:18px;font-size:12.5px;display:flex;flex-direction:column;gap:4px}
+.posture .dir-regression b{color:var(--critical)}.posture .dir-improvement b{color:var(--ok)}
+.tag.conf-certain{color:var(--accent-text)}.tag.conf-tentative{color:var(--muted);border-style:dashed}
+/* Grade colours (A green, B light green, C warning, D/E high, F critical, no grade muted), light and dark; the meaning
+   is always written next to the letter, so colour is never the only cue. */
+:root{--g-a:var(--ok);--g-b:#3d7a12;--g-c:var(--warn);--g-d:var(--high);--g-f:var(--critical);--g-none:var(--muted)}
+:root[data-theme="dark"]{--g-b:#a3d977}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--g-b:#a3d977}}
+.g-grade-a{--g:var(--g-a)}.g-grade-b{--g:var(--g-b)}.g-grade-c{--g:var(--g-c)}.g-grade-d{--g:var(--g-d)}.g-grade-f{--g:var(--g-f)}.g-grade-none{--g:var(--g-none)}
+.grade-card[class*="g-grade-"] .g-letter,.done-grade .g-letter{color:var(--g)}
+.grade-card[class*="g-grade-"]{border-top:3px solid var(--g)}
+.grade-card .g-meaning,.done-grade .g-meaning{font-weight:600;font-size:12.5px;color:var(--text-2)}
+.done-grade{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:var(--s2) var(--s4);border:1px solid var(--border);border-top:3px solid var(--g);border-radius:var(--r);background:var(--surface-2);min-width:96px}
+.done-grade .g-letter{font-size:26px;font-weight:800;line-height:1.15}
+.done-grade .muted{font-size:12px}
+#scan-status-tiles:has(.done-grade){grid-template-columns:auto repeat(5,minmax(0,1fr))}
+.status-text .step{font-size:12.5px;margin-top:2px}
+.fail-why{font-weight:500}
+.fail-raw{display:block;margin-top:var(--s1);font-weight:400;font-size:12.5px;overflow-wrap:anywhere}
+.fail-raw bdi{font-family:var(--mono);font-size:12px}
+.status.cancelled .dot{--c:var(--muted)}
+.field-msg{font-size:12.5px;margin-top:var(--s2);color:var(--text-2)}
+.field-msg.err{color:var(--critical);font-weight:600}
+.input[aria-invalid="true"]{border-color:var(--critical);box-shadow:0 0 0 1px var(--critical)}
+.check.disabled{opacity:.55;cursor:not-allowed}.check.disabled input{cursor:not-allowed}
+.btn[aria-busy="true"]{cursor:progress}
+#url-profile-hint{max-width:62ch}
+.tl-short{display:none}
+/* the panel's details below the findings list */
+.web-panel.more{display:flex;flex-direction:column;gap:var(--s2);margin-top:var(--s4)}
+.web-panel.more>.web-details{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--s3) var(--s4);margin:0}
+.web-panel.more>.web-details>summary{display:flex;align-items:center;gap:var(--s2);font-weight:600;font-size:14px}
+.web-details .count{color:var(--muted);font-weight:500;font-size:12.5px}
+.web-details .note{margin-top:var(--s3)}
+details.snip>summary{cursor:pointer;display:flex;gap:var(--s2);align-items:baseline;flex-wrap:wrap;font-weight:600;font-size:13.5px}
+details.snip[open]>summary{margin-bottom:var(--s2)}
+details.snip>p{margin-bottom:var(--s2)}
+.tag.det{font-size:11px;padding:0 6px;color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent);background:var(--ok-soft)}
+.cov-table .cid code{white-space:nowrap}
+.cov-table tr.grp th{background:var(--sunken);color:var(--text-2);font-weight:600}
+/* evidence of a web finding */
+.ev-list{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px var(--s3);margin:0 0 var(--s2);font-size:12.5px}
+.ev-list>div{display:contents}
+.ev-list dt{color:var(--muted);font-weight:500}.ev-list dd{margin:0;min-width:0}
+.ev-chain{margin:0;padding-inline-start:18px;display:flex;flex-direction:column;gap:2px}
+.wrap{overflow-wrap:anywhere;word-break:break-word}
+.ev-headers summary{cursor:pointer;font-size:12.5px;font-weight:500;color:var(--text-2)}
+.ev-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;margin-top:var(--s2);text-align:left}
+.ev-table th,.ev-table td{padding:3px 8px;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}
+.ev-table th{white-space:nowrap;font-weight:600;color:var(--text-2)}
+.ev-table tr.hit{background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.ev-table mark{background:none;color:inherit;text-decoration:underline 2px var(--warn);text-underline-offset:3px}
+.ev-h{font-size:12.5px;margin:var(--s3) 0 var(--s1);color:var(--text-2)}
+.ev-excerpt{margin:0;padding:var(--s2) var(--s3);background:var(--sunken);border-radius:var(--r);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left}
+.f-meta .pages{color:var(--muted)}
+
 @media (max-width:720px){
   .toolbar-end{margin-inline-start:0;width:100%}
   .menu-wrap{position:static}
@@ -769,4 +860,21 @@ details summary{cursor:pointer;color:var(--accent-text);font-size:13px}
   .tri-form{padding:var(--s3)}
   .tri-texts{grid-template-columns:minmax(0,1fr)}
   .sf-count{margin-inline-start:0;width:100%}
+  .grade-cards{grid-template-columns:minmax(0,1fr)}
+  .diff-grid{grid-template-columns:minmax(0,1fr)}
 }
+/* phones: short tab names so the three target types fit (390px), and wrap if a font is wider */
+@media (max-width:479px){
+  #scan-tabs{flex-wrap:wrap;overflow-x:visible;padding:0 var(--s2)}
+  #scan-tabs .tl-long{display:none}
+  #scan-tabs .tl-short{display:inline}
+  #scan-status-tiles:has(.done-grade){grid-template-columns:repeat(3,minmax(0,1fr))}
+  .ev-list{grid-template-columns:minmax(0,1fr)}
+  .ev-list dt{margin-top:var(--s1)}
+}
+.web-card .note.inconclusive{margin-top:var(--s3)}
+.g-meaning{display:inline-block}.g-meaning::first-letter{text-transform:uppercase}
+/* small print of the web panel (coverage note, diff hints, a fix's platform); a fix in a finding is good code: the
+   accent colour, not the finding's severity colour that marks vulnerable code */
+p.muted.small{font-size:12.5px}
+.d-sec.fix .code{--c:var(--accent)}

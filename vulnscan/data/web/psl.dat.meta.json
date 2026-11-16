@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "date": "2026-11-13",
+    "source": "https://publicsuffix.org/list/public_suffix_list.dat",
+    "license": "MPL-2.0",
+    "generator": "tools/webdata/psl.py",
+    "notes": "Unmodified list; copied from the list's canonical source repository on 2026-11-13 (publicsuffix.org was not reachable from the build host)."
+  },
+  "file": "psl.dat.gz",
+  "sha256": "95bb3b5142e4b2bd5cb367cf4dfa70bfdd992a00265a7c928608a4f76bd2369e",
+  "rules": 10420
+}

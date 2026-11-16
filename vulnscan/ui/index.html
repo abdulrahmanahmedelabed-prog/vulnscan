@@ -199,12 +199,12 @@
         </div>
       </header>
       <div class="card scan-card">
-        <div class="tabs" id="scan-tabs" role="tablist">
-          <button class="tab active" type="button" role="tab" aria-selected="true" data-tab="path"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg><span data-i18n="scan.tabPath">مسار على الجهاز</span></button>
-          <button class="tab" type="button" role="tab" aria-selected="false" data-tab="upload"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg><span data-i18n="scan.tabUpload">رفع ملفات / أرشيف</span></button>
-          <button class="tab" type="button" role="tab" aria-selected="false" data-tab="url"><svg class="i" aria-hidden="true"><use href="#i-globe"/></svg><span data-i18n="scan.tabUrl">عنوان ويب</span></button>
+        <div class="tabs" id="scan-tabs" role="tablist" aria-label="نوع الهدف">
+          <button class="tab active" type="button" role="tab" id="tab-path" aria-controls="pane-path" aria-selected="true" tabindex="0" data-tab="path"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg><span class="tl-long" data-i18n="scan.tabPath">مسار على الجهاز</span><span class="tl-short" data-i18n="scan.tabPathShort">مسار</span></button>
+          <button class="tab" type="button" role="tab" id="tab-upload" aria-controls="pane-upload" aria-selected="false" tabindex="-1" data-tab="upload"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg><span class="tl-long" data-i18n="scan.tabUpload">رفع ملفات / أرشيف</span><span class="tl-short" data-i18n="scan.tabUploadShort">رفع</span></button>
+          <button class="tab" type="button" role="tab" id="tab-url" aria-controls="pane-url" aria-selected="false" tabindex="-1" data-tab="url"><svg class="i" aria-hidden="true"><use href="#i-globe"/></svg><span class="tl-long" data-i18n="scan.tabUrl">عنوان ويب</span><span class="tl-short" data-i18n="scan.tabUrlShort">ويب</span></button>
         </div>
-        <div class="tab-pane" data-pane="path" role="tabpanel">
+        <div class="tab-pane" data-pane="path" role="tabpanel" id="pane-path" aria-labelledby="tab-path">
           <label for="path-input" data-i18n="scan.pathLabel">مسار المجلد أو الملف أو الأرشيف</label>
           <div class="row">
             <input id="path-input" class="input mono" placeholder="/home/me/my-project  ·  C:\Users\me\app.apk" dir="ltr" autocomplete="off" spellcheck="false">
@@ -212,7 +212,7 @@
           </div>
           <p class="hint" data-i18n="scan.pathHint">يُفحص المجلد بكل محتوياته (تُتجاهل node_modules و .git و build تلقائيًا).</p>
         </div>
-        <div class="tab-pane hidden" data-pane="upload" role="tabpanel">
+        <div class="tab-pane hidden" data-pane="upload" role="tabpanel" id="pane-upload" aria-labelledby="tab-upload">
           <div id="dropzone" class="dropzone">
             <span class="dz-icon"><svg class="i lg" aria-hidden="true"><use href="#i-upload"/></svg></span>
             <p class="dz-title" data-i18n="scan.drop">اسحب وأفلت هنا برنامجًا مضغوطًا (zip / apk / jar / tar.gz / whl) أو أي ملفات</p>
@@ -226,27 +226,51 @@
             <div id="upload-progress" class="progress hidden"><div></div></div>
           </div>
         </div>
-        <div class="tab-pane hidden" data-pane="url" role="tabpanel">
-          <label for="url-input" data-i18n="scan.urlLabel">عنوان الموقع (فحص سلبي: طلب واحد فقط)</label>
+        <div class="tab-pane hidden" data-pane="url" role="tabpanel" id="pane-url" aria-labelledby="tab-url">
+          <label for="url-input" data-i18n="scan.urlLabel">عنوان الموقع (فحص سلبي: طلبات GET محدودة، بلا أي اختبار نشط)</label>
           <div class="row">
-            <input id="url-input" class="input mono" placeholder="https://example.com" dir="ltr" autocomplete="off" spellcheck="false">
+            <input id="url-input" class="input mono" type="text" inputmode="url" placeholder="https://example.com" dir="ltr" autocomplete="off" spellcheck="false" aria-describedby="url-msg">
             <button id="url-btn" class="btn primary" type="button"><svg class="i" aria-hidden="true"><use href="#i-scan"/></svg><span data-i18n="scan.start">ابدأ الفحص</span></button>
           </div>
+          <p class="field-msg hidden" id="url-msg" aria-live="polite"></p>
           <div class="checks">
-            <label class="check"><input id="url-auth" type="checkbox"> <span data-i18n="scan.authorize">أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه</span></label>
-            <label class="check"><input id="url-deep" type="checkbox"> <span data-i18n="scan.deep">فحص أعمق: تحليل الصفحة وفحص مسارات مكشوفة شائعة (طلبات إضافية محدودة)</span></label>
-            <label class="check"><input id="url-crawl" type="checkbox"> <span data-i18n="scan.crawl">زحف على صفحات الموقع وفحصها (لتطبيقات مثل Moodle وبوابات الجامعات)</span></label>
+            <label class="check"><input id="url-auth" type="checkbox"> <span id="url-auth-text">أقرّ بأنني مالك هذا الموقع أو لديّ تصريح كتابي بفحصه</span></label>
+            <label class="check"><input id="url-crawl" type="checkbox"> <span data-i18n="scan.crawl">الزحف على صفحات الموقع وفحص كل منها (لتطبيقات مثل Moodle وبوابات الجامعات)</span></label>
+            <label class="check"><input id="url-compare" type="checkbox" checked> <span data-i18n="scan.compare">قارن بآخر فحص لهذا الموقع</span></label>
           </div>
+          <div class="field-row web-opts">
+            <div class="field"><label for="url-profile" data-i18n="scan.profile">نمط الفحص</label>
+              <select id="url-profile" class="input" aria-describedby="url-profile-hint">
+                <option value="minimal" data-i18n="scan.pMinimal">أدنى (minimal)</option>
+                <option value="standard" selected data-i18n="scan.pStandard">قياسي (standard)، الافتراضي</option>
+                <option value="deep" data-i18n="scan.pDeep">عميق (deep)</option>
+              </select>
+              <p class="hint" id="url-profile-hint"></p></div>
+            <div class="field"><label for="url-sens" data-i18n="scan.sens">الحساسية</label>
+              <select id="url-sens" class="input">
+                <option value="strict" data-i18n="scan.sStrict">strict: المؤكَّدة فقط</option>
+                <option value="default" selected data-i18n="scan.sDefault">default: المؤكَّدة والمرجَّحة</option>
+                <option value="paranoid" data-i18n="scan.sParanoid">paranoid: كل شيء مع الفحوص الإضافية</option>
+              </select></div>
+          </div>
+          <details class="web-more"><summary data-i18n="scan.webMore">خيارات متقدمة</summary>
+            <div class="checks">
+              <label class="check"><input id="url-robots" type="checkbox"> <span data-i18n="scan.robots">تجاهل robots.txt عند الزحف (لمالك الموقع)</span></label>
+              <label class="check"><input id="url-3p" type="checkbox"> <span data-i18n="scan.thirdParty">اسمح باستعلامات لدى أطراف ثالثة تكشف اسم الموقع (لا يجري أي فحص في الإصدار 1.1 مثل هذا الاستعلام)</span></label>
+              <label class="check"><input id="url-noproxy" type="checkbox"> <span data-i18n="scan.noProxy">لا تستخدم الوكيل (proxy) المعرَّف في النظام</span></label>
+            </div>
+          </details>
           <div class="callout warn"><svg class="i" aria-hidden="true"><use href="#i-warning"/></svg><span data-i18n="scan.legal">فحص أنظمة الآخرين دون إذن قد يكون مخالفًا للقانون.</span></div>
         </div>
       </div>
       <div id="scan-status" class="card hidden" aria-live="polite">
         <div class="status-head">
           <span class="status-icon" id="scan-status-icon"><span class="spinner" id="scan-spinner"></span></span>
-          <div class="status-text"><b id="scan-status-title"></b><div class="muted mono ellipsis" id="scan-status-target" dir="ltr"></div></div>
+          <div class="status-text"><b id="scan-status-title"></b><div class="muted step" id="scan-status-step"></div><div class="muted mono ellipsis" id="scan-status-target" dir="ltr"></div></div>
+          <button id="scan-cancel" class="btn sm hidden" type="button"><svg class="i sm" aria-hidden="true"><use href="#i-x"/></svg><span data-i18n="scan.cancel">إلغاء الفحص</span></button>
           <a id="scan-status-open" class="btn primary hidden" href="#findings"><span data-i18n="scan.viewResults">عرض النتائج</span><svg class="i sm flip" aria-hidden="true"><use href="#i-chevron"/></svg></a>
         </div>
-        <div class="progress indeterminate" id="scan-bar"><div></div></div>
+        <div class="progress indeterminate" id="scan-bar" role="progressbar" aria-label="تقدّم الفحص"><div></div></div>
         <div id="scan-status-result" class="hidden">
           <div class="tiles small" id="scan-status-tiles"></div>
         </div>
@@ -289,7 +313,9 @@
         </div>
       </div>
       <div id="findings-notes" class="notes"></div>
+      <div id="findings-web" class="web-panel"></div>
       <div id="findings-list" class="findings"></div>
+      <div id="findings-web-more" class="web-panel more"></div>
     </section>
 
     <!-- ======================== COMPLIANCE ======================== -->
@@ -438,7 +464,17 @@
           <div class="sec-body">
             <div class="field-row">
               <div class="field"><label for="f-wt" data-i18n="set.webTimeout">مهلة طلب الويب بالثواني (يُعاد الطلب الأول مرة بمهلة مضاعفة)</label><input id="f-wt" name="web_timeout" type="number" min="5" max="120" class="input" dir="ltr"></div>
-              <div class="field"><label for="f-wd" data-i18n="set.webDelay">تأخير بين طلبات الزحف بالثواني (ألطف على الخادم وجدار الحماية)</label><input id="f-wd" name="web_delay" type="number" min="0" max="10" step="0.1" class="input" dir="ltr"></div>
+              <div class="field"><label for="f-wd" data-i18n="set.webDelay">أقل فاصل بالثواني بين طلبين إلى الموقع نفسه، لكل الطلبات (الحد الأدنى 0.2)</label><input id="f-wd" name="web_delay" type="number" min="0.2" max="10" step="0.1" class="input" dir="ltr"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label for="f-wp" data-i18n="set.webProfile">نمط فحص المواقع الافتراضي</label><select id="f-wp" name="web_profile" class="input"><option value="minimal">minimal</option><option value="standard">standard</option><option value="deep">deep</option></select></div>
+              <div class="field"><label for="f-ws" data-i18n="set.webSens">الحساسية الافتراضية</label><select id="f-ws" name="web_sensitivity" class="input"><option value="strict">strict</option><option value="default">default</option><option value="paranoid">paranoid</option></select></div>
+            </div>
+            <div class="checks">
+              <label class="check"><input name="web_compare_previous" type="checkbox"> <span data-i18n="set.webCompare">قارن كل فحص بآخر فحص للموقع نفسه</span></label>
+              <label class="check"><input name="web_respect_robots" type="checkbox"> <span data-i18n="set.webRobots">احترم robots.txt عند الزحف</span></label>
+              <label class="check"><input name="web_third_party_lookups" type="checkbox"> <span data-i18n="set.web3p">اسمح باستعلامات لدى أطراف ثالثة (لا يجري أي فحص في الإصدار 1.1 مثل هذا الاستعلام)</span></label>
+              <label class="check"><input name="web_use_proxy" type="checkbox"> <span data-i18n="set.webProxy">استخدم الوكيل (proxy) المعرَّف في النظام</span></label>
             </div>
             <div class="field"><label for="f-at" data-i18n="set.authTargets">عناوين ويب مُصرَّح بفحصها (سطر لكل عنوان)</label><textarea id="f-at" name="authorized_targets" class="input mono" rows="3" dir="ltr" spellcheck="false"></textarea></div>
           </div>
@@ -460,7 +496,7 @@
               <p data-i18n="about.by">من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة.</p></div>
           </div>
           <dl class="about-list">
-            <div><dt data-i18n="about.contact">للتواصل</dt><dd><a class="link" href="mailto:sdep@iugaza.edu.ps" dir="ltr"><svg class="i xs" aria-hidden="true"><use href="#i-mail"/></svg>sdep@iugaza.edu.ps</a></dd></div>
+            <div><dt data-i18n="about.contact">للتواصل</dt><dd class="about-mails"><a class="link" href="mailto:its@iugaza.edu.ps" dir="ltr"><svg class="i xs" aria-hidden="true"><use href="#i-mail"/></svg>its@iugaza.edu.ps</a><a class="link" href="mailto:aelabed@iugaza.edu.ps" dir="ltr"><svg class="i xs" aria-hidden="true"><use href="#i-mail"/></svg>aelabed@iugaza.edu.ps</a></dd></div>
             <div><dt data-i18n="about.license">الترخيص</dt><dd><a class="link" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/license.html" target="_blank" rel="noopener noreferrer" dir="ltr">MIT<svg class="i xs" aria-hidden="true"><use href="#i-external"/></svg></a></dd></div>
           </dl>
         </div>

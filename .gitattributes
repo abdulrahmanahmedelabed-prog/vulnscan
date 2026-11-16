@@ -1,0 +1,3 @@
+# Web scanner data snapshots stay byte-exact on every OS: MANIFEST.json pins their sha256 and size, and a CRLF
+# checkout (core.autocrlf on Windows) would make tools/webdata/validate.py --check and the manifest test fail there.
+vulnscan/data/web/** -text

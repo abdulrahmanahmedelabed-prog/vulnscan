@@ -17,6 +17,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python: ["3.10", "3.13"]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120   # py3.10 + coverage on macOS/Windows runners takes ~75 min
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -28,7 +29,8 @@ jobs:
       - name: Lint
         run: ruff check vulnscan tests bench
       - name: Tests with coverage gate
-        run: python -m pytest -q --cov=vulnscan --cov-fail-under=75
+        # a test stuck for 5 minutes dumps every thread's stack into the log instead of hanging the job silently
+        run: python -m pytest -q --cov=vulnscan --cov-fail-under=75 -o faulthandler_timeout=300
 
   self-scan:
     # kashif scans its own source: it must stay free of high/critical findings, and the
@@ -48,7 +50,7 @@ jobs:
       - name: Both command names are installed (kashif, and vulnscan as an alias)
         run: kashif --version && vulnscan --version
       - name: Scan (SARIF)
-        run: kashif . --no-deps --no-external --exclude "tests/*" --exclude "bench/*" -f sarif -o vulnscan.sarif
+        run: kashif . --no-deps --no-external --exclude "tests/*" --exclude "bench/*" --exclude "vulnscan/data/web/*" -f sarif -o vulnscan.sarif
       - name: Upload to Code Scanning
         if: github.event_name == 'push'
         continue-on-error: true   # private repositories without code scanning cannot accept uploads
@@ -57,7 +59,7 @@ jobs:
           sarif_file: vulnscan.sarif
           category: vulnscan-self-scan
       - name: Gate on high / critical
-        run: vulnscan . --no-deps --no-external --no-color --exclude "tests/*" --exclude "bench/*" --fail-on high
+        run: vulnscan . --no-deps --no-external --no-color --exclude "tests/*" --exclude "bench/*" --exclude "vulnscan/data/web/*" --fail-on high
 
   benchmark:
     # Accuracy regression gate on the OWASP Benchmark for Python (https://owasp.org/www-project-benchmark/).

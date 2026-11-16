@@ -212,7 +212,9 @@ def test_report_html_is_responsive_and_rows_are_readable():
         assert not re.search(r"(?<![\w.])\.critical\{", page) and ".tile.critical,.b.critical{background:#7f1d1d}" in page
         assert "@media (max-width:640px)" in page
     page = R.render_html([f], "t", 1, [], lang="ar")
-    assert "<small dir='auto'>المصدر: request.args</small>" in page and "<bdi>نقطة الخطر: أمر shell</bdi>" in page
+    # 1.1.0: Latin runs of Arabic text are isolated by the shared rule of vulnscan/i18n/bidi.py
+    assert "<small dir='auto'>المصدر: <bdi dir='ltr'>request.args</bdi></small>" in page
+    assert "<bdi>نقطة الخطر: أمر <bdi dir='ltr'>shell</bdi></bdi>" in page
 
 
 @pytest.mark.skipif(NODE is None, reason="Node.js is not installed")

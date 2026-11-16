@@ -658,8 +658,8 @@ def collect(root: pathlib.Path) -> list[Package]:
             path = d / name
             try:
                 pkgs = parser(path, path.relative_to(root).as_posix(), d)
-            except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, SyntaxError):
-                continue                                              # a malformed manifest never stops the scan
+            except Exception:  # noqa: BLE001 - a malformed manifest (or a parser bug on one) never stops the scan
+                continue
             for p in pkgs:
                 key = (p.ecosystem, p.name, p.version)
                 old = found.get(key)
@@ -920,16 +920,19 @@ class ImportIndex:
             dirnames[:] = sorted(x for x in dirnames if x not in SOURCE_SKIP_DIRS)
             for name in sorted(filenames):
                 path = pathlib.Path(dirpath) / name
-                if name == "package.json":
-                    self._npm_scripts(path)
-                elif name == "Cargo.toml":
-                    self._cargo_renames(path)
-                elif _COMMAND_FILES.match(name):
-                    self._words(path, self.command_words)
-                elif _JS_CONFIG_FILES.match(name):
-                    self._words(path, self.js_strings, _JS_PKG_STRING)
-                elif path.suffix.lower() in (".html", ".htm"):
-                    self._html(path)
+                try:
+                    if name == "package.json":
+                        self._npm_scripts(path)
+                    elif name == "Cargo.toml":
+                        self._cargo_renames(path)
+                    elif _COMMAND_FILES.match(name):
+                        self._words(path, self.command_words)
+                    elif _JS_CONFIG_FILES.match(name):
+                        self._words(path, self.js_strings, _JS_PKG_STRING)
+                    elif path.suffix.lower() in (".html", ".htm"):
+                        self._html(path)
+                except Exception:  # noqa: BLE001 - a malformed manifest / config file never fails the audit
+                    self.truncated = True
                 lang = _LANG.get(path.suffix.lower())
                 if path.suffix.lower() == ".ipynb":
                     lang = "py"
@@ -951,7 +954,7 @@ class ImportIndex:
                     text = _notebook_code(text)
                 try:
                     getattr(self, "_scan_" + lang)(path, text)
-                except (RecursionError, ValueError, MemoryError):
+                except Exception:  # noqa: BLE001 - one odd source file never fails the dependency audit
                     self.truncated = True
 
     def _use(self, lang: str, key: str, path: pathlib.Path, alias: str = "") -> None:

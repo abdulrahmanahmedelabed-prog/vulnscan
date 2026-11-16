@@ -188,7 +188,7 @@ kashif:
 
 ```bash
 python3 -m venv .kashif && . .kashif/bin/activate
-pip install "git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.0.2"   # pin a release tag
+pip install "git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.1.0"   # pin a release tag
 kashif . --no-deps --no-external --lang en -f sarif -o kashif.sarif --fail-on high
 ```
 
@@ -219,17 +219,17 @@ To bring Kashif into an isolated network:
 
 ```bash
 # on a connected machine
-docker pull ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2
-docker save ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2 -o kashif-1.0.2.tar
-sha256sum kashif-1.0.2.tar > kashif-1.0.2.tar.sha256
+docker pull ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.1.0
+docker save ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.1.0 -o kashif-1.1.0.tar
+sha256sum kashif-1.1.0.tar > kashif-1.1.0.tar.sha256
 
 # on the isolated machine
-sha256sum -c kashif-1.0.2.tar.sha256 && docker load -i kashif-1.0.2.tar
-docker run --rm --network none -v "$PWD:/src:ro" ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2 . --no-deps --no-external
+sha256sum -c kashif-1.1.0.tar.sha256 && docker load -i kashif-1.1.0.tar
+docker run --rm --network none -v "$PWD:/src:ro" ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.1.0 . --no-deps --no-external
 ```
 
 Without Docker, carry the release binary and `SHA256SUMS.txt`, or a wheel built with
-`pip wheel --no-deps git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.0.2` and installed with
+`pip wheel --no-deps git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.1.0` and installed with
 `pip install --no-index kashif-*.whl` (the wheel of 1.0.1 and older is `vulnscan-*.whl`); there are no
 dependencies to mirror. Upgrade the same way, removing a pre-1.0.2 install first (see
 [Upgrading a pip install to 1.0.2](#upgrading-a-pip-install-to-102)): the in-app updater needs GitHub and is not
@@ -394,8 +394,8 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 gh attestation verify kashif-linux-x86_64 --repo abdulrahmanahmedelabed-prog/vulnscan
 
 # container image: signed SLSA build provenance, and the SBOM attached to the image
-gh attestation verify oci://ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2 --repo abdulrahmanahmedelabed-prog/vulnscan
-docker buildx imagetools inspect ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.0.2 --format '{{ json .SBOM }}'
+gh attestation verify oci://ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.1.0 --repo abdulrahmanahmedelabed-prog/vulnscan
+docker buildx imagetools inspect ghcr.io/abdulrahmanahmedelabed-prog/kashif:1.1.0 --format '{{ json .SBOM }}'
 ```
 
 The provenance states the repository, the workflow and the commit the artifact was built from. A release also
@@ -411,7 +411,7 @@ uninstalling either one later deletes the files of the other. Remove the old one
 
 ```bash
 python3 -m pip uninstall -y vulnscan kashif        # "Skipping kashif" is fine when only the old one is there
-python3 -m pip install "git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.0.2"
+python3 -m pip install "git+https://github.com/abdulrahmanahmedelabed-prog/vulnscan@v1.1.0"
 python3 -m pip list | grep -Ei '^(kashif|vulnscan) '   # only kashif
 ```
 

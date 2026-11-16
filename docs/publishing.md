@@ -12,8 +12,9 @@ The distribution is called `kashif` (`pyproject.toml`); the import package stays
 The jobs `pypi-build` and `pypi-publish` in `.github/workflows/release.yml` build the sdist and the wheel, check that
 their version matches the release tag and that the wheel runs, and upload them with `pypa/gh-action-pypi-publish`
 through Trusted Publishing: PyPI trusts this repository's workflow through OpenID Connect, so no API token exists
-anywhere. They run only on a release tag (or a manual run with `release_tag`), only after the binaries are
-published, and only once the repository variable `PYPI_PUBLISH` is `true`.
+anywhere. They run only in a release run (a manual run of `release.yml` with `release_tag`; the workflow also
+accepts a pushed `v*` tag, which this project does not use), only after the binaries are published, and only once
+the repository variable `PYPI_PUBLISH` is `true`.
 
 1. **Create the pending publisher on PyPI.** Sign in at pypi.org (an account with two-factor authentication),
    open *Your account > Publishing* and add a new **pending publisher** for GitHub Actions:
@@ -31,13 +32,17 @@ published, and only once the repository variable `PYPI_PUBLISH` is `true`.
    names `kashif` as something to install only for an install that itself came from a package index; every other
    pip install is told to reinstall from git.)
 2. **Create the environment.** In the repository: *Settings > Environments > New environment*, name it `pypi`.
-   Optional but recommended: under *Deployment branches and tags* allow only tags matching `v*`, and add yourself
-   as a required reviewer so that every upload waits for one click. With the tag rule, a manual run (which runs on
-   a branch) can never upload to PyPI; only a pushed `vX.Y.Z` tag can.
+   Recommended: under *Deployment protection rules* tick *Required reviewers* and add yourself, so that every
+   upload waits for one click of approval in the run. Leave *Deployment branches and tags* at *No restriction*. Do
+   not limit the environment to tags matching `v*`: releases of this project are manual runs of `release.yml`,
+   which run on a branch (normally `main`), not on a tag, so a tag-only rule would block every PyPI upload. The
+   required reviewer is what keeps an unintended run from uploading.
 3. **Opt in.** *Settings > Secrets and variables > Actions > Variables > New repository variable*:
    `PYPI_PUBLISH` = `true`. Deleting the variable (or setting anything else) turns publishing off again.
-4. **Release as usual** (push a `vX.Y.Z` tag). The run shows `pypi-build` and `pypi-publish`; the upload also
-   carries PEP 740 attestations (Sigstore) for both files.
+4. **Release as usual:** *Actions > Build executables (`release.yml`) > Run workflow*, on `main`, with
+   `release_tag` set to `vX.Y.Z`. The run shows `pypi-build` and `pypi-publish`; `pypi-publish` waits for your
+   approval as the environment's reviewer, and the upload also carries PEP 740 attestations (Sigstore) for both
+   files.
 5. **Check the result** in a clean virtual environment:
 
    ```bash
@@ -49,9 +54,10 @@ published, and only once the repository variable `PYPI_PUBLISH` is `true`.
 
 Notes:
 
-- A version can be uploaded to PyPI only once. Publish a version that is already released by tagging the next
-  patch release rather than re-running the workflow for an old tag: a manual run with `release_tag` rebuilds and
-  re-uploads that release's binaries too.
+- A version can be uploaded to PyPI only once. To get a version that is already released onto PyPI, release the
+  next patch version (a new manual run of `release.yml` with `release_tag` set to that version) rather than
+  running the workflow again with the old `release_tag`: such a run rebuilds and re-uploads that release's
+  binaries too.
 - The README is the project description on PyPI; its screenshots and links use repository-relative paths, which PyPI
   does not resolve, so they show as broken images there until those paths are made absolute.
 - Users who installed 1.0.1 or older from git have the distribution `vulnscan`. Installing `kashif` over it leaves

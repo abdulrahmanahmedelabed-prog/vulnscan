@@ -304,6 +304,17 @@ class Parser:
         self.i += 1
         return t
 
+    def eat_name(self) -> Tok:
+        """eat() for a token whose text becomes a name (identifier, property, object key, import specifier).
+        A template literal token holds its parts as a list, never a name. ``a.<template>`` or ``{<template>: v}``
+        is not JavaScript, but a tokenizer desync (a regex literal read as a division, after `)`) puts template
+        tokens there; their list must never reach the tree, where the engine uses names as strings."""
+        t = self.t
+        if t.kind == "tpl" or not isinstance(t.val, str):
+            raise ParseError(f"unexpected template literal at line {t.line}")
+        self.i += 1
+        return t
+
     def opt(self, val) -> bool:
         if self.t.kind != "str" and self.t.kind != "tpl" and self.t.val == val:
             self.i += 1
@@ -665,10 +676,10 @@ class Parser:
             pairs = []
             while not self.at("}") and self.t.kind != "eof":
                 if self.opt("..."):
-                    rest = self.eat()
+                    rest = self.eat_name()
                     pairs.append((rest.val, rest.val))
                 else:
-                    k = self.eat()
+                    k = self.eat_name()
                     key = k.val.strip("'\"") if k.kind == "str" else k.val
                     local = key
                     if self.opt(":"):
@@ -717,23 +728,23 @@ class Parser:
             self.opt(",")
         if self.opt("*"):
             self.eat("as")
-            ns = self.eat().val
+            ns = self.eat_name().val
         elif self.at("{"):
             self.eat("{")
             while not self.at("}") and self.t.kind != "eof":
                 if self.at_kw("type"):
                     self.i += 1
-                n = self.eat().val
+                n = self.eat_name().val
                 asname = None
                 if self.at_kw("as"):
                     self.i += 1
-                    asname = self.eat().val
+                    asname = self.eat_name().val
                 names.append(ast.alias(name=n, asname=asname))
                 if not self.opt(","):
                     break
             self.eat("}")
         self.eat("from")
-        spec = self.eat().val.strip("'\"")
+        spec = self.eat_name().val.strip("'\"")
         self.skip_semi()
         modname = resolve_specifier(spec, self.mod)
         out = []
@@ -974,7 +985,7 @@ class Parser:
                 self.eat("]")
                 mname = f"_computed_{self.t.line}"
             else:
-                mt = self.eat()
+                mt = self.eat_name()
                 mname = mt.val.strip("'\"") if mt.kind == "str" else mt.val
             self.opt("?")
             self.opt("!")
@@ -1290,7 +1301,7 @@ class Parser:
                 self.i += 1
                 if self.at("[") or self.at("("):
                     continue
-                nm = self.eat()
+                nm = self.eat_name()
                 e = _mk(ast.Attribute, nm.line, value=self.untuple(e), attr=nm.val, ctx=ast.Load())
             elif t.val == "[":
                 self.i += 1
@@ -1464,7 +1475,7 @@ class Parser:
                     k = self.untuple(self.parse_assignment())
                     self.eat("]")
                 else:
-                    kt = self.eat()
+                    kt = self.eat_name()
                     k = _const(kt.val.strip("'\"") if kt.kind == "str" else kt.val, kt.line)
                 if self.at("("):  # method shorthand
                     params, prologue, ann = self.parse_params()
