@@ -36,6 +36,7 @@ import ast
 import json
 import pathlib
 import re
+import string
 import time
 
 from . import flow as _flow
@@ -255,6 +256,30 @@ def _annotation_name(ann: ast.AST | None) -> str | None:
     return _dotted(ann) or None
 
 
+def _plugin_value_param(fn) -> bool:
+    """An APEX item plug-in callback of the legacy interface — render / validate (p_item, p_plugin, p_value …):
+    p_value is the item's session value, which the end user sets. The other plug-in parameters (p_item, p_region,
+    p_plugin, p_dynamic_action, p_process) carry attributes the developer set at design time."""
+    names = {a.arg for a in fn.args.args}
+    return {"p_item", "p_plugin", "p_value"} <= names
+
+
+def _rebound_between(fn, name: str, guard, between: list, sink) -> bool:
+    """`name` is assigned after `guard` and before `sink`: in a statement between them, or inside the statement that
+    holds the sink, on an earlier line."""
+    line = getattr(sink, "lineno", 0)
+    for st in between:
+        for x in ast.walk(st):
+            if isinstance(x, ast.Name) and x.id == name and isinstance(x.ctx, (ast.Store, ast.Del)):
+                return True
+    inside = {id(x) for st in between for x in ast.walk(st)} | {id(x) for x in ast.walk(guard)}
+    for x in ast.walk(fn):
+        if isinstance(x, ast.Name) and x.id == name and isinstance(x.ctx, ast.Store) and id(x) not in inside \
+                and getattr(guard, "lineno", 0) < getattr(x, "lineno", 0) < line:
+            return True
+    return False
+
+
 def _exits(stmts: list) -> bool:
     return bool(stmts) and isinstance(stmts[-1], (ast.Return, ast.Raise, ast.Continue, ast.Break))
 
@@ -339,6 +364,172 @@ def _const_text(e) -> str:
     if isinstance(e, ast.Call) and e.args and _dotted(e.func) in ("re.compile", "RegExp", "Regexp.new", "Regex"):
         e = e.args[0]
     return e.value if isinstance(e, ast.Constant) and isinstance(e.value, str) else ""
+# PL/SQL regexp_replace(x, '[^A-Za-z0-9]'[, '']): everything outside an allow-list class is removed
+_PLSQL_STRIP = re.compile(r"^\[\^((?:\[:[a-z]+:\]|[^\]\[])+)\][+*]?$")
+_POSIX_CLASSES = {"alnum": string.ascii_letters + string.digits, "alpha": string.ascii_letters, "digit": string.digits,
+                  "upper": string.ascii_uppercase, "lower": string.ascii_lowercase, "xdigit": string.hexdigits,
+                  "space": " \t\r\n\f\v", "blank": " \t", "punct": string.punctuation}
+_PLSQL_ID_CHARS = frozenset(string.ascii_letters + string.digits + "_$#")
+
+
+def _allow_class(inner: str) -> frozenset | None:
+    """The characters of a bracket expression's body (`A-Za-z0-9_`, `[:alnum:]_`), None when it cannot be read."""
+    out: set = set()
+    i = 0
+    while i < len(inner):
+        m = re.match(r"\[:([a-z]+):\]", inner[i:])
+        if m:
+            if m.group(1) not in _POSIX_CLASSES:
+                return None
+            out |= set(_POSIX_CLASSES[m.group(1)])
+            i += m.end()
+            continue
+        if inner[i] == "\\" and i + 1 < len(inner):          # \s \w \d … inside brackets: do not guess
+            return None
+        if i + 2 < len(inner) and inner[i + 1] == "-":
+            lo, hi = inner[i], inner[i + 2]
+            if not (lo.isalnum() and hi.isalnum() and lo <= hi and (lo.isdigit() == hi.isdigit())):
+                return None
+            out |= {chr(c) for c in range(ord(lo), ord(hi) + 1)}
+            i += 3
+            continue
+        out.add(inner[i])
+        i += 1
+    return frozenset(out)
+
+
+def _plsql_strip(call: ast.Call):
+    """regexp_replace(x, '[^<allowed>]+'[, '<allowed>'][, 1[, 0]]) keeps only allowed characters.
+    Returns "all" (letters, digits, _ $ # only: inert everywhere), a frozenset of CWEs it makes the value safe for,
+    or None (not an allow-list strip)."""
+    a = call.args
+    if len(a) < 2 or len(a) > 6 or call.keywords:
+        return None
+    pat = a[1].value if isinstance(a[1], ast.Constant) and isinstance(a[1].value, str) else None
+    m = _PLSQL_STRIP.match(pat or "")
+    allowed = _allow_class(m.group(1)) if m else None
+    if not allowed:
+        return None
+    if len(a) > 2 and not (isinstance(a[2], ast.Constant) and (a[2].value is None or (
+            isinstance(a[2].value, str) and set(a[2].value) <= allowed))):
+        return None                                   # the replacement could put characters back
+    if len(a) > 3 and not (isinstance(a[3], ast.Constant) and a[3].value == 1):
+        return None                                   # starts after position 1: the head is kept as it was
+    if len(a) > 4 and not (isinstance(a[4], ast.Constant) and a[4].value == 0):
+        return None                                   # only the n-th match is removed
+    if len(a) > 5 and not (isinstance(a[5], ast.Constant) and isinstance(a[5].value, str) and "x" not in a[5].value):
+        return None
+    if allowed <= _PLSQL_ID_CHARS:
+        return "all"
+    safe: set = set()
+    if not allowed & {"\r", "\n"}:
+        safe |= _CRLF_CWES
+    if not allowed & _HTML_ACTIVE:
+        safe |= set(_XSS)
+    return frozenset(safe) or None
+
+
+def _plsql_char(e) -> str | None:
+    """chr(13) / chr(10) / '\r' -> the character, else None."""
+    if isinstance(e, ast.Call) and _dotted(e.func) in ("chr", "nchr") and len(e.args) == 1 \
+            and isinstance(e.args[0], ast.Constant) and isinstance(e.args[0].value, (int, float)):
+        return chr(int(e.args[0].value)) if 0 <= e.args[0].value < 0x110000 else None
+    if isinstance(e, ast.Constant) and isinstance(e.value, str) and len(e.value) == 1:
+        return e.value
+    return None
+
+
+def _plsql_crlf_stripped(call: ast.Call):
+    """replace(replace(x, chr(13)), chr(10)) (any order, any depth): the value with CR and LF removed -> x, else None."""
+    removed: set = set()
+    cur = call
+    while isinstance(cur, ast.Call) and _dotted(cur.func) in ("replace", "sys.replace") and len(cur.args) in (2, 3):
+        ch = _plsql_char(cur.args[1])
+        if ch is None:
+            return None
+        if len(cur.args) == 3 and not (isinstance(cur.args[2], ast.Constant) and (
+                cur.args[2].value is None or (isinstance(cur.args[2].value, str) and not set(cur.args[2].value) & {"\r", "\n"}))):
+            return None
+        removed.add(ch)
+        cur = cur.args[0]
+    return cur if {"\r", "\n"} <= removed else None
+
+
+def _anchored_allow_list(pattern) -> bool:
+    """A regexp_like / REGEXP pattern that checks the whole value against a character class: `^…$`, not permissive."""
+    if not (isinstance(pattern, ast.Constant) and isinstance(pattern.value, str)):
+        return False
+    p = pattern.value
+    return p.startswith("^") and p.endswith("$") and not p.endswith("\\$") and not _PERMISSIVE_RE.search(p) \
+        and "|" not in p
+
+
+def _regex_chars(p: str) -> frozenset | None:
+    """The characters an anchored `^…$` pattern lets through: `^[A-Za-z][A-Za-z0-9_$#]{0,29}$` -> letters, digits, _ $ #.
+    None when that cannot be read for sure (`.`, `[^…]`, `\\S`, alternation, back-references …)."""
+    if not (p.startswith("^") and p.endswith("$")) or p.endswith("\\$") or len(p) < 3:
+        return None
+    body, out, i = p[1:-1], set(), 0
+    while i < len(body):
+        c = body[i]
+        if c == "[":
+            if body.startswith("[^", i):
+                return None
+            j = i + 1 + (body[i + 1:i + 2] == "]")
+            while j < len(body) and body[j] != "]":
+                if body.startswith("[:", j):
+                    k = body.find(":]", j + 2)
+                    if k < 0:
+                        return None
+                    j = k + 2
+                else:
+                    j += 1
+            cls = _allow_class(body[i + 1:j]) if j < len(body) else None
+            if not cls:
+                return None
+            out |= cls
+            i = j + 1
+        elif c == "{":
+            k = body.find("}", i)
+            if k < 0 or not re.fullmatch(r"\d+(?:,\d*)?", body[i + 1:k]):
+                return None
+            i = k + 1
+        elif c in "+*?()":
+            i += 1
+        elif c == "\\" and i + 1 < len(body):
+            n = body[i + 1]
+            if n == "d":
+                out |= set(string.digits)
+            elif n == "w":
+                out |= set(string.ascii_letters + string.digits + "_")
+            elif n in ".-_$#+*?()[]{}^|/\\":
+                out.add(n)
+            else:
+                return None
+            i += 2
+        elif c in ".^$|\\":
+            return None
+        else:
+            out.add(c)
+            i += 1
+    return frozenset(out)
+
+
+# characters that let an unquoted / attribute value turn into markup or script: a value without them is inert in HTML
+_HTML_ACTIVE = frozenset("<>\"'&`=")
+
+
+def _chars_safe_for(chars: frozenset, cwe) -> bool:
+    """A value made only of `chars` cannot change the meaning of the statement / page / header the sink builds."""
+    if chars <= _PLSQL_ID_CHARS or (chars <= _PLSQL_ID_CHARS | {"."} and cwe not in _PATH_CWES):
+        return True                       # identifier characters (and `.` of schema.name): inert in SQL, HTML, headers
+    if cwe in _CRLF_CWES:
+        return not chars & {"\r", "\n"}
+    if cwe in _XSS:
+        return not chars & _HTML_ACTIVE
+    return False
+
+
 _SCALAR_CASTS = frozenset({"String", "Number", "parseInt", "parseFloat", "Boolean", "BigInt", "toString", "escape",
                            "sanitize", "mongoSanitize", "ObjectId", "toInt", "toNumber", "trim", "toLowerCase", "toUpperCase"})
 
@@ -1903,6 +2094,19 @@ class Project:
                 and any(x in _const_text(node.args[0]) for x in ("\r", "\n", "\\r", "\\n", "\\s")):
             o = self._taint(mod, cls, node.func.value, env)    # CR/LF stripped: no forged log lines / headers
             return (o[0], o[1], _trail(o), _safe_for(o) | _CRLF_CWES) + tuple(o[4:]) if o else None
+        if self.m.get("language") == "plsql" and isinstance(node, ast.Call) and node.args \
+                and _dotted(node.func) in ("regexp_replace", "sys.regexp_replace"):
+            strip = _plsql_strip(node)
+            if strip == "all":
+                return None          # regexp_replace(x, '[^A-Za-z0-9_]'): only identifier characters are left
+            if strip:
+                o = self._taint(mod, cls, node.args[0], env)
+                return (o[0], o[1], _trail(o), _safe_for(o) | strip) + tuple(o[4:]) if o else None
+        if self.m.get("language") == "plsql" and isinstance(node, ast.Call) and _dotted(node.func) in ("replace", "sys.replace"):
+            inner = _plsql_crlf_stripped(node)
+            if inner is not None:          # CR and LF removed: no header / log line can be forged
+                o = self._taint(mod, cls, inner, env)
+                return (o[0], o[1], _trail(o), _safe_for(o) | _CRLF_CWES) + tuple(o[4:]) if o else None
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get" \
                 and any(k.arg == "type" and isinstance(k.value, ast.Name) and k.value.id in ("int", "float", "bool")
                         for k in node.keywords):
@@ -2587,6 +2791,8 @@ class Project:
                         and self._webreq_param(mod, cls, fn, p):
                     env.webreq.add(p.arg)        # `({ query }: Request, res)`: whatever the parameter is called
                 is_req = p.arg in self.m["request_params"] - {"self"}
+                if not is_req and p.arg == "p_value" and self.m.get("language") == "plsql":
+                    is_req = _plugin_value_param(fn)
                 if is_req and gated:
                     is_req = p.arg in entry_params or self._webreq_param(mod, cls, fn, p)
                 if is_req:
@@ -2942,6 +3148,19 @@ class Project:
             names = set(arg_names)
             if isinstance(test.func, ast.Attribute) and _chain(test.func.value):
                 names.add(_chain(test.func.value))
+            if fname == "regexp_like" and self.m.get("language") == "plsql":
+                # regexp_like(x, '^[A-Za-z][A-Za-z0-9_$#]{0,29}$') checks the whole value; '[A-Za-z]' does not, nor
+                # '^[A-Za-z '';]+$' (a quote, a space and `;` are let through), nor any pattern with the 'm' flag
+                # (`^`/`$` then match at each line: one valid line passes the whole value)
+                if len(test.args) < 2 or not _anchored_allow_list(test.args[1]):
+                    return set()
+                if len(test.args) > 2 and not (isinstance(test.args[2], ast.Constant) and isinstance(test.args[2].value, str)
+                                               and "m" not in test.args[2].value.lower()):
+                    return set()
+                chars = _regex_chars(test.args[1].value)
+                if chars is None or not _chars_safe_for(chars, cwe):
+                    return set()
+                return _paths(test.args[0])
             if fname in self.m["validators"] or any(v in fname for v in ("valid", "safe", "allowed", "check", "verify")):
                 return names
         return set()
@@ -2962,13 +3181,19 @@ class Project:
                 block = getattr(parent, field, None)
                 if isinstance(block, list) and any(node is x for x in block):
                     idx = next(i for i, x in enumerate(block) if x is node)
-                    for prev in block[:idx]:
+                    for k, prev in enumerate(block[:idx]):
+                        got: set = set()
                         if isinstance(prev, ast.If) and _exits(prev.body) and not prev.orelse:
-                            validated |= self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
+                            got = self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
                         elif isinstance(prev, ast.If) and not prev.orelse:
                             # `if not is_safe(url): url = "/"`: past it the value was either validated or replaced
                             neg = self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
-                            validated |= {n for n in neg if self._rebinds_safely(mod, prev.body, n, si)}
+                            got = {n for n in neg if self._rebinds_safely(mod, prev.body, n, si)}
+                        if got and self.m.get("language") == "plsql":
+                            # PL/SQL: `l_pkg := apex_application.g_x02;` (or select … into l_pkg) after the guard
+                            # replaces the value that was checked: the guard no longer covers it
+                            got = {n for n in got if not _rebound_between(fn, n.split(".")[0], prev, block[k + 1:idx], call)}
+                        validated |= got
             node = parent
         return all(_path_covered(p, validated) or self._derived_from_guarded(mod, fn, call, p, si, depth)
                    for p in names)
@@ -3615,12 +3840,15 @@ def preparse(rel: str, text: str):
 
 
 def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict | None = None, budget: float | None = None,
-                         trees: dict | None = None):
+                         trees: dict | None = None, skipped: list | None = None):
     """Like analyze_project but also returns the built Project models (for VQL queries).
 
     `config` holds key/values from the project's configuration files (.env, YAML, properties …), used to resolve
     table names and SQL that code reads from configuration. `trees` maps a file to the tree already built for its
-    current text (by the scanner's per-file stage, see preparse); the analysis takes ownership of them."""
+    current text (by the scanner's per-file stage, see preparse); the analysis takes ownership of them.
+    `skipped` receives what was left out after an unexpected error instead of failing the whole analysis:
+    ("file", rel, reason) for a file whose frontend produced a malformed tree, ("language", lang, reason) for a
+    language whose analysis raised (the other languages are still analysed)."""
     if config is None:
         from . import stored as _st
         config = {}
@@ -3633,14 +3861,56 @@ def analyze_project_full(files: dict[str, str], models_dirs=None, config: dict |
     t0 = time.monotonic()
     _BUDGET["deadline"], _BUDGET["hard"] = t0 + budget, t0 + budget * 1.5
     try:
-        return _analyze_groups(files, models_dirs, config, trees or {})
+        return _analyze_groups(files, models_dirs, config, trees or {}, skipped)
     finally:
         _BUDGET["deadline"] = _BUDGET["hard"] = None
 
 
-def _analyze_groups(files, models_dirs, config, trees=None):
+# identifier fields of the trees the frontends build: the engine uses them as strings (dict keys, .endswith …)
+_NAME_FIELDS = ((ast.Name, ("id",)), (ast.Attribute, ("attr",)), (ast.alias, ("name", "asname")),
+                (ast.FunctionDef, ("name",)), (ast.AsyncFunctionDef, ("name",)), (ast.ClassDef, ("name",)),
+                (ast.arg, ("arg",)), (ast.keyword, ("arg",)), (ast.ImportFrom, ("module",)))
+
+
+def _malformed(tree) -> str | None:
+    """Why a frontend's tree cannot be analysed (an identifier that is not a string), or None when it can.
+    A frontend bug on one odd file then leaves out that file, not the whole project."""
+    for node in ast.walk(tree):
+        for cls, fields in _NAME_FIELDS:
+            if isinstance(node, cls):
+                for f in fields:
+                    v = getattr(node, f, None)
+                    if v is not None and not isinstance(v, str):
+                        return f"{type(node).__name__}.{f} is a {type(v).__name__}, line {getattr(node, 'lineno', '?')}"
+    return None
+
+
+def _short_error(e: BaseException) -> str:
+    return f"{type(e).__name__}: {e}"[:160]
+
+
+def _analyze_groups(files, models_dirs, config, trees=None, skipped: list | None = None):
     trees = trees if trees is not None else {}
+    skipped = skipped if skipped is not None else []
     projects: list = []
+    findings: list[Finding] = []
+
+    def contained(lang, build):
+        """Run one language's analysis; an unexpected error leaves that language out instead of failing the scan.
+        (RecursionError / MemoryError keep their own handling in the caller.)"""
+        try:
+            build()
+        except (RecursionError, MemoryError):
+            raise
+        except Exception as e:  # noqa: BLE001 - one language's failure must not lose the others' results
+            skipped.append(("language", lang, _short_error(e)))
+
+    def usable(rel, tree) -> bool:
+        why = _malformed(tree)
+        if why:
+            skipped.append(("file", rel, why))
+        return not why
+
     groups: dict[str, dict[str, str]] = {}
     mybatis: dict = {}
     for rel, text in files.items():
@@ -3654,8 +3924,8 @@ def _analyze_groups(files, models_dirs, config, trees=None):
                 continue
         if lang:
             groups.setdefault(lang, {})[rel] = text
-    findings: list[Finding] = []
-    if "python" in groups:
+
+    def python():
         entries = []
         for rel, text in groups["python"].items():
             tree = trees.pop(rel, None)
@@ -3669,21 +3939,23 @@ def _analyze_groups(files, models_dirs, config, trees=None):
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
-    if "javascript" in groups:
+
+    def javascript():
         from . import js_frontend
         entries = []
         for rel, text in groups["javascript"].items():
             if len(text) > 600_000 or any(len(l) > 5000 for l in text.splitlines()[:50]):
                 continue  # bundles / minified
             tree = trees.pop(rel, None)
-            entries.append(_Entry(js_frontend.module_name(rel), rel, text, tree if tree is not None else js_frontend.parse_js(text, rel)))
+            tree = tree if tree is not None else js_frontend.parse_js(text, rel)
+            if usable(rel, tree):
+                entries.append(_Entry(js_frontend.module_name(rel), rel, text, tree))
         proj, flows = _stored_build(load_models(models_dirs or (), DEFAULT_JS_MODELS, "javascript"), entries, config=config)
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
-    for lang in CFAMILY_LANGS:
-        if lang not in groups:
-            continue
+
+    def cfamily(lang):
         from . import cfamily_frontend
         entries, diags = [], {}
         for rel, text in groups[lang].items():
@@ -3692,6 +3964,8 @@ def _analyze_groups(files, models_dirs, config, trees=None):
             tree = trees.pop(rel, None)
             if tree is None:
                 tree = cfamily_frontend.parse_cfamily(_view_code(rel, text), rel, lang)
+            if not usable(rel, tree):
+                continue
             if mybatis and lang in ("java", "kotlin"):
                 cfamily_frontend.apply_mybatis_xml(tree, cfamily_frontend.module_name(rel), mybatis,
                                                    package=cfamily_frontend.jvm_package(text))
@@ -3708,10 +3982,21 @@ def _analyze_groups(files, models_dirs, config, trees=None):
         if proj.files:
             findings.extend(flows)
             projects.append(proj)
-    if "plsql" in groups:
+
+    def plsql():
         p_projects, p_findings = _analyze_plsql(groups["plsql"], models_dirs or ())
         projects.extend(p_projects)
         findings.extend(p_findings)
+
+    if "python" in groups:
+        contained("python", python)
+    if "javascript" in groups:
+        contained("javascript", javascript)
+    for lang in CFAMILY_LANGS:
+        if lang in groups:
+            contained(lang, lambda: cfamily(lang))
+    if "plsql" in groups:
+        contained("plsql", plsql)
     return projects, findings
 
 
@@ -4439,6 +4724,10 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     js_trees: list = []          # (module, rel, tree)
     js_files: dict = {}          # decoded static files (virtual path -> text)
     java_trees: list = []
+    # per application id (None: exports that do not say): plug-ins defined per export, plug-ins any component uses
+    # ('PLUGIN_<NAME>'), and "flow" / "page": whether the scan holds the application definition and its pages
+    apps: dict = {}
+
     def add_blocks(rel, blocks, diag):
         """Extracted code blocks (APEX export / readable YAML / ORDS handlers) -> units at their real lines."""
         for b in blocks:
@@ -4505,6 +4794,12 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             add_blocks(rel, apex_export.extract_json_ords(text, rel), diag)
         elif apex_export.is_apex_export(text):
             diag["language"] = "apex"
+            pdefs, prefs, holds = apex_export.plugin_usage(text)
+            app = apps.setdefault(apex_export.application_id(text), {"defs": {}, "refs": set(), "parts": set()})
+            if pdefs:
+                app["defs"][rel] = pdefs
+            app["refs"].update(prefs)
+            app["parts"].update(holds)
             blocks, afind, sfiles = apex_export.extract(text, rel)
             findings.extend(afind)
             js_files.update(sfiles)
@@ -4539,7 +4834,24 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
         findings.extend(jproj.report())
         projects.append(jproj)
     _label_findings(findings, ranges)
+    for app in apps.values():
+        if app["defs"] and app["parts"] >= {"flow", "page"}:
+            _mark_unused_components(findings, app["defs"], app["refs"], shared_lines)
     return projects, findings
+
+
+def _mark_unused_components(findings: list, plugin_defs: dict, plugin_refs: set, lines: dict) -> None:
+    """Plug-ins no component of the application uses are dead code (APX023). What is found inside one is kept, one
+    severity level lower and marked (extra["unused_component"]): it only runs if someone starts using the plug-in."""
+    from . import apex_export
+    dead, unused = apex_export.unused_plugin_findings(plugin_defs, plugin_refs, lines)
+    for f in findings:
+        label = f.extra.get("apex_component")
+        if label and (f.file, label) in unused:
+            f.extra["unused_component"] = label
+            f.extra["severity_before_unused"] = f.severity
+            f.severity = _LOWER.get(f.severity, f.severity)
+    findings.extend(dead)
 
 
 def analyze(path: str, text: str, models_dirs=None) -> list[Finding]:

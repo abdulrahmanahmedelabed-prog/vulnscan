@@ -34,8 +34,8 @@ from a **local web UI** in English and Arabic.
   context-sensitive (k=2) points-to analysis; context-specific sanitizers (`html.escape` protects HTML only,
   not SQL or a shell); second-order (stored) injection through database tables.
 - **Rules and models** — 153 pattern rules, 48 dataflow and APEX rules and 19 built-in VQL queries (VQL is
-  Kashif's declarative query language over the program database), over 6,354 modelled library APIs
-  (1,044 sources, 4,531 sinks, 779 sanitizers).
+  Kashif's declarative query language over the program database), over 6,357 modelled library APIs
+  (1,044 sources, 4,532 sinks, 781 sanitizers).
 - **Fewer false positives on real code** — test, documentation and example code is recognised by its path: fixture
   noise there is dropped and the rest is lowered to info; vendored bundles are skipped. On the 35 open-source projects
   (of 38) that 0.9 could finish, findings went from 17,228 to 2,607 (critical and high: 4,345 to 783); half of 0.9's
@@ -218,6 +218,7 @@ kashif update --check
 | `surface` | Attack-surface map: HTTP routes, CLI commands, queue consumers and jobs with their untrusted inputs, the visible authentication and the sinks they reach; Markdown, CSV, JSON, Mermaid, Graphviz or an OpenAPI 3.1 skeleton. Static analysis only. |
 | `rules` | Write and test your own rules: `new` scaffolds a rule pack, `test` checks fixtures annotated with `# kashif: expect RULE`, `lint`, `pack` (one `.kashifpack` file with a SHA-256), `verify`, `install`, `list`, `docs`. Scan with installed packs: `--pack NAME` or `--packs`. |
 | `update` | Installs the latest official release after verifying it (`--check` only checks). |
+| `update-data` | `kashif update-data --web` installs the web scanner's data snapshot of the latest release after verifying its SHA-256 (`--check` only checks). Nothing about the sites you scan is sent; without it the bundled snapshot is used. |
 
 Scan options added in 1.0: `--export FORMAT=FILE` (repeatable), `--risk-score`, `--compliance FRAMEWORKS`,
 `--audit-report FILE`, `--triage[=FILE]`, `--triage-update` (CI on the main branch only), `--triage-show STATUSES`,
@@ -249,7 +250,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.0.2`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.1.0`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `kashif . --diff-base origin/main` reports only what the branch introduces
@@ -342,6 +343,77 @@ positives remain (FPR 18.2%) because HTML escaping is not credited when the esca
 | Config & CI | Dockerfile, docker-compose, GitHub Actions, AndroidManifest, iOS plist, config files |
 | Web (passive) | headers, CSP, TLS, cookies, exposed paths, rate-limited crawl (`--authorized` required) |
 
+## Passive web scanning
+
+`kashif https://my-site.example --authorized` reads what a site already serves, the way a browser would, and judges
+it against 184 rules (34 kept from 1.0 with the same ids, 150 new): transport and HSTS, Content-Security-Policy,
+framing and the other response headers, CORS, cookies, page content and the page's own JavaScript, information
+disclosure, TLS and certificates, components (retire.js data), exposed files and `security.txt`. It never sends a
+payload, never submits a form, never fuzzes or guesses, never spoofs headers, sends an honest User-Agent
+(`Kashif/<version>`) and keeps at least `--delay` seconds (floor 0.2) between two requests to one host.
+
+```bash
+kashif https://my-site.example --authorized                        # standard profile (at most 45 requests)
+kashif https://my-site.example --authorized --web-profile minimal  # the page and its redirects only (at most 10)
+kashif https://my-site.example --authorized --deep                 # + commonly exposed files (at most 150)
+kashif https://my-site.example --authorized --crawl --max-pages 50 # + same-origin pages (same scheme, host and port)
+kashif https://my-site.example --authorized --web-sensitivity strict -f sarif -o web.sarif
+kashif https://my-site.example --authorized --compare-previous     # diff against the last saved scan of the site
+kashif https://my-site.example --authorized --compare old-report.json   # or a scan id from the local history
+kashif update-data --web                                           # newer web data from the latest release
+```
+
+| Option | Meaning |
+|---|---|
+| `--web-profile minimal\|standard\|deep` | `minimal` is the 1.0 single fetch (the entry chain, at most 10 requests); `standard` (default) adds the http/https counterpart, one cookieless CORS GET with `Origin: https://kashif-cors-check.invalid`, `robots.txt`, `security.txt`, the favicon, `/sitemap.xml` (with `--crawl`) and up to 15 of the page's own scripts and styles (at most 45); `deep` (`--deep`) adds a fixed list of commonly exposed files, the login and administration pages of a detected platform (fetched once, nothing submitted), soft-404 baselines, third-party scripts, source maps and images (at most 150). Crawled pages come on top. |
+| `--web-sensitivity strict\|default\|paranoid` | `strict` reports certain findings only, `default` certain and firm, `paranoid` everything, including the paranoid-only checks. Every finding carries its confidence (`certain`, `firm` or `tentative`). |
+| `--crawl`, `--max-pages N`, `--max-depth N`, `--ignore-robots` | Breadth-first crawl of same-origin links (same scheme, host and port), at most 500 pages (default 20, depth 2); `robots.txt` is honoured unless you own the site and pass `--ignore-robots`. Needs `standard` or `deep`: `minimal` cannot crawl. A scan stops sending after 600 s or 50 MB received. |
+| `--compare-previous`, `--compare ID\|FILE` | New, resolved and unchanged findings, grade changes and posture changes ("CSP changed", "new third-party script host", "certificate renewed"). `--compare-previous` keeps the scan in the local history (`~/.vulnscan`, or `$VULNSCAN_HOME`) and prints its id on stderr; `--compare` takes such an id (also on the UI's Reports page and in `$VULNSCAN_HOME/index.json`) or a JSON report (`-f json`). In CI, use `--compare previous.json`. `kashif history` is unrelated (it searches git history for secrets). |
+| `--fail-on-inconclusive` | Exit code 1 when a WAF, challenge or rate limit answered instead of the site (Kashif grade `?` or WEB990), which `--fail-on` alone lets pass. |
+| `--ignore-rule ID` | Leave a web rule out of the report and of `--fail-on` (the grades still count it). |
+| `--web-cookie-ignore NAME` | Leave a cookie out of the cookie checks (repeatable). |
+| `--third-party-lookups` | Allow lookups that reveal the site's name to a third party. Off by default; in 1.1 no check makes such a lookup (the HSTS preload list and certificate transparency come from bundled data and the certificate itself). |
+| `--no-proxy` | Do not use `HTTP(S)_PROXY`. Only `http://` proxies are supported; any other proxy setting stops the scan with a proxy error (exit code 2; in the JSON report `web.error.code` starts with `proxy`), never a silent direct connection. Through a proxy, DNS-based checks are not tested and TLS findings are tentative, so they appear only with `--web-sensitivity paranoid`; use `--no-proxy` or `NO_PROXY` to assess TLS directly. |
+
+Every report shows three grades (the Kashif Web Grade A+ to F, an MDN HTTP Observatory-compatible score, and an
+SSL Labs-compatible TLS grade that excludes the attack-only tests Kashif does not perform), an honest coverage table
+(passed, failed, not applicable, not tested, inconclusive: a check that did not run is never shown as passed), the
+site inventory (security headers, CSP, cookies, TLS, technologies, third parties), copy-paste fixes for 18
+platforms (nginx, Apache httpd, IIS, Caddy, Express, Node.js, Django, Flask, Spring, Tomcat, ASP.NET Core, ASP.NET,
+PHP, Laravel, Symfony, Rails, Cloudflare, F5 BIG-IP; the detected platforms first) and, with a previous scan, the
+diff. SARIF results carry `properties.precision` and the tags `external/cwe/cwe-N`, `wstg:…`,
+`asvs4:…` and `asvs5:…`; the JSON report has the same data under the `web` key. All rules, their mappings and
+default severities are listed in [docs/web-checks.md](docs/web-checks.md); [docs/web-scanning.md](docs/web-scanning.md)
+describes the traffic, the profiles, the reports and the upgrade from 1.0.
+
+**In CI** (full example in [docs/web-scanning.md](docs/web-scanning.md#using-it-in-ci)):
+`kashif https://staging.example.com --authorized --fail-on high --fail-on-inconclusive -f sarif -o kashif-web.sarif`.
+Exit code 0 means the gate passed, 1 that it failed (a finding at or above `--fail-on`, the policy gate, or an
+inconclusive scan with `--fail-on-inconclusive`), 2 that nothing was judged (`--authorized` missing, a rejected
+option combination, or a site that could not be reached; `-o` then still writes a report whose `web.status` is
+`"unreachable"`). Upload the SARIF with `github/codeql-action/upload-sarif` and `category: kashif-web`, so it does not
+replace the code scan's results; web alerts carry a URL, not a file location, so they never annotate pull-request
+lines. Keep the JSON report of each run and pass `--compare previous.json` to the next one to see regressions.
+
+**Policy files:** for a URL, pass the file explicitly (`--policy kashif.yml`); none is picked up automatically.
+`rules.disable` and `rules.severity` change what the gate counts, not the report (use `--ignore-rule` to hide a
+rule), and the default gate fails on `high`, so set `gate.fail_on`:
+
+```yaml
+version: 1
+gate:
+  fail_on: medium             # the default gate fails on high
+rules:
+  disable:
+    - id: WEB071
+      reason: "certificates are renewed automatically 30 days before expiry"
+```
+
+**What a passive scan cannot find:** it reads anonymous pages only, and it does not test injection, XSS,
+authentication, access control or business logic; certificate revocation (CRL/OCSP) is not checked either. A grade
+measures configuration hygiene, not the absence of vulnerabilities: pair the web scan with a code scan (SAST) and an
+authorised active test.
+
 ## Limitations
 
 - Static analysis finds common patterns and flows; it does not replace human review or penetration testing.
@@ -355,7 +427,9 @@ positives remain (FPR 18.2%) because HTML escaping is not credited when the esca
   `include`, and values that flow through files or databases outside the scanned code. Large projects need memory:
   Django (about 7,000 files) peaks at about 3.5 GB.
 - Without jadx, APK/JAR contents are scanned as text only; decompiled code may differ from the original source.
-- The web scan is passive only: no active testing of any kind.
+- The web scan is passive only: no active testing of any kind. It sees anonymous pages only, does not test
+  injection, XSS, authentication, access control or business logic, and does not check certificate revocation;
+  its grade measures configuration hygiene, not the absence of vulnerabilities.
 
 ## Production use
 
@@ -381,7 +455,7 @@ provenance.
 
 ## About
 
-Kashif is developed by the Programming Department at the Islamic University of Gaza. Contact: [sdep@iugaza.edu.ps](mailto:sdep@iugaza.edu.ps)
+Kashif is developed by the Programming Department at the Islamic University of Gaza. Contact: [its@iugaza.edu.ps](mailto:its@iugaza.edu.ps) and [aelabed@iugaza.edu.ps](mailto:aelabed@iugaza.edu.ps)
 
 ## License
 
@@ -445,25 +519,74 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
   من 17,228 إلى 2,607 (الحرجة والعالية من 4,345 إلى 783)، وكان نصف نتائج 0.9 في كود الاختبارات والتوثيق والأمثلة.
 - **أسرع:** `--jobs N` لتوزيع الفحص على المعالجات، و`--cache DIR` لإعادة فحص مشروع لم يتغير بالنتائج نفسها: Django كاملًا
   (6,973 ملفًا) في 311–411 ثانية أول مرة على 4 معالجات افتراضية (كان 594 ثانية في 0.9)، و3.5 ثوانٍ عند الإعادة.
-- النماذج **6,354** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,531، ومعقّمات 779). التفاصيل في `CHANGELOG.md`.
+- النماذج **6,357** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,532، ومعقّمات 781). التفاصيل في `CHANGELOG.md`.
 
-### فحص الويب بعمق أكبر
+### فحص المواقع السلبي
 
-الفحص الافتراضي لعنوان الويب سلبي بالكامل: يقرأ ما يخدمه الموقع فقط ولا يرسل أي بيانات في النماذج
-ولا يجرّب أي حمولات. يغطّي:
+يقرأ `kashif https://my-site.example --authorized` ما يقدّمه الموقع أصلًا كما يقرؤه المتصفح، ويحكم عليه بـ 184 قاعدة
+(34 منها من الإصدار 1.0 بالمعرّفات نفسها، و150 جديدة): النقل وHSTS، وسياسة CSP، وحماية الإطارات وبقية ترويسات الاستجابة،
+وCORS، والكوكيز، ومحتوى الصفحة وسكربتاتها، وتسرّب المعلومات، وTLS والشهادات، والمكوّنات (بيانات retire.js)، والملفات
+المكشوفة و`security.txt`. لا يرسل أي حمولة، ولا يملأ نموذجًا، ولا يخمّن أو يجرّب مسارات عشوائية، ولا يزوّر الترويسات،
+ويعرّف نفسه بصدق (`Kashif/<الإصدار>`) ويترك `--delay` ثانية على الأقل (والحد الأدنى 0.2) بين طلبين إلى المضيف نفسه.
 
-- **ترويسات الأمان**: HSTS، CSP (مع كشف `unsafe-inline` و`unsafe-eval` و`*`)، X-Frame-Options،
-  X-Content-Type-Options، Referrer-Policy، Permissions-Policy.
-- **الكوكيز**: علامات Secure و HttpOnly و SameSite.
-- **TLS والشهادة**: قبول TLS 1.0/1.1 القديم، وانتهاء الشهادة أو عدم صحتها.
-- **تحليل الصفحة** (من نفس الطلب، بلا طلبات إضافية): محتوى مختلط على صفحة HTTPS، نماذج تُرسل عبر HTTP،
-  حقل كلمة مرور في صفحة غير آمنة، سكربتات خارجية بلا SRI، إصدار jQuery قديم، عرض فهرس المجلدات،
-  وأثر استثناء/تصحيح مسرَّب في الاستجابة.
+```bash
+kashif https://my-site.example --authorized                        # نمط الفحص standard (45 طلبًا على الأكثر)
+kashif https://my-site.example --authorized --web-profile minimal  # الصفحة وتوجيهاتها فقط (10 طلبات على الأكثر)
+kashif https://my-site.example --authorized --deep                 # مع الملفات المكشوفة الشائعة (150 طلبًا على الأكثر)
+kashif https://my-site.example --authorized --crawl --max-pages 50 # مع صفحات الأصل نفسه (المخطط والمضيف والمنفذ)
+kashif https://my-site.example --authorized --web-sensitivity strict -f sarif -o web.sarif
+kashif https://my-site.example --authorized --compare-previous     # مقارنة بآخر فحص محفوظ للموقع
+kashif https://my-site.example --authorized --compare old-report.json   # أو معرّف فحص من السجل المحلي
+kashif update-data --web                                           # بيانات ويب أحدث من آخر إصدار
+```
 
-مع `--deep` (أو خيار «فحص أعمق» في الواجهة) يُجري **عددًا محدودًا** من الطلبات الإضافية لملفات يشيع
-تركها مكشوفة بالخطأ: `.git/HEAD`، `.env`، `.svn/entries`، `.DS_Store`، `server-status`، `phpinfo.php`،
-و`security.txt`، مع قراءة `robots.txt`. لا يتجاوز ذلك قراءة ما هو متاح أصلًا، ولا يُجري أي اختبار نشط
-(لا حقن، ولا تخمين، ولا تجاوز للحماية).
+| الخيار | معناه |
+|---|---|
+| `--web-profile minimal\|standard\|deep` | `minimal` هو طلب الإصدار 1.0 الواحد (الصفحة وتوجيهاتها، 10 طلبات على الأكثر)؛ و`standard` (الافتراضي) يضيف نسخة http/https وطلب CORS واحدًا بلا كوكيز والملفين `robots.txt` و`security.txt` والأيقونة و`/sitemap.xml` (مع `--crawl`) وحتى 15 من سكربتات الصفحة وأنماطها (45 طلبًا على الأكثر)؛ و`deep` (أو `--deep`) يضيف قائمة ثابتة من الملفات المكشوفة الشائعة، وصفحات الدخول والإدارة للمنصّة المكتشفة (تُطلب مرة واحدة دون إرسال أي بيانات)، وخطوط أساس لصفحات 404، وسكربتات الأطراف الثالثة وخرائط المصدر والصور (150 طلبًا على الأكثر). وصفحات الزحف إضافة على ذلك. |
+| `--web-sensitivity strict\|default\|paranoid` | `strict` النتائج المؤكَّدة فقط، و`default` المؤكَّدة والمرجَّحة، و`paranoid` كل شيء مع الفحوص الخاصة بهذا المستوى. وكل نتيجة تحمل درجة ثقتها (مؤكَّدة أو مرجَّحة أو محتملة). |
+| `--crawl` و`--max-pages N` و`--max-depth N` و`--ignore-robots` | زحف بالعرض أولًا على روابط الأصل نفسه (المخطط والمضيف والمنفذ أنفسها)، بحدّ أعلى 500 صفحة (الافتراضي 20 صفحةً بعمق 2)؛ ويُحترم `robots.txt` إلا إن كنت مالك الموقع وأضفت `--ignore-robots`. ويحتاج إلى `standard` أو `deep`، فلا زحف في `minimal`. ويتوقف الفحص عن الإرسال بعد 600 ثانية أو بعد استقبال 50 ميغابايت. |
+| `--compare-previous` و`--compare ID\|FILE` | النتائج الجديدة والمحلولة والثابتة، وتغيّر الدرجات وتغييرات الوضع الأمني («تغيّرت سياسة CSP»، «مضيف سكربتات جديد»، «جُدّدت الشهادة»). يحفظ `--compare-previous` الفحص في السجل المحلي (`~/.vulnscan` أو `$VULNSCAN_HOME`) ويطبع معرّفه على stderr، ويقبل `--compare` هذا المعرّف (ويظهر أيضًا في صفحة التقارير في الواجهة وفي `$VULNSCAN_HOME/index.json`) أو تقرير JSON (`-f json`). وفي CI استعمل `--compare previous.json`. ولا علاقة لـ `kashif history` بذلك (فهو يبحث في سجل git عن الأسرار). |
+| `--fail-on-inconclusive` | رمز الخروج 1 إذا أجاب جدار حماية أو تحدٍّ أو تقييد معدل بدل الموقع (درجة كاشِف `?` أو النتيجة WEB990)، وهو ما يمرّره `--fail-on` وحده. |
+| `--ignore-rule ID` | استبعاد قاعدة ويب من التقرير ومن `--fail-on` (وتبقى الدرجات تحسبها). |
+| `--web-cookie-ignore NAME` | استبعاد كوكي من فحوص الكوكيز (يمكن تكراره). |
+| `--third-party-lookups` | السماح باستعلامات تكشف اسم الموقع لطرف ثالث؛ معطّلة افتراضيًا، ولا يجري أي فحص في الإصدار 1.1 استعلامًا كهذا (فقائمة HSTS preload وشفافية الشهادات من بيانات مضمّنة ومن الشهادة نفسها). |
+| `--no-proxy` | عدم استخدام `HTTP(S)_PROXY`. ولا يدعم كاشِف إلا الوكيل من نوع `http://`، وأي إعداد آخر يوقف الفحص بخطأ في الوكيل (رمز الخروج 2، وقيمة `web.error.code` في تقرير JSON تبدأ بـ `proxy`) ولا يتصل مباشرةً خفية. وعبر الوكيل تُعدّ الفحوص المعتمدة على DNS «لم تُجرَ» ونتائج TLS «محتملة»، فلا تظهر إلا مع `--web-sensitivity paranoid`؛ ولتقييم TLS مباشرةً استعمل `--no-proxy` أو `NO_PROXY`. |
+
+يعرض كل تقرير ثلاث درجات (درجة كاشِف للويب من A+ إلى F، ودرجة متوافقة مع MDN HTTP Observatory، ودرجة TLS متوافقة مع
+SSL Labs دون اختبارات الهجوم التي لا يجريها كاشِف)، وجدول تغطية صادقًا (ناجح، فاشل، غير منطبق، لم يُجرَ، غير حاسم: الفحص
+الذي لم يُجرَ لا يُعرض ناجحًا أبدًا)، وجرد الموقع (ترويسات الأمان وCSP والكوكيز وTLS والتقنيات والأطراف الثالثة)، وإصلاحات
+جاهزة للنسخ لـ 18 منصةً (nginx وApache httpd وIIS وCaddy وExpress وNode.js وDjango وFlask وSpring وTomcat وASP.NET Core
+وASP.NET وPHP وLaravel وSymfony وRails وCloudflare وF5 BIG-IP، والمنصّات المكتشفة أولًا)، ومع فحص سابق: المقارنة. وتحمل نتائج SARIF الخاصية `properties.precision` والوسوم `external/cwe/cwe-N` و`wstg:…`
+و`asvs4:…` و`asvs5:…`، ويحمل تقرير JSON البيانات نفسها تحت المفتاح `web`. القواعد وربطها ودرجات خطورتها في
+[docs/web-checks.md](docs/web-checks.md)، والطلبات والملفات والتقارير والترقية من 1.0 في [docs/web-scanning.md](docs/web-scanning.md).
+وفي الواجهة الرسومية الخيارات نفسها في نموذج فحص الويب، وبطاقة الدرجات وجدول التغطية وتبويبات الجرد والإصلاحات والمقارنة.
+
+**في CI** (المثال الكامل في [docs/web-scanning.md](docs/web-scanning.md#الاستخدام-في-ci)):
+`kashif https://staging.example.com --authorized --fail-on high --fail-on-inconclusive -f sarif -o kashif-web.sarif`.
+ورمز الخروج 0 يعني نجاح البوابة، و1 فشلها (نتيجة بخطورة `--fail-on` أو أعلى، أو بوابة السياسة، أو فحص غير حاسم مع
+`--fail-on-inconclusive`)، و2 أنه لم يُحكم على شيء (غياب `--authorized`، أو توليفة خيارات مرفوضة، أو تعذّر الوصول إلى
+الموقع؛ ويكتب `-o` حينها تقريرًا مع ذلك قيمة `web.status` فيه `"unreachable"`). ارفع SARIF بالإجراء
+`github/codeql-action/upload-sarif` مع `category: kashif-web` حتى لا يحلّ محل نتائج فحص الكود؛ وموضع إنذارات الويب عنوان
+URL لا ملف، فلا تظهر تعليقاتٍ على أسطر طلب الدمج. واحتفظ بتقرير JSON من كل تشغيل ومرّره إلى التالي بـ
+`--compare previous.json` لرؤية التراجعات.
+
+**ملف السياسة:** مع عنوان ويب مرّر الملف صراحةً (`--policy kashif.yml`)، فلا يُلتقط أي ملف تلقائيًا. و`rules.disable`
+و`rules.severity` تغيّران ما تحسبه البوابة لا التقرير (ولإخفاء قاعدة من التقرير استعمل `--ignore-rule`)، والبوابة
+الافتراضية تفشل عند `high`، فاضبط `gate.fail_on`:
+
+```yaml
+version: 1
+gate:
+  fail_on: medium             # البوابة الافتراضية تفشل عند high
+rules:
+  disable:
+    - id: WEB071
+      reason: "certificates are renewed automatically 30 days before expiry"
+```
+
+**ما لا يكشفه الفحص السلبي:** يقرأ الصفحات العامة فقط، ولا يختبر الحقن ولا XSS ولا المصادقة ولا التحكم في الوصول ولا
+منطق العمل، ولا يتحقق من إلغاء الشهادة (CRL/OCSP). والدرجة تقيس سلامة الإعدادات لا خلوّ الموقع من الثغرات: فاجمع فحص الويب
+مع فحص الكود (SAST) ومع اختبار نشط مصرَّح به.
 
 > ⚠️ كل فحص ويب يتطلب `--authorized` (أو تفعيل الإقرار في الواجهة). افحص فقط المواقع التي تملكها أو لديك
 > تصريح كتابي بفحصها.
@@ -608,12 +731,14 @@ kashif ./my-apex-app        # f100.sql أو application/pages/*.sql، وملفا
 | `APX013` | كوكي المصادقة دون Secure |
 | `APX014` | مخطط «بلا مصادقة» |
 | `APX015` | كلمة مرور تُقارن كنص صريح (المصادقة المخصصة والحزم) |
-| `APX016` | صفحة عامة تعدّل البيانات (صفحة الدخول مستثناة) |
+| `APX016` | صفحة عامة تعدّل البيانات (تُستثنى عمليات صفحة الدخول التي لا تكتب في الجداول) |
 | `APX017` | صفحة تعدّل البيانات بلا مخطط تفويض |
 | `APX018` | حماية الوصول للصفحة غير مقيّدة |
 | `APX019` | عنصر مخفي قيمته غير محمية |
 | `APX020` | عملية AJAX عند الطلب بلا تفويض |
 | `APX021` | الاستبدال دون النقطة الختامية |
+| `APX022` | وحدة PL/SQL ملفوفة (wrapped): تُذكر مرة واحدة ولا يُفحص نصّها (معلوماتية) |
+| `APX023` | إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق؛ وتُخفَّض خطورة ما يوجد داخلها درجة واحدة |
 
 أسماء الخصائص ومعانيها مأخوذة من ملفات تصدير أوراكل الرسمية نفسها، وقد جُرّبت الفحوص عليها.
 
@@ -712,18 +837,18 @@ from func e where e.is_entry and reaches(e.name, "system") select e, "يصل إ�
 ### فحص تطبيقات الويب وصفحاتها (الزحف وبصمة المنصّات)
 
 لفحص تطبيق ويب متعدد الصفحات مثل بوابة جامعة أو نظام **Moodle** أو تطبيق **Oracle APEX**، أضِف `--crawl`:
-تتبع الأداة روابط الصفحات من **النطاق نفسه** زحفًا بالعرض (BFS) وتفحص كل صفحة بالفحوص السلبية.
+تتبع الأداة روابط الصفحات من **الأصل نفسه** (المخطط والمضيف والمنفذ أنفسها) زحفًا بالعرض (BFS) وتفحص كل صفحة بالفحوص السلبية.
 
 ```bash
 kashif https://lms.jamiah.example --authorized --crawl --deep
 ```
 
-- حدود الزحف: `--max-pages` (الافتراضي 20) و`--max-depth` (الافتراضي 2). لا تُتبع روابط الخروج/الحذف
-  (logout، delete…) ولا الروابط الخارجة عن النطاق، ولا تُرسَل أي بيانات.
+- حدود الزحف: `--max-pages` (الافتراضي 20، والحد الأعلى 500) و`--max-depth` (الافتراضي 2). لا تُتبع روابط الخروج/الحذف
+  (logout، delete…) ولا الروابط الخارجة عن الأصل، ولا تُرسَل أي بيانات.
 - **بصمة المنصّة**: تتعرّف الأداة تلقائيًا على Moodle وOracle APEX وWordPress وJoomla وDrupal وphpMyAdmin
-  وLaravel من الصفحة والترويسات، وتنبّه إذا كان الإصدار قديمًا، وتذكّر بتحديث الإضافات والقوالب. ومع `--deep`
-  تفحص مسارات الإدارة والدخول وملفات الإعداد الشائعة لكل منصّة (مثل `/login/index.php` و`/wp-login.php`
-  و`/administrator/`).
+  وLaravel من الصفحة والترويسات، وتنبّه إذا كان الإصدار المكتشف به ثغرات معروفة (WEB800) أو انتهى دعمه (WEB801). ومع
+  `--deep` تجلب مرة واحدة بطلب GET عادي مسارات الإدارة والدخول المعروفة للمنصّة المكتشفة (مثل `/login/index.php`
+  و`/wp-login.php` و`/administrator/`) دون إرسال أي بيانات إليها، مع القائمة الثابتة من الملفات المكشوفة الشائعة.
 
 > ⚠️ الزحف وفحص الويب يتطلبان `--authorized`. افحص فقط الأنظمة التي تملكها أو لديك تصريح كتابي بفحصها —
 > فحص بوابة جامعة أو أي نظام لا تملكه دون إذن قد يكون مخالفًا للقانون.
@@ -942,6 +1067,7 @@ kashif . -f codeclimate -o gl-code-quality.json
 | `kashif surface .` | خريطة سطح الهجوم: نقاط الدخول ومدخلاتها والمصادقة الظاهرة والمصارف التي تصل إليها، وهيكل OpenAPI 3.1؛ تحليل ساكن فقط. |
 | `kashif rules new my-pack` | اكتب قواعدك واختبرها: `new` و`test` و`lint` و`pack` و`verify` و`install` و`list` و`docs`؛ وافحص بالحزم المثبّتة عبر `--pack NAME` أو `--packs`. |
 | `kashif update` | تثبيت أحدث إصدار رسمي بعد التحقق منه (`--check` للتحقق فقط). |
+| `kashif update-data --web` | تثبيت بيانات فاحص المواقع من حزمة آخر إصدار رسمي بعد التحقق من بصمتها SHA-256 (`--check` للتحقق فقط)؛ لا يُرسل شيء عن المواقع التي تفحصها، ودونه تُستخدم البيانات المضمّنة. |
 
 ### التكامل مع GitHub Code Scanning (SARIF)
 
@@ -1099,11 +1225,13 @@ python -m pytest -q
 - النماذج أقل من الأدوات التجارية الكبرى (نحو 6,350 واجهة مكتبة و153 قاعدة نمطية)، والضبط على الكود الحقيقي أقل (ضُبط
   الإصدار 1.0 على 38 مشروعًا مفتوح المصدر).
 - بدون jadx تُفحص محتويات APK/JAR النصية فقط؛ ومع jadx يُفحص الكود المفكوك وهو كود مُعاد توليده قد يختلف عن المصدر الأصلي.
-- فحص الويب سلبي بالكامل (طلب واحد) ولا يُجري أي اختبار نشط.
+- فحص الويب سلبي بالكامل (طلبات GET عادية فقط، ضمن حدّ معلَن لكل نمط فحص: `minimal` طلب واحد بتوجيهاته كما في 1.0)
+  ولا يُجري أي اختبار نشط: يرى الصفحات العامة فقط، ولا يختبر الحقن ولا XSS ولا المصادقة ولا التحكم في الوصول ولا منطق
+  العمل، ولا يتحقق من إلغاء الشهادة؛ ودرجته تقيس سلامة الإعدادات لا خلوّ الموقع من الثغرات.
 
 ## حول كاشِف
 
-كاشِف من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة. للتواصل: [sdep@iugaza.edu.ps](mailto:sdep@iugaza.edu.ps)
+كاشِف من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة. للتواصل: [its@iugaza.edu.ps](mailto:its@iugaza.edu.ps) و[aelabed@iugaza.edu.ps](mailto:aelabed@iugaza.edu.ps)
 
 ## الرخصة
 

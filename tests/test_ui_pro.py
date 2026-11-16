@@ -97,7 +97,9 @@ def test_views_are_wired_to_the_1_0_endpoints():
 
 
 def test_about_section_and_update_button_kept():
-    assert "sdep@iugaza.edu.ps" in HTML
+    assert "mailto:its@iugaza.edu.ps" in HTML
+    assert "mailto:aelabed@iugaza.edu.ps" in HTML
+    assert "sdep" + "@" not in HTML
     assert 'data-i18n="about.by"' in HTML
     assert "الجامعة الإسلامية بغزة" in AR["about.by"] and "Islamic University of Gaza" in EN["about.by"]
     assert "Programming Department" in EN["about.by"]

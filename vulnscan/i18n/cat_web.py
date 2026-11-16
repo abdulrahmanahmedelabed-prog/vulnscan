@@ -29,7 +29,8 @@ CATALOG: dict[str, str] = {
         "Remove .env from the web root immediately and revoke any secrets it contains.",
     "بيانات .svn مكشوفة": "Exposed .svn metadata",
     "امنع الوصول إلى .svn من خادم الويب.": "Block access to .svn on the web server.",
-    "ملف .DS_Store مكشوف": "Exposed .DS_Store",
+    # the same Arabic as the 1.1.0 rule registry (cat_web2): one English for both (this module is read first)
+    "ملف .DS_Store مكشوف": "Exposed .DS_Store file",
     "احذف .DS_Store من النشر؛ قد يكشف أسماء الملفات.":
         "Remove .DS_Store from the deployment; it can disclose file names.",
     "صفحة server-status مكشوفة": "Apache server-status exposed",
@@ -54,7 +55,7 @@ CATALOG: dict[str, str] = {
     "نسخة احتياطية من wp-config مكشوفة": "Exposed wp-config backup",
     "احذف النسخ الاحتياطية وأبطل بيانات قاعدة البيانات.":
         "Remove the backup files and rotate the database credentials.",
-    "ملف .htaccess مكشوف": "Exposed .htaccess",
+    "ملف .htaccess مكشوف": "Exposed .htaccess file",
     "امنع تقديم ملفات .htaccess من خادم الويب.": "Configure the web server to never serve .htaccess files.",
     "نسخة احتياطية من config.php مكشوفة": "Exposed PHP config backup",
     "احذف النسخ الاحتياطية من جذر الويب.": "Remove backup files from the web root.",
@@ -73,7 +74,7 @@ CATALOG: dict[str, str] = {
     "فعّل HTTPS وأعد توجيه HTTP إليه.": "Enable HTTPS and redirect all HTTP traffic to it.",
     "ترويسة Server تكشف الإصدار": "Server header reveals version",
     "أخفِ رقم الإصدار من ترويسة Server.": "Remove the version number from the Server header.",
-    "ترويسة X-Powered-By تكشف التقنية": "X-Powered-By reveals stack",
+    "ترويسة X-Powered-By تكشف التقنية": "X-Powered-By reveals the stack",
     "احذف ترويسة X-Powered-By.": "Remove the X-Powered-By header.",
     "كوكي بدون علامة Secure": "Cookie without Secure flag",
     "أضف Secure لكل الكوكيز.": "Set the Secure attribute on all cookies.",
@@ -142,8 +143,133 @@ CATALOG: dict[str, str] = {
     "عطّل TLS 1.0/1.1 واقبل TLS 1.2+ فقط.": "Disable TLS 1.0/1.1 and accept only TLS 1.2 and later.",
 }
 
-PATTERNS: list[tuple[str, str]] = [
-    # ---------------------------------------------------------------- explain_failure (WebUnreachable message)
+# ---------------------------------------------------------------- explain_failure (vulnscan/web.py)
+# Why a site could not be scanned: sentence key → (English, Arabic). vulnscan/web.py composes a message from these
+# sentences (FAILURE_COMBOS lists every sequence it can emit) and the patterns below are generated from the same table,
+# so the English of an Arabic message saved by the UI or printed by the engine is exactly the English web.py builds.
+# Placeholders: {host} {url} {proxy} {port} {err} are left-to-right isolates (U+2066 … U+2069) in the Arabic text;
+# {t1} {t2} are durations ("20 ثانيةً" / "20 s", vulnscan.i18n.plural.SECONDS); {n} {status} are numbers.
+LRI, PDI, LRM = "\u2066", "\u2069", "\u200e"
+FAILURE: dict[str, tuple[str, str]] = {
+    "wrap": ("The site was not scanned: {why} (details: {err})", "لم يُفحص الموقع — {why} (التفاصيل: {err})"),
+    "timeout": ("The connection to {host} timed out: no answer within {t1}, then {t2} on the retry.",
+                "انتهت مهلة الاتصال بـ{host}: لا ردّ خلال {t1}، ثم خلال {t2} في المحاولة الثانية."),
+    "timeout_cause": ("The site may be slow or down, or it may block requests from your network or from outside its "
+                      "country (firewall or geo-blocking).",
+                      "قد يكون الموقع بطيئًا أو متوقفًا، أو يحجب الطلبات القادمة من شبكتك أو من خارج بلده "
+                      "(جدار حماية أو حجب جغرافي)."),
+    "timeout_try": ("Try opening it in a browser on this machine, or from another network (mobile data).",
+                    "جرّب فتحه في متصفح على هذا الجهاز، أو من شبكة أخرى (بيانات الجوال)."),
+    "timeout_cli": ("If it is only slow, scan again with a longer timeout: --timeout {n}.",
+                    f"وإن كان بطيئًا فحسب فأعد الفحص بمهلة أطول: {LRI}--timeout {{n}}{PDI}."),
+    "timeout_ui": ("If it is only slow, increase the timeout in Settings.",
+                   "وإن كان بطيئًا فحسب فزِد المهلة من الإعدادات."),
+    "deadline": ("{host} kept the response open past the response deadline ({t1}), so the page could not be read.",
+                 "أبقى {host} الاستجابة مفتوحة بعد انقضاء مهلة الاستجابة ({t1})، فتعذّرت قراءة الصفحة."),
+    "alt_url": ("You can also try {url}.", "ويمكنك أيضًا تجربة {url}."),
+    "alt_port": ("Check that the service on port {port} is running.", "تحقّق من أن الخدمة على المنفذ {port} تعمل."),
+    "dns": ("Could not resolve the domain name {host}: check the address for typos, your internet connection and "
+            "your DNS settings.",
+            "تعذّر حلّ اسم النطاق {host}: تحقّق من كتابة العنوان ومن اتصال الإنترنت وإعدادات DNS."),
+    "dns_https_proxy": ("Only an HTTPS proxy is set (HTTPS_PROXY), with no HTTP proxy (HTTP_PROXY), so this machine "
+                        "resolved the name of this http:// address itself; if your network resolves names only "
+                        "through the proxy, set HTTP_PROXY as well, or scan {url}.",
+                        f"عُرِّف وكيل HTTPS وحده ({LRI}HTTPS_PROXY{PDI}) بلا وكيل HTTP ({LRI}HTTP_PROXY{PDI})، "
+                        f"فحلَّ هذا الجهاز اسم العنوان {LRI}http://{PDI} بنفسه؛ فإن كانت شبكتك لا تحلّ الأسماء إلا "
+                        f"عبر الوكيل فعرِّف {LRI}HTTP_PROXY{PDI} أيضًا، أو افحص {{url}}."),
+    "refused": ("The server {host} refused the connection: the port is closed or the service is down.",
+                "رفض الخادم {host} الاتصال: المنفذ مغلق أو الخدمة متوقفة."),
+    "route": ("No network route to {host}: the network or the server is not reachable from this machine right now.",
+              "لا يوجد مسار شبكي إلى {host}: الشبكة أو الخادم غير قابلين للوصول من جهازك الآن."),
+    "tls": ("Could not establish a secure TLS connection with {host} (invalid certificate or misconfigured TLS). "
+            "This is itself a security issue worth reviewing.",
+            "فشل إنشاء اتصال TLS آمن مع {host} (شهادة غير صالحة أو إعداد TLS خاطئ). وهذا في حدّ ذاته مشكلة أمنية "
+            "تستحق المراجعة."),
+    "waf": ("The server {host} dropped the connection during the request: a web application firewall (WAF) may be "
+            "blocking it.",
+            "قطع الخادم {host} الاتصال أثناء الطلب: قد يكون جدار حماية تطبيقات الويب (WAF) يحجب الطلب."),
+    "reset_proxy": ("The connection through the proxy {proxy} was closed during the request to {host}: the proxy or "
+                    "the site closed it, and Kashif cannot tell which.",
+                    "أُغلق الاتصال عبر الوكيل {proxy} أثناء الطلب إلى {host}: أغلقه الوكيل أو الموقع، ولا يستطيع "
+                    "كاشِف معرفة أيهما."),
+    "proxy_reset_tls": ("The connection through the proxy {proxy} was closed while the TLS handshake with {host} was "
+                        "being set up: the proxy or the site closed it, and Kashif cannot tell which.",
+                        "أُغلق الاتصال عبر الوكيل {proxy} أثناء إعداد مصافحة TLS مع {host}: أغلقه الوكيل أو الموقع، "
+                        "ولا يستطيع كاشِف معرفة أيهما."),
+    "proxy_reset": ("The proxy {proxy} closed the connection before the request to {host} was sent.",
+                    "أغلق الوكيل {proxy} الاتصال قبل إرسال الطلب إلى {host}."),
+    "proxy_unsupported": ("The proxy {proxy} (from HTTP_PROXY/HTTPS_PROXY) cannot be used: Kashif supports only http:// proxies, and sent nothing directly instead.",
+                          f"لا يمكن استخدام الوكيل {{proxy}} (المعرَّف في {LRI}HTTP_PROXY/HTTPS_PROXY{PDI}): لا يدعم كاشِف إلا وكلاء {LRI}http://{PDI}، ولم يُرسل أي طلب مباشرةً بدلًا منه."),
+    "proxy_unreachable": ("Could not connect to the proxy {proxy} (from HTTP_PROXY/HTTPS_PROXY).",
+                          f"تعذّر الاتصال بالوكيل {{proxy}} (المعرَّف في {LRI}HTTP_PROXY/HTTPS_PROXY{PDI})."),
+    "proxy_refused": ("The proxy {proxy} refused to connect to {host} (HTTP {status}), so Kashif did not reach the site.",
+                      f"رفض الوكيل {{proxy}} الاتصال بـ{{host}} ({LRI}HTTP {{status}}{PDI})، فلم يصل كاشِف إلى الموقع."),
+    "proxy_refused_any": ("The proxy {proxy} refused to connect to {host}, so Kashif did not reach the site.",
+                          "رفض الوكيل {proxy} الاتصال بـ{host}، فلم يصل كاشِف إلى الموقع."),
+    "via_proxy": ("The request went through the proxy {proxy}.", "مرّ الطلب عبر الوكيل {proxy}."),
+    "proxy_fix_cli": ("Check the proxy, or run with --no-proxy.",
+                      f"تحقّق من الوكيل، أو شغّل الفحص بالخيار {LRM}--no-proxy."),
+    "proxy_fix_ui": ("Check the proxy, or tick \u201cDo not use the system's proxy\u201d in the scan options.",
+                     "تحقّق من الوكيل، أو فعّل خيار «لا تستخدم الوكيل (proxy) المعرَّف في النظام» في خيارات الفحص."),
+    "unsupported": ("Only http:// and https:// URLs can be scanned (got {url}).",
+                    f"لا يمكن فحص إلا عناوين {LRI}http://{PDI} و{LRI}https://{PDI} (العنوان المُعطى: {{url}})."),
+    "invalid": ("The address is not a valid URL: {url}.", "العنوان ليس رابطًا صالحًا: {url}."),
+    "unreadable": ("{host} answered, but its response could not be read as HTTP.",
+                   "أجاب {host}، لكن تعذّرت قراءة استجابته بوصفها HTTP."),
+    "other": ("Could not reach {host}.", "تعذّر الوصول إلى {host}."),
+}
+
+
+def _failure_combos() -> tuple[tuple[str, ...], ...]:
+    """Every sentence sequence ``web.explain_failure`` can emit as the {why} of "wrap"."""
+    out: list[tuple[str, ...]] = []
+    for more in ("cli", "ui"):
+        fix = f"proxy_fix_{more}"
+        for alt in (("alt_url",), ("alt_port",), ()):
+            out.append(("timeout", "timeout_cause", "timeout_try", *alt, f"timeout_{more}"))
+        out.append(("timeout", "via_proxy", fix, f"timeout_{more}"))
+        out += [(k, fix) for k in ("reset_proxy", "proxy_reset_tls", "proxy_reset", "proxy_unreachable",
+                                   "proxy_refused", "proxy_refused_any", "proxy_unsupported")]
+    out += [("deadline",), ("dns",), ("dns", "dns_https_proxy"), ("refused", "alt_url"), ("refused", "alt_port"),
+            ("refused",), ("route",), ("tls",), ("waf",), ("unsupported",), ("invalid",), ("unreadable",), ("other",)]
+    return tuple(dict.fromkeys(out))
+
+
+FAILURE_COMBOS = _failure_combos()
+_SECS_AR = r"(?:ثانية واحدة|ثانيتين|\d+(?:\.\d+)? (?:ثوانٍ|ثانيةً|ثانية))"
+_SLOT = {"host": f"{LRI}(?P<host>[^{PDI}]*){PDI}", "url": f"{LRI}(?P<url>[^{PDI}]*){PDI}",
+         "proxy": f"{LRI}(?P<proxy>[^{PDI}]*){PDI}", "port": f"{LRI}(?P<port>[^{PDI}]*){PDI}",
+         "t1": f"(?P<t1>{_SECS_AR})", "t2": f"(?P<t2>{_SECS_AR})", "n": r"(?P<n>\d+(?:\.\d+)?)",
+         "status": r"(?P<status>\d{3})"}
+
+
+def failure_pattern(ar: str, en: str) -> tuple[str, str]:
+    """(regular expression of the Arabic sentence(s), English replacement) for a FAILURE template."""
+    import re
+    rx, last = [], 0
+    for m in re.finditer(r"\{(\w+)\}", ar):
+        rx.append(re.escape(ar[last:m.start()]))
+        rx.append(_SLOT[m.group(1)])
+        last = m.end()
+    rx.append(re.escape(ar[last:]))
+    return "".join(rx), re.sub(r"\{(\w+)\}", lambda m: f"\\g<{m.group(1)}>", en)
+
+
+def _failure_patterns() -> list[tuple[str, str]]:
+    out = [(f"لم يُفحص الموقع — (?P<why>.+) \\(التفاصيل: (?:{LRI}(?P<err>.*){PDI})?\\)",
+            r"The site was not scanned: \g<why> (details: \g<err>)")]
+    for combo in FAILURE_COMBOS:
+        out.append(failure_pattern(" ".join(FAILURE[k][1] for k in combo), " ".join(FAILURE[k][0] for k in combo)))
+    # durations inside the sentences ({t1}, {t2}): the forms of vulnscan.i18n.plural.SECONDS
+    out.append((r"(?P<n>\d+(?:\.\d+)?) (?:ثوانٍ|ثانيةً|ثانية)", r"\g<n> s"))
+    return out
+
+
+CATALOG.update({"ثانية واحدة": "1 s", "ثانيتين": "2 s"})
+
+PATTERNS: list[tuple[str, str]] = _failure_patterns() + [
+    # ---------------------------------------------------------------- explain_failure of 1.0.1 / 1.1.0 betas
+    # (messages saved in the local scan history before the sentences above)
     (r"لم يُفحص الموقع — (?P<why>.+) \(التفاصيل: (?P<err>.*)\)",
      r"The site was not scanned: \g<why> (details: \g<err>)"),
     (r"انتهت مهلة الاتصال بـ (?P<host>\S+) بعد (?P<secs>\d+) ثانية في محاولتين\. الموقع لم يرد: قد يكون بطيئًا أو متوقفًا، "

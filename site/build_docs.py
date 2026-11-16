@@ -5,8 +5,10 @@ Usage:
     python3 site/build_docs.py [--out DIR] [--version X.Y.Z]
 
 Writes docs.html (README.md), changelog.html (CHANGELOG.md), security.html
-(SECURITY.md) and license.html (LICENSE) next to index.html, and copies the
-images the README uses (docs/...) into DIR/docs/. Run at deploy time
+(SECURITY.md), license.html (LICENSE), privacy.html (PRIVACY.md),
+web-scanning.html (docs/web-scanning.md) and web-checks.html (docs/web-checks.md,
+with one anchor per rule: web-checks.html#WEB101) next to index.html, and copies
+the images the README uses (docs/...) into DIR/docs/. Run at deploy time
 (.github/workflows/pages.yml) so the pages always match the repository; the
 outputs are build products and are not committed.
 
@@ -48,7 +50,11 @@ PAGES = {
     "SECURITY.md": "security.html",
     "LICENSE": "license.html",
     "PRIVACY.md": "privacy.html",
+    "docs/web-scanning.md": "web-scanning.html",
+    "docs/web-checks.md": "web-checks.html",
 }
+# a web rule id in the first cell of a docs/web-checks.md table row: that row gets the id as its anchor
+RULE_ID = re.compile(r"WEB(?:\d{3}|-[a-z][a-z0-9-]*)")
 # Stable ASCII ids for headings other pages link to (index.html footer links
 # security.html#report). The build fails if a listed heading disappears, so a
 # renamed heading cannot silently break the link.
@@ -286,21 +292,48 @@ class Slugs:
 
 
 class Ctx:
-    def __init__(self, resolver: Resolver, slugs: Slugs, rtl: bool, page: str):
+    def __init__(self, resolver: Resolver, slugs: Slugs, rtl: bool, page: str, rule_anchors: bool = False):
         self.resolver = resolver
         self.slugs = slugs
         self.rtl = rtl
         self.page = page
+        self.rule_anchors = rule_anchors      # web-checks.html: one anchor per rule row
+        self.rule_ids: list[str] = []
         self.toc: list[tuple[int, str, str]] = []
         self.forced_ids = dict(HEADING_IDS.get(page, {}))
         self.used_forced: set[str] = set()
 
     def dir_attr(self, inner_html: str) -> str:
-        """In a right-to-left document, a block with no Arabic letters reads left to right."""
+        """In a right-to-left document, a block with no Arabic letters reads left to right; in a left-to-right
+        document, a block whose first letter is Arabic (an Arabic paragraph of a bilingual page) reads right to
+        left."""
         text = strip_tags(inner_html)
         if self.rtl and not ARABIC.search(text) and re.search(r"[A-Za-z]{3,}", text):
             return ' dir="ltr"'
+        if not self.rtl and _first_strong_is_arabic(text):
+            return ' dir="rtl" lang="ar"'
         return ""
+
+    def isolate(self, inner_html: str) -> str:
+        """In a left-to-right document, the Arabic parts of "English · العربية" headings and list items are
+        isolated right to left; otherwise a trailing Latin word ("… وHSTS") would be laid out on the wrong side."""
+        if self.rtl or not ARABIC.search(strip_tags(inner_html)) or " · " not in inner_html \
+                or BLOCK_TAG.search(inner_html):
+            return inner_html
+        return " · ".join(f'<bdi lang="ar" dir="rtl">{seg}</bdi>' if ARABIC.search(strip_tags(seg)) else seg
+                          for seg in inner_html.split(" · "))
+
+
+BLOCK_TAG = re.compile(r"<(?:p|ul|ol|li|div|table|pre|blockquote|h[1-6])\b", re.I)
+
+
+def _first_strong_is_arabic(text: str) -> bool:
+    for c in text:
+        if ARABIC.match(c):
+            return True
+        if c.isalpha():
+            return False
+    return False
 
 
 # --------------------------------------------------------------------------- inline Markdown
@@ -396,6 +429,14 @@ EMPHASIS = [
 ]
 
 
+OPTION = re.compile(r"(?<![\w-])--[A-Za-z][\w-]*")
+
+
+def _nobreak_options(code_html: str) -> str:
+    """A command-line option never breaks after its "--" ("--" / "fail-on-inconclusive") when a code span wraps."""
+    return OPTION.sub(lambda m: f'<span class="nb">{m.group(0)}</span>', code_html)
+
+
 def inline(s: str, ctx: Ctx) -> str:
     tokens: list[str] = []
 
@@ -429,7 +470,7 @@ def inline(s: str, ctx: Ctx) -> str:
                 code = s[i + run:k].replace("\n", " ")
                 if len(code) > 2 and code[0] == " " and code[-1] == " " and code.strip():
                     code = code[1:-1]
-                out.append(ph("<code>" + esc(code) + "</code>"))
+                out.append(ph("<code>" + _nobreak_options(esc(code)) + "</code>"))
                 i = k + run
                 continue
             out.append(ph("`" * run))
@@ -689,7 +730,12 @@ def _heading(level: int, raw: str, ctx: Ctx) -> str:
     else:
         hid = ctx.slugs.make(text)
     if level in (2, 3):
-        ctx.toc.append((level, hid, text))
+        entry = text
+        if not ctx.rtl and " · " in text and not _first_strong_is_arabic(text):
+            # "A. Transport, redirects, HSTS · النقل والتوجيه وHSTS": the table of contents keeps the English part
+            entry = " · ".join(s for s in text.split(" · ") if not ARABIC.search(s)) or text
+        ctx.toc.append((level, hid, entry))
+    inner = ctx.isolate(inner)
     return (f'<h{level} id="{esc(hid)}"{ctx.dir_attr(inner)}>{inner}'
             f'<a class="hl" href="#{esc(hid)}" aria-hidden="true" tabindex="-1">#</a></h{level}>')
 
@@ -697,13 +743,23 @@ def _heading(level: int, raw: str, ctx: Ctx) -> str:
 def _table(head: list[str], aligns: list[str], rows: list[list[str]], ctx: Ctx) -> str:
     def cell(tag: str, text: str, k: int) -> str:
         style = f' style="text-align:{aligns[k]}"' if k < len(aligns) and aligns[k] else ""
-        return f"<{tag}{style}>{inline(text, ctx)}</{tag}>"
+        html_ = inline(text, ctx)
+        # an Arabic cell of a left-to-right table (the "الفحص" column of web-checks.md) reads right to left
+        bidi = ' dir="rtl" lang="ar"' if not ctx.rtl and ARABIC.search(strip_tags(html_)) else ""
+        return f"<{tag}{style}{bidi}>{html_}</{tag}>"
 
     th = "".join(cell("th", c, k) for k, c in enumerate(head))
     body = []
     for r in rows:
         r = (r + [""] * len(head))[:len(head)]
-        body.append("<tr>" + "".join(cell("td", c, k) for k, c in enumerate(r)) + "</tr>")
+        tr = "<tr>"
+        m = RULE_ID.fullmatch(r[0].strip().strip("`")) if ctx.rule_anchors and r else None
+        if m and r[0].strip().startswith("`"):
+            rid = ctx.slugs.claim(m.group(0))
+            ctx.rule_ids.append(rid)
+            tr = f'<tr id="{esc(rid)}">'
+            r = [f"[`{m.group(0)}`](#{rid})"] + r[1:]
+        body.append(tr + "".join(cell("td", c, k) for k, c in enumerate(r)) + "</tr>")
     whole = th + "".join(body)
     return (f'<div class="tablewrap"{ctx.dir_attr(whole)}><table><thead><tr>{th}</tr></thead>'
             f"<tbody>{''.join(body)}</tbody></table></div>")
@@ -783,7 +839,7 @@ def _list(lines: list[str], i: int, ctx: Ctx, out: list[str]) -> int:
             checked = " checked" if tm.group(1) != " " else ""
             task = f'<input type="checkbox" disabled{checked} aria-hidden="true"> '
             body = [body[0][tm.end():]] + body[1:]
-        inner = blocks(body, ctx, tight=not loose)
+        inner = ctx.isolate(blocks(body, ctx, tight=not loose))
         cls = ' class="task"' if task else ""
         lis.append(f"<li{cls}{ctx.dir_attr(inner)}>{task}{inner}</li>")
     out.append(f"<{tag}{attr}>" + "\n".join(lis) + f"</{tag}>")
@@ -824,6 +880,10 @@ UI = {
         "license.desc": "Kashif (vulnscan) is free and open source under the MIT License.",
         "privacy.title": "Privacy — Kashif (vulnscan)",
         "privacy.desc": "Kashif sends nothing about you or your code; the website counts visits anonymously, without cookies.",
+        "web-scanning.title": "Passive web scanning — Kashif (vulnscan)",
+        "web-scanning.desc": "What the Kashif passive web scanner sends, its profiles and limits, the reports, CI use with SARIF and exit codes, policy files, what a passive scan cannot find, and upgrading from 1.0.",
+        "web-checks.title": "Passive web checks — Kashif (vulnscan)",
+        "web-checks.desc": "Every rule of the Kashif passive web scanner with its severity, confidence, CWE, OWASP WSTG and ASVS mappings, and copy-paste fixes for 18 platforms.",
         "ar.note": "This document is written in Arabic.",
     },
     "ar": {
@@ -843,6 +903,10 @@ UI = {
         "license.desc": "كاشِف (vulnscan) مجاني ومفتوح المصدر برخصة MIT.",
         "privacy.title": "الخصوصية — كاشِف (vulnscan)",
         "privacy.desc": "لا يرسل كاشِف أي شيء عنك أو عن الكود؛ والموقع يعدّ الزيارات عدًّا مجهول الهوية دون ملفات تعريف ارتباط.",
+        "web-scanning.title": "الفحص السلبي للمواقع — كاشِف (vulnscan)",
+        "web-scanning.desc": "ما يرسله فاحص المواقع السلبي في كاشِف، وأنماط الفحص وحدودها، والتقارير، والاستخدام في CI مع SARIF ورموز الخروج، وملف السياسة، وما لا يكشفه الفحص السلبي، والترقية من 1.0.",
+        "web-checks.title": "فحوص الويب السلبية — كاشِف (vulnscan)",
+        "web-checks.desc": "كل قواعد فاحص المواقع السلبي في كاشِف بخطورتها وثقتها وربطها بـ CWE وOWASP WSTG وASVS، وإصلاحات جاهزة للنسخ لـ 18 منصةً.",
         "ar.note": "هذا المستند مكتوب بالعربية.",
     },
 }
@@ -897,7 +961,9 @@ html[lang="ar"] body{font-family:var(--font-ar)}
 a{color:var(--accent-ink)}
 a:hover{text-decoration-thickness:2px}
 img{max-width:100%;height:auto}
-code,pre,code:lang(ar),pre:lang(ar){font-family:var(--mono)}
+code,pre,code:lang(ar),pre:lang(ar){font-family:var(--mono);font-feature-settings:"calt" 0}
+/* JetBrains Mono's contextual hyphens (calt) are drawn one cell off inside right-to-left text ("-- deep"); the
+   standard ligatures stay on: Arabic lam-alef in code ("Kashif/<الإصدار>") needs them */
 .wrap{max-width:var(--wrap);margin:0 auto;padding:0 24px}
 .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
@@ -966,6 +1032,10 @@ code,pre,code:lang(ar),pre:lang(ar){font-family:var(--mono)}
 .prose th,.prose td{padding:9px 14px;border-bottom:1px solid var(--line);text-align:start;vertical-align:top}
 .prose th{background:var(--panel2);font-weight:600}
 .prose tr:last-child td{border-bottom:0}
+.prose tr[id] td:first-child{white-space:nowrap}
+.prose .nb{white-space:nowrap}
+.prose code .nb{font-family:inherit}
+.prose tr:target td{background:var(--tint)}
 .prose td img{display:block;border-radius:8px;border:1px solid var(--line)}
 .prose img{border-radius:6px}
 .prose .center{text-align:center}
@@ -1237,21 +1307,45 @@ def _check_forced(ctx: Ctx) -> None:
 
 
 def build_readme(out: pathlib.Path, version: str) -> str:
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
-    resolver, slugs = Resolver(out, "README.md"), Slugs()
+    return build_halves(out, version, "README.md", "docs.html")
+
+
+def build_halves(out: pathlib.Path, version: str, src: str, page: str) -> str:
+    """A document with an English half and an Arabic half (from the line <a id="arabic"></a>): the page shows the
+    half of the selected language, and a link into the other half switches language."""
+    text = (ROOT / src).read_text(encoding="utf-8")
+    resolver, slugs = Resolver(out, src), Slugs()
     m = re.search(r'^<a id="arabic"></a>[ \t]*$', text, re.M)
     halves = [("en", text[:m.start()]), ("ar", text[m.start():])] if m else [("", text)]
     body, toc = [], []
     for lang, part in halves:
-        ctx = Ctx(resolver, slugs, rtl=(lang == "ar"), page="docs.html")
+        ctx = Ctx(resolver, slugs, rtl=(lang == "ar"), page=page)
         inner = render_markdown(part, ctx)
         if lang:
             body.append(f'<div class="half sw" lang="{lang}" dir="{"rtl" if lang == "ar" else "ltr"}">{inner}</div>')
         else:
             body.append(inner)
         toc.append((lang, ctx.toc, bool(lang)))
-    return page_html(page="docs.html", version=version, body="\n".join(body), toc=toc,
-                     source="README.md", alternates=True)
+    return page_html(page=page, version=version, body="\n".join(body), toc=toc, source=src, alternates=True)
+
+
+def build_web_checks(out: pathlib.Path, version: str) -> str:
+    """docs/web-checks.md: English tables with an Arabic column, and one anchor per rule (web-checks.html#WEB101),
+    so a report, the scanner page or another document can link to a rule."""
+    src, page = "docs/web-checks.md", "web-checks.html"
+    text = (ROOT / src).read_text(encoding="utf-8")
+    ctx = Ctx(Resolver(out, src), Slugs(), rtl=False, page=page, rule_anchors=True)
+    inner = render_markdown(text, ctx)
+    if len(ctx.rule_ids) != len(set(ctx.rule_ids)) or not ctx.rule_ids:
+        raise SystemExit(f"build_docs: {page}: rule anchors missing or duplicated")
+    ids = set(ctx.rule_ids)
+    # "Used by: `WEB110`, `WEB111` …" under each remediation snippet links back to the rules' rows
+    inner = re.sub(r"<code>(WEB[\w-]+)</code>",
+                   lambda m: f'<a href="#{m.group(1)}"><code>{m.group(1)}</code></a>' if m.group(1) in ids else m.group(0),
+                   inner)
+    inner = re.sub(r'<a href="#([^"]+)"><a href="#\1"><code>([^<]+)</code></a></a>', r'<a href="#\1"><code>\2</code></a>', inner)
+    body = f'<div class="half" lang="en" dir="ltr">{inner}</div>'
+    return page_html(page=page, version=version, body=body, toc=[("", ctx.toc, False)], source=src, alternates=False)
 
 
 def build_arabic_doc(out: pathlib.Path, version: str, src: str, page: str) -> str:
@@ -1287,6 +1381,8 @@ def main(argv: list[str] | None = None) -> int:
         "security.html": build_arabic_doc(out, version, "SECURITY.md", "security.html"),
         "license.html": build_license(version),
         "privacy.html": build_arabic_doc(out, version, "PRIVACY.md", "privacy.html"),
+        "web-scanning.html": build_halves(out, version, "docs/web-scanning.md", "web-scanning.html"),
+        "web-checks.html": build_web_checks(out, version),
     }
     for name, content in pages.items():
         # the only github.com link these pages may carry is the header's "GitHub" button
@@ -1296,7 +1392,25 @@ def main(argv: list[str] | None = None) -> int:
         (out / name).write_text(content, encoding="utf-8")
         print(f"build_docs: wrote {out / name} ({len(content):,} bytes)")
     _check_landing_anchors(pages)
+    _check_page_anchors(pages)
     return 0
+
+
+def _check_page_anchors(pages: dict[str, str]) -> None:
+    """Fail the build when a generated page links to an anchor that no generated page has: a renamed heading in
+    README.md or docs/web-scanning.md, or a rule id missing from web-checks.html, must not leave a dead link."""
+    missing = []
+    for name, content in pages.items():
+        for href in set(re.findall(r'href="([^"]*#[^"]+)"', content)):
+            target, _, frag = html.unescape(href).partition("#")
+            target = target.split("?")[0] or name
+            if target not in pages:
+                continue
+            anchor = urllib.parse.unquote(frag)
+            if f'id="{esc(anchor)}"' not in pages[target]:
+                missing.append(f"{name} -> {target}#{anchor}")
+    if missing:
+        raise SystemExit(f"build_docs: link(s) to missing anchor(s): {sorted(missing)}")
 
 
 def _check_landing_anchors(pages: dict[str, str]) -> None:

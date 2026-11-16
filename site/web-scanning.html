@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passive web scanning — Kashif (vulnscan)</title>
+<meta name="description" content="What the Kashif passive web scanner sends, its profiles and limits, the reports, CI use with SARIF and exit codes, policy files, what a passive scan cannot find, and upgrading from 1.0.">
+<meta name="generator" content="site/build_docs.py from docs/web-scanning.md">
+<script>
+(function () {
+  var d = document.documentElement, lang = "en", theme = null;
+  d.className = "js";
+  try { var q = new URLSearchParams(location.search).get("lang"); if (q === "en" || q === "ar") lang = q; else { var s = localStorage.getItem("kashif-lang"); if (s === "en" || s === "ar") lang = s; else lang = /^ar\b/i.test((navigator.languages && navigator.languages[0]) || navigator.language || "") ? "ar" : "en"; } } catch (e) {}
+  try { theme = localStorage.getItem("kashif-theme"); } catch (e) {}
+  if (theme !== "light" && theme !== "dark") theme = (window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+  d.lang = lang; d.dir = lang === "ar" ? "rtl" : "ltr"; d.setAttribute("data-theme", theme);
+})();
+</script>
+<meta name="theme-color" content="#070b14" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html">
+<link rel="alternate" hreflang="en" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html">
+<link rel="alternate" hreflang="ar" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html?lang=ar">
+<link rel="alternate" hreflang="x-default" href="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="apple-touch-icon" href="logo.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Kashif">
+<meta property="og:title" content="Passive web scanning — Kashif (vulnscan)">
+<meta property="og:description" content="What the Kashif passive web scanner sends, its profiles and limits, the reports, CI use with SARIF and exit codes, policy files, what a passive scan cannot find, and upgrading from 1.0.">
+<meta property="og:url" content="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/web-scanning.html">
+<meta property="og:image" content="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/img/og-en.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"></noscript>
+<style>
+:root{
+  --radius:14px;--radius-lg:20px;--wrap:1200px;
+  --font:"Inter","IBM Plex Sans Arabic",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-ar:"IBM Plex Sans Arabic","Inter",system-ui,"Segoe UI",Tahoma,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* code surfaces stay dark in both themes */
+  --code:#0a0f1b;--code-line:#1c2740;--code-text:#c9d4e3;--code-dim:#7d8ba1;
+}
+:root,[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#070b14;--bg2:#0a101d;--panel:#0e1524;--panel2:#131c2f;--line:#1c2740;--line2:#2a3956;
+  --text:#e8eef6;--muted:#a3b1c4;--dim:#8291a7;
+  --accent:#3fc07c;--accent-ink:#6ad69a;--violet:#4fc3f7;--ok:#34d399;--bad:#f87171;--warn:#fbbf24;
+  --btn-bg:linear-gradient(135deg,#3fc07c,#2aa866);--btn-fg:#04210f;--btn-shadow:0 10px 34px -12px rgba(63,192,124,.6);
+  --head-bg:rgba(7,11,20,.8);--chip-code:#141e33;--chip-code-fg:#bfeaf3;
+  --glow1:rgba(63,192,124,.16);--glow2:rgba(79,195,247,.13);--grid-op:.28;
+  --shadow-lg:0 40px 100px -40px rgba(0,0,0,.9);--frame-glow:0 0 0 1px rgba(63,192,124,.05),0 50px 140px -60px rgba(63,192,124,.45);
+  --legal-bg:rgba(251,191,36,.07);--legal-bd:rgba(251,191,36,.3);--legal-fg:#fcd34d;
+  --track:#1a2438;--tint:rgba(63,192,124,.1);--tint-bd:rgba(63,192,124,.22);--tint2:rgba(79,195,247,.1);--tint2-bd:rgba(79,195,247,.24);
+}
+[data-theme="light"]{
+  color-scheme:light;
+  --bg:#ffffff;--bg2:#f5f7fb;--panel:#ffffff;--panel2:#f1f4f9;--line:#e3e8f0;--line2:#d0d8e4;
+  --text:#0b1220;--muted:#3f4a5c;--dim:#556072;
+  --accent:#087a3f;--accent-ink:#087a3f;--violet:#0071a8;--ok:#047857;--bad:#b91c1c;--warn:#b45309;
+  --btn-bg:linear-gradient(135deg,#087a3f,#066434);--btn-fg:#ffffff;--btn-shadow:0 10px 30px -14px rgba(8,122,63,.7);
+  --head-bg:rgba(255,255,255,.85);--chip-code:#eef3f8;--chip-code-fg:#0b4a5c;
+  --glow1:rgba(63,192,124,.18);--glow2:rgba(79,195,247,.16);--grid-op:.55;
+  --shadow-lg:0 30px 80px -40px rgba(15,23,42,.35);--frame-glow:0 0 0 1px rgba(15,23,42,.04),0 40px 100px -50px rgba(8,122,63,.45);
+  --legal-bg:#fffbeb;--legal-bd:#f5d27a;--legal-fg:#7c4a03;
+  --track:#e6ebf2;--tint:rgba(8,122,63,.08);--tint-bd:rgba(8,122,63,.22);--tint2:rgba(109,40,217,.07);--tint2-bd:rgba(109,40,217,.2);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;scroll-padding-top:84px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:16px;line-height:1.65;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+html[lang="ar"] body{font-family:var(--font-ar)}
+:lang(ar){font-family:var(--font-ar)}
+a{color:var(--accent-ink)}
+a:hover{text-decoration-thickness:2px}
+img{max-width:100%;height:auto}
+code,pre,code:lang(ar),pre:lang(ar){font-family:var(--mono);font-feature-settings:"calt" 0}
+/* JetBrains Mono's contextual hyphens (calt) are drawn one cell off inside right-to-left text ("-- deep"); the
+   standard ligatures stay on: Arabic lam-alef in code ("Kashif/<الإصدار>") needs them */
+.wrap{max-width:var(--wrap);margin:0 auto;padding:0 24px}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.skip{position:absolute;inset-inline-start:12px;top:-60px;z-index:100;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;text-decoration:none}
+.skip:focus{top:12px}
+.top{position:sticky;top:0;z-index:50;background:var(--head-bg);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;gap:26px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--text);font-weight:700;font-size:18px;letter-spacing:-.01em;text-decoration:none}
+.brand img{width:30px;height:30px;display:block}
+.brand small{font-weight:500;color:var(--dim);font-size:14px}
+.links{display:flex;gap:20px;flex:1}
+.links a{color:var(--muted);font-size:14.5px;font-weight:500;text-decoration:none;padding:6px 0}
+.links a:hover,.links a[aria-current="page"]{color:var(--text)}
+.links a[aria-current="page"]{box-shadow:inset 0 -2px 0 var(--accent)}
+.tools{display:flex;align-items:center;gap:8px;margin-inline-start:auto}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:10px;padding:3px;background:var(--panel)}
+.seg button{all:unset;cursor:pointer;padding:4px 10px;border-radius:7px;font-size:13px;font-weight:600;color:var(--muted);line-height:1.4;min-width:20px;text-align:center}
+.seg button[aria-pressed="true"]{background:var(--panel2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line2)}
+.seg button:focus-visible{outline:2px solid var(--accent)}
+.seg .ar{font-family:var(--font-ar);font-size:14px}
+.iconbtn{all:unset;cursor:pointer;width:36px;height:36px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--line2);background:var(--panel);color:var(--muted)}
+.iconbtn:hover{color:var(--text)}
+.iconbtn:focus-visible{outline:2px solid var(--accent)}
+.iconbtn .ic{width:18px;height:18px}
+[data-theme="dark"] .i-sun{display:block}[data-theme="dark"] .i-moon{display:none}
+[data-theme="light"] .i-sun{display:none}[data-theme="light"] .i-moon{display:block}
+.menu-btn{display:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);color:var(--text);background:var(--panel);font-weight:600;white-space:nowrap;text-decoration:none;padding:7px 12px;font-size:14px;border-radius:9px}
+.btn:hover{border-color:var(--dim)}
+.btn svg{width:18px;height:18px}
+.page{display:grid;grid-template-columns:240px minmax(0,1fr);gap:48px;padding-top:40px;padding-bottom:72px}
+.page.solo{grid-template-columns:minmax(0,1fr)}
+.toc{position:sticky;top:88px;align-self:start;max-height:calc(100vh - 110px);overflow:auto;font-size:14px}
+.toc summary{font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--text);cursor:pointer;margin-bottom:10px;list-style:none}
+.toc summary::-webkit-details-marker{display:none}
+.toc ol{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.toc a{display:block;color:var(--muted);text-decoration:none;padding:4px 10px;border-inline-start:2px solid var(--line);line-height:1.45}
+.toc a:hover{color:var(--text);border-color:var(--dim)}
+.toc a.on{color:var(--text);border-color:var(--accent)}
+.toc .l3 a{padding-inline-start:24px;font-size:13.5px}
+.meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 22px;color:var(--dim);font-size:13.5px}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);border-radius:999px;background:var(--panel);padding:3px 11px;color:var(--muted);text-decoration:none}
+.pill .ver{background:var(--tint);color:var(--accent-ink);border-radius:999px;padding:1px 8px;font-weight:600;font-family:var(--mono);font-size:12px}
+.prose{min-width:0;max-width:860px;overflow-wrap:anywhere}
+.prose h1{font-size:clamp(28px,4vw,38px);line-height:1.2;letter-spacing:-.02em;margin:0 0 18px}
+.prose h2{font-size:24px;line-height:1.3;margin:48px 0 14px;padding-top:28px;border-top:1px solid var(--line)}
+.prose h3{font-size:19px;line-height:1.35;margin:32px 0 10px}
+.prose h4,.prose h5,.prose h6{font-size:16px;margin:24px 0 8px}
+.prose .hl{margin-inline-start:8px;color:var(--dim);text-decoration:none;opacity:0;font-weight:500}
+.prose h1:hover .hl,.prose h2:hover .hl,.prose h3:hover .hl,.prose h4:hover .hl,.prose .hl:focus{opacity:1}
+.prose p,.prose ul,.prose ol,.prose blockquote,.prose pre,.prose .tablewrap{margin:0 0 16px}
+.prose ul,.prose ol{padding-inline-start:26px}
+.prose li{margin:4px 0}
+.prose li>ul,.prose li>ol{margin:4px 0 0}
+.prose li.task{list-style:none}
+.prose li.task input{margin-inline:-22px 6px}
+.prose code{background:var(--chip-code);color:var(--chip-code-fg);border-radius:6px;padding:.12em .4em;font-size:.88em;direction:ltr;unicode-bidi:isolate}
+.prose pre{background:var(--code);color:var(--code-text);border:1px solid var(--code-line);border-radius:12px;padding:16px 18px;overflow-x:auto;font-size:13.5px;line-height:1.6;text-align:left;overflow-wrap:normal}
+.prose pre code{background:none;color:inherit;padding:0;font-size:inherit;border-radius:0}
+.prose blockquote{border-inline-start:3px solid var(--accent);background:var(--tint);border-radius:10px;padding:12px 16px;color:var(--text)}
+.prose blockquote>:last-child{margin-bottom:0}
+.prose hr{border:0;border-top:1px solid var(--line);margin:40px 0}
+.prose .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+.prose table{border-collapse:collapse;width:100%;font-size:14.5px;overflow-wrap:normal}
+.prose th,.prose td{padding:9px 14px;border-bottom:1px solid var(--line);text-align:start;vertical-align:top}
+.prose th{background:var(--panel2);font-weight:600}
+.prose tr:last-child td{border-bottom:0}
+.prose tr[id] td:first-child{white-space:nowrap}
+.prose .nb{white-space:nowrap}
+.prose code .nb{font-family:inherit}
+.prose tr:target td{background:var(--tint)}
+.prose td img{display:block;border-radius:8px;border:1px solid var(--line)}
+.prose img{border-radius:6px}
+.prose .center{text-align:center}
+.prose .lic{white-space:pre-wrap;font-family:var(--mono);font-size:14px;line-height:1.7;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:20px 22px;color:var(--text);overflow-wrap:anywhere}
+html:not(.js) .half.sw+.half.sw{margin-top:56px;padding-top:8px;border-top:1px solid var(--line)}
+html.js[lang="en"] .sw[lang="ar"],html.js[lang="ar"] .sw[lang="en"]{display:none}
+.half>hr:last-child{display:none}
+footer{border-top:1px solid var(--line);padding:28px 0 36px;color:var(--dim);font-size:14px;background:var(--bg2)}
+.foot{display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between;align-items:center}
+.foot a{color:var(--muted)}
+.foot nav{display:flex;flex-wrap:wrap;gap:8px 18px}
+@media(max-width:1080px){
+  .links{display:none}
+  .menu-btn{display:grid}
+  .links.open{display:flex;position:absolute;top:64px;inset-inline:0;flex-direction:column;gap:0;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 24px 16px}
+  .links.open a{padding:12px 0;border-bottom:1px solid var(--line);font-size:16px;box-shadow:none}
+}
+@media(max-width:900px){
+  .page{grid-template-columns:minmax(0,1fr);gap:20px;padding-top:24px}
+  .toc{position:static;max-height:none;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--panel)}
+  .toc summary{margin:0}
+  .toc[open] summary{margin-bottom:10px}
+  .toc summary{display:flex;justify-content:space-between;align-items:center}
+  .toc summary::after{content:"+";font-size:18px;line-height:1;color:var(--dim)}
+  .toc[open] summary::after{content:"2"}
+}
+@media(max-width:560px){
+  .wrap{padding:0 16px}
+  .nav{gap:10px}
+  .brand small,.tools .gh-txt{display:none}
+  .tools{gap:6px}
+  .iconbtn{width:34px;height:34px}
+  .prose pre{font-size:12.5px;padding:14px}
+  .prose .lic{font-size:12.5px;padding:16px}
+  .prose h2{font-size:21px}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="skip">Skip to content</a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="i-gh" viewBox="0 0 16 16"><path fill="currentColor" stroke="none" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+</svg>
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="index.html"><img src="logo.svg" alt="" width="30" height="30"><span data-i18n="brand">Kashif</span><small>vulnscan</small></a>
+    <nav aria-label="Primary" data-i18n-attr="aria-label:nav.label">
+      <div class="links" id="nav-links">
+        <a href="index.html" data-i18n="nav.home">Home</a>
+        <a href="docs.html" data-i18n="nav.docs">Documentation</a>
+        <a href="changelog.html" data-i18n="nav.changelog">Changelog</a>
+        <a href="security.html" data-i18n="nav.security">Security</a>
+        <a href="license.html" data-i18n="nav.license">License</a>
+        <a href="privacy.html" data-i18n="nav.privacy">Privacy</a>
+      </div>
+    </nav>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Language" data-i18n-attr="aria-label:lang.label">
+        <button type="button" data-lang="en" aria-pressed="true" lang="en">EN</button>
+        <button type="button" data-lang="ar" aria-pressed="false" lang="ar" class="ar" aria-label="العربية">ع</button>
+      </div>
+      <button type="button" class="iconbtn" id="theme-btn" aria-label="Switch to light theme"><svg class="ic i-sun" aria-hidden="true"><use href="#i-sun"/></svg><svg class="ic i-moon" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      <a class="btn" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan"><svg class="ic" aria-hidden="true"><use href="#i-gh"/></svg><span class="gh-txt">GitHub</span><span class="sr" data-i18n="gh.sr">Kashif on GitHub</span></a>
+      <button type="button" class="iconbtn menu-btn" id="menu-btn" aria-expanded="false" aria-controls="nav-links" aria-label="Menu" data-i18n-attr="aria-label:nav.menu"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    </div>
+  </div>
+</header>
+<div class="wrap page">
+<details class="toc" open><summary data-i18n="toc">On this page</summary><nav aria-labelledby="toc-h"><span class="sr" id="toc-h" data-i18n="toc">On this page</span><ol class="tochalf sw" lang="en" dir="ltr"><li class="l2"><a href="#what-kashif-sends">What Kashif sends</a></li><li class="l3"><a href="#limits-of-one-scan">Limits of one scan</a></li><li class="l3"><a href="#proxies">Proxies</a></li><li class="l2"><a href="#options">Options</a></li><li class="l2"><a href="#what-the-reports-contain">What the reports contain</a></li><li class="l2"><a href="#comparing-scans">Comparing scans</a></li><li class="l2"><a href="#using-it-in-ci">Using it in CI</a></li><li class="l2"><a href="#policy-files">Policy files</a></li><li class="l2"><a href="#what-a-passive-scan-cannot-find">What a passive scan cannot find</a></li><li class="l2"><a href="#upgrading-from-10">Upgrading from 1.0</a></li></ol><ol class="tochalf sw" lang="ar" dir="rtl"><li class="l2"><a href="#%D9%85%D8%A7-%D9%8A%D8%B1%D8%B3%D9%84%D9%87-%D9%83%D8%A7%D8%B4%D9%90%D9%81">ما يرسله كاشِف</a></li><li class="l3"><a href="#%D8%AD%D8%AF%D9%88%D8%AF-%D8%A7%D9%84%D9%81%D8%AD%D8%B5-%D8%A7%D9%84%D9%88%D8%A7%D8%AD%D8%AF">حدود الفحص الواحد</a></li><li class="l3"><a href="#%D8%A7%D9%84%D9%88%D9%83%D9%8A%D9%84-proxy">الوكيل (Proxy)</a></li><li class="l2"><a href="#%D8%A7%D9%84%D8%AE%D9%8A%D8%A7%D8%B1%D8%A7%D8%AA">الخيارات</a></li><li class="l2"><a href="#%D9%85%D8%AD%D8%AA%D9%88%D9%89-%D8%A7%D9%84%D8%AA%D9%82%D8%A7%D8%B1%D9%8A%D8%B1">محتوى التقارير</a></li><li class="l2"><a href="#%D9%85%D9%82%D8%A7%D8%B1%D9%86%D8%A9-%D8%A7%D9%84%D9%81%D8%AD%D9%88%D8%B5">مقارنة الفحوص</a></li><li class="l2"><a href="#%D8%A7%D9%84%D8%A7%D8%B3%D8%AA%D8%AE%D8%AF%D8%A7%D9%85-%D9%81%D9%8A-ci">الاستخدام في CI</a></li><li class="l2"><a href="#%D9%85%D9%84%D9%81-%D8%A7%D9%84%D8%B3%D9%8A%D8%A7%D8%B3%D8%A9">ملف السياسة</a></li><li class="l2"><a href="#%D9%85%D8%A7-%D9%84%D8%A7-%D9%8A%D9%83%D8%B4%D9%81%D9%87-%D8%A7%D9%84%D9%81%D8%AD%D8%B5-%D8%A7%D9%84%D8%B3%D9%84%D8%A8%D9%8A">ما لا يكشفه الفحص السلبي</a></li><li class="l2"><a href="#%D8%A7%D9%84%D8%AA%D8%B1%D9%82%D9%8A%D8%A9-%D9%85%D9%86-10">الترقية من 1.0</a></li></ol></nav></details>
+<main id="main" tabindex="-1" class="prose">
+<div class="meta"><a class="pill" href="changelog.html"><span class="ver">v1.1.0</span><span data-i18n="nav.changelog">Changelog</span></a><span><span data-i18n="foot.src">Generated from the repository&#x27;s</span> <code>docs/web-scanning.md</code></span></div>
+<div class="half sw" lang="en" dir="ltr"><a id="english"></a>
+<h1 id="passive-web-scanning-kashif-11">Passive web scanning (Kashif 1.1)<a class="hl" href="#passive-web-scanning-kashif-11" aria-hidden="true" tabindex="-1">#</a></h1>
+<p><strong>English</strong> | <a href="#arabic">العربية</a></p>
+<p>Kashif checks a web site you own, or are authorized in writing to test, by reading what the site already serves.
+Every web scan needs <code><span class="nb">--authorized</span></code> on the command line (or the confirmation box in the UI); without it Kashif exits
+with code 2 before sending anything. The rule list, with severities, confidences, CWE, OWASP WSTG and ASVS
+mappings, is in <a href="web-checks.html">web-checks.md</a>. What a site owner sees in their logs is explained on the
+<a href="scanner.html">scanner page</a>.</p>
+<h2 id="what-kashif-sends">What Kashif sends<a class="hl" href="#what-kashif-sends" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>Only <code>GET</code> requests, with an honest User-Agent (<code>Kashif/&lt;version&gt; (+https://abdulrahmanahmedelabed-prog.github.io/vulnscan/scanner.html)</code>)
+and the headers <code>Accept</code>, <code>Accept-Encoding: gzip, deflate</code>, <code>Accept-Language: en</code> (and <code>Origin</code> on the one CORS
+request). There is one request at a time per host, with at least <code><span class="nb">--delay</span></code> seconds between two of them (default 0.5,
+floor 0.2), raised by a <code>Crawl-delay</code> in <code>robots.txt</code> (capped at 10 s). A <code>429</code>, or a <code>503</code> with <code>Retry-After</code>, is
+waited out once (at most 60 s); a second one stops that host and the rest of its checks are reported as
+<em>inconclusive</em>.</p>
+<div class="tablewrap"><table><thead><tr><th>Profile</th><th>Requests (crawl pages excluded)</th><th>What is fetched</th></tr></thead><tbody><tr><td><code>minimal</code></td><td>at most 10</td><td>the URL and its redirects (the 1.0 behaviour); cannot crawl</td></tr><tr><td><code>standard</code> (default)</td><td>at most 45</td><td>+ the http/https counterpart chain (default ports only), one cookieless GET with <code>Origin: https://kashif-cors-check.invalid</code>, <code>/robots.txt</code>, <code>/.well-known/security.txt</code> (<code>/security.txt</code> only after a 404), the declared icon or <code>/favicon.ico</code>, <code>/sitemap.xml</code> (with <code><span class="nb">--crawl</span></code>), up to 15 same-site scripts and styles the page references</td></tr><tr><td><code>deep</code> (<code><span class="nb">--deep</span></code>)</td><td>at most 150</td><td>+ a fixed list of commonly exposed files (<code>.git/HEAD</code>, <code>.env</code>, <code>server-status</code> …) and the login and administration pages of a detected platform (<code>/wp-login.php</code>, <code>/administrator/</code> …; fetched once, nothing submitted), with soft-404 baselines named <code>/kashif-404-&lt;16 hex&gt;</code>, up to 10 third-party scripts and styles, 5 source maps and 10 JPEG images (first 128 KB)</td></tr><tr><td><code><span class="nb">--crawl</span></code> (standard or deep)</td><td>+ <code><span class="nb">--max-pages</span></code> (default 20, at most 500)</td><td>same-origin (same scheme, host and port) links, breadth first, at most <code><span class="nb">--max-depth</span></code> deep (default 2), <code>robots.txt</code> honoured unless <code><span class="nb">--ignore-robots</span></code></td></tr></tbody></table></div>
+<p>TLS is assessed with ordinary handshakes and plaintext ClientHello probes (about 14 per address, about 60 with
+<code>deep</code>). DNS lookups are the ones a browser makes anyway. Kashif never sends payloads, never fuzzes parameters,
+never submits forms, never guesses credentials, never uses another method than GET, never spoofs headers or the
+User-Agent, never connects to another port than the target&#x27;s (and 80/443 for the counterpart), refuses to follow a
+redirect or a link to a private, loopback or link-local address unless the target itself is one, and never contacts
+cloud metadata addresses. It makes no lookup that would reveal the target to a third party: the HSTS preload status
+comes from the bundled Chromium list, certificate transparency from the certificate&#x27;s own SCTs, and revocation is
+not checked (see <a href="#what-a-passive-scan-cannot-find">below</a>). <code><span class="nb">--third-party-lookups</span></code> is accepted so that a future
+check of that kind can never run without your consent; in 1.1 no check uses it.</p>
+<h3 id="limits-of-one-scan">Limits of one scan<a class="hl" href="#limits-of-one-scan" aria-hidden="true" tabindex="-1">#</a></h3>
+<ul><li><strong>Time and size:</strong> a scan stops sending requests after 600 s or 50 MB received, whichever comes first. The checks
+that needed the requests not sent are reported as <em>not tested</em>, with the reason, never as passed.</li>
+<li><strong>Crawl:</strong> <code><span class="nb">--max-pages</span></code> is capped at 500 pages (a larger value is lowered with a warning) and <code><span class="nb">--max-depth</span></code>
+defaults to 2. Crawled pages have their own budget on top of the profile&#x27;s.</li>
+<li><strong><code>minimal</code> cannot crawl:</strong> <code><span class="nb">--crawl</span></code> with <code><span class="nb">--web-profile</span> minimal</code> is rejected before anything is sent (exit
+code 2); use <code>standard</code> or <code>deep</code>.</li></ul>
+<h3 id="proxies">Proxies<a class="hl" href="#proxies" aria-hidden="true" tabindex="-1">#</a></h3>
+<p><code>HTTP(S)_PROXY</code> and <code>NO_PROXY</code> are honoured as in 1.0 (<code><span class="nb">--no-proxy</span></code> turns them off). Only <code>http://</code> proxies are
+supported (HTTPS goes through a <code>CONNECT</code> tunnel); any other proxy setting, such as <code>socks5://</code> or a bad port, makes
+the requests that would use it fail with a proxy error (the scan stops with exit code 2, and <code>web.error.code</code> in the
+JSON report starts with <code>proxy</code>) instead of silently connecting directly. Through a proxy the checks that need DNS are reported as <em>not tested</em>, and TLS findings are
+<em>tentative</em>, because an inspecting proxy replaces the certificate: they appear only with
+<code><span class="nb">--web-sensitivity</span> paranoid</code>. To assess TLS itself, scan with <code><span class="nb">--no-proxy</span></code>, or add the host to <code>NO_PROXY</code>.</p>
+<h2 id="options">Options<a class="hl" href="#options" aria-hidden="true" tabindex="-1">#</a></h2>
+<div class="tablewrap"><table><thead><tr><th>Option</th><th>Meaning</th></tr></thead><tbody><tr><td><code><span class="nb">--web-profile</span> minimal|standard|deep</code></td><td>the request budget above (<code><span class="nb">--deep</span></code> is <code><span class="nb">--web-profile</span> deep</code>)</td></tr><tr><td><code><span class="nb">--web-sensitivity</span> strict|default|paranoid</code></td><td><code>strict</code>: certain findings only; <code>default</code>: certain and firm; <code>paranoid</code>: everything, including the 6 checks marked paranoid-only</td></tr><tr><td><code><span class="nb">--crawl</span></code>, <code><span class="nb">--max-pages</span> N</code>, <code><span class="nb">--max-depth</span> N</code></td><td>crawl same-origin pages (same scheme, host and port); at most 500 pages</td></tr><tr><td><code><span class="nb">--ignore-robots</span></code></td><td>crawl paths that <code>robots.txt</code> disallows (for the site&#x27;s owner)</td></tr><tr><td><code><span class="nb">--delay</span> SEC</code>, <code><span class="nb">--timeout</span> SEC</code></td><td>the gap between two requests to one host; the socket timeout per request</td></tr><tr><td><code><span class="nb">--compare-previous</span></code></td><td>compare with the last saved scan of the same site, and save this one in the local history (<code>~/.vulnscan</code>, or <code>VULNSCAN_HOME</code>)</td></tr><tr><td><code><span class="nb">--compare</span> ID|FILE</code></td><td>compare with a saved scan id, or with a JSON report written by <code>-f json</code> (see <a href="#comparing-scans">Comparing scans</a>)</td></tr><tr><td><code><span class="nb">--fail-on</span> SEVERITY</code></td><td>exit code 1 when a reported finding is at or above this severity</td></tr><tr><td><code><span class="nb">--fail-on-inconclusive</span></code></td><td>exit code 1 when the scan is inconclusive: no Kashif grade (<code>?</code>) or a WEB990 finding (a WAF, challenge or rate limit answered instead of the site)</td></tr><tr><td><code><span class="nb">--ignore-rule</span> ID</code></td><td>leave a web rule out of the report and of <code><span class="nb">--fail-on</span></code> (repeatable); a note lists what was left out, and the grades still count it</td></tr><tr><td><code><span class="nb">--policy</span> FILE</code></td><td>apply a policy gate (see <a href="#policy-files">Policy files</a>)</td></tr><tr><td><code><span class="nb">--web-cookie-ignore</span> NAME</code></td><td>leave a cookie out of the cookie checks (repeatable)</td></tr><tr><td><code><span class="nb">--third-party-lookups</span></code></td><td>allow lookups that reveal the site&#x27;s name to a third party (none in 1.1)</td></tr><tr><td><code><span class="nb">--no-proxy</span></code></td><td>do not use the proxy of the environment</td></tr></tbody></table></div>
+<p>These combinations are rejected before anything is sent (exit code 2): a web option (<code><span class="nb">--compare</span></code>,
+<code><span class="nb">--compare-previous</span></code>, <code><span class="nb">--web-profile</span></code>, <code><span class="nb">--web-sensitivity</span></code>, <code><span class="nb">--third-party-lookups</span></code>, <code><span class="nb">--ignore-robots</span></code>,
+<code><span class="nb">--web-cookie-ignore</span></code>, <code><span class="nb">--no-proxy</span></code>, <code><span class="nb">--fail-on-inconclusive</span></code>) with a local path instead of a URL; <code><span class="nb">--deep</span></code> with
+<code><span class="nb">--web-profile</span> minimal</code> or <code>standard</code>; <code><span class="nb">--crawl</span></code> with <code><span class="nb">--web-profile</span> minimal</code>; <code><span class="nb">--compare</span></code> together with
+<code><span class="nb">--compare-previous</span></code>; <code><span class="nb">--diff-base</span></code> or <code><span class="nb">--diff-staged</span></code>, <code><span class="nb">--fix</span></code> or <code><span class="nb">--fix-dry-run</span></code>, and <code><span class="nb">--triage</span></code> without a file
+name, with a URL.</p>
+<p><code>kashif update-data <span class="nb">--web</span></code> installs the newer web data snapshot (retire.js, HSTS preload list, Public Suffix List,
+technology and end-of-life data …) of the latest official release, after verifying its SHA-256 against the
+release&#x27;s <code>SHA256SUMS</code>; <code><span class="nb">--check</span></code> only reports whether one exists (exit code 10). Nothing about the sites you scan is
+sent. Every report states the date of the data in use; data older than 90 days adds a note, and older than 180
+days the vulnerability checks (WEB054, WEB800, WEB801) are flagged as possibly missing recent CVEs.</p>
+<h2 id="what-the-reports-contain">What the reports contain<a class="hl" href="#what-the-reports-contain" aria-hidden="true" tabindex="-1">#</a></h2>
+<ul><li><strong>Findings</strong> with a confidence: <code>certain</code> (a protocol fact), <code>firm</code> (probably real) or <code>tentative</code> (may exist).
+A finding seen on many pages is reported once, with the number of instances, up to 5 example URLs and the URL
+templates it occurred on. Every finding keeps its evidence: the request, the redirect chain, the status, the
+headers as received (cookie values redacted), the matched value and a <code>curl</code> command that repeats the request
+(every argument shell-quoted).</li>
+<li><strong>Three grades</strong>: the Kashif Web Grade (A+ to F, six weighted families, capped by serious findings; <code>*</code> means
+provisional because a family could not be tested, <code>?</code> means a WAF or rate limit answered instead of the site), an
+MDN HTTP Observatory-compatible score (algorithm 6, out of 165), and an SSL Labs-compatible TLS grade (without the
+attack-only tests Kashif does not perform).</li>
+<li><strong>Coverage</strong>: one state per check, with the reason. The JSON <code>state</code> tokens are <code>pass</code>, <code>fail</code>, <code>not_applicable</code>,
+<code>not_tested</code> and <code>inconclusive</code>. A check that did not run is never shown as passed and never counts in a grade.</li>
+<li><strong>Inventory</strong>: security headers with their verdict, CSP policies, cookies (class and attributes, never values),
+TLS per address, technologies and libraries, third-party hosts.</li>
+<li><strong>Copy-paste fixes</strong> for 18 platforms: nginx, Apache httpd 2.4, IIS 10, Caddy 2, Express (helmet 7+), Node.js,
+Django, Flask / Werkzeug, Spring Security 6 / Spring Boot, Apache Tomcat, ASP.NET Core 8+, ASP.NET (.NET
+Framework), PHP, Laravel, Symfony, Ruby on Rails, Cloudflare and F5 BIG-IP, plus a platform-neutral form. The
+platforms detected on the site come first.</li>
+<li><strong>Diff</strong> (with <code><span class="nb">--compare-previous</span></code> or <code><span class="nb">--compare</span></code>): new, resolved and unchanged findings, grade changes and
+posture changes, regressions first. A scan of another target is not compared; a different profile is stated.</li></ul>
+<div class="tablewrap"><table><thead><tr><th>Format</th><th>Web content</th></tr></thead><tbody><tr><td>console</td><td>findings with their confidence, the notes (profile and request count, coverage, grades, data date), the diff summary</td></tr><tr><td><code>-f markdown</code>, <code>-f html</code></td><td>the sections above; the HTML report uses tabs (no script) for the inventory and the platform snippets</td></tr><tr><td><code>-f json</code></td><td>the findings (<code>extra.confidence</code>, <code>extra.evidence</code>, <code>extra.wstg</code>/<code>asvs4</code>/<code>asvs5</code>, <code>extra.instances</code> …) and a <code>web</code> object: <code>grades</code>, <code>coverage</code> (one record per check: <code>check</code>, <code>rules</code>, <code>state</code>, <code>reason</code>), <code>coverage_counts</code>, <code>inventory</code>, <code>notes</code>, <code>diff</code> and <code>snapshot</code> (what <code><span class="nb">--compare</span> FILE</code> reads)</td></tr><tr><td><code>-f sarif</code></td><td>rules and results with <code>properties.precision</code> (certain → very-high, firm → high, tentative → low), <code>properties.security-severity</code> and the tags <code>external/cwe/cwe-N</code>, <code>wstg:…</code>, <code>asvs4:…</code>, <code>asvs5:…</code>; the grades and coverage counts in <code>runs[0].properties</code>; each result&#x27;s location is the page URL</td></tr><tr><td>exports</td><td><code>csv</code> has a confidence column, ASFF a <code>Confidence</code>, the Markdown bodies (DefectDojo, GitLab, GitHub Issues) a confidence line</td></tr></tbody></table></div>
+<p><code>kashif compliance</code> shows the WSTG, ASVS 4.0.3 and ASVS 5.0.0 ids of a web finding as &quot;Kashif analyst mapping&quot;.</p>
+<h2 id="comparing-scans">Comparing scans<a class="hl" href="#comparing-scans" aria-hidden="true" tabindex="-1">#</a></h2>
+<p><code><span class="nb">--compare-previous</span></code> compares with the last scan of the same site saved in the local history and saves the new
+one there. The history lives in <code>~/.vulnscan</code> (or <code>$VULNSCAN_HOME</code>): one file <code>scans/&lt;id&gt;.json</code> per scan, and
+<code>index.json</code>, a cache of their list. A scan id comes from:</p>
+<ul><li>the line <code>Scan saved in the local history (id …)</code> that <code><span class="nb">--compare-previous</span></code> prints on stderr after the report;</li>
+<li>the UI&#x27;s <strong>Reports</strong> page: a scan&#x27;s <strong>View</strong> link opens <code>#findings/&lt;id&gt;</code>;</li>
+<li>the file names in <code>$VULNSCAN_HOME/scans/</code>, or the keys of <code>$VULNSCAN_HOME/index.json</code>.</li></ul>
+<p><code><span class="nb">--compare</span></code> takes such an id, or a JSON report written earlier with <code>-f json</code> (or <code><span class="nb">--all-formats</span></code>). In CI, where
+every run starts on a fresh machine with an empty history, keep the JSON report of the previous run and pass
+<code><span class="nb">--compare</span> previous.json</code> (see <a href="#using-it-in-ci">Using it in CI</a>). <code>kashif history</code> is unrelated: it searches the git
+history of a repository for committed secrets.</p>
+<h2 id="using-it-in-ci">Using it in CI<a class="hl" href="#using-it-in-ci" aria-hidden="true" tabindex="-1">#</a></h2>
+<pre dir="ltr" data-lang="bash"><code class="language-bash">kashif https://staging.example.com --authorized --fail-on high -f sarif -o kashif-web.sarif</code></pre>
+<div class="tablewrap"><table><thead><tr><th>Exit code</th><th>Meaning</th></tr></thead><tbody><tr><td><code>0</code></td><td>the scan ran and nothing failed the gate</td></tr><tr><td><code>1</code></td><td>the gate failed: a finding at or above <code><span class="nb">--fail-on</span></code>, a failed <code><span class="nb">--policy</span></code> gate, or an inconclusive scan with <code><span class="nb">--fail-on-inconclusive</span></code></td></tr><tr><td><code>2</code></td><td>nothing was judged: <code><span class="nb">--authorized</span></code> missing, a rejected option combination, a <code><span class="nb">--compare</span></code> file that is missing or holds no web scan, or a site that could not be reached (DNS, refused connection, timeout, TLS failure, proxy)</td></tr></tbody></table></div>
+<p><strong>A WAF is not a pass.</strong> When a WAF challenge or a rate limit answers instead of the site, Kashif stops the optional
+requests, reports the affected checks as <em>inconclusive</em>, adds the finding WEB990 and shows the Kashif grade as <code>?</code>.
+WEB990 is <code>info</code>, so <code><span class="nb">--fail-on</span> high</code> alone would let such a run pass although the site was never really seen: add
+<code><span class="nb">--fail-on-inconclusive</span></code> so that it fails, and allow the runner&#x27;s address on the WAF or scan a staging host.</p>
+<p><strong>A site that cannot be reached</strong> exits with code 2, and <code>-o</code> (json, sarif, html, markdown) or <code><span class="nb">--all-formats</span></code> still
+writes a report, so a pipeline never reads an old file. The JSON report then has this shape (a completed scan has no
+<code>web.status</code>):</p>
+<pre dir="ltr" data-lang="json"><code class="language-json">{
+  &quot;target&quot;: &quot;https://staging.example.com&quot;,
+  &quot;generated_at&quot;: &quot;2026-11-14T02:24:58+00:00&quot;,
+  &quot;files_scanned&quot;: 0,
+  &quot;notes&quot;: [&quot;…Arabic explanation…&quot;],
+  &quot;notes_en&quot;: [&quot;The site was not scanned: …&quot;],
+  &quot;summary&quot;: {&quot;critical&quot;: 0, &quot;high&quot;: 0, &quot;medium&quot;: 0, &quot;low&quot;: 0, &quot;info&quot;: 0},
+  &quot;findings&quot;: [],
+  &quot;web&quot;: {
+    &quot;schema&quot;: 1,
+    &quot;status&quot;: &quot;unreachable&quot;,
+    &quot;target&quot;: &quot;https://staging.example.com&quot;,
+    &quot;error&quot;: {&quot;code&quot;: &quot;refused&quot;, &quot;en&quot;: &quot;…&quot;, &quot;ar&quot;: &quot;…&quot;, &quot;raw&quot;: &quot;[Errno 111] Connection refused&quot;}
+  }
+}</code></pre>
+<p><code>error.code</code> is one of <code>invalid</code>, <code>unsupported</code>, <code>dns</code>, <code>refused</code>, <code>timeout</code>, <code>deadline</code>, <code>unreachable</code>, <code>tls</code>,
+<code>reset</code>, <code>network</code> or a <code>proxy…</code> code. In SARIF the same run has <code>invocations[0].executionSuccessful: false</code>, a
+<code>toolExecutionNotification</code> whose descriptor id is <code>web/&lt;code&gt;</code>, and the <code>web</code> object in
+<code>runs[0].properties.kashif.web</code>.</p>
+<p><strong>Regressions:</strong> keep the JSON report of the last run and compare with it; <code><span class="nb">--all-formats</span> PREFIX</code> writes the SARIF
+and the JSON report in one run. A GitHub Actions job:</p>
+<pre dir="ltr" data-lang="yaml"><code class="language-yaml">permissions:
+  contents: read
+  security-events: write          # required to upload SARIF
+steps:
+  - run: curl -fsSL https://abdulrahmanahmedelabed-prog.github.io/vulnscan/install.sh | sh
+  - uses: actions/cache@v4         # the previous run&#x27;s JSON report
+    with:
+      path: previous
+      key: kashif-web-${{ github.run_id }}
+      restore-keys: kashif-web-
+  - run: |
+      cmp=&quot;&quot;; [ -f previous/kashif-web.json ] &amp;&amp; cmp=&quot;--compare previous/kashif-web.json&quot;
+      kashif https://staging.example.com --authorized --fail-on high --fail-on-inconclusive \
+        $cmp --all-formats kashif-web
+  - if: always()
+    run: mkdir -p previous &amp;&amp; cp kashif-web.json previous/ 2&gt;/dev/null || true
+  - uses: github/codeql-action/upload-sarif@v3
+    if: always()
+    with:
+      sarif_file: kashif-web.sarif
+      category: kashif-web          # keeps the web results apart from the code scan&#x27;s</code></pre>
+<p><code>category: kashif-web</code> makes the web analysis a separate one, so uploading it does not replace the alerts of a code
+scan of the same repository (and the reverse). Web alerts carry a URL, not a file location: GitHub lists them in
+the Security tab, but they have no source view and never appear as annotations on a pull request&#x27;s changed lines.</p>
+<h2 id="policy-files">Policy files<a class="hl" href="#policy-files" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>For a web scan, a policy applies only when you name it: pass <code><span class="nb">--policy</span> kashif.yml</code> (a URL has no project folder in
+which a <code>kashif.yml</code> could be found automatically). The policy decides the exit code; it does not change the
+report. <code>rules.disable</code> and <code>rules.severity</code> change what the gate counts, but the report still shows those findings
+with their own severity; to leave a rule out of the report, use <code><span class="nb">--ignore-rule</span> ID</code>. The default gate fails on
+<code>high</code>, so state the threshold you want in <code>gate.fail_on</code>:</p>
+<pre dir="ltr" data-lang="yaml"><code class="language-yaml">version: 1
+gate:
+  fail_on: medium             # the default gate fails on high
+rules:
+  disable:
+    - id: WEB071
+      reason: &quot;certificates are renewed automatically 30 days before expiry&quot;
+  severity:
+    - id: WEB-x-frame-options
+      severity: low
+      reason: &quot;static documentation with no actions to click-jack&quot;</code></pre>
+<pre dir="ltr" data-lang="bash"><code class="language-bash">kashif https://intranet.example --authorized --policy kashif.yml</code></pre>
+<h2 id="what-a-passive-scan-cannot-find">What a passive scan cannot find<a class="hl" href="#what-a-passive-scan-cannot-find" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>A passive scan reads what an anonymous visitor receives. That bounds what it can say:</p>
+<ul><li><strong>Anonymous pages only.</strong> Pages behind a login are not visited; Kashif never signs in.</li>
+<li><strong>No injection, XSS, authentication, access-control or business-logic testing.</strong> Those need requests crafted to
+break the application, which Kashif never sends. Its DOM checks read the page&#x27;s own JavaScript; they do not run it.</li>
+<li><strong>Certificate revocation is not checked.</strong> Kashif reads a stapled OCSP response when the server sends one, but it
+does not contact the CA (no CRL or OCSP request).</li>
+<li><strong>A grade measures configuration hygiene, not the absence of vulnerabilities.</strong> An A+ site can still have an
+injection flaw.</li></ul>
+<p>Pair a web scan with a code scan (SAST, <code>kashif .</code> on the application&#x27;s source) and, for what neither can see, an
+authorised active test (a penetration test or a DAST tool run with the owner&#x27;s permission).</p>
+<h2 id="upgrading-from-10">Upgrading from 1.0<a class="hl" href="#upgrading-from-10" aria-hidden="true" tabindex="-1">#</a></h2>
+<ul><li><p><strong>Default profile <code>standard</code>.</strong> A default scan sends up to 45 requests instead of the single fetch of 1.0, and the
+gap between requests applies to every request, so a scan is slower (about 3 s on a local page with the default
+delay, about 27 s with <code><span class="nb">--deep</span></code>). <code><span class="nb">--web-profile</span> minimal</code> keeps the 1.0 traffic.</p></li>
+<li><p><strong>Recalibrated severities.</strong> Rule ids keep their meaning, but some 1.0 severities changed, which changes what
+<code><span class="nb">--fail-on</span></code> and severity policies catch:</p>
+<div class="tablewrap"><table><thead><tr><th>Rule</th><th>1.0</th><th>1.1</th></tr></thead><tbody><tr><td><code>WEB-strict-transport-security</code> (missing HSTS)</td><td>high</td><td>medium</td></tr><tr><td><code>WEB020</code> (cookie without Secure)</td><td>medium</td><td>high, medium or low, by cookie class and HSTS</td></tr><tr><td><code>WEB021</code> (cookie without HttpOnly)</td><td>medium for every cookie</td><td>medium for session and authentication cookies only</td></tr><tr><td><code>WEB022</code> (cookie without SameSite)</td><td>low for every cookie</td><td>low for session, authentication and CSRF cookies; info (<code>paranoid</code>) for others</td></tr><tr><td><code>WEB050</code> (mixed content)</td><td>medium</td><td>medium for active content, low for passive</td></tr><tr><td><code>WEB053</code> (no Subresource Integrity)</td><td>low</td><td>low where a CDN supports SRI, info elsewhere</td></tr><tr><td><code>WEB054</code> (vulnerable JavaScript library)</td><td>from a hand-made table</td><td>the highest severity in the retire.js data</td></tr><tr><td><code>WEB071</code> (certificate expires soon)</td><td>medium</td><td>medium or low; thresholds relative to the certificate&#x27;s lifetime</td></tr><tr><td><code>WEB-x-frame-options</code>, <code>WEB-content-security-policy</code></td><td>medium</td><td>medium; low on static documents without scripts</td></tr><tr><td><code>WEB-permissions-policy</code>, <code>WEB-x-content-type-options</code></td><td>CWE-16</td><td>CWE-693 (severity unchanged)</td></tr></tbody></table></div></li>
+<li><p><strong>Fewer, grouped findings.</strong> A finding is reported once per host with its instances, the 1.0 false positives are
+gone, and <code>tentative</code> findings appear only with <code><span class="nb">--web-sensitivity</span> paranoid</code>.</p></li>
+<li><p><strong>Fingerprints.</strong> The six security-header rules, WEB000, WEB010, WEB011, WEB020–WEB022, WEB040–WEB043, WEB052,
+WEB055, WEB056 and WEB060 keep their 1.0 fingerprints, so baselines and triage decisions keep working for them.
+WEB053, WEB054 and the other findings now grouped per host or per library fingerprint on their grouping key, which
+no longer changes with nonces, dates or counts: they appear as new once after the upgrade; rewrite the web
+baseline then (<code><span class="nb">--write-baseline</span></code>).</p></li>
+<li><p><strong>CSV column.</strong> The CSV export has a new last column, <code>Confidence</code> (empty for code findings). Readers that address
+columns by name or position are unaffected; readers that check the number of columns must be updated.</p></li>
+<li><p><strong>Proxy failure.</strong> A proxy setting Kashif cannot use (<code>socks5://</code>, a bad port) now fails the scan with a
+proxy error (exit code 2) instead of connecting to the site directly. Use <code><span class="nb">--no-proxy</span></code> or <code>NO_PROXY</code> to connect
+directly on purpose.</p></li>
+<li><p><strong>Notes.</strong> The note &quot;passive scan: one request&quot; now states the real request budget of the chosen profile. Scans
+saved before the upgrade keep their old text.</p></li>
+<li><p><strong>UI.</strong> The web-scan form has the profile, sensitivity, crawl and comparison options; each scan of a site is
+compared with its previous one by default (Settings → Web scanning).</p></li></ul>
+<hr></div>
+<div class="half sw" lang="ar" dir="rtl"><a id="arabic"></a>
+<h1 id="الفحص-السلبي-للمواقع-كاشِف-11">الفحص السلبي للمواقع (كاشِف 1.1)<a class="hl" href="#الفحص-السلبي-للمواقع-كاشِف-11" aria-hidden="true" tabindex="-1">#</a></h1>
+<p><a href="#english">English</a> | <strong>العربية</strong></p>
+<p>يفحص كاشِف موقعًا تملكه، أو لديك تصريح كتابي بفحصه، بقراءة ما يقدّمه الموقع أصلًا. كل فحص ويب يتطلب <code><span class="nb">--authorized</span></code> في سطر
+الأوامر (أو مربع الإقرار في الواجهة)؛ ودونه يخرج كاشِف برمز الخروج 2 قبل إرسال أي طلب. قائمة القواعد بخطورتها وثقتها
+وربطها بـ CWE وOWASP WSTG وASVS في <a href="web-checks.html">web-checks.md</a>، وما يراه مالك الموقع في سجلاته تشرحه
+<a href="scanner.html">صفحة الفاحص</a>.</p>
+<h2 id="ما-يرسله-كاشِف">ما يرسله كاشِف<a class="hl" href="#ما-يرسله-كاشِف" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>طلبات <code>GET</code> فقط، بمعرّف صادق (<code>Kashif/&lt;الإصدار&gt;</code>) والترويسات <code>Accept</code> و<code>Accept-Encoding: gzip, deflate</code>
+و<code>Accept-Language: en</code> (و<code>Origin</code> في طلب CORS الوحيد). طلب واحد في كل مرة لكل مضيف، وبين طلبين <code><span class="nb">--delay</span></code> ثانية على
+الأقل (الافتراضي 0.5 والحد الأدنى 0.2)، وتزيدها قيمة <code>Crawl-delay</code> في <code>robots.txt</code> (حتى 10 ثوانٍ). وعند <code>429</code>، أو
+<code>503</code> مع <code>Retry-After</code>، ينتظر مرة واحدة (60 ثانيةً على الأكثر)؛ وتكرار ذلك يوقف فحص ذلك المضيف وتُعدّ بقية فحوصه «غير حاسمة».</p>
+<div class="tablewrap"><table><thead><tr><th>نمط الفحص</th><th>الطلبات (عدا صفحات الزحف)</th><th>ما يُجلب</th></tr></thead><tbody><tr><td><code>minimal</code></td><td>10 طلبات على الأكثر</td><td>العنوان وتوجيهاته (سلوك الإصدار 1.0)؛ ولا زحف فيه</td></tr><tr><td><code>standard</code> (الافتراضي)</td><td>45 طلبًا على الأكثر</td><td>مع سلسلة النسخة الأخرى http/https (على المنافذ الافتراضية فقط)، وطلب واحد بلا كوكيز مع <code>Origin: https://kashif-cors-check.invalid</code>، و<code>/robots.txt</code> و<code>/.well-known/security.txt</code> (و<code>/security.txt</code> بعد 404 فقط)، والأيقونة المعلنة أو <code>/favicon.ico</code>، و<code>/sitemap.xml</code> (مع <code><span class="nb">--crawl</span></code>)، وحتى 15 من سكربتات الصفحة وأنماطها من الموقع نفسه</td></tr><tr><td><code>deep</code> (أو <code><span class="nb">--deep</span></code>)</td><td>150 طلبًا على الأكثر</td><td>مع قائمة ثابتة من الملفات المكشوفة الشائعة (<code>.git/HEAD</code> و<code>.env</code> و<code>server-status</code> …)، وصفحات الدخول والإدارة للمنصّة المكتشفة (<code>/wp-login.php</code> و<code>/administrator/</code> …؛ تُطلب مرة واحدة دون إرسال أي بيانات)، وخطوط أساس لصفحات 404 باسم <code>/kashif-404-&lt;16 hex&gt;</code>، وحتى 10 سكربتات لأطراف ثالثة و5 خرائط مصدر و10 صور JPEG (أول 128 كيلوبايت)</td></tr><tr><td><code><span class="nb">--crawl</span></code> (مع standard أو deep)</td><td>مع <code><span class="nb">--max-pages</span></code> (الافتراضي 20، والحد الأعلى 500)</td><td>روابط الأصل نفسه (المخطط والمضيف والمنفذ أنفسها)، بالعرض أولًا، بعمق <code><span class="nb">--max-depth</span></code> على الأكثر (الافتراضي 2)، باحترام <code>robots.txt</code> إلا مع <code><span class="nb">--ignore-robots</span></code></td></tr></tbody></table></div>
+<p>يُقيَّم TLS بمصافحات عادية ورسائل ClientHello تُقرأ استجاباتها غير المشفّرة فقط (نحو 14 لكل عنوان، ونحو 60 مع <code>deep</code>).
+ولا يرسل كاشِف حمولات، ولا يجرّب المعاملات، ولا يرسل النماذج، ولا يخمّن كلمات المرور، ولا يستخدم غير GET، ولا يزوّر
+الترويسات أو معرّف المتصفح، ولا يتصل بمنفذ غير منفذ الهدف (و80/443 للنسخة الأخرى)، ويرفض اتباع توجيه أو رابط إلى عنوان
+خاص أو محلي إلا إن كان الهدف نفسه كذلك، ولا يتصل أبدًا بعناوين البيانات الوصفية للسحابة. ولا يجري أي استعلام يكشف اسم
+الهدف لطرف ثالث: حالة الإدراج المسبق لـ HSTS من قائمة Chromium المضمّنة، وشفافية الشهادات من طوابع SCT المضمّنة في الشهادة نفسها،
+ولا يُتحقَّق من إلغاء الشهادة (انظر <a href="#ما-لا-يكشفه-الفحص-السلبي">ما لا يكشفه الفحص السلبي</a>). ويقبل كاشِف الخيار
+<code><span class="nb">--third-party-lookups</span></code> حتى لا يعمل أي فحص من هذا النوع مستقبلًا دون موافقتك، ولا يستعمله أي فحص في الإصدار 1.1.</p>
+<h3 id="حدود-الفحص-الواحد">حدود الفحص الواحد<a class="hl" href="#حدود-الفحص-الواحد" aria-hidden="true" tabindex="-1">#</a></h3>
+<ul><li><strong>الوقت والحجم:</strong> يتوقف الفحص عن إرسال الطلبات بعد 600 ثانية أو بعد استقبال 50 ميغابايت، أيهما أسبق. وتُعدّ الفحوص
+التي احتاجت الطلبات التي لم تُرسل «لم تُجرَ» مع السبب، ولا تُعدّ ناجحة أبدًا.</li>
+<li><strong>الزحف:</strong> الحد الأعلى للخيار <code><span class="nb">--max-pages</span></code> هو 500 صفحة (وتُخفَّض القيمة الأكبر مع تنبيه)، والافتراضي لـ <code><span class="nb">--max-depth</span></code> هو 2.
+ولصفحات الزحف حدّ خاص بها فوق حدّ نمط الفحص.</li>
+<li><strong>لا زحف في <code>minimal</code>:</strong> يُرفض <code><span class="nb">--crawl</span></code> مع <code><span class="nb">--web-profile</span> minimal</code> قبل إرسال أي طلب (رمز الخروج 2)؛ استعمل <code>standard</code> أو <code>deep</code>.</li></ul>
+<h3 id="الوكيل-proxy">الوكيل (Proxy)<a class="hl" href="#الوكيل-proxy" aria-hidden="true" tabindex="-1">#</a></h3>
+<p>يحترم الفحص <code>HTTP(S)_PROXY</code> و<code>NO_PROXY</code> كما في 1.0 (ويعطّلهما <code><span class="nb">--no-proxy</span></code>). ولا يدعم كاشِف إلا الوكيل من نوع <code>http://</code>
+(ويمر HTTPS عبر نفق <code>CONNECT</code>)؛ وأي إعداد آخر، مثل <code>socks5://</code> أو منفذ غير صالح، يُفشل الطلبات التي تمر به بخطأ في الوكيل
+(فيتوقف الفحص برمز الخروج 2، وقيمة <code>web.error.code</code> في تقرير JSON تبدأ بـ <code>proxy</code>) بدل الاتصال المباشر خفية. وعبر الوكيل تُعدّ الفحوص المعتمدة على DNS «لم تُجرَ»،
+وتصبح نتائج TLS «محتملة» لأن الوكيل الفاحص يستبدل الشهادة، فلا تظهر إلا مع <code><span class="nb">--web-sensitivity</span> paranoid</code>. ولتقييم TLS
+نفسه افحص مع <code><span class="nb">--no-proxy</span></code>، أو أضف المضيف إلى <code>NO_PROXY</code>.</p>
+<h2 id="الخيارات">الخيارات<a class="hl" href="#الخيارات" aria-hidden="true" tabindex="-1">#</a></h2>
+<div class="tablewrap"><table><thead><tr><th>الخيار</th><th>معناه</th></tr></thead><tbody><tr><td><code><span class="nb">--web-profile</span> minimal|standard|deep</code></td><td>حدّ الطلبات أعلاه (<code><span class="nb">--deep</span></code> يساوي <code><span class="nb">--web-profile</span> deep</code>)</td></tr><tr><td><code><span class="nb">--web-sensitivity</span> strict|default|paranoid</code></td><td><code>strict</code>: المؤكَّدة فقط؛ <code>default</code>: المؤكَّدة والمرجَّحة؛ <code>paranoid</code>: كل شيء مع الفحوص الستة الخاصة بهذا المستوى</td></tr><tr><td><code><span class="nb">--crawl</span></code> و<code><span class="nb">--max-pages</span> N</code> و<code><span class="nb">--max-depth</span> N</code></td><td>الزحف على صفحات الأصل نفسه (المخطط والمضيف والمنفذ أنفسها)؛ 500 صفحة على الأكثر</td></tr><tr><td><code><span class="nb">--ignore-robots</span></code></td><td>الزحف على المسارات التي يمنعها <code>robots.txt</code> (لمالك الموقع)</td></tr><tr><td><code><span class="nb">--delay</span> SEC</code> و<code><span class="nb">--timeout</span> SEC</code></td><td>الفاصل بين طلبين إلى المضيف نفسه؛ ومهلة كل طلب</td></tr><tr><td><code><span class="nb">--compare-previous</span></code></td><td>المقارنة بآخر فحص محفوظ للموقع نفسه، وحفظ هذا الفحص في السجل المحلي (<code>~/.vulnscan</code> أو <code>VULNSCAN_HOME</code>)</td></tr><tr><td><code><span class="nb">--compare</span> ID|FILE</code></td><td>المقارنة بمعرّف فحص محفوظ، أو بتقرير JSON كتبه <code>-f json</code> (انظر <a href="#مقارنة-الفحوص">مقارنة الفحوص</a>)</td></tr><tr><td><code><span class="nb">--fail-on</span> SEVERITY</code></td><td>رمز الخروج 1 إذا ظهرت في التقرير نتيجة بهذه الخطورة أو أعلى</td></tr><tr><td><code><span class="nb">--fail-on-inconclusive</span></code></td><td>رمز الخروج 1 إذا كان الفحص غير حاسم: بلا درجة من كاشِف (<code>?</code>) أو ظهرت النتيجة WEB990 (أجاب جدار حماية أو تحدٍّ أو تقييد معدل بدل الموقع)</td></tr><tr><td><code><span class="nb">--ignore-rule</span> ID</code></td><td>استبعاد قاعدة ويب من التقرير ومن <code><span class="nb">--fail-on</span></code> (يمكن تكراره)؛ وتذكر ملاحظةٌ ما استُبعد، وتبقى الدرجات تحسبه</td></tr><tr><td><code><span class="nb">--policy</span> FILE</code></td><td>تطبيق بوابة سياسة (انظر <a href="#ملف-السياسة">ملف السياسة</a>)</td></tr><tr><td><code><span class="nb">--web-cookie-ignore</span> NAME</code></td><td>استبعاد كوكي من فحوص الكوكيز (يمكن تكراره)</td></tr><tr><td><code><span class="nb">--third-party-lookups</span></code></td><td>السماح باستعلامات تكشف اسم الموقع لطرف ثالث (لا يوجد منها شيء في 1.1)</td></tr><tr><td><code><span class="nb">--no-proxy</span></code></td><td>عدم استخدام الوكيل المعرَّف في البيئة</td></tr></tbody></table></div>
+<p>وتُرفض هذه التوليفات قبل إرسال أي طلب (رمز الخروج 2): خيار ويب (<code><span class="nb">--compare</span></code> و<code><span class="nb">--compare-previous</span></code> و<code><span class="nb">--web-profile</span></code>
+و<code><span class="nb">--web-sensitivity</span></code> و<code><span class="nb">--third-party-lookups</span></code> و<code><span class="nb">--ignore-robots</span></code> و<code><span class="nb">--web-cookie-ignore</span></code> و<code><span class="nb">--no-proxy</span></code>
+و<code><span class="nb">--fail-on-inconclusive</span></code>) مع مسار محلي بدل عنوان ويب؛ و<code><span class="nb">--deep</span></code> مع <code><span class="nb">--web-profile</span> minimal</code> أو <code>standard</code>؛ و<code><span class="nb">--crawl</span></code>
+مع <code><span class="nb">--web-profile</span> minimal</code>؛ و<code><span class="nb">--compare</span></code> مع <code><span class="nb">--compare-previous</span></code> معًا؛ و<code><span class="nb">--diff-base</span></code> أو <code><span class="nb">--diff-staged</span></code>، و<code><span class="nb">--fix</span></code> أو
+<code><span class="nb">--fix-dry-run</span></code>، و<code><span class="nb">--triage</span></code> دون اسم ملف، مع عنوان ويب.</p>
+<p>يثبّت <code>kashif update-data <span class="nb">--web</span></code> بيانات الويب الأحدث (retire.js، وقائمة HSTS preload، وقائمة النطاقات العامة، وبيانات
+التقنيات ونهاية الدعم …) من آخر إصدار رسمي بعد التحقق من بصمتها SHA-256 في <code>SHA256SUMS</code> للإصدار؛ و<code><span class="nb">--check</span></code> يتحقق فقط
+(رمز الخروج 10 إن وُجدت بيانات أحدث). ولا يُرسل شيء عن المواقع التي تفحصها. ويذكر كل تقرير تاريخ البيانات المستخدمة،
+وتضيف البيانات الأقدم من 90 يومًا ملاحظة، والأقدم من 180 يومًا تنبيهًا إلى أن فحوص الثغرات المعروفة (WEB054 وWEB800
+وWEB801) قد تفوتها ثغرات حديثة.</p>
+<h2 id="محتوى-التقارير">محتوى التقارير<a class="hl" href="#محتوى-التقارير" aria-hidden="true" tabindex="-1">#</a></h2>
+<ul><li><strong>النتائج</strong> مع درجة ثقتها: مؤكَّدة (حقيقة في البروتوكول) أو مرجَّحة (حقيقية على الأرجح) أو محتملة (قد توجد). والنتيجة
+المتكررة في صفحات كثيرة تظهر مرة واحدة مع عدد مواضعها وحتى 5 أمثلة وقوالب العناوين التي ظهرت فيها. ولكل نتيجة دليلها:
+الطلب وسلسلة التوجيه والحالة والترويسات كما وصلت (مع إخفاء قيم الكوكيز) والقيمة المطابقة وأمر <code>curl</code> يعيد الطلب نفسه
+(كل معامل فيه مُحاط بعلامات اقتباس آمنة لسطر الأوامر).</li>
+<li><strong>ثلاث درجات</strong>: درجة كاشِف للويب (من A+ إلى F بست مجموعات موزونة، مع حدود عليا عند النتائج الخطيرة؛ و<code>*</code> تعني درجة
+مؤقتة لأن مجموعة لم تُفحص، و<code>?</code> تعني أن جدار حماية أو تقييد معدل أجاب بدل الموقع)، ودرجة متوافقة مع MDN HTTP
+Observatory (الخوارزمية 6، من 165)، ودرجة TLS متوافقة مع SSL Labs (دون اختبارات الهجوم التي لا يجريها كاشِف).</li>
+<li><strong>التغطية</strong>: حالة لكل فحص مع السبب: ناجح أو فاشل أو غير منطبق أو لم يُجرَ أو غير حاسم، وقيمها في الحقل <code>state</code> في JSON
+هي <code>pass</code> و<code>fail</code> و<code>not_applicable</code> و<code>not_tested</code> و<code>inconclusive</code>. والفحص الذي لم يُجرَ لا يُعرض ناجحًا أبدًا ولا
+يدخل في أي درجة.</li>
+<li><strong>الجرد</strong>: ترويسات الأمان مع الحكم عليها، وسياسات CSP، والكوكيز (الصنف والخصائص، دون القيم أبدًا)، وTLS لكل عنوان،
+والتقنيات والمكتبات، ومضيفو الأطراف الثالثة.</li>
+<li><strong>إصلاحات جاهزة للنسخ</strong> لـ 18 منصةً: nginx وApache httpd 2.4 وIIS 10 وCaddy 2 وExpress ‏(helmet 7+) وNode.js وDjango
+وFlask / Werkzeug وSpring Security 6 / Spring Boot وApache Tomcat وASP.NET Core 8+ وASP.NET ‏(.NET Framework) وPHP
+وLaravel وSymfony وRuby on Rails وCloudflare وF5 BIG-IP، مع صيغة عامة لكل المنصات. والمنصّات المكتشفة في الموقع أولًا.</li>
+<li><strong>المقارنة</strong> (مع <code><span class="nb">--compare-previous</span></code> أو <code><span class="nb">--compare</span></code>): النتائج الجديدة والمحلولة والثابتة، وتغيّر الدرجات وتغييرات الوضع
+الأمني، والتراجعات أولًا. ولا يُقارن فحص بهدف آخر، ويُذكر اختلاف نمط الفحص إن وُجد.</li></ul>
+<p>ويحمل تقرير JSON البيانات نفسها تحت المفتاح <code>web</code> (<code>grades</code> و<code>coverage</code> و<code>inventory</code> و<code>notes</code> و<code>diff</code> و<code>snapshot</code>)،
+وتحمل نتائج SARIF الخاصية <code>properties.precision</code> والوسوم <code>external/cwe/cwe-N</code> و<code>wstg:…</code> و<code>asvs4:…</code> و<code>asvs5:…</code> مع
+الدرجات والتغطية في <code>runs[0].properties</code>، وموضع كل نتيجة فيه هو عنوان الصفحة؛ وفي تصدير <code>csv</code> عمود للثقة. ويعرض
+<code>kashif compliance</code> معرّفات WSTG وASVS لنتيجة الويب بوصفها «ربط محللي كاشِف».</p>
+<h2 id="مقارنة-الفحوص">مقارنة الفحوص<a class="hl" href="#مقارنة-الفحوص" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>يقارن <code><span class="nb">--compare-previous</span></code> بآخر فحص للموقع نفسه محفوظ في السجل المحلي، ويحفظ الفحص الجديد فيه. والسجل في <code>~/.vulnscan</code>
+(أو <code>$VULNSCAN_HOME</code>): ملف <code>scans/&lt;id&gt;.json</code> لكل فحص، والملف <code>index.json</code> الذي يخزّن قائمتها مؤقتًا. ويُعرف معرّف الفحص من:</p>
+<ul><li>السطر <code>حُفظ الفحص في السجل المحلي (المعرّف …)</code> الذي يطبعه <code><span class="nb">--compare-previous</span></code> على stderr بعد التقرير؛</li>
+<li>صفحة <strong>التقارير</strong> في الواجهة: رابط <strong>عرض</strong> لكل فحص يفتح <code>#findings/&lt;id&gt;</code>؛</li>
+<li>أسماء الملفات في <code>$VULNSCAN_HOME/scans/</code>، أو مفاتيح <code>$VULNSCAN_HOME/index.json</code>.</li></ul>
+<p>ويقبل <code><span class="nb">--compare</span></code> هذا المعرّف، أو تقرير JSON كُتب من قبل بـ <code>-f json</code> (أو <code><span class="nb">--all-formats</span></code>). وفي CI، حيث يبدأ كل تشغيل على
+جهاز جديد بسجل فارغ، احتفظ بتقرير JSON من التشغيل السابق ومرّره بـ <code><span class="nb">--compare</span> previous.json</code> (انظر
+<a href="#الاستخدام-في-ci">الاستخدام في CI</a>). ولا علاقة للأمر <code>kashif history</code> بذلك: فهو يبحث في سجل git لمستودع عن الأسرار
+المرفوعة.</p>
+<h2 id="الاستخدام-في-ci">الاستخدام في CI<a class="hl" href="#الاستخدام-في-ci" aria-hidden="true" tabindex="-1">#</a></h2>
+<pre dir="ltr" data-lang="bash"><code class="language-bash">kashif https://staging.example.com --authorized --fail-on high -f sarif -o kashif-web.sarif</code></pre>
+<div class="tablewrap"><table><thead><tr><th>رمز الخروج</th><th>معناه</th></tr></thead><tbody><tr><td><code>0</code></td><td>اكتمل الفحص ولم يُفشل شيءٌ البوابة</td></tr><tr><td><code>1</code></td><td>فشلت البوابة: نتيجة بخطورة <code><span class="nb">--fail-on</span></code> أو أعلى، أو فشل بوابة <code><span class="nb">--policy</span></code>، أو فحص غير حاسم مع <code><span class="nb">--fail-on-inconclusive</span></code></td></tr><tr><td><code>2</code></td><td>لم يُحكم على شيء: غياب <code><span class="nb">--authorized</span></code>، أو توليفة خيارات مرفوضة، أو ملف <code><span class="nb">--compare</span></code> غير موجود أو بلا فحص ويب، أو تعذّر الوصول إلى الموقع (DNS، أو رفض الاتصال، أو انتهاء المهلة، أو فشل TLS، أو الوكيل)</td></tr></tbody></table></div>
+<p><strong>جدار الحماية ليس نجاحًا.</strong> حين يجيب تحدٍّ من جدار حماية (WAF) أو تقييد معدل بدل الموقع، يوقف كاشِف الطلبات الاختيارية،
+ويعدّ الفحوص المتأثرة «غير حاسمة»، ويضيف النتيجة WEB990، ويعرض درجة كاشِف <code>?</code>. وخطورة WEB990 هي <code>info</code>، فلا يُفشل
+<code><span class="nb">--fail-on</span> high</code> وحده تشغيلًا كهذا مع أن الموقع لم يُرَ فعلًا: أضف <code><span class="nb">--fail-on-inconclusive</span></code> ليفشل، واسمح لعنوان جهاز CI في
+جدار الحماية أو افحص نسخة الاختبار (staging).</p>
+<p><strong>الموقع الذي يتعذّر الوصول إليه</strong> يُنهي الفحص برمز الخروج 2، ويكتب <code>-o</code> (بصيغة json أو sarif أو html أو markdown) أو
+<code><span class="nb">--all-formats</span></code> تقريرًا مع ذلك، فلا تقرأ خطوات CI ملفًا قديمًا. وشكل تقرير JSON حينها هو المثال في القسم الإنجليزي: المفتاح
+<code>web.status</code> قيمته <code>&quot;unreachable&quot;</code> (ولا يوجد هذا المفتاح في فحص مكتمل)، و<code>web.error</code> فيه <code>code</code> و<code>en</code> و<code>ar</code> و<code>raw</code>،
+و<code>findings</code> فارغة، و<code>files_scanned</code> يساوي 0. وقيمة <code>error.code</code> إحدى <code>invalid</code> و<code>unsupported</code> و<code>dns</code> و<code>refused</code>
+و<code>timeout</code> و<code>deadline</code> و<code>unreachable</code> و<code>tls</code> و<code>reset</code> و<code>network</code> أو رمز يبدأ بـ <code>proxy</code>. وفي SARIF يحمل التشغيل نفسه
+<code>invocations[0].executionSuccessful: false</code> وإشعار <code>toolExecutionNotification</code> معرّفه <code>web/&lt;code&gt;</code>، والكائن <code>web</code> في
+<code>runs[0].properties.kashif.web</code>.</p>
+<p><strong>التراجعات:</strong> احتفظ بتقرير JSON من آخر تشغيل وقارن به؛ ويكتب <code><span class="nb">--all-formats</span> PREFIX</code> تقرير SARIF وتقرير JSON في تشغيل
+واحد. ومثال وظيفة GitHub Actions الكامل في القسم الإنجليزي (<a href="#using-it-in-ci">Using it in CI</a>)، وجوهره:</p>
+<pre dir="ltr" data-lang="bash"><code class="language-bash">cmp=&quot;&quot;; [ -f previous/kashif-web.json ] &amp;&amp; cmp=&quot;--compare previous/kashif-web.json&quot;
+kashif https://staging.example.com --authorized --fail-on high --fail-on-inconclusive $cmp --all-formats kashif-web</code></pre>
+<p>ثم ارفع <code>kashif-web.sarif</code> بالإجراء <code>github/codeql-action/upload-sarif</code> مع <code>category: kashif-web</code>، فيصبح تحليل الويب
+تحليلًا مستقلًا لا يحلّ محل إنذارات فحص الكود في المستودع نفسه (ولا العكس). وموضع إنذارات الويب عنوان URL لا ملف في
+المستودع: يعرضها GitHub في تبويب Security، لكن دون عرض للكود، ولا تظهر أبدًا تعليقاتٍ على الأسطر المتغيرة في طلب الدمج.</p>
+<h2 id="ملف-السياسة">ملف السياسة<a class="hl" href="#ملف-السياسة" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>في فحص الويب لا تُطبَّق السياسة إلا إذا سمّيتها: مرّر <code><span class="nb">--policy</span> kashif.yml</code> (فالعنوان لا مجلد مشروع له يُبحث فيه عن
+<code>kashif.yml</code> تلقائيًا). والسياسة تحدد رمز الخروج ولا تغيّر التقرير: فـ <code>rules.disable</code> و<code>rules.severity</code> تغيّران ما تحسبه
+البوابة، أما التقرير فيعرض تلك النتائج بخطورتها الأصلية؛ ولاستبعاد قاعدة من التقرير استعمل <code><span class="nb">--ignore-rule</span> ID</code>. والبوابة
+الافتراضية تفشل عند <code>high</code>، فاذكر العتبة التي تريدها في <code>gate.fail_on</code>:</p>
+<pre dir="ltr" data-lang="yaml"><code class="language-yaml">version: 1
+gate:
+  fail_on: medium             # البوابة الافتراضية تفشل عند high
+rules:
+  disable:
+    - id: WEB071
+      reason: &quot;certificates are renewed automatically 30 days before expiry&quot;
+  severity:
+    - id: WEB-x-frame-options
+      severity: low
+      reason: &quot;static documentation with no actions to click-jack&quot;</code></pre>
+<pre dir="ltr" data-lang="bash"><code class="language-bash">kashif https://intranet.example --authorized --policy kashif.yml</code></pre>
+<h2 id="ما-لا-يكشفه-الفحص-السلبي">ما لا يكشفه الفحص السلبي<a class="hl" href="#ما-لا-يكشفه-الفحص-السلبي" aria-hidden="true" tabindex="-1">#</a></h2>
+<p>يقرأ الفحص السلبي ما يتلقاه زائر مجهول، وهذا يحدّ ما يمكنه قوله:</p>
+<ul><li><strong>الصفحات العامة فقط.</strong> لا تُزار الصفحات التي تتطلب تسجيل الدخول، ولا يسجّل كاشِف الدخول أبدًا.</li>
+<li><strong>لا اختبار للحقن ولا لـ XSS ولا للمصادقة ولا للتحكم في الوصول ولا لمنطق العمل.</strong> فهذه تحتاج طلبات مصمَّمة لكسر
+التطبيق، ولا يرسلها كاشِف أبدًا. وفحوص DOM تقرأ كود JavaScript في الصفحة ولا تشغّله.</li>
+<li><strong>لا يُتحقَّق من إلغاء الشهادة.</strong> يقرأ كاشِف استجابة OCSP المرفقة إن أرسلها الخادم، لكنه لا يتصل بجهة الإصدار (فلا طلب
+CRL ولا OCSP).</li>
+<li><strong>الدرجة تقيس سلامة الإعدادات، لا خلوّ الموقع من الثغرات.</strong> فقد يحمل موقعٌ درجته A+ ثغرة حقن.</li></ul>
+<p>لذلك اجمع فحص الويب مع فحص الكود (SAST، أي <code>kashif .</code> على كود التطبيق)، ومع اختبار نشط مصرَّح به لما لا يراه أيٌّ منهما
+(اختبار اختراق أو أداة DAST تُشغَّل بإذن المالك).</p>
+<h2 id="الترقية-من-10">الترقية من 1.0<a class="hl" href="#الترقية-من-10" aria-hidden="true" tabindex="-1">#</a></h2>
+<ul><li><p><strong>نمط الفحص الافتراضي <code>standard</code>.</strong> يرسل الفحص الافتراضي حتى 45 طلبًا بدل طلب الإصدار 1.0 الواحد، والفاصل بين الطلبات
+يسري على كل طلب، فالفحص أبطأ (نحو 3 ثوانٍ على صفحة محلية بالفاصل الافتراضي، ونحو 27 ثانيةً مع <code><span class="nb">--deep</span></code>). ويحافظ
+<code><span class="nb">--web-profile</span> minimal</code> على حركة 1.0.</p></li>
+<li><p><strong>إعادة معايرة الخطورة.</strong> تبقى معاني معرّفات القواعد كما هي، لكن بعض درجات الخطورة تغيّرت، فيتغيّر ما يُفشله <code><span class="nb">--fail-on</span></code>
+وسياسات الخطورة:</p>
+<div class="tablewrap"><table><thead><tr><th>القاعدة</th><th>1.0</th><th>1.1</th></tr></thead><tbody><tr><td><code>WEB-strict-transport-security</code> (غياب HSTS)</td><td>high</td><td>medium</td></tr><tr><td><code>WEB020</code> (كوكي بلا Secure)</td><td>medium</td><td>high أو medium أو low بحسب فئة الكوكي وHSTS</td></tr><tr><td><code>WEB021</code> (كوكي بلا HttpOnly)</td><td>medium لكل الكوكيز</td><td>medium لكوكيز الجلسة والمصادقة فقط</td></tr><tr><td><code>WEB022</code> (كوكي بلا SameSite)</td><td>low لكل الكوكيز</td><td>low لكوكيز الجلسة والمصادقة وCSRF، وinfo (في <code>paranoid</code>) لغيرها</td></tr><tr><td><code>WEB050</code> (المحتوى المختلط)</td><td>medium</td><td>medium للمحتوى النشط، وlow للسلبي</td></tr><tr><td><code>WEB053</code> (بلا SRI)</td><td>low</td><td>low حيث تدعم شبكة التوزيع SRI، وinfo في غيرها</td></tr><tr><td><code>WEB054</code> (مكتبة JavaScript بها ثغرات)</td><td>من جدول يدوي</td><td>أعلى خطورة في بيانات retire.js</td></tr><tr><td><code>WEB071</code> (قرب انتهاء الشهادة)</td><td>medium</td><td>medium أو low، والعتبات نسبية إلى عمر الشهادة</td></tr><tr><td><code>WEB-x-frame-options</code> و<code>WEB-content-security-policy</code></td><td>medium</td><td>medium، وlow على المستندات الثابتة بلا سكربتات</td></tr><tr><td><code>WEB-permissions-policy</code> و<code>WEB-x-content-type-options</code></td><td>CWE-16</td><td>CWE-693 (الخطورة كما هي)</td></tr></tbody></table></div></li>
+<li><p><strong>نتائج أقل ومجمَّعة.</strong> تظهر النتيجة مرة واحدة لكل مضيف مع مواضعها، وزالت إنذارات 1.0 الكاذبة، ولا تظهر النتائج
+«المحتملة» (<code>tentative</code>) إلا مع <code><span class="nb">--web-sensitivity</span> paranoid</code>.</p></li>
+<li><p><strong>البصمات.</strong> تحتفظ قواعد ترويسات الأمان الست وWEB000 وWEB010 وWEB011 وWEB020–WEB022 وWEB040–WEB043 وWEB052 وWEB055
+وWEB056 وWEB060 ببصمات الإصدار 1.0، فيبقى خط الأساس وقرارات الفرز صالحة لها. أما WEB053 وWEB054 وبقية النتائج التي صارت
+تُجمع لكل مضيف أو مكتبة فبصمتها الآن مفتاح تجميعها، فلا تتغير مع قيم nonce أو التواريخ أو الأعداد: تظهر جديدةً مرة واحدة بعد
+الترقية، فأعد حينها كتابة خط أساس الويب (<code><span class="nb">--write-baseline</span></code>).</p></li>
+<li><p><strong>عمود CSV.</strong> في تصدير CSV عمود أخير جديد <code>Confidence</code> (فارغ لنتائج الكود). ومن يقرأ الأعمدة بأسمائها أو مواضعها لا يتأثر،
+ومن يتحقق من عدد الأعمدة يحتاج إلى التحديث.</p></li>
+<li><p><strong>فشل الوكيل.</strong> إعداد الوكيل الذي لا يستطيع كاشِف استعماله (<code>socks5://</code> أو منفذ غير صالح) صار يُفشل الفحص بخطأ
+في الوكيل (رمز الخروج 2) بدل الاتصال المباشر بالموقع. استعمل <code><span class="nb">--no-proxy</span></code> أو <code>NO_PROXY</code> للاتصال المباشر عمدًا.</p></li>
+<li><p><strong>الملاحظات.</strong> ملاحظة «فحص سلبي: طلب واحد» صارت تذكر حدّ الطلبات الفعلي لنمط الفحص المختار. وتبقى الفحوص المحفوظة قبل
+الترقية بنصّها القديم.</p></li>
+<li><p><strong>الواجهة.</strong> في نموذج فحص الويب خيارات نمط الفحص والحساسية والزحف والمقارنة، ويُقارن كل فحص لموقع بالفحص السابق له
+افتراضيًا (الإعدادات ← فحص الويب).</p></li></ul></div>
+</main>
+</div>
+<footer>
+  <div class="wrap foot">
+    <span><span data-i18n="foot.ver">Version</span> <a href="changelog.html">v1.1.0</a> · <a href="license.html" data-i18n="nav.license">License</a> · <span data-i18n="foot.legal">Scan only systems you are authorized to test.</span></span>
+    <nav aria-label="Primary" data-i18n-attr="aria-label:nav.label"><a href="index.html" data-i18n="nav.home">Home</a><a href="docs.html" data-i18n="nav.docs">Documentation</a><a href="security.html" data-i18n="nav.security">Security</a><a href="#main" data-i18n="top">Back to top</a></nav>
+  </div>
+</footer>
+<script>
+(function () {
+  "use strict";
+  var root = document.documentElement, I18N = {"en": {"skip": "Skip to content", "brand": "Kashif", "gh.sr": "Kashif on GitHub", "nav.label": "Primary", "nav.menu": "Menu", "lang.label": "Language", "theme.toLight": "Switch to light theme", "theme.toDark": "Switch to dark theme", "nav.home": "Home", "nav.docs": "Documentation", "nav.changelog": "Changelog", "nav.security": "Security", "nav.license": "License", "nav.privacy": "Privacy", "toc": "On this page", "foot.ver": "Version", "foot.legal": "Scan only systems you are authorized to test.", "foot.src": "Generated from the repository's", "top": "Back to top", "docs.title": "Documentation — Kashif (vulnscan)", "docs.desc": "Kashif (vulnscan) documentation: install, quick start, CI and GitHub Code Scanning, baselines, accuracy on the OWASP Benchmark, languages and limitations.", "changelog.title": "Changelog — Kashif (vulnscan)", "changelog.desc": "What changed in each Kashif (vulnscan) release: new detectors, languages, accuracy and fixes.", "security.title": "Security policy — Kashif (vulnscan)", "security.desc": "How to report a vulnerability in Kashif (vulnscan) privately, what counts as one, and how to verify release binaries.", "license.title": "MIT License — Kashif (vulnscan)", "license.desc": "Kashif (vulnscan) is free and open source under the MIT License.", "privacy.title": "Privacy — Kashif (vulnscan)", "privacy.desc": "Kashif sends nothing about you or your code; the website counts visits anonymously, without cookies.", "web-scanning.title": "Passive web scanning — Kashif (vulnscan)", "web-scanning.desc": "What the Kashif passive web scanner sends, its profiles and limits, the reports, CI use with SARIF and exit codes, policy files, what a passive scan cannot find, and upgrading from 1.0.", "web-checks.title": "Passive web checks — Kashif (vulnscan)", "web-checks.desc": "Every rule of the Kashif passive web scanner with its severity, confidence, CWE, OWASP WSTG and ASVS mappings, and copy-paste fixes for 18 platforms.", "ar.note": "This document is written in Arabic."}, "ar": {"skip": "تخطَّ إلى المحتوى", "brand": "كاشِف", "gh.sr": "كاشِف على GitHub", "nav.label": "التنقّل الرئيسي", "nav.menu": "القائمة", "lang.label": "اللغة", "theme.toLight": "التبديل إلى الوضع الفاتح", "theme.toDark": "التبديل إلى الوضع الداكن", "nav.home": "الرئيسية", "nav.docs": "التوثيق", "nav.changelog": "سجل التغييرات", "nav.security": "الأمان", "nav.license": "الرخصة", "nav.privacy": "الخصوصية", "toc": "في هذه الصفحة", "foot.ver": "الإصدار", "foot.legal": "افحص فقط الأنظمة المصرَّح لك باختبارها.", "foot.src": "مولَّدة من ملف المستودع", "top": "إلى الأعلى", "docs.title": "التوثيق — كاشِف (vulnscan)", "docs.desc": "توثيق كاشِف (vulnscan): التثبيت والبدء السريع والتكامل مع CI وGitHub Code Scanning وخط الأساس والدقة على OWASP Benchmark واللغات والحدود.", "changelog.title": "سجل التغييرات — كاشِف (vulnscan)", "changelog.desc": "ما الذي تغيّر في كل إصدار من كاشِف (vulnscan): كواشف ولغات جديدة وتحسينات الدقة والإصلاحات.", "security.title": "سياسة الأمان — كاشِف (vulnscan)", "security.desc": "كيف تبلّغ عن ثغرة في كاشِف (vulnscan) بشكل خاص، وما الذي يُعدّ ثغرة، وكيف تتحقق من سلامة النسخ.", "license.title": "رخصة MIT — كاشِف (vulnscan)", "license.desc": "كاشِف (vulnscan) مجاني ومفتوح المصدر برخصة MIT.", "privacy.title": "الخصوصية — كاشِف (vulnscan)", "privacy.desc": "لا يرسل كاشِف أي شيء عنك أو عن الكود؛ والموقع يعدّ الزيارات عدًّا مجهول الهوية دون ملفات تعريف ارتباط.", "web-scanning.title": "الفحص السلبي للمواقع — كاشِف (vulnscan)", "web-scanning.desc": "ما يرسله فاحص المواقع السلبي في كاشِف، وأنماط الفحص وحدودها، والتقارير، والاستخدام في CI مع SARIF ورموز الخروج، وملف السياسة، وما لا يكشفه الفحص السلبي، والترقية من 1.0.", "web-checks.title": "فحوص الويب السلبية — كاشِف (vulnscan)", "web-checks.desc": "كل قواعد فاحص المواقع السلبي في كاشِف بخطورتها وثقتها وربطها بـ CWE وOWASP WSTG وASVS، وإصلاحات جاهزة للنسخ لـ 18 منصةً.", "ar.note": "هذا المستند مكتوب بالعربية."}}, PAGE = "web-scanning";
+  var state = { lang: root.lang === "ar" ? "ar" : "en", theme: root.getAttribute("data-theme") === "light" ? "light" : "dark" };
+  var themeStored = false;
+  try { themeStored = !!localStorage.getItem("kashif-theme"); } catch (e) {}
+  function t(k) { return (I18N[state.lang] && I18N[state.lang][k]) || I18N.en[k] || k; }
+  function renderTheme() {
+    root.setAttribute("data-theme", state.theme);
+    var b = document.getElementById("theme-btn");
+    b.setAttribute("aria-label", t(state.theme === "dark" ? "theme.toLight" : "theme.toDark"));
+    b.title = b.getAttribute("aria-label");
+  }
+  function apply(lang) {
+    state.lang = I18N[lang] ? lang : "en";
+    root.lang = state.lang;
+    root.dir = state.lang === "ar" ? "rtl" : "ltr";
+    document.querySelectorAll("[data-i18n]").forEach(function (el) { el.textContent = t(el.getAttribute("data-i18n")); });
+    document.querySelectorAll("[data-i18n-attr]").forEach(function (el) {
+      el.getAttribute("data-i18n-attr").split(";").forEach(function (pair) {
+        var p = pair.split(":"); if (p.length === 2) el.setAttribute(p[0].trim(), t(p[1].trim()));
+      });
+    });
+    document.querySelectorAll(".seg [data-lang]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.lang === state.lang)); });
+    document.title = t(PAGE + ".title");
+    var md = document.querySelector('meta[name="description"]'); if (md) md.setAttribute("content", t(PAGE + ".desc"));
+    renderTheme();
+    spy();
+  }
+  document.querySelectorAll(".seg [data-lang]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      apply(b.dataset.lang);
+      try { localStorage.setItem("kashif-lang", state.lang); } catch (e) {}
+      try { var u = new URL(location.href); u.searchParams.set("lang", state.lang); history.replaceState(null, "", u.pathname + u.search + u.hash); } catch (e) {}
+    });
+  });
+  document.getElementById("theme-btn").addEventListener("click", function () {
+    state.theme = state.theme === "dark" ? "light" : "dark"; themeStored = true;
+    try { localStorage.setItem("kashif-theme", state.theme); } catch (e) {}
+    renderTheme();
+  });
+  if (window.matchMedia) {
+    var mq = matchMedia("(prefers-color-scheme: light)");
+    var onMq = function () { if (!themeStored) { state.theme = mq.matches ? "light" : "dark"; renderTheme(); } };
+    if (mq.addEventListener) mq.addEventListener("change", onMq); else if (mq.addListener) mq.addListener(onMq);
+  }
+  var menuBtn = document.getElementById("menu-btn"), links = document.getElementById("nav-links");
+  menuBtn.addEventListener("click", function () {
+    var open = !links.classList.contains("open");
+    links.classList.toggle("open", open); menuBtn.setAttribute("aria-expanded", String(open));
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && links.classList.contains("open")) { links.classList.remove("open"); menuBtn.setAttribute("aria-expanded", "false"); menuBtn.focus(); } });
+
+  /* the README has an English and an Arabic half: a link into the hidden half switches language */
+  function reveal(hash) {
+    if (!hash || hash.length < 2) return;
+    var id; try { id = decodeURIComponent(hash.slice(1)); } catch (e) { id = hash.slice(1); }
+    var el = document.getElementById(id); if (!el) return;
+    var half = el.closest(".half.sw");
+    if (half && half.getAttribute("lang") !== state.lang) { apply(half.getAttribute("lang")); el.scrollIntoView(); }
+  }
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest('a[href^="#"]');
+    if (!a) return;
+    var h = a.getAttribute("href"), id; try { id = decodeURIComponent(h.slice(1)); } catch (x) { id = h.slice(1); }
+    var el = document.getElementById(id), half = el && el.closest(".half.sw");
+    if (half && half.getAttribute("lang") !== state.lang) { e.preventDefault(); apply(half.getAttribute("lang")); history.pushState(null, "", h); el.scrollIntoView(); }
+  });
+
+  /* table of contents: collapsed on small screens, highlights the current section */
+  var toc = document.querySelector(".toc");
+  if (toc && window.matchMedia && matchMedia("(max-width: 900px)").matches) toc.open = false;
+  var spyLinks = [];
+  function spy() {
+    spyLinks = Array.prototype.slice.call(document.querySelectorAll(".toc a")).filter(function (a) { return a.offsetParent !== null; });
+    onScroll();
+  }
+  function onScroll() {
+    var cur = null;
+    for (var i = 0; i < spyLinks.length; i++) {
+      var id; try { id = decodeURIComponent(spyLinks[i].getAttribute("href").slice(1)); } catch (e) { continue; }
+      var h = document.getElementById(id);
+      if (h && h.getBoundingClientRect().top < 120) cur = spyLinks[i];
+    }
+    spyLinks.forEach(function (a) { a.classList.toggle("on", a === cur); if (a === cur) a.setAttribute("aria-current", "location"); else a.removeAttribute("aria-current"); });
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  apply(state.lang);
+  if (location.hash) reveal(location.hash);
+})();
+</script>
+</body>
+</html>

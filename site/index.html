@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kashif (vulnscan) — Open-source SAST with source-to-sink dataflow analysis</title>
-<meta name="description" content="Kashif is a free, open-source SAST tool. Dataflow analysis in 12 languages, Oracle APEX, Android APK/JAR, secrets and passive web checks. Zero dependencies, runs locally, SARIF for GitHub Code Scanning.">
+<title>Kashif (vulnscan) — Open-source SAST and passive web scanner</title>
+<meta name="description" content="Kashif is a free, open-source security scanner: dataflow SAST in 12 languages, Oracle APEX and Android apps, and a passive web scanner with 184 checks and Kashif, Observatory and TLS grades. Zero dependencies, runs locally, in English and Arabic.">
 <script>
 /* Runs before first paint: pick language (?lang= > saved > browser) and theme (saved > system) so nothing flashes. */
 (function () {
@@ -27,8 +27,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Kashif">
-<meta property="og:title" content="Kashif (vulnscan) — Open-source SAST with source-to-sink dataflow analysis">
-<meta property="og:description" content="Dataflow analysis in 12 languages, Oracle APEX, Android APK/JAR and passive web checks. Zero dependencies, runs locally, SARIF for GitHub Code Scanning.">
+<meta property="og:title" content="Kashif (vulnscan) — Open-source SAST and passive web scanner">
+<meta property="og:description" content="Dataflow SAST in 12 languages, Oracle APEX and Android apps, plus a passive web scanner with 184 checks. Zero dependencies, runs locally, in English and Arabic.">
 <meta property="og:url" content="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/">
 <meta property="og:image" content="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/img/og-en.png">
 <meta property="og:image:width" content="1200">
@@ -37,8 +37,8 @@
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="ar_AR">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Kashif (vulnscan) — Open-source SAST with source-to-sink dataflow analysis">
-<meta name="twitter:description" content="Dataflow analysis in 12 languages, Oracle APEX, Android APK/JAR and passive web checks. Zero dependencies, runs locally.">
+<meta name="twitter:title" content="Kashif (vulnscan) — Open-source SAST and passive web scanner">
+<meta name="twitter:description" content="Dataflow SAST in 12 languages, Oracle APEX and Android apps, plus a passive web scanner with 184 checks. Zero dependencies, runs locally, in English and Arabic.">
 <meta name="twitter:image" content="https://abdulrahmanahmedelabed-prog.github.io/vulnscan/img/og-en.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,8 +50,8 @@
   "@type": "SoftwareApplication",
   "name": "Kashif",
   "alternateName": ["vulnscan", "كاشِف"],
-  "author": {"@type": "Organization", "name": "Programming Department, Islamic University of Gaza", "email": "sdep@iugaza.edu.ps", "parentOrganization": {"@type": "CollegeOrUniversity", "name": "Islamic University of Gaza", "url": "https://www.iugaza.edu.ps"}},
-  "description": "Free, open-source static application security testing (SAST) tool with source-to-sink dataflow analysis in 12 languages, Oracle APEX, Android APK/JAR, secrets detection and passive web checks. Zero dependencies; runs locally; SARIF 2.1.0 output.",
+  "author": {"@type": "Organization", "name": "Programming Department, Islamic University of Gaza", "email": ["its@iugaza.edu.ps", "aelabed@iugaza.edu.ps"], "parentOrganization": {"@type": "CollegeOrUniversity", "name": "Islamic University of Gaza", "url": "https://www.iugaza.edu.ps"}},
+  "description": "Free, open-source security scanner: static application security testing (SAST) with source-to-sink dataflow analysis in 12 languages, Oracle APEX, Android APK/JAR and secrets detection, plus a passive web scanner with 184 checks. Zero dependencies; runs locally; SARIF 2.1.0 output.",
   "applicationCategory": "SecurityApplication",
   "applicationSubCategory": "Static application security testing",
   "operatingSystem": "Windows, macOS, Linux",
@@ -76,7 +76,8 @@
 {"@type":"Question","name":"Which languages and targets are supported?","acceptedAnswer":{"@type":"Answer","text":"Dataflow analysis for Python, JavaScript/TypeScript, Java, Kotlin, C#, Go, PHP, C/C++, Rust, Swift, Ruby and PL/SQL, plus Oracle APEX exports, Android APK/JAR (via jadx), configuration, containers, CI files and passive web scanning."}},
 {"@type":"Question","name":"How do I use it in CI?","acceptedAnswer":{"@type":"Answer","text":"Run kashif with -f sarif and upload the file to GitHub Code Scanning, or use --fail-on high to fail the build. With --baseline, only findings that are new since the baseline fail the build."}},
 {"@type":"Question","name":"How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?","acceptedAnswer":{"@type":"Answer","text":"Those tools have far more rules and library models and years of real-world tuning. Kashif's strengths are running fully locally with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard."}},
-{"@type":"Question","name":"How do I report a security issue in Kashif?","acceptedAnswer":{"@type":"Answer","text":"Use GitHub private vulnerability reporting, as described in SECURITY.md. Please do not open a public issue."}}
+{"@type":"Question","name":"How do I report a security issue in Kashif?","acceptedAnswer":{"@type":"Answer","text":"Use GitHub private vulnerability reporting, as described in SECURITY.md. Please do not open a public issue."}},
+{"@type":"Question","name":"Is a web scan safe to run against my live site?","acceptedAnswer":{"@type":"Answer","text":"It is built to be: plain GET requests within a stated budget (at most 45 by default), at least 0.2 s apart and one at a time, with an honest User-Agent and no payloads. Run it only on sites you own or are authorized in writing to test."}}
 ]}
 </script>
 <style>
@@ -113,13 +114,16 @@
   --track:#e6ebf2;--tint:rgba(8,122,63,.08);--tint-bd:rgba(8,122,63,.22);--tint2:rgba(109,40,217,.07);--tint2-bd:rgba(109,40,217,.2);
 }
 *{box-sizing:border-box}
+/* landing-only tokens (the block above is shared with the generated documentation pages) */
+:root,[data-theme="dark"]{--cyan:#4fc3f7;--cyan-ink:#7dd3fc;--ring:rgba(79,195,247,.16);--ring2:rgba(63,192,124,.14);--card-hi:rgba(255,255,255,.035);--st-na:#8291a7;--st-nt:#fbbf24;--st-inc:#a78bfa;--bar-a:#3fc07c;--bar-b:#4fc3f7}
+[data-theme="light"]{--cyan:#0071a8;--cyan-ink:#00618f;--ring:rgba(0,113,168,.12);--ring2:rgba(8,122,63,.12);--card-hi:rgba(15,23,42,.02);--st-na:#556072;--st-nt:#b45309;--st-inc:#6d28d9;--bar-a:#087a3f;--bar-b:#0071a8;--tint2:rgba(0,113,168,.08);--tint2-bd:rgba(0,113,168,.22)}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;scroll-padding-top:80px}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:16px;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 html[lang="ar"] body{font-family:var(--font-ar);line-height:1.8}
 a{color:var(--accent-ink)}
 a:hover{text-decoration-thickness:2px}
 img{max-width:100%}
-code,pre,.mono{font-family:var(--mono)}
+code,pre,.mono,.term{font-family:var(--mono);font-feature-settings:"calt" 0}
 .wrap{max-width:var(--wrap);margin:0 auto;padding:0 24px}
 .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
@@ -130,13 +134,15 @@ code,pre,.mono{font-family:var(--mono)}
 
 /* header */
 .top{position:sticky;top:0;z-index:50;background:var(--head-bg);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line)}
-.nav{display:flex;align-items:center;gap:26px;height:64px}
-.brand{display:flex;align-items:center;gap:10px;color:var(--text);font-weight:700;font-size:18px;letter-spacing:-.01em;text-decoration:none}
+.nav{display:flex;align-items:center;gap:24px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--text);font-weight:700;font-size:18px;letter-spacing:-.01em;text-decoration:none;flex:none}
 .brand img{width:30px;height:30px;display:block}
 .brand small{font-weight:500;color:var(--dim);font-size:14px}
-.links{display:flex;gap:20px;flex:1}
-.links a{color:var(--muted);font-size:14.5px;font-weight:500;text-decoration:none;padding:6px 0}
+.links{display:flex;gap:18px;flex:1}
+.links a{color:var(--muted);font-size:14.5px;font-weight:500;text-decoration:none;padding:6px 0;white-space:nowrap}
 .links a:hover{color:var(--text)}
+.links a.hot{color:var(--text)}
+.links a.hot::after{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cyan);margin-inline-start:6px;vertical-align:2px}
 .tools{display:flex;align-items:center;gap:8px;margin-inline-start:auto}
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:10px;padding:3px;background:var(--panel)}
 .seg button{all:unset;cursor:pointer;padding:4px 10px;border-radius:7px;font-size:13px;font-weight:600;color:var(--muted);line-height:1.4;min-width:20px;text-align:center}
@@ -157,80 +163,122 @@ code,pre,.mono{font-family:var(--mono)}
 .btn.lg{padding:14px 22px;font-size:16px;border-radius:12px}
 .btn.sm{padding:7px 12px;font-size:14px;border-radius:9px}
 .btn svg{width:18px;height:18px}
-.btn small{font-weight:500;opacity:.85;font-size:.86em}
 
 /* hero */
-.hero{position:relative;padding:76px 0 40px;overflow:hidden;text-align:center}
-.hero::before{content:"";position:absolute;inset:-220px -10% auto;height:860px;background:radial-gradient(640px 360px at 50% 34%,var(--glow1),transparent 70%),radial-gradient(520px 300px at 18% 8%,var(--glow2),transparent 70%),radial-gradient(520px 300px at 85% 10%,var(--glow2),transparent 70%);pointer-events:none}
-.hero::after{content:"";position:absolute;inset:0;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:56px 56px;opacity:var(--grid-op);mask-image:radial-gradient(ellipse 70% 50% at 50% 18%,#000 30%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse 70% 50% at 50% 18%,#000 30%,transparent 75%);pointer-events:none}
+.hero{position:relative;padding:72px 0 64px;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:-260px -10% auto;height:980px;background:radial-gradient(620px 380px at 74% 38%,var(--glow2),transparent 70%),radial-gradient(560px 340px at 20% 20%,var(--glow1),transparent 70%);pointer-events:none}
+.hero::after{content:"";position:absolute;inset:0;background-image:radial-gradient(var(--line2) 1px,transparent 1.2px);background-size:22px 22px;opacity:var(--grid-op);mask-image:radial-gradient(ellipse 60% 70% at 70% 40%,#000 20%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse 60% 70% at 70% 40%,#000 20%,transparent 75%);pointer-events:none}
 .hero .wrap{position:relative;z-index:1}
-.vbadge{display:inline-flex;align-items:center;gap:8px;padding:5px 12px 5px 6px;border:1px solid var(--line2);border-radius:999px;background:var(--panel);color:var(--muted);font-size:13.5px;font-weight:500;text-decoration:none}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.04fr);gap:56px;align-items:center}
+.vbadge{display:inline-flex;align-items:center;gap:8px;padding:5px 12px 5px 6px;border:1px solid var(--line2);border-radius:999px;background:var(--panel);color:var(--muted);font-size:13.5px;font-weight:500;text-decoration:none;max-width:100%}
 html[dir="rtl"] .vbadge{padding:5px 6px 5px 12px}
 .vbadge:hover{border-color:var(--dim);color:var(--text)}
-.vbadge .ver{background:var(--tint);color:var(--accent-ink);border-radius:999px;padding:2px 9px;font-weight:600;font-family:var(--mono);font-size:12.5px}
+.vbadge .ver{background:var(--tint2);color:var(--cyan-ink);border-radius:999px;padding:2px 9px;font-weight:600;font-family:var(--mono);font-size:12.5px;flex:none}
 .ver{direction:ltr;unicode-bidi:isolate}
 .ver.word{font-family:inherit!important;font-size:inherit!important}
 html[dir="rtl"] .flip{transform:scaleX(-1)}
-h1{text-wrap:balance;font-size:clamp(38px,6vw,68px);line-height:1.04;letter-spacing:-.04em;margin:22px auto 20px;font-weight:800;max-width:900px}
-html[lang="ar"] h1{letter-spacing:0;line-height:1.3;font-weight:700}
-.grad{background:linear-gradient(120deg,#3fc07c 0%,#2fb98a 45%,#33b5ec 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
-[data-theme="light"] .grad{background:linear-gradient(120deg,#087a3f 0%,#0369a1 45%,#0071a8 100%);-webkit-background-clip:text;background-clip:text}
-.lead{font-size:clamp(17px,1.6vw,19.5px);color:var(--muted);margin:0 auto 30px;max-width:720px}
-.cta{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
-.os-pick{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:14px;font-size:13.5px;color:var(--dim)}
+h1{text-wrap:balance;font-size:clamp(40px,5.4vw,70px);line-height:1.02;letter-spacing:-.045em;margin:22px 0 22px;font-weight:800}
+html[lang="ar"] h1{letter-spacing:0;line-height:1.3;font-weight:700;font-size:clamp(36px,4.6vw,60px)}
+.grad{background:linear-gradient(120deg,#3fc07c 0%,#2fb98a 40%,#33b5ec 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+[data-theme="light"] .grad{background:linear-gradient(120deg,#087a3f 0%,#0a6f6a 45%,#0071a8 100%);-webkit-background-clip:text;background-clip:text}
+.lead{font-size:clamp(17px,1.5vw,19px);color:var(--muted);margin:0 0 30px;max-width:620px}
+.cta{display:flex;gap:12px;flex-wrap:wrap}
+.os-pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px;font-size:13.5px;color:var(--dim)}
 .os-pick select{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:4px 8px}
 .os-pick select:focus-visible{outline:2px solid var(--accent)}
 .os-pick a{color:var(--muted)}
-.hero-meta{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:center;margin-top:22px;color:var(--muted);font-size:14px}
+.hero-meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:26px;color:var(--muted);font-size:14px}
 .hero-meta span{display:inline-flex;align-items:center;gap:6px}
 .hero-meta svg{width:16px;height:16px;color:var(--ok)}
-.hero-shot{margin:52px auto 0;max-width:1120px;position:relative}
 
-/* screenshot frames */
-.frame{border:1px solid var(--line2);border-radius:var(--radius-lg);overflow:hidden;background:var(--panel);box-shadow:var(--shadow-lg),var(--frame-glow);text-align:start}
-.bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel2);direction:ltr}
-.dots{display:flex;gap:6px}.dots i{width:10px;height:10px;border-radius:50%;background:var(--line2)}
-.url{flex:1;text-align:center;font-family:var(--mono);font-size:12px;color:var(--dim)}
-.url span{display:inline-block;padding:2px 14px;border-radius:7px;background:var(--bg);border:1px solid var(--line)}
-.shot{display:block;position:relative;aspect-ratio:1440/900;background:linear-gradient(135deg,var(--panel2),var(--bg2))}
-.shot picture,.shot picture img{display:block;width:100%;height:100%}
-.shot picture img{object-fit:cover;object-position:top}
-.shot.missing picture{visibility:hidden}
-.shot .ph{position:absolute;inset:0;display:none;place-items:center;color:var(--dim);font-size:14px}
-.shot.missing .ph{display:grid}
-.shot .ph img{opacity:.35}
+/* the console (always dark, like a terminal) */
+.console-wrap{position:relative}
+.console-wrap::before{content:"";position:absolute;inset:-18% -14% -18% -14%;background:radial-gradient(closest-side,var(--ring),transparent 70%),repeating-radial-gradient(circle at 50% 50%,transparent 0 46px,var(--ring2) 46px 47px);border-radius:50%;mask-image:radial-gradient(closest-side,#000 40%,transparent 100%);-webkit-mask-image:radial-gradient(closest-side,#000 40%,transparent 100%);pointer-events:none;z-index:0}
+.console{position:relative;z-index:1;background:linear-gradient(180deg,#0d1424,#090e19);border:1px solid #26344f;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg),0 0 90px -30px rgba(79,195,247,.35);overflow:hidden;direction:ltr;text-align:left;color:var(--code-text)}
+.console .cbar{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--code-line);background:rgba(255,255,255,.02)}
+.dots{display:flex;gap:6px}.dots i{width:10px;height:10px;border-radius:50%;background:#26324a}
+.ctabs{display:flex;gap:4px;margin-inline-start:6px}
+.ctabs [role=tab]{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:7px;font-family:var(--font);font-size:13px;font-weight:600;color:#a3b1c4;padding:5px 11px;border-radius:8px;border:1px solid transparent;line-height:1.4}
+html[lang="ar"] .ctabs [role=tab]{font-family:var(--font-ar)}
+.ctabs [role=tab]:hover{color:#e8eef6}
+.ctabs [role=tab][aria-selected="true"]{color:#e8eef6;background:#121b2e;border-color:#2a3956}
+.ctabs [role=tab]:focus-visible{outline:2px solid #3fc07c}
+.ctabs .ic{width:15px;height:15px}
+.console pre{margin:0;padding:16px 18px 18px;font-size:12.6px;line-height:1.7;overflow-x:auto;white-space:pre;min-height:372px;color:#c9d4e3;tab-size:2}
+.console pre:focus-visible{outline:2px solid #3fc07c;outline-offset:-4px}
+.console .pr{color:#7d8ba1;user-select:none}
+.console .cmd{color:#e8eef6;font-weight:500}
+.console .hd{color:#e8eef6;font-weight:600}
+.console .dim{color:#8291a7}
+.console .rule{color:#e8eef6;font-weight:600}
+.console .cwe{color:#93a1b6}
+.console .ok{color:#6ad69a}.console .cy{color:#7dd3fc}
+.console .crit{color:#fca5a5;font-weight:700}.console .high{color:#fdba74;font-weight:700}.console .med{color:#fde68a;font-weight:700}.console .low{color:#93c5fd;font-weight:700}.console .inf{color:#cbd5e1;font-weight:700}
+.sq{display:inline-block;width:.72em;height:.72em;border-radius:2px;vertical-align:-.04em;margin-right:.35em}
+.sq.crit{background:#ef4444}.sq.high{background:#f97316}.sq.med{background:#eab308}.sq.low{background:#3b82f6}.sq.inf{background:#94a3b8}
+.console-cap{position:relative;z-index:1;margin:12px 4px 0;font-size:13px;color:var(--dim);text-align:start}
 
 /* proof bar */
 .proof{border-block:1px solid var(--line);background:var(--bg2)}
 .proof ul{list-style:none;margin:0 auto;padding:26px 24px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;max-width:var(--wrap)}
 .proof li{display:flex;flex-direction:column;gap:3px;padding-inline-start:16px;border-inline-start:2px solid var(--line2)}
-.proof b{font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.02em;line-height:1.2}
+.proof li.hi{border-inline-start-color:var(--cyan)}
+.proof b{font-size:26px;font-weight:800;color:var(--text);letter-spacing:-.02em;line-height:1.2}
 html[lang="ar"] .proof b{letter-spacing:0}
 .proof li > span{font-size:13px;color:var(--muted);line-height:1.45}
 
 /* sections */
 section{padding:104px 0}
 section.alt{background:var(--bg2);border-block:1px solid var(--line)}
-.eyebrow{display:inline-block;font-family:var(--mono);font-size:12.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:12px}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:12px}
+.eyebrow.c{color:var(--cyan-ink)}
+.eyebrow .new{font-family:var(--font);letter-spacing:0;text-transform:none;font-size:11.5px;font-weight:700;color:var(--cyan-ink);background:var(--tint2);border:1px solid var(--tint2-bd);border-radius:999px;padding:1px 8px}
 html[lang="ar"] .eyebrow{font-family:var(--font-ar);letter-spacing:0;font-size:14px;font-weight:600}
-h2{text-wrap:balance;font-size:clamp(28px,3.6vw,44px);line-height:1.1;letter-spacing:-.03em;margin:0 0 14px;font-weight:800}
+html[lang="ar"] .eyebrow .new{font-family:var(--font-ar)}
+h2{text-wrap:balance;font-size:clamp(28px,3.6vw,46px);line-height:1.1;letter-spacing:-.035em;margin:0 0 14px;font-weight:800}
 html[lang="ar"] h2{letter-spacing:0;line-height:1.4;font-weight:700}
-.sec-head{max-width:740px;margin-bottom:48px}
+.sec-head{max-width:760px;margin-bottom:48px}
 .sec-head.center{text-align:center;margin-inline:auto}
 .sec-head p{color:var(--muted);font-size:18px;margin:0}
 h3{font-size:17px;margin:0 0 6px;font-weight:650;letter-spacing:-.01em;line-height:1.35}
 html[lang="ar"] h3{letter-spacing:0;font-weight:600}
 
-/* tabs */
-.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
-.tabs.center{justify-content:center}
-.tabs [role=tab]{all:unset;cursor:pointer;padding:8px 15px;border-radius:10px;font-size:14.5px;font-weight:500;color:var(--muted);border:1px solid transparent;line-height:1.4}
-.tabs [role=tab]:hover{color:var(--text)}
-.tabs [role=tab][aria-selected="true"]{color:var(--text);background:var(--panel);border-color:var(--line2);box-shadow:0 1px 0 rgba(0,0,0,.05)}
-.tabs [role=tab]:focus-visible{outline:2px solid var(--accent)}
-.gallery .cap{text-align:center;color:var(--muted);font-size:15.5px;margin:18px auto 0;max-width:680px;min-height:3em}
+/* two lenses */
+.lenses{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.lens{position:relative;border-radius:24px;padding:30px 30px 26px;border:1px solid transparent;background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(140deg,var(--tint-bd),var(--line) 45%,var(--line)) border-box;overflow:hidden;display:flex;flex-direction:column}
+.lens.web{background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(140deg,var(--tint2-bd),var(--line) 45%,var(--line)) border-box}
+.lens::before{content:"";position:absolute;inset:0 0 auto;height:220px;background:radial-gradient(420px 200px at 20% 0%,var(--tint),transparent 70%);pointer-events:none}
+.lens.web::before{background:radial-gradient(420px 200px at 20% 0%,var(--tint2),transparent 70%)}
+html[dir="rtl"] .lens::before{background:radial-gradient(420px 200px at 80% 0%,var(--tint),transparent 70%)}
+html[dir="rtl"] .lens.web::before{background:radial-gradient(420px 200px at 80% 0%,var(--tint2),transparent 70%)}
+.lens > *{position:relative}
+.ltag{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--accent-ink);margin-bottom:14px}
+.lens.web .ltag{color:var(--cyan-ink)}
+.ltag .ic{width:18px;height:18px}
+.lens h3{font-size:clamp(21px,2vw,25px);line-height:1.25;letter-spacing:-.02em;margin-bottom:18px;max-width:30ch}
+html[lang="ar"] .lens h3{letter-spacing:0;line-height:1.5}
+.lens-art{display:block;width:100%;height:auto;margin:0 0 20px;border-radius:14px;background:var(--bg2);border:1px solid var(--line)}
+.lens-art,.lens-art text{direction:ltr;unicode-bidi:isolate}
+.ticks{list-style:none;margin:0 0 6px;padding:0;display:grid;gap:10px}
+.ticks li{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;color:var(--muted);font-size:15px;align-items:start}
+.ticks svg{width:18px;height:18px;margin-top:3px;color:var(--accent-ink)}
+.lens.web .ticks svg,.web-sends .ticks svg{color:var(--cyan-ink)}
+.lens .more{margin-top:auto;padding-top:16px}
 
-/* how it works */
+/* lens art (inline SVG, colours from the theme) */
+.art-bg{fill:var(--bg2)}
+.art-line{stroke:var(--line2);stroke-width:1.5;fill:none}
+.art-dash{stroke:var(--line2);stroke-width:2;fill:none;stroke-dasharray:5 6}
+.art-card{fill:var(--panel);stroke:var(--line2);stroke-width:1.2}
+.art-txt{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.art-txt.s{fill:var(--accent-ink)}.art-txt.k{fill:var(--bad)}.art-txt.c{fill:var(--cyan-ink)}
+.art-src{fill:var(--accent)}.art-mid{fill:var(--cyan)}.art-sink{fill:var(--bad)}
+.art-pulse{stroke:var(--accent);stroke-width:2.4;fill:none;stroke-dasharray:22 400;animation:dash 3.4s linear infinite}
+.art-scan{fill:url(#scanG);animation:scan 4.2s ease-in-out infinite}
+@keyframes dash{from{stroke-dashoffset:422}to{stroke-dashoffset:0}}
+@keyframes scan{0%{transform:translateY(0)}50%{transform:translateY(96px)}100%{transform:translateY(0)}}
+
+/* how it works (code) */
 .how{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.08fr);gap:48px;align-items:center}
 .flow{margin:0 0 24px;width:100%;height:auto;display:block}
 html[dir="rtl"] .flow{transform:scaleX(-1)}
@@ -239,7 +287,6 @@ html[dir="rtl"] .flow{transform:scaleX(-1)}
 .flow .edge{stroke:var(--line2);stroke-width:2;fill:none;stroke-dasharray:6 6}
 .flow .pulse{stroke:var(--accent);stroke-width:2.4;fill:none;stroke-dasharray:24 400;animation:dash 3.2s linear infinite}
 .flow .gl{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-@keyframes dash{from{stroke-dashoffset:424}to{stroke-dashoffset:0}}
 .stepsx{list-style:none;margin:0;padding:0;display:grid;gap:18px}
 .stepsx li{display:grid;grid-template-columns:40px minmax(0,1fr);gap:14px;align-items:start}
 .stepsx .num{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:15px;border:2px solid;background:var(--panel)}
@@ -250,8 +297,10 @@ html[dir="rtl"] .flow{transform:scaleX(-1)}
 
 /* code panel (always dark) */
 .panel{background:linear-gradient(180deg,#0d1424,#0a0f1b);border:1px solid #26344f;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg),0 0 80px -30px rgba(63,192,124,.35);overflow:hidden;direction:ltr;text-align:left;color:var(--code-text)}
+.bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel2);direction:ltr}
 .panel .bar{background:rgba(255,255,255,.02);border-bottom-color:var(--code-line)}
-.panel .dots i{background:#26324a}
+.url{flex:1;text-align:center;font-family:var(--mono);font-size:12px;color:var(--dim)}
+.url span{display:inline-block;padding:2px 14px;border-radius:7px;background:var(--bg);border:1px solid var(--line)}
 .ptab{font-family:var(--mono);font-size:12.5px;color:#a3b1c4;padding:3px 10px;border-radius:7px;background:#121b2e;border:1px solid var(--code-line)}
 .ptab.cmd{margin-left:auto;background:transparent;border:0;color:var(--code-dim)}
 .code{margin:0;padding:14px 0;font-size:13px;line-height:1.75;overflow-x:auto}
@@ -284,18 +333,82 @@ html[lang="ar"] .f-title,html[lang="ar"] .fix{direction:rtl;text-align:right;fon
 .fix{margin-top:12px;font-size:12.5px;color:#b6c2d3;display:flex;gap:8px;align-items:flex-start}
 .fix svg{width:16px;height:16px;color:#34d399;flex:none;margin-top:2px}
 
+/* web scanner */
+.web-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:20px;align-items:stretch;margin-bottom:20px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;transition:border-color .2s}
+.card:hover{border-color:var(--line2)}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.card h3 + p{margin-top:2px}
+.card.big{border-radius:var(--radius-lg);padding:28px}
+.kicker{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.kicker h3{margin:0}
+.ibox{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--tint);color:var(--accent-ink);margin-bottom:16px;border:1px solid var(--tint-bd);flex:none}
+.ibox.v{background:var(--tint2);color:var(--cyan-ink);border-color:var(--tint2-bd)}
+.kicker .ibox{margin:0}
+.web-sends .ticks li{font-size:15px}
+.web-sends .ticks li b{color:var(--text);font-weight:600}
+.budgets{display:grid;gap:12px}
+.bud{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--bg2)}
+.bud.def{border-color:var(--tint2-bd);background:linear-gradient(var(--tint2),var(--tint2)),var(--bg2)}
+.bud-h{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+.bud-h code{font-size:14px;font-weight:600;color:var(--text);direction:ltr;unicode-bidi:isolate}
+.bud-h .pill{font-size:11.5px;font-weight:700;color:var(--cyan-ink);background:var(--panel);border:1px solid var(--tint2-bd);border-radius:999px;padding:1px 8px}
+.bud-h .n{margin-inline-start:auto;font-size:13.5px;font-weight:600;color:var(--text)}
+.bud-bar{height:8px;border-radius:5px;background:var(--track);overflow:hidden}
+.bud-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--bar-a),var(--bar-b))}
+html[dir="rtl"] .bud-bar i{background:linear-gradient(270deg,var(--bar-a),var(--bar-b))}
+.bud p{font-size:14px;color:var(--muted);margin:0}
+.bud-note{font-size:13.5px;color:var(--dim);margin:12px 2px 0}
+.bud-note code,.web-sends code,.gtile code,.fam-wrap code{font-size:.88em;background:var(--chip-code);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--chip-code-fg);direction:ltr;unicode-bidi:isolate;white-space:nowrap}
+.fam-wrap{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;align-items:start;margin-bottom:20px}
+.fam{border-collapse:collapse;width:100%}
+.fam th,.fam td{padding:9px 0;border-bottom:1px solid var(--line);font-size:14.5px;text-align:start;vertical-align:middle}
+.fam tbody tr:last-child th,.fam tbody tr:last-child td{border-bottom:0}
+.fam thead th{font-size:12px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding-top:0;background:none}
+html[lang="ar"] .fam thead th{letter-spacing:0;text-transform:none;font-size:13px}
+.fam th[scope=row]{font-weight:500;color:var(--text);padding-inline-end:16px}
+.fam th[scope=row] .fl{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;background:var(--panel2);border:1px solid var(--line2);font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-inline-end:10px;vertical-align:1px}
+.fam td{width:42%}
+.fbar{display:flex;align-items:center;gap:10px}
+.fbar .t{flex:1;height:8px;border-radius:5px;background:var(--track);overflow:hidden}
+.fbar .t i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--bar-a),var(--bar-b))}
+html[dir="rtl"] .fbar .t i{background:linear-gradient(270deg,var(--bar-a),var(--bar-b))}
+.fbar b{font-family:var(--mono);font-size:13px;min-width:24px;text-align:end;color:var(--text)}
+.fam-total{display:flex;justify-content:space-between;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line2);font-weight:600}
+.fam-total b{font-family:var(--mono)}
+.side{display:grid;gap:20px}
+.grades{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-top:4px}
+.gtile{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--bg2);display:grid;grid-template-columns:5.6rem minmax(0,1fr);column-gap:14px;row-gap:2px;align-items:center}
+.gtile .gl{grid-row:1/3}
+.gtile .gl{white-space:nowrap;font-size:27px;font-weight:800;letter-spacing:-.03em;line-height:1;direction:ltr;unicode-bidi:isolate;background:linear-gradient(120deg,var(--bar-a),var(--bar-b));-webkit-background-clip:text;background-clip:text;color:transparent;justify-self:start}
+.gtile h4{margin:0;font-size:14px;font-weight:650;line-height:1.35}
+.gtile p{margin:0;font-size:13px;color:var(--muted);line-height:1.5}
+.states{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.states li{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;border:1px solid var(--line2);background:var(--bg2);font-size:13px;color:var(--text)}
+.states li::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c)}
+.states .st-p{--c:var(--ok)}.states .st-f{--c:var(--bad)}.states .st-na{--c:var(--st-na)}.states .st-nt{--c:var(--st-nt)}.states .st-i{--c:var(--st-inc)}
+.web-bottom{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.nolist{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:12px}
+.nolist li{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;color:var(--muted);font-size:15px}
+.nolist svg{width:18px;height:18px;margin-top:3px;color:var(--warn)}
+.nolist li b{color:var(--text);font-weight:600}
+.mstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:6px 0 16px}
+.mstats div{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--bg2)}
+.mstats b{display:block;font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.15;font-family:var(--font);direction:ltr;unicode-bidi:isolate;text-align:start}
+.mstats span{display:block;font-size:12.5px;color:var(--muted);line-height:1.4;margin-top:4px}
+.caveat{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--muted);border-top:1px dashed var(--line2);padding-top:14px;margin-top:14px}
+.caveat svg{width:17px;height:17px;flex:none;margin-top:3px;color:var(--warn)}
+.web-links{display:flex;flex-wrap:wrap;column-gap:24px;margin-top:6px}
+
 /* cards & grids */
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .grid.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;transition:border-color .2s,transform .2s}
-.card:hover{border-color:var(--line2)}
-.card p{margin:0;color:var(--muted);font-size:15px}
-.ibox{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--tint);color:var(--accent-ink);margin-bottom:16px;border:1px solid var(--tint-bd)}
-.ibox.v{background:var(--tint2);color:var(--violet);border-color:var(--tint2-bd)}
+.grid .card:hover{border-color:var(--tint-bd)}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:16px}
 .stat{border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;background:var(--panel)}
 .stat b{display:block;font-size:42px;line-height:1.1;font-weight:800;letter-spacing:-.03em;color:var(--text)}
 .stat span{color:var(--muted);font-size:14.5px}
+html[dir="rtl"] .stat b.ltr{text-align:right}
 .term{position:relative;background:var(--code);border:1px solid var(--code-line);border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:12.5px;color:#bfeaf3;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left;margin:14px 0 0;line-height:1.7}
 .term .pr{color:var(--code-dim);user-select:none}
 .term .c{color:var(--code-dim)}
@@ -309,6 +422,11 @@ html[lang="ar"] .f-title,html[lang="ar"] .fix{direction:rtl;text-align:right;fon
 a.chip:hover{border-color:var(--accent)}
 .chip.mono{font-family:var(--mono);font-size:12.5px}
 p code,.note code,.faq code,.honest li code{font-size:.88em;background:var(--chip-code);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--chip-code-fg);direction:ltr;unicode-bidi:isolate;white-space:nowrap}
+.more{display:inline-flex;align-items:center;gap:6px;margin-top:16px;font-weight:600;font-size:14.5px;color:var(--accent-ink);text-decoration:none}
+.more.c{color:var(--cyan-ink)}
+.more:hover{text-decoration:underline;text-underline-offset:3px}
+.more .ic{width:16px;height:16px}
+.mores{display:flex;flex-wrap:wrap;column-gap:22px}
 
 /* languages */
 .langs{list-style:none;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:0 0 16px}
@@ -316,17 +434,30 @@ p code,.note code,.faq code,.honest li code{font-size:.88em;background:var(--chi
 .lng i{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);flex:none}
 .lng.v i{background:var(--violet);box-shadow:0 0 10px var(--violet)}
 
+/* gallery */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+.tabs.center{justify-content:center}
+.tabs [role=tab]{all:unset;cursor:pointer;padding:8px 15px;border-radius:10px;font-size:14.5px;font-weight:500;color:var(--muted);border:1px solid transparent;line-height:1.4}
+.tabs [role=tab]:hover{color:var(--text)}
+.tabs [role=tab][aria-selected="true"]{color:var(--text);background:var(--panel);border-color:var(--line2);box-shadow:0 1px 0 rgba(0,0,0,.05)}
+.tabs [role=tab]:focus-visible{outline:2px solid var(--accent)}
+.gallery .cap{text-align:center;color:var(--muted);font-size:15.5px;margin:18px auto 0;max-width:680px;min-height:3em}
+.frame{border:1px solid var(--line2);border-radius:var(--radius-lg);overflow:hidden;background:var(--panel);box-shadow:var(--shadow-lg),var(--frame-glow);text-align:start;max-width:1120px;margin:0 auto}
+.shot{display:block;position:relative;aspect-ratio:1440/900;background:linear-gradient(135deg,var(--panel2),var(--bg2))}
+.shot picture,.shot picture img{display:block;width:100%;height:100%}
+.shot picture img{object-fit:cover;object-position:top}
+.shot.missing picture{visibility:hidden}
+.shot .ph{position:absolute;inset:0;display:none;place-items:center;color:var(--dim);font-size:14px}
+.shot.missing .ph{display:grid}
+.shot .ph img{opacity:.35}
+
 /* integrations */
 .two{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:20px;align-items:start}
 .snip{background:var(--code);border:1px solid var(--code-line);border-radius:var(--radius-lg);overflow:hidden;direction:ltr;text-align:left;box-shadow:var(--shadow-lg)}
 .snip .bar{justify-content:space-between;background:rgba(255,255,255,.02);border-bottom-color:var(--code-line)}
-.snip .dots i{background:#26324a}
 .snip pre{margin:0;padding:16px 18px;font-size:12.8px;line-height:1.7;overflow-x:auto;color:var(--code-text)}
 .stack{display:grid;gap:16px}
 .int-more{margin-top:20px}
-.more{display:inline-flex;align-items:center;gap:6px;margin-top:16px;font-weight:600;font-size:14.5px;color:var(--accent-ink);text-decoration:none}
-.more:hover{text-decoration:underline;text-underline-offset:3px}
-.more .ic{width:16px;height:16px}
 
 /* accuracy */
 .acc{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr);gap:20px;align-items:start}
@@ -371,6 +502,7 @@ html[lang="ar"] thead th{letter-spacing:0;text-transform:none;font-size:13px}
 .cy::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E")}
 .cn::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237b8797' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E")}
 .cp::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d97706' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M6 12h12'/%3E%3C/svg%3E")}
+.console .cy::before{display:none}
 .legend{display:flex;flex-wrap:wrap;gap:16px;margin:12px 0 0;color:var(--dim);font-size:13px}
 .honest{margin-top:18px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .honest h3{display:flex;align-items:center;gap:8px}
@@ -421,9 +553,10 @@ html[lang="ar"] thead th{letter-spacing:0;text-transform:none;font-size:13px}
 .faq details p{margin:0 0 18px;color:var(--muted);font-size:15.5px}
 
 /* final + footer */
-.final{text-align:center;border:1px solid var(--line2);border-radius:28px;padding:64px 24px;background:radial-gradient(600px 260px at 50% 0%,var(--glow1),transparent),radial-gradient(500px 240px at 50% 120%,var(--glow2),transparent),var(--panel)}
+.final{position:relative;overflow:hidden;text-align:center;border:1px solid var(--line2);border-radius:28px;padding:64px 24px;background:radial-gradient(600px 260px at 50% 0%,var(--glow1),transparent),radial-gradient(500px 240px at 50% 120%,var(--glow2),transparent),var(--panel)}
 .final img{width:64px;height:64px}
-.final p{color:var(--muted);max-width:580px;margin:0 auto 26px;font-size:17.5px}
+.final p{color:var(--muted);max-width:600px;margin:0 auto 26px;font-size:17.5px}
+.final .cta{justify-content:center}
 footer{border-top:1px solid var(--line);padding:56px 0 48px;color:var(--dim);font-size:14px;background:var(--bg2)}
 .foot{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(0,1fr));gap:32px}
 .foot h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--text);margin:0 0 12px;font-weight:700}
@@ -431,29 +564,39 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
 .foot ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .foot ul a{color:var(--muted);text-decoration:none}
 .foot ul a:hover{color:var(--text);text-decoration:underline}
-.foot p{margin:12px 0 0;color:var(--muted);max-width:340px}
+.foot p{margin:12px 0 0;color:var(--muted);max-width:360px}
 .foot .foot-by{color:var(--text)}.foot-by a{color:inherit;text-decoration:underline;text-underline-offset:3px}
+.foot-mail{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px}
+.foot-mail a{display:inline-flex;align-items:center;gap:6px}
+.foot-mail .ic{width:15px;height:15px;color:var(--dim)}
 .foot-bottom{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;color:var(--dim)}
 .foot-bottom a{color:var(--muted)}
 
 /* responsive */
+@media(max-width:1180px){
+  .links{gap:14px}
+  .links a{font-size:14px}
+}
 @media(max-width:1080px){
   .links{display:none}
   .menu-btn{display:grid}
   .links.open{display:flex;position:absolute;top:64px;inset-inline:0;flex-direction:column;gap:0;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 24px 16px;box-shadow:var(--shadow-lg)}
   .links.open a{padding:12px 0;border-bottom:1px solid var(--line);font-size:16px}
+  .hero-grid{grid-template-columns:minmax(0,1fr);gap:44px}
+  .hero-copy{max-width:760px}
   .proof ul{grid-template-columns:repeat(3,minmax(0,1fr))}
   .dl{grid-template-columns:repeat(2,minmax(0,1fr))}
   .langs{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .acc,.how,.sec-grid{grid-template-columns:minmax(0,1fr)}
+  .acc,.how,.sec-grid,.web-top,.fam-wrap{grid-template-columns:minmax(0,1fr)}
   .foot{grid-template-columns:repeat(3,minmax(0,1fr))}
   .foot > div:first-child{grid-column:1/-1}
 }
 @media(max-width:820px){
   section{padding:72px 0}
-  .grid,.grid.g2,.two,.honest,.runs{grid-template-columns:minmax(0,1fr)}
+  .grid,.grid.g2,.two,.honest,.runs,.lenses,.web-bottom{grid-template-columns:minmax(0,1fr)}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .langs{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .mstats{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media(max-width:560px){
   .wrap{padding:0 16px}
@@ -461,12 +604,22 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
   .brand small,.tools .gh-txt{display:none}
   .tools{gap:6px}
   .iconbtn{width:34px;height:34px}
-  .hero{padding:44px 0 24px}
-  .hero-shot{margin-top:36px}
+  .hero{padding:40px 0 44px}
+  h1{font-size:clamp(34px,10vw,44px)}
+  html[lang="ar"] h1{font-size:clamp(30px,8.6vw,40px)}
   .cta .btn{flex:1 1 100%}
   .btn.lg{white-space:normal}
+  .console pre{font-size:11.2px;padding:14px 14px 16px;min-height:0}
+  .ctabs [role=tab]{padding:5px 9px}
+  .console .dots{display:none}
+  .ctabs{margin:0}
   .proof ul{grid-template-columns:repeat(2,minmax(0,1fr));padding:20px 16px}
-  .proof b{font-size:21px}
+  .proof b{font-size:22px}
+  .lens{padding:24px 20px 22px;border-radius:20px}
+  .card.big{padding:22px 18px}
+  .gtile{grid-template-columns:4.2rem minmax(0,1fr)}
+  .gtile .gl{font-size:24px}
+  .fam td{width:38%}
   .dl,.sec-list{grid-template-columns:minmax(0,1fr)}
   .langs{grid-template-columns:repeat(2,minmax(0,1fr))}
   .stat b{font-size:34px}
@@ -483,7 +636,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
   .tabs [role=tab]{padding:7px 11px;font-size:14px}
   .os-pick > span[aria-hidden]{display:none}
 }
-@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}.flow .pulse{display:none}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}.flow .pulse,.art-pulse,.art-scan{display:none}}
 </style>
 </head>
 <body>
@@ -522,17 +675,19 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
   <symbol id="i-gh" viewBox="0 0 16 16"><path fill="currentColor" stroke="none" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
 </svg>
 
+
 <header class="top">
   <div class="wrap nav">
     <a class="brand" href="#main"><img src="logo.svg" alt="" width="30" height="30"><span data-i18n="brand">Kashif</span><small>vulnscan</small></a>
     <nav aria-label="Primary" data-i18n-attr="aria-label:nav.label">
       <div class="links" id="nav-links">
+        <a href="#how" data-i18n="nav.code">Code</a>
+        <a href="#web" class="hot" data-i18n="nav.web">Web scanning</a>
         <a href="#product" data-i18n="nav.product">Product</a>
-        <a href="#how" data-i18n="nav.how">How it works</a>
         <a href="#ci" data-i18n="nav.ci">CI/CD</a>
         <a href="#accuracy" data-i18n="nav.accuracy">Accuracy</a>
         <a href="#compare" data-i18n="nav.compare">Compare</a>
-        <a href="#security" data-i18n="nav.security">Security</a>
+        <a href="#download" data-i18n="nav.download">Download</a>
         <a href="#faq" data-i18n="nav.faq">FAQ</a>
       </div>
     </nav>
@@ -550,38 +705,86 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
 
 <main id="main" tabindex="-1">
 <section class="hero" aria-labelledby="hero-h">
-  <div class="wrap">
-    <a class="vbadge rel-link" href="changelog.html"><span class="ver">v__VERSION__</span><span data-i18n="hero.notes">What's new in this release</span><svg class="ic flip" aria-hidden="true" style="width:15px;height:15px"><use href="#i-arrow"/></svg></a>
-    <h1 id="hero-h" data-i18n-html="hero.h1">Trace every vulnerability <span class="grad">from input to impact.</span></h1>
-    <p class="lead" data-i18n="hero.lead">Kashif is a free, open-source SAST tool for developers and security teams. It follows untrusted input across functions and files in 12 languages, Oracle APEX and Android apps, and shows the exact source-to-sink path behind every dataflow finding. Zero dependencies. Runs entirely on your machine.</p>
-    <div class="cta">
-      <a class="btn primary lg" id="cta-dl" href="#download"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span id="cta-dl-txt" data-i18n="cta.download">Download Kashif</span></a>
-      <a class="btn lg" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan"><svg class="ic" aria-hidden="true"><use href="#i-gh"/></svg><span data-i18n="cta.github">Star on GitHub</span></a>
-    </div>
-    <div class="os-pick">
-      <label for="os-select" data-i18n="os.label">Platform:</label>
-      <select id="os-select">
-        <option value="win" data-i18n="os.win">Windows (x64)</option>
-        <option value="linux" data-i18n="os.linux">Linux (x86-64)</option>
-        <option value="mac-arm" data-i18n="os.mac-arm">macOS (Apple Silicon)</option>
-        <option value="mac-x64" data-i18n="os.mac-x64">macOS (Intel)</option>
-      </select>
-      <span aria-hidden="true">·</span>
-      <a href="#download" data-i18n="os.all">All downloads &amp; pip</a>
-    </div>
-    <div class="hero-meta">
-      <span><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="meta.free">Free and open source (MIT)</span></span>
-      <span><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="meta.local">Your code never leaves your machine</span></span>
-      <span><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="meta.os">Windows · Linux · macOS</span></span>
-    </div>
-    <div class="hero-shot">
-      <div class="frame">
-        <div class="bar" aria-hidden="true"><span class="dots"><i></i><i></i><i></i></span><span class="url"><span>127.0.0.1:8765</span></span></div>
-        <div class="shot"><picture data-shot="trace">
-          <source type="image/webp" srcset="img/shots/trace-en-dark.webp">
-          <img src="img/shots/trace-en-dark.png" width="1440" height="900" fetchpriority="high" decoding="async" alt="Kashif web UI: a SQL injection finding with its data-flow trace from the request parameter to the database query" data-i18n-attr="alt:shot.trace.alt">
-        </picture><span class="ph" aria-hidden="true"><img src="logo.svg" alt="" width="56" height="56"></span></div>
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <a class="vbadge rel-link" href="changelog.html"><span class="ver">v__VERSION__</span><span data-i18n="hero.notes">New: the passive web scanner, rebuilt</span><svg class="ic flip" aria-hidden="true" style="width:15px;height:15px"><use href="#i-arrow"/></svg></a>
+      <h1 id="hero-h" data-i18n-html="hero.h1">From source to sink, <span class="grad">from code to site.</span></h1>
+      <p class="lead" data-i18n="hero.lead">Kashif is a free, open-source security scanner. Its dataflow engine follows untrusted input through 12 languages and shows the path behind every dataflow finding. Its passive web scanner reads a site you are authorized to test the way a browser does, and judges it against 184 checks. No dependencies, no account, no telemetry: it runs on your machine, in English and Arabic.</p>
+      <div class="cta">
+        <a class="btn primary lg" id="cta-dl" href="#download"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span id="cta-dl-txt" data-i18n="cta.download">Download Kashif</span></a>
+        <a class="btn lg" href="#web"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span data-i18n="cta.web">How the web scan works</span></a>
       </div>
+      <div class="os-pick">
+        <label for="os-select" data-i18n="os.label">Platform:</label>
+        <select id="os-select">
+          <option value="win" data-i18n="os.win">Windows (x64)</option>
+          <option value="linux" data-i18n="os.linux">Linux (x86-64)</option>
+          <option value="mac-arm" data-i18n="os.mac-arm">macOS (Apple Silicon)</option>
+          <option value="mac-x64" data-i18n="os.mac-x64">macOS (Intel)</option>
+        </select>
+        <span aria-hidden="true">·</span>
+        <a href="#download" data-i18n="os.all">All downloads &amp; pip</a>
+      </div>
+      <div class="hero-meta">
+        <span><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="meta.free">Free and open source (MIT)</span></span>
+        <span><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="meta.local">Your code never leaves your machine</span></span>
+        <span><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="meta.os">Windows · Linux · macOS</span></span>
+      </div>
+    </div>
+
+    <div class="console-wrap">
+      <div class="console" role="group" aria-label="Example scans" data-i18n-attr="aria-label:con.label">
+        <div class="cbar">
+          <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <div class="ctabs" role="tablist" aria-label="Example scans" data-i18n-attr="aria-label:con.label" id="con-tabs">
+            <button type="button" role="tab" id="con-tab-code" aria-controls="con-code" aria-selected="true" tabindex="0"><svg class="ic" aria-hidden="true"><use href="#i-flow"/></svg><span data-i18n="con.code">Code</span></button>
+            <button type="button" role="tab" id="con-tab-web" aria-controls="con-web" aria-selected="false" tabindex="-1"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span data-i18n="con.web">Website</span></button>
+          </div>
+        </div>
+<pre id="con-code" role="tabpanel" aria-labelledby="con-tab-code" tabindex="0"><span class="pr">$ </span><span class="cmd">kashif ./demo-app --no-deps --lang en</span>
+<span class="hd">Kashif — ./demo-app</span>  <span class="dim">(1 file scanned, 2 findings)</span>
+
+<span class="crit">━━ CRITICAL (1) ━━</span>
+  <i class="sq crit"></i><span class="rule">DF002</span> <span class="cwe">[CWE-78]</span> Tainted data reaches a shell command
+     <span class="dim">app.py:10</span>
+     ▸ Source: request.args
+     → Do not build OS commands from input; use an
+       argument list without a shell and validate it.
+       <span class="ok">1.</span> app.py:8   host = request.args
+       <span class="cy">2.</span> app.py:9   cmd = …
+       <span class="crit">3.</span> app.py:10  Sink: os.system
+<span class="inf">━━ INFO (1) ━━</span>
+  <i class="sq inf"></i><span class="rule">vql/entry-point-without-auth</span> <span class="cwe">[CWE-306]</span>
+     Routed entry point without an authentication
+     decorator
+     <span class="dim">app.py:7</span></pre>
+<pre id="con-web" role="tabpanel" aria-labelledby="con-tab-web" tabindex="0" hidden><span class="pr">$ </span><span class="cmd">kashif http://127.0.0.1:8931/ --authorized --lang en</span>
+<span class="hd">Kashif — http://127.0.0.1:8931/</span>
+  <span class="dim">(1 page scanned · 6 requests, 16 findings)</span>
+
+  <span class="cy">ℹ</span> Passive scan, profile standard: 6 of at most 45
+    requests sent; no active test.
+  <span class="cy">ℹ</span> Coverage: 73 passed · 16 failed · 59 not applicable ·
+    36 not tested · 0 inconclusive
+  <span class="cy">ℹ</span> Grades: Kashif F* · Observatory 25 (D-) ·
+    SSL Labs-compatible not graded
+
+<span class="high">━━ HIGH (1) ━━</span>
+  <i class="sq high"></i><span class="rule">WEB052</span> <span class="cwe">[CWE-523]</span> Password field on non-HTTPS page
+     <span class="dim">(certain)</span>
+     ▸ &lt;input type=password name=p&gt; in form → http://127.0.0.1/login
+     → Serve login pages over HTTPS only.
+<span class="med">━━ MEDIUM (3) ━━</span>
+  <i class="sq med"></i><span class="rule">WEB-content-security-policy</span> <span class="cwe">[CWE-693]</span>
+     Missing Content-Security-Policy <span class="dim">(firm)</span>
+  <i class="sq med"></i><span class="rule">WEB054</span> <span class="cwe">[CWE-1395]</span> Vulnerable JavaScript library:
+     jQuery 1.12.4 <span class="dim">(firm)</span>
+     · issue 11974: parseHTML() executes scripts in event
+       handlers (fixed in 2.2.0)
+     → Upgrade jQuery to 3.5.0 or later.
+<span class="dim">  … 1 more MEDIUM, 6 LOW and 6 INFO findings</span></pre>
+      </div>
+      <p class="console-cap" data-i18n="con.cap">Real output, abridged: an 11-line Flask app, and a deliberately weak test page served on localhost.</p>
     </div>
   </div>
 </section>
@@ -590,36 +793,63 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
   <ul>
     <li><b class="ltr"><span data-bench-suite="python">74.0</span>%</b><span data-i18n="proof.py">OWASP Benchmark score, Python</span></li>
     <li><b class="ltr"><span data-bench-suite="java">98.3</span>%</b><span data-i18n="proof.java">OWASP Benchmark score, Java</span></li>
+    <li class="hi"><b>184</b><span data-i18n="proof.web">passive web checks</span></li>
     <li><b>12</b><span data-i18n="proof.langs">languages with dataflow analysis</span></li>
     <li><b>0</b><span data-i18n="proof.deps">runtime dependencies</span></li>
-    <li><b class="ltr">SARIF 2.1.0</b><span data-i18n="proof.sarif">for GitHub Code Scanning</span></li>
-    <li><b class="ltr">SBOM + SLSA</b><span data-i18n="proof.slsa">attached to every release</span></li>
+    <li><b class="ltr">EN · ع</b><span data-i18n="proof.i18n">interface, command line and reports</span></li>
   </ul>
 </div>
 
-<section id="product" class="gallery" aria-labelledby="product-h">
+<section id="lenses" aria-labelledby="lens-h">
   <div class="wrap">
     <div class="sec-head center">
-      <span class="eyebrow" data-i18n="prod.eyebrow">Product</span>
-      <h2 id="product-h" data-i18n="prod.h2">A complete security workbench on localhost.</h2>
-      <p data-i18n="prod.sub">Dashboard, findings, data-flow traces, scans and reports in a local web UI, in English and Arabic, light and dark. No account, no server to install, nothing uploaded.</p>
+      <span class="eyebrow" data-i18n="lens.eyebrow">One tool, two scanners</span>
+      <h2 id="lens-h" data-i18n="lens.h2">Static analysis for the code you write. Passive checks for the site you ship.</h2>
+      <p data-i18n="lens.sub">Each one finds what the other cannot see. Both run from the same program and UI, with the same report formats and CI exit codes.</p>
     </div>
-    <div class="tabs center" role="tablist" aria-label="Screenshots" data-i18n-attr="aria-label:prod.tabs" id="shot-tabs">
-      <button type="button" role="tab" id="tab-dashboard" aria-controls="shot-panel" aria-selected="true" tabindex="0" data-shot="dashboard" data-i18n="shot.dashboard">Dashboard</button>
-      <button type="button" role="tab" id="tab-findings" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="findings" data-i18n="shot.findings">Findings</button>
-      <button type="button" role="tab" id="tab-trace" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="trace" data-i18n="shot.trace">Data-flow trace</button>
-      <button type="button" role="tab" id="tab-scan" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="scan" data-i18n="shot.scan">New scan</button>
-      <button type="button" role="tab" id="tab-reports" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="reports" data-i18n="shot.reports">Reports</button>
-    </div>
-    <div id="shot-panel" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
-      <div class="frame">
-        <div class="bar" aria-hidden="true"><span class="dots"><i></i><i></i><i></i></span><span class="url"><span>127.0.0.1:8765</span></span></div>
-        <div class="shot"><picture id="gallery-shot" data-shot="dashboard">
-          <source type="image/webp" srcset="img/shots/dashboard-en-dark.webp">
-          <img src="img/shots/dashboard-en-dark.png" width="1440" height="900" loading="lazy" decoding="async" alt="" data-i18n-attr="alt:shot.dashboard.alt">
-        </picture><span class="ph" aria-hidden="true"><img src="logo.svg" alt="" width="56" height="56"></span></div>
-      </div>
-      <p class="cap" id="shot-cap" aria-live="polite">Severity totals, the most frequent rules and recent scans at a glance.</p>
+    <div class="lenses">
+      <article class="lens lcode" aria-labelledby="lens-code-h">
+        <span class="ltag"><svg class="ic" aria-hidden="true"><use href="#i-flow"/></svg><span data-i18n="lens.code.tag">Code · SAST</span></span>
+        <h3 id="lens-code-h" data-i18n="lens.code.h">Follows untrusted input to the dangerous call</h3>
+        <svg class="lens-art" viewBox="0 0 440 132" aria-hidden="true" focusable="false">
+          <path class="art-dash" d="M138 66 H170 M282 66 H306"/>
+          <path class="art-pulse" d="M70 66 H372"/>
+          <rect class="art-card" x="16" y="40" width="122" height="52" rx="10"/><circle class="art-src" cx="32" cy="58" r="4.5"/><text class="art-txt s" x="42" y="62">source</text><text class="art-txt" x="28" y="80">request.args</text>
+          <rect class="art-card" x="170" y="40" width="112" height="52" rx="10"/><circle class="art-mid" cx="186" cy="58" r="4.5"/><text class="art-txt c" x="196" y="62">flow</text><text class="art-txt" x="182" y="80">cmd = … + host</text>
+          <rect class="art-card" x="306" y="40" width="118" height="52" rx="10"/><circle class="art-sink" cx="322" cy="58" r="4.5"/><text class="art-txt k" x="332" y="62">sink</text><text class="art-txt" x="318" y="80">os.system(cmd)</text>
+        </svg>
+        <ul class="ticks">
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.code.1">Dataflow analysis in 12 languages, plus Oracle APEX and Android apps</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.code.2">The source-to-sink path behind every dataflow finding</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.code.3">Secrets, dependencies with reachability, verified autofix</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.code.4">OWASP Benchmark: 74.0% Python, 98.3% Java</span></li>
+        </ul>
+        <a class="more" href="#how"><span data-i18n="lens.code.more">How dataflow analysis works</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      </article>
+      <article class="lens web" aria-labelledby="lens-web-h">
+        <span class="ltag"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span data-i18n="lens.web.tag">Site · passive</span></span>
+        <h3 id="lens-web-h" data-i18n="lens.web.h">Reads your site like a browser, and grades its defenses</h3>
+        <svg class="lens-art" viewBox="0 0 440 132" aria-hidden="true" focusable="false">
+          <defs><linearGradient id="scanG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--cyan)" stop-opacity="0"/><stop offset="1" stop-color="var(--cyan)" stop-opacity=".35"/></linearGradient><clipPath id="pageClip"><rect x="16" y="16" width="200" height="100" rx="10"/></clipPath></defs>
+          <rect class="art-card" x="16" y="16" width="200" height="100" rx="10"/>
+          <path class="art-line" d="M16 34 H216"/><circle class="art-mid" cx="28" cy="25" r="3"/><text class="art-txt" x="40" y="29" style="font-size:9.5px">https://site.example</text>
+          <path class="art-line" d="M32 52 H150 M32 66 H196 M32 80 H120 M32 94 H176"/>
+          <g clip-path="url(#pageClip)"><rect class="art-scan" x="16" y="0" width="200" height="22"/></g>
+          <g transform="translate(240 14)">
+            <rect class="art-card" x="0" y="0" width="184" height="22" rx="7"/><circle cx="14" cy="11" r="4" style="fill:var(--ok)"/><text class="art-txt" x="26" y="15">HSTS</text>
+            <rect class="art-card" x="0" y="27" width="184" height="22" rx="7"/><circle cx="14" cy="38" r="4" style="fill:var(--bad)"/><text class="art-txt" x="26" y="42">Content-Security-Policy</text>
+            <rect class="art-card" x="0" y="54" width="184" height="22" rx="7"/><circle cx="14" cy="65" r="4" style="fill:var(--ok)"/><text class="art-txt" x="26" y="69">Set-Cookie: Secure</text>
+            <rect class="art-card" x="0" y="81" width="184" height="22" rx="7"/><circle cx="14" cy="92" r="4" style="fill:var(--st-nt)"/><text class="art-txt" x="26" y="96">TLS 1.0 / 1.1</text>
+          </g>
+        </svg>
+        <ul class="ticks">
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.web.1">184 checks: transport, CSP, headers, CORS, cookies, page code, TLS and exposed files</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.web.2">Plain GET requests only, at least 0.2 s apart, within a stated budget</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.web.3">Kashif, MDN Observatory-compatible and SSL Labs-compatible grades</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.web.4">A coverage table that never shows an untested check as passed</span></li>
+        </ul>
+        <a class="more c" href="#web"><span data-i18n="lens.web.more">What the web scanner checks</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      </article>
     </div>
   </div>
 </section>
@@ -665,6 +895,152 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
   </div>
 </section>
 
+<section id="web" aria-labelledby="web-h">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow c"><span data-i18n="web.eyebrow">Passive web scanner</span><span class="new" data-i18n="web.new">New in 1.1</span></span>
+      <h2 id="web-h" data-i18n="web.h2">It reads your site the way a browser does. Nothing more.</h2>
+      <p data-i18n="web.sub">Point Kashif at a site you own or are authorized to test. It requests what an anonymous visitor would receive, judges it against 184 checks, and tells you exactly what it sent.</p>
+    </div>
+
+    <div class="web-top">
+      <div class="card big web-sends">
+        <div class="kicker"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></div><h3 data-i18n="web.sends.h">What it sends, and what it never does</h3></div>
+        <ul class="ticks">
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="web.s1">Plain GET requests only: no attack payloads, no form submission, no guessing, no firewall evasion.</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="web.s2">At least 0.2 s between two requests to one host (0.5 s by default), one request at a time. Crawl-delay raises the gap; repeated 429 or 503 with Retry-After stops requests to that host.</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="web.s3">An honest User-Agent that names Kashif and links to a page explaining the scanner.</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="web.s4">robots.txt is honoured when crawling, and links that change state, such as logout, are never followed.</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n-html="web.s5">Nothing is sent without <code>--authorized</code>, and no lookup reveals the site's name to a third party.</span></li>
+        </ul>
+        <div class="web-links">
+          <a class="more c" href="scanner.html" data-i18n-attr="href:cov3.sends.href"><span data-i18n="cov3.sends">What Kashif sends</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          <a class="more c" href="web-scanning.html?lang=en" data-i18n-attr="href:cov3.href"><span data-i18n="cov3.more">Web scanning guide</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        </div>
+      </div>
+
+      <div class="card big">
+        <div class="kicker"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg></div><h3 data-i18n="web.bud.h">Pick a request budget</h3></div>
+        <div class="budgets">
+          <div class="bud">
+            <div class="bud-h"><code>--web-profile minimal</code><span class="n" data-i18n="web.p.min.n">at most 10 requests</span></div>
+            <div class="bud-bar" aria-hidden="true"><i style="width:6.7%"></i></div>
+            <p data-i18n="web.p.min">The page and its redirects: the 1.0 behaviour.</p>
+          </div>
+          <div class="bud def">
+            <div class="bud-h"><code>standard</code><span class="pill" data-i18n="web.p.def">default</span><span class="n" data-i18n="web.p.std.n">at most 45 requests</span></div>
+            <div class="bud-bar" aria-hidden="true"><i style="width:30%"></i></div>
+            <p data-i18n="web.p.std">Adds the http/https counterpart, one cookieless CORS request, robots.txt, security.txt, the favicon and up to 15 of the site's own scripts and styles.</p>
+          </div>
+          <div class="bud">
+            <div class="bud-h"><code>--deep</code><span class="n" data-i18n="web.p.deep.n">at most 150 requests</span></div>
+            <div class="bud-bar" aria-hidden="true"><i style="width:100%"></i></div>
+            <p data-i18n="web.p.deep">Adds a fixed list of 40 commonly exposed paths, 21 paths of detected platforms such as their login pages (fetched once, nothing submitted), third-party scripts, source maps and images.</p>
+          </div>
+        </div>
+        <p class="bud-note" data-i18n-html="web.p.crawl">Crawled pages (<code>--crawl</code>) come on top of the budget: same origin only, at most 500 pages.</p>
+      </div>
+    </div>
+
+    <div class="fam-wrap">
+      <div class="card big">
+        <div class="kicker"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg></div><h3 data-i18n="web.fam.h">184 checks in 11 families</h3></div>
+        <p data-i18n="web.fam.sub">Every check has a stable id, a severity, a confidence, and CWE, WSTG and ASVS mappings.</p>
+        <table class="fam" style="margin-top:14px">
+          <caption class="sr" data-i18n="web.fam.cap">Passive web checks per family</caption>
+          <thead><tr><th scope="col" data-i18n="web.fam.th1">Family</th><th scope="col" data-i18n="web.fam.th2">Checks</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">A</span><span data-i18n="fam.a">Transport, redirects and HSTS</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:66.7%"></i></span><b>18</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">B</span><span data-i18n="fam.b">Content-Security-Policy</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:92.6%"></i></span><b>25</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">C</span><span data-i18n="fam.c">Framing, MIME, referrer, permissions, isolation and caching</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:85.2%"></i></span><b>23</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">D</span><span data-i18n="fam.d">CORS</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:29.6%"></i></span><b>8</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">E</span><span data-i18n="fam.e">Cookies</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:66.7%"></i></span><b>18</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">F</span><span data-i18n="fam.f">Page content and client-side code</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:100%"></i></span><b>27</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">G</span><span data-i18n="fam.g">Information disclosure</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:85.2%"></i></span><b>23</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">H</span><span data-i18n="fam.h">TLS and certificates</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:92.6%"></i></span><b>25</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">I</span><span data-i18n="fam.i">Components and technologies</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:25.9%"></i></span><b>7</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">J</span><span data-i18n="fam.j">Exposed and well-known files</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:29.6%"></i></span><b>8</b></span></td></tr>
+            <tr><th scope="row"><span class="fl" aria-hidden="true">K</span><span data-i18n="fam.k">Scan meta: inconclusive scans, checks that could not run</span></th><td><span class="fbar"><span class="t" aria-hidden="true"><i style="width:7.4%"></i></span><b>2</b></span></td></tr>
+          </tbody>
+        </table>
+        <a class="more c" href="web-checks.html?lang=en" data-i18n-attr="href:f8.href"><span data-i18n="f8.more">All 184 checks and their fixes</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      </div>
+
+      <div class="side">
+        <div class="card big">
+          <div class="kicker"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-target"/></svg></div><h3 data-i18n="web.gr.h">Three grades, each with its reasons</h3></div>
+          <div class="grades">
+            <div class="gtile"><span class="gl">A+…F</span><h4 data-i18n="web.g1.h">Kashif Web Grade</h4><p data-i18n-html="web.g1.p">Six weighted families, capped by serious findings. <code>*</code> marks a provisional grade, <code>?</code> a firewall that answered instead of the site.</p></div>
+            <div class="gtile"><span class="gl">MDN</span><h4 data-i18n="web.g2.h">HTTP Observatory</h4><p data-i18n="web.g2.p">A compatible score (algorithm 6) that matches the official grader on its test cases.</p></div>
+            <div class="gtile"><span class="gl">TLS</span><h4 data-i18n="web.g3.h">SSL Labs-compatible</h4><p data-i18n="web.g3.p">A TLS grade without the attack-only tests Kashif does not perform.</p></div>
+          </div>
+        </div>
+        <div class="card big">
+          <div class="kicker"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></div><h3 data-i18n="web.cov.h">Coverage that never pretends</h3></div>
+          <p data-i18n="web.cov.p">Each check ends in one of five states, with the reason. A check that did not run is never shown as passed and never counts in a grade.</p>
+          <ul class="states">
+            <li class="st-p" data-i18n="web.st.p">passed</li><li class="st-f" data-i18n="web.st.f">failed</li><li class="st-na" data-i18n="web.st.na">not applicable</li><li class="st-nt" data-i18n="web.st.nt">not tested</li><li class="st-i" data-i18n="web.st.i">inconclusive</li>
+          </ul>
+        </div>
+        <div class="card big">
+          <div class="kicker"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg></div><h3 data-i18n="web.ev.h">Evidence you can repeat, fixes you can paste</h3></div>
+          <p data-i18n="web.ev.p">Every finding carries a confidence (certain, firm or tentative), the request, the redirect chain, the headers as received with cookie values redacted, and a curl command that repeats the request. Copy-paste fixes cover 18 platforms, from nginx and IIS to Django and Rails.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="web-bottom">
+      <div class="card big">
+        <div class="kicker"><div class="ibox" style="background:var(--legal-bg);border-color:var(--legal-bd);color:var(--warn)"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg></div><h3 data-i18n="web.no.h">What a passive scan cannot find</h3></div>
+        <ul class="nolist">
+          <li><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg><span data-i18n="web.no.1">Pages behind a login: Kashif never signs in.</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg><span data-i18n="web.no.2">Injection, XSS, authentication, access control and business logic: testing them needs requests built to break the application, which Kashif never sends.</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg><span data-i18n="web.no.3">Certificate revocation: Kashif reads a stapled OCSP response but never contacts the certificate authority.</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg><span data-i18n="web.no.4">A clean grade is not a clean bill of health: pair the web scan with a code scan of the same application.</span></li>
+        </ul>
+      </div>
+      <div class="card big">
+        <div class="kicker"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-hash"/></svg></div><h3 data-i18n="web.m.h">Measured on a labelled local corpus</h3></div>
+        <div class="mstats">
+          <div><b>380</b><span data-i18n="web.m.1">test cases on 127.0.0.1, no network</span></div>
+          <div><b>579</b><span data-i18n="web.m.2">labels, covering all 184 rules</span></div>
+          <div><b>1.00</b><span data-i18n="web.m.3">precision, certain and firm findings</span></div>
+          <div><b>1.00</b><span data-i18n="web.m.4">recall, for every rule</span></div>
+        </div>
+        <p data-i18n="web.m.p">Each case where a rule must fire has a trap case where it must not, including traps from ZAP's 20 most frequent false-positive families.</p>
+        <div class="caveat"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg><span data-i18n="web.m.cav">The project wrote these cases and tuned the rules on them, so the numbers measure regressions on known cases, not accuracy on real sites. No comparison with other tools has been run yet.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="product" class="gallery alt" aria-labelledby="product-h">
+  <div class="wrap">
+    <div class="sec-head center">
+      <span class="eyebrow" data-i18n="prod.eyebrow">Product</span>
+      <h2 id="product-h" data-i18n="prod.h2">A complete security workbench on localhost.</h2>
+      <p data-i18n="prod.sub">Dashboard, findings, data-flow traces, scans and reports in a local web UI, in English and Arabic, light and dark. No account, no server to install, nothing uploaded.</p>
+    </div>
+    <div class="tabs center" role="tablist" aria-label="Screenshots" data-i18n-attr="aria-label:prod.tabs" id="shot-tabs">
+      <button type="button" role="tab" id="tab-dashboard" aria-controls="shot-panel" aria-selected="true" tabindex="0" data-shot="dashboard" data-i18n="shot.dashboard">Dashboard</button>
+      <button type="button" role="tab" id="tab-findings" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="findings" data-i18n="shot.findings">Findings</button>
+      <button type="button" role="tab" id="tab-trace" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="trace" data-i18n="shot.trace">Data-flow trace</button>
+      <button type="button" role="tab" id="tab-scan" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="scan" data-i18n="shot.scan">New scan</button>
+      <button type="button" role="tab" id="tab-reports" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="reports" data-i18n="shot.reports">Reports</button>
+    </div>
+    <div id="shot-panel" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
+      <div class="frame">
+        <div class="bar" aria-hidden="true"><span class="dots"><i></i><i></i><i></i></span><span class="url"><span>127.0.0.1:8765</span></span></div>
+        <div class="shot"><picture id="gallery-shot" data-shot="dashboard">
+          <source type="image/webp" srcset="img/shots/dashboard-en-dark.webp">
+          <img src="img/shots/dashboard-en-dark.png" width="1440" height="900" loading="lazy" decoding="async" alt="" data-i18n-attr="alt:shot.dashboard.alt">
+        </picture><span class="ph" aria-hidden="true"><img src="logo.svg" alt="" width="56" height="56"></span></div>
+      </div>
+      <p class="cap" id="shot-cap" aria-live="polite">Severity totals, the most frequent rules and recent scans at a glance.</p>
+    </div>
+  </div>
+</section>
+
 <section id="features" aria-labelledby="feat-h">
   <div class="wrap">
     <div class="sec-head">
@@ -675,7 +1051,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
     <div class="stats">
       <div class="stat"><b>153</b><span data-i18n="stat.rules">built-in pattern rules</span></div>
       <div class="stat"><b>48</b><span data-i18n="stat.df">dataflow and APEX rules</span></div>
-      <div class="stat"><b class="ltr">6,354</b><span data-i18n="stat.apis">modelled library APIs</span></div>
+      <div class="stat"><b class="ltr">6,357</b><span data-i18n="stat.apis">modelled library APIs</span></div>
       <div class="stat"><b>19</b><span data-i18n="stat.vql">built-in VQL queries</span></div>
     </div>
     <div class="grid">
@@ -686,7 +1062,8 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></div><h3 data-i18n="f5.h">Secrets, now and in git history</h3><p data-i18n="f5.p">Provider-specific patterns for cloud, payment and messaging keys, plus entropy analysis that catches keys with no known format. kashif history finds every secret ever committed, even if a later commit deleted it.</p></div>
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-pkg"/></svg></div><h3 data-i18n="f6.h">Dependencies with reachability</h3><p data-i18n="f6.p">Reads 23 manifest and lockfile types, looks up known vulnerabilities in OSV.dev, and tells you whether your code imports the package and calls the vulnerable function. The lookup is optional and the only network call a code scan makes.</p></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-archive"/></svg></div><h3 data-i18n="f7.h">Archives, APK and JAR</h3><p data-i18n="f7.p">Scan a zip, tar.gz, APK, JAR, AAR or DEX directly. With jadx installed, Android and Java bytecode is decompiled and analyzed.</p></div>
-      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></div><h3 data-i18n="f8.h">Passive web checks</h3><p data-i18n="f8.p">Security headers, CSP, TLS, cookies and commonly exposed paths, with a rate-limited crawl and an honest User-Agent.</p></div>
+      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></div><h3 data-i18n="f8.h">Passive web checks</h3><p data-i18n="f8.p">184 read-only checks of redirects and HSTS, CSP, headers, CORS, cookies, page content, TLS and certificates, libraries and exposed files, with Kashif and MDN Observatory grades and a coverage table that never shows an untested check as passed.</p>
+        <a class="more" href="web-checks.html?lang=en" data-i18n-attr="href:f8.href"><span data-i18n="f8.more">All 184 checks and their fixes</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-query"/></svg></div><h3 data-i18n="f9.h">Your own rules</h3><p data-i18n="f9.p">Write checks in VQL, a declarative from/where/select language over the program database in the style of CodeQL, then test, pack and share them with kashif rules.</p></div>
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></div><h3 data-i18n="f10.h">Verified autofix</h3><p data-i18n="f10.p">Deterministic fixes for 39 rules, from parameterized SQL to yaml.safe_load. A fix is offered only after the patched file parses and the rule no longer matches; review the diff, or apply it with --fix.</p></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></div><h3 data-i18n="f11.h">Triage, policy and compliance</h3><p data-i18n="f11.p">Triage decisions kept in the repository, a kashif.yml policy gate, mapping to 10 frameworks (OWASP, ASVS, CWE Top 25, PCI DSS, NIST, ISO 27001…) with an auditor report, and an attack-surface map.</p></div>
@@ -706,10 +1083,9 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
       <li class="lng"><i aria-hidden="true"></i>Python</li><li class="lng"><i aria-hidden="true"></i>JavaScript / TS</li><li class="lng"><i aria-hidden="true"></i>Java</li><li class="lng"><i aria-hidden="true"></i>Kotlin</li><li class="lng"><i aria-hidden="true"></i>C#</li><li class="lng"><i aria-hidden="true"></i>Go</li>
       <li class="lng"><i aria-hidden="true"></i>PHP</li><li class="lng"><i aria-hidden="true"></i>C / C++</li><li class="lng"><i aria-hidden="true"></i>Rust</li><li class="lng"><i aria-hidden="true"></i>Swift</li><li class="lng"><i aria-hidden="true"></i>Ruby</li><li class="lng v"><i aria-hidden="true"></i>PL/SQL</li>
     </ul>
-    <div class="grid">
+    <div class="grid g2">
       <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg></div><h3 data-i18n="cov1.h">Oracle APEX and ORDS</h3><p data-i18n="cov1.p">Analyzes APEX application exports, plug-ins and PL/SQL packages for SQL injection, substitution strings, XSS and AI-assistant prompt injection, and points to the page and component.</p></div>
       <div class="card"><div class="ibox"><svg class="ic" aria-hidden="true"><use href="#i-archive"/></svg></div><h3 data-i18n="cov2.h">Android APK and JAR via jadx</h3><p data-i18n="cov2.p">Unpacks APK, JAR, AAR and DEX files and runs dataflow analysis on the decompiled code. Third-party libraries are excluded by default.</p></div>
-      <div class="card"><div class="ibox v"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg></div><h3 data-i18n="cov3.h">Passive web scan</h3><p data-i18n-html="cov3.p">Read-only checks of a site you are authorized to test: no payloads, no form submission, no brute forcing. Requires <code>--authorized</code>.</p></div>
     </div>
   </div>
 </section>
@@ -839,6 +1215,7 @@ kashif . --baseline .vulnscan-baseline.json --fail-on high</div></div>
           <li data-i18n="lim.2">Far fewer library models than the established tools, and less tuning on large real-world codebases.</li>
           <li data-i18n="lim.3">Not yet modeled: templates other than Jinja (EJS, ERB) and values passed between PHP files through include.</li>
           <li data-i18n="lim.4">Without jadx, APK and JAR contents are scanned as text only.</li>
+          <li data-i18n="lim.5">A passive web scan sees anonymous pages only and does not test injection, XSS, authentication, access control or business logic; its grade measures configuration hygiene, not the absence of vulnerabilities.</li>
         </ul>
       </div>
     </div>
@@ -928,6 +1305,7 @@ kashif ./project -f sarif -o out.sarif    <span class="c"># CLI</span></div></di
       <details><summary data-i18n="q5">Which languages and targets are supported?</summary><p data-i18n="a5"></p></details>
       <details><summary data-i18n="q6">How do I use it in CI?</summary><p data-i18n="a6"></p></details>
       <details><summary data-i18n="q7">How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?</summary><p data-i18n="a7"></p></details>
+      <details><summary data-i18n="q9">Is a web scan safe to run against my live site?</summary><p data-i18n="a9"></p></details>
       <details><summary data-i18n="q8">How do I report a security issue in Kashif?</summary><p data-i18n="a8"></p></details>
     </div>
   </div>
@@ -938,10 +1316,10 @@ kashif ./project -f sarif -o out.sarif    <span class="c"># CLI</span></div></di
     <div class="final">
       <img src="logo.svg" alt="" width="64" height="64">
       <h2 id="final-h" data-i18n="final.h2">Start scanning in a minute.</h2>
-      <p data-i18n="final.p">Download one file, point it at a project, and read a report ordered from critical to info, with the data-flow path behind every dataflow finding.</p>
+      <p data-i18n="final.p">Download one file, point it at a project or at a site you are authorized to test, and read a report ordered from critical to info, with the evidence behind every finding.</p>
       <div class="cta">
         <a class="btn primary lg" id="cta-dl2" href="#download"><svg class="ic" aria-hidden="true"><use href="#i-dl"/></svg><span id="cta-dl2-txt" data-i18n="cta.download">Download Kashif</span></a>
-        <a class="btn lg" href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan"><svg class="ic" aria-hidden="true"><use href="#i-gh"/></svg><span data-i18n="cta.github">Star on GitHub</span></a>
+        <a class="btn lg" href="docs.html?lang=en" data-i18n-attr="href:final.docs.href"><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg><span data-i18n="final.docs">Read the documentation</span></a>
       </div>
     </div>
   </div>
@@ -953,26 +1331,29 @@ kashif ./project -f sarif -o out.sarif    <span class="c"># CLI</span></div></di
     <div class="foot">
       <div>
         <a class="brand" href="#main"><img src="logo.svg" alt="" width="26" height="26"><span data-i18n="brand">Kashif</span><small>vulnscan</small></a>
-        <p data-i18n="foot.tag">Open-source static application security testing with source-to-sink dataflow analysis. Built in the open.</p>
-        <p class="foot-by"><span data-i18n="foot.by">Developed by the Programming Department at the Islamic University of Gaza.</span> <span data-i18n="foot.contact">Contact:</span> <a href="mailto:sdep@iugaza.edu.ps" dir="ltr">sdep@iugaza.edu.ps</a></p>
+        <p data-i18n="foot.tag">Open-source security scanning: dataflow SAST for code and passive checks for sites. Built in the open.</p>
+        <p class="foot-by"><span data-i18n="foot.by">Developed by the Programming Department at the Islamic University of Gaza.</span> <span data-i18n="foot.contact">Contact:</span></p>
+        <p class="foot-by foot-mail"><a href="mailto:its@iugaza.edu.ps" dir="ltr"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg>its@iugaza.edu.ps</a><a href="mailto:aelabed@iugaza.edu.ps" dir="ltr"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg>aelabed@iugaza.edu.ps</a></p>
       </div>
       <nav aria-labelledby="fh1"><h2 id="fh1" data-i18n="foot.product">Product</h2><ul>
         <li><a href="#features" data-i18n="nav.features">Features</a></li>
+        <li><a href="#web" data-i18n="nav.web">Web scanning</a></li>
         <li><a href="#accuracy" data-i18n="nav.accuracy">Accuracy</a></li>
         <li><a href="#download" data-i18n="nav.download">Download</a></li>
         <li><a href="#faq" data-i18n="nav.faq">FAQ</a></li>
       </ul></nav>
       <nav aria-labelledby="fh2"><h2 id="fh2" data-i18n="foot.res">Resources</h2><ul>
         <li><a href="docs.html" data-i18n="foot.docs">Documentation</a></li>
+        <li><a href="web-scanning.html?lang=en" data-i18n-attr="href:cov3.href" data-i18n="foot.web">Web scanning guide</a></li>
+        <li><a href="web-checks.html?lang=en" data-i18n-attr="href:f8.href" data-i18n="foot.checks">Web checks</a></li>
         <li><a href="changelog.html" data-i18n="foot.changelog">Changelog</a></li>
-        <li><a href="#download" data-i18n="nav.download">Download</a></li>
       </ul></nav>
       <nav aria-labelledby="fh3"><h2 id="fh3" data-i18n="foot.trust">Trust</h2><ul>
         <li><a href="security.html" data-i18n="foot.sec">Security policy</a></li>
         <li><a href="security.html#report" data-i18n="foot.report">Report a vulnerability</a></li>
+        <li><a href="scanner.html" data-i18n-attr="href:cov3.sends.href" data-i18n="cov3.sends">What Kashif sends</a></li>
         <li><a href="license.html" data-i18n="foot.license">MIT License</a></li>
         <li><a href="privacy.html" data-i18n="foot.privacy">Privacy</a></li>
-        <li><a href="https://github.com/abdulrahmanahmedelabed-prog/vulnscan" >GitHub</a></li>
       </ul></nav>
     </div>
     <div class="foot-bottom">
@@ -982,7 +1363,6 @@ kashif ./project -f sarif -o out.sarif    <span class="c"># CLI</span></div></di
   </div>
 </footer>
 <div class="sr" aria-live="polite" id="live"></div>
-
 <script>
 /* ======================================================================
    BENCHMARK DATA — the ONLY place these numbers live on this page.
@@ -1046,19 +1426,19 @@ const CAT = {
 
 const I18N = {
 en: {
-  "title":"Kashif (vulnscan) — Open-source SAST with source-to-sink dataflow analysis",
-  "desc":"Kashif is a free, open-source SAST tool. Dataflow analysis in 12 languages, Oracle APEX, Android APK/JAR, secrets and passive web checks. Zero dependencies, runs locally, SARIF for GitHub Code Scanning.",
+  "title":"Kashif (vulnscan) — Open-source SAST and passive web scanner",
+  "desc":"Kashif is a free, open-source security scanner: dataflow SAST in 12 languages, Oracle APEX and Android apps, and a passive web scanner with 184 checks and Kashif, Observatory and TLS grades. Zero dependencies, runs locally, in English and Arabic.",
   "skip":"Skip to content","brand":"Kashif","gh.sr":"Kashif on GitHub",
   "nav.label":"Primary","nav.menu":"Menu","lang.label":"Language","theme.toLight":"Switch to light theme","theme.toDark":"Switch to dark theme",
-  "nav.product":"Product","nav.how":"How it works","nav.accuracy":"Accuracy","nav.ci":"CI/CD","nav.compare":"Compare","nav.security":"Security","nav.faq":"FAQ","nav.features":"Features","nav.download":"Download",
-  "hero.notes":"What's new in this release",
-  "hero.h1":"Trace every vulnerability <span class=\"grad\">from input to impact.</span>",
-  "hero.lead":"Kashif is a free, open-source SAST tool for developers and security teams. It follows untrusted input across functions and files in 12 languages, Oracle APEX and Android apps, and shows the exact source-to-sink path behind every dataflow finding. Zero dependencies. Runs entirely on your machine.",
-  "cta.download":"Download Kashif","cta.dlfor":"Download for {os}","cta.github":"Star on GitHub",
+  "nav.product":"Product","nav.accuracy":"Accuracy","nav.ci":"CI/CD","nav.compare":"Compare","nav.faq":"FAQ","nav.features":"Features","nav.download":"Download",
+  "hero.notes":"New: the passive web scanner, rebuilt",
+  "hero.h1":"From source to sink, <span class=\"grad\">from code to site.</span>",
+  "hero.lead":"Kashif is a free, open-source security scanner. Its dataflow engine follows untrusted input through 12 languages and shows the path behind every dataflow finding. Its passive web scanner reads a site you are authorized to test the way a browser does, and judges it against 184 checks. No dependencies, no account, no telemetry: it runs on your machine, in English and Arabic.",
+  "cta.download":"Download Kashif","cta.dlfor":"Download for {os}",
   "os.label":"Platform:","os.win":"Windows (x64)","os.linux":"Linux (x86-64)","os.mac-arm":"macOS (Apple Silicon)","os.mac-x64":"macOS (Intel)","os.all":"All downloads and pip",
   "os.short.win":"Windows","os.short.linux":"Linux","os.short.mac-arm":"macOS (Apple Silicon)","os.short.mac-x64":"Intel Mac",
   "meta.free":"Free and open source (MIT)","meta.local":"Your code never leaves your machine","meta.os":"Windows · Linux · macOS",
-  "proof.label":"Key facts","proof.py":"OWASP Benchmark score, Python","proof.java":"OWASP Benchmark score, Java","proof.langs":"languages with dataflow analysis","proof.deps":"runtime dependencies","proof.sarif":"for GitHub Code Scanning","proof.slsa":"attached to every release",
+  "proof.label":"Key facts","proof.py":"OWASP Benchmark score, Python","proof.java":"OWASP Benchmark score, Java","proof.langs":"languages with dataflow analysis","proof.deps":"runtime dependencies",
   "prod.eyebrow":"Product","prod.h2":"A complete security workbench on localhost.",
   "prod.sub":"Dashboard, findings, data-flow traces, scans and reports in a local web UI, in English and Arabic, light and dark. No account, no server to install, nothing uploaded.",
   "prod.tabs":"Product screenshots",
@@ -1073,7 +1453,7 @@ en: {
   "shot.dashboard.alt":"Kashif web UI: dashboard with severity totals and recent scans",
   "shot.scan.alt":"Kashif web UI: new scan page for folders, archives, apps and websites",
   "shot.reports.alt":"Kashif web UI: reports page with HTML, Markdown, JSON and SARIF exports",
-  "how.eyebrow":"How it works","how.h2":"From source to sink, with the evidence attached.",
+  "how.eyebrow":"Code · how it works","how.h2":"From source to sink, with the evidence attached.",
   "how.sub":"Kashif builds a model of your program, follows untrusted data through it, and reports only where that data reaches a dangerous operation, with every step shown.",
   "how.svg":"Diagram: untrusted data flows from a source, through propagation steps, to a sink",
   "how.s1.h":"Source","how.s1.p":"Finds where untrusted data enters: request parameters, headers, cookies, files, environment variables and APEX page items.",
@@ -1091,7 +1471,7 @@ en: {
   "f5.h":"Secrets, now and in git history","f5.p":"Provider-specific patterns for cloud, payment and messaging keys, plus entropy analysis that catches keys with no known format. kashif history finds every secret ever committed, even if a later commit deleted it.",
   "f6.h":"Dependencies with reachability","f6.p":"Reads 23 manifest and lockfile types, looks up known vulnerabilities in OSV.dev, and tells you whether your code imports the package and calls the vulnerable function. The lookup is optional and the only network call a code scan makes.",
   "f7.h":"Archives, APK and JAR","f7.p":"Scan a zip, tar.gz, APK, JAR, AAR or DEX directly. With jadx installed, Android and Java bytecode is decompiled and analyzed.",
-  "f8.h":"Passive web checks","f8.p":"Security headers, CSP, TLS, cookies and commonly exposed paths, with a rate-limited crawl and an honest User-Agent.",
+  "f8.h":"Passive web checks","f8.p":"184 read-only checks of redirects and HSTS, CSP, headers, CORS, cookies, page content, TLS and certificates, libraries and exposed files, with Kashif and MDN Observatory grades and a coverage table that never shows an untested check as passed.","f8.more":"All 184 checks and their fixes","f8.href":"web-checks.html?lang=en",
   "f9.h":"Your own rules","f9.p":"Write checks in VQL, a declarative from/where/select language over the program database in the style of CodeQL, then test, pack and share them with kashif rules.",
   "f10.h":"Verified autofix","f10.p":"Deterministic fixes for 39 rules, from parameterized SQL to yaml.safe_load. A fix is offered only after the patched file parses and the rule no longer matches; review the diff, or apply it with --fix.",
   "f11.h":"Triage, policy and compliance","f11.p":"Triage decisions kept in the repository, a kashif.yml policy gate, mapping to 10 frameworks (OWASP, ASVS, CWE Top 25, PCI DSS, NIST, ISO 27001…) with an auditor report, and an attack-surface map.",
@@ -1100,7 +1480,7 @@ en: {
   "lang.sub":"The same taint engine runs on every language below, alongside pattern rules for configuration, containers and CI files.",
   "cov1.h":"Oracle APEX and ORDS","cov1.p":"Analyzes APEX application exports, plug-ins and PL/SQL packages for SQL injection, substitution strings, XSS and AI-assistant prompt injection, and points to the page and component.",
   "cov2.h":"Android APK and JAR via jadx","cov2.p":"Unpacks APK, JAR, AAR and DEX files and runs dataflow analysis on the decompiled code. Third-party libraries are excluded by default.",
-  "cov3.h":"Passive web scan","cov3.p":"Read-only checks of a site you are authorized to test: no payloads, no form submission, no brute forcing. Requires <code>--authorized</code>.",
+  "cov3.more":"Web scanning guide","cov3.href":"web-scanning.html?lang=en","cov3.sends":"What Kashif sends","cov3.sends.href":"scanner.html",
   "int.eyebrow":"CI/CD and SARIF","int.h2":"Fits the pipeline you already have.",
   "int.sub":"Upload SARIF to GitHub Code Scanning and findings appear in the Security tab and inline on pull requests, with severity, CWE and the data-flow path.",
   "copy":"Copy","copied":"Copied","int.yaml":"GitHub Actions workflow","copied.sr":"Copied to clipboard",
@@ -1138,7 +1518,7 @@ en: {
   "cmp.r12":"Price","cmp.r12.us":"Free (MIT)","cmp.freepaid":"Free tier + paid","cmp.oss":"Free for public repos","cmp.free":"Free",
   "cmp.they.h":"Where the established tools lead","cmp.they.p":"Semgrep, SonarQube, Snyk Code and CodeQL have far more rules and library models, IDE and pull-request integrations, and years of tuning on real codebases. If you already run them, keep them.",
   "cmp.we.h":"Where Kashif fits","cmp.we.p":"Fully local with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard.",
-  "lim.h":"Known limitations","lim.1":"Static analysis does not replace human review or penetration testing.","lim.2":"Far fewer library models than the established tools, and less tuning on large real-world codebases.","lim.3":"Not yet modeled: templates other than Jinja (EJS, ERB) and values passed between PHP files through include.","lim.4":"Without jadx, APK and JAR contents are scanned as text only.",
+  "lim.h":"Known limitations","lim.1":"Static analysis does not replace human review or penetration testing.","lim.2":"Far fewer library models than the established tools, and less tuning on large real-world codebases.","lim.3":"Not yet modeled: templates other than Jinja (EJS, ERB) and values passed between PHP files through include.","lim.4":"Without jadx, APK and JAR contents are scanned as text only.","lim.5":"A passive web scan sees anonymous pages only and does not test injection, XSS, authentication, access control or business logic; its grade measures configuration hygiene, not the absence of vulnerabilities.",
   "sec.eyebrow":"Security and supply chain","sec.h2":"Verify every byte you run.",
   "sec.sub":"A security tool should meet the bar it sets. Every release is built in GitHub Actions and ships with the evidence you need to check it.",
   "sec.slsa.h":"SLSA build provenance","sec.slsa.p":"Signed attestations prove each binary was built from this repository by its release workflow.",
@@ -1169,28 +1549,123 @@ en: {
   "q6":"How do I use it in CI?","a6":"Run kashif with -f sarif and upload the file to GitHub Code Scanning, or use --fail-on high to fail the build. With --baseline, only findings that are new since the baseline fail the build.",
   "q7":"How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?","a7":"Those tools have far more rules and library models and years of real-world tuning. Kashif's strengths are running fully locally with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard.",
   "q8":"How do I report a security issue in Kashif?","a8":"Use GitHub private vulnerability reporting, as described in SECURITY.md. Please do not open a public issue.",
-  "final.h2":"Start scanning in a minute.","final.p":"Download one file, point it at a project, and read a report ordered from critical to info, with the data-flow path behind every dataflow finding.",
+  "final.h2":"Start scanning in a minute.","final.p":"Download one file, point it at a project or at a site you are authorized to test, and read a report ordered from critical to info, with the evidence behind every finding.",
   "foot.by":"Developed by the Programming Department at the Islamic University of Gaza.","foot.contact":"Contact:",
-  "foot.tag":"Open-source static application security testing with source-to-sink dataflow analysis. Built in the open.",
+  "foot.tag":"Open-source security scanning: dataflow SAST for code and passive checks for sites. Built in the open.",
   "foot.product":"Product","foot.res":"Resources","foot.trust":"Trust","foot.docs":"Documentation","foot.changelog":"Changelog",
   "foot.sec":"Security policy","foot.report":"Report a vulnerability","foot.license":"MIT License","foot.privacy":"Privacy",
   "foot.ver":"Version","foot.lic":"MIT License","foot.legal":"Scan only systems you are authorized to test.",
+  "nav.code":"Code",
+  "nav.web":"Web scanning",
+  "cta.web":"How the web scan works",
+  "con.label":"Example scans",
+  "con.code":"Code",
+  "con.web":"Website",
+  "con.cap":"Real output, abridged: an 11-line Flask app, and a deliberately weak test page served on localhost.",
+  "proof.web":"passive web checks",
+  "proof.i18n":"interface, command line and reports",
+  "lens.eyebrow":"One tool, two scanners",
+  "lens.h2":"Static analysis for the code you write. Passive checks for the site you ship.",
+  "lens.sub":"Each one finds what the other cannot see. Both run from the same program and UI, with the same report formats and CI exit codes.",
+  "lens.code.tag":"Code · SAST",
+  "lens.code.h":"Follows untrusted input to the dangerous call",
+  "lens.code.1":"Dataflow analysis in 12 languages, plus Oracle APEX and Android apps",
+  "lens.code.2":"The source-to-sink path behind every dataflow finding",
+  "lens.code.3":"Secrets, dependencies with reachability, verified autofix",
+  "lens.code.4":"OWASP Benchmark: {overall_py}% Python, {overall_java}% Java",
+  "lens.code.more":"How dataflow analysis works",
+  "lens.web.tag":"Site · passive",
+  "lens.web.h":"Reads your site like a browser, and grades its defenses",
+  "lens.web.1":"184 checks: transport, CSP, headers, CORS, cookies, page code, TLS and exposed files",
+  "lens.web.2":"Plain GET requests only, at least 0.2 s apart, within a stated budget",
+  "lens.web.3":"Kashif, MDN Observatory-compatible and SSL Labs-compatible grades",
+  "lens.web.4":"A coverage table that never shows an untested check as passed",
+  "lens.web.more":"What the web scanner checks",
+  "web.eyebrow":"Passive web scanner",
+  "web.new":"New in 1.1",
+  "web.h2":"It reads your site the way a browser does. Nothing more.",
+  "web.sub":"Point Kashif at a site you own or are authorized to test. It requests what an anonymous visitor would receive, judges it against 184 checks, and tells you exactly what it sent.",
+  "web.sends.h":"What it sends, and what it never does",
+  "web.s1":"Plain GET requests only: no attack payloads, no form submission, no guessing, no firewall evasion.",
+  "web.s2":"At least 0.2 s between two requests to one host (0.5 s by default), one request at a time. Crawl-delay raises the gap; repeated 429 or 503 with Retry-After stops requests to that host.",
+  "web.s3":"An honest User-Agent that names Kashif and links to a page explaining the scanner.",
+  "web.s4":"robots.txt is honoured when crawling, and links that change state, such as logout, are never followed.",
+  "web.s5":"Nothing is sent without <code>--authorized</code>, and no lookup reveals the site's name to a third party.",
+  "web.bud.h":"Pick a request budget",
+  "web.p.def":"default",
+  "web.p.min.n":"at most 10 requests",
+  "web.p.std.n":"at most 45 requests",
+  "web.p.deep.n":"at most 150 requests",
+  "web.p.min":"The page and its redirects: the 1.0 behaviour.",
+  "web.p.std":"Adds the http/https counterpart, one cookieless CORS request, robots.txt, security.txt, the favicon and up to 15 of the site's own scripts and styles.",
+  "web.p.deep":"Adds a fixed list of 40 commonly exposed paths, 21 paths of detected platforms such as their login pages (fetched once, nothing submitted), third-party scripts, source maps and images.",
+  "web.p.crawl":"Crawled pages (<code>--crawl</code>) come on top of the budget: same origin only, at most 500 pages.",
+  "web.fam.h":"184 checks in 11 families",
+  "web.fam.sub":"Every check has a stable id, a severity, a confidence, and CWE, WSTG and ASVS mappings.",
+  "web.fam.cap":"Passive web checks per family",
+  "web.fam.th1":"Family",
+  "web.fam.th2":"Checks",
+  "fam.a":"Transport, redirects and HSTS",
+  "fam.b":"Content-Security-Policy",
+  "fam.c":"Framing, MIME, referrer, permissions, isolation and caching",
+  "fam.d":"CORS",
+  "fam.e":"Cookies",
+  "fam.f":"Page content and client-side code",
+  "fam.g":"Information disclosure",
+  "fam.h":"TLS and certificates",
+  "fam.i":"Components and technologies",
+  "fam.j":"Exposed and well-known files",
+  "fam.k":"Scan meta: inconclusive scans, checks that could not run",
+  "web.gr.h":"Three grades, each with its reasons",
+  "web.g1.h":"Kashif Web Grade",
+  "web.g1.p":"Six weighted families, capped by serious findings. <code>*</code> marks a provisional grade, <code>?</code> a firewall that answered instead of the site.",
+  "web.g2.h":"HTTP Observatory",
+  "web.g2.p":"A compatible score (algorithm 6) that matches the official grader on its test cases.",
+  "web.g3.h":"SSL Labs-compatible",
+  "web.g3.p":"A TLS grade without the attack-only tests Kashif does not perform.",
+  "web.cov.h":"Coverage that never pretends",
+  "web.cov.p":"Each check ends in one of five states, with the reason. A check that did not run is never shown as passed and never counts in a grade.",
+  "web.st.p":"passed",
+  "web.st.f":"failed",
+  "web.st.na":"not applicable",
+  "web.st.nt":"not tested",
+  "web.st.i":"inconclusive",
+  "web.ev.h":"Evidence you can repeat, fixes you can paste",
+  "web.ev.p":"Every finding carries a confidence (certain, firm or tentative), the request, the redirect chain, the headers as received with cookie values redacted, and a curl command that repeats the request. Copy-paste fixes cover 18 platforms, from nginx and IIS to Django and Rails.",
+  "web.no.h":"What a passive scan cannot find",
+  "web.no.1":"Pages behind a login: Kashif never signs in.",
+  "web.no.2":"Injection, XSS, authentication, access control and business logic: testing them needs requests built to break the application, which Kashif never sends.",
+  "web.no.3":"Certificate revocation: Kashif reads a stapled OCSP response but never contacts the certificate authority.",
+  "web.no.4":"A clean grade is not a clean bill of health: pair the web scan with a code scan of the same application.",
+  "web.m.h":"Measured on a labelled local corpus",
+  "web.m.1":"test cases on 127.0.0.1, no network",
+  "web.m.2":"labels, covering all 184 rules",
+  "web.m.3":"precision, certain and firm findings",
+  "web.m.4":"recall, for every rule",
+  "web.m.p":"Each case where a rule must fire has a trap case where it must not, including traps from ZAP's 20 most frequent false-positive families.",
+  "web.m.cav":"The project wrote these cases and tuned the rules on them, so the numbers measure regressions on known cases, not accuracy on real sites. No comparison with other tools has been run yet.",
+  "q9":"Is a web scan safe to run against my live site?",
+  "a9":"It is built to be: plain GET requests within a stated budget (at most 45 by default), at least 0.2 s apart and one at a time, with an honest User-Agent and no payloads. Run it only on sites you own or are authorized in writing to test.",
+  "final.docs":"Read the documentation",
+  "final.docs.href":"docs.html?lang=en",
+  "foot.web":"Web scanning guide",
+  "foot.checks":"Web checks",
   "latest":"latest"
 },
 ar: {
-  "title":"كاشِف (vulnscan) — فاحص أمني مفتوح المصدر يتتبّع تدفق البيانات من المصدر إلى نقطة الخطر",
-  "desc":"كاشِف أداة مجانية مفتوحة المصدر لاختبار أمان التطبيقات بالتحليل الساكن: تحليل تدفق البيانات في 12 لغة، وOracle APEX، وتطبيقات أندرويد APK/JAR، والأسرار، وفحص الويب السلبي. بلا اعتماديات، يعمل محليًا، ويصدّر SARIF إلى GitHub Code Scanning.",
+  "title":"كاشِف (vulnscan) — فاحص أمني مفتوح المصدر للكود والمواقع",
+  "desc":"كاشِف فاحص أمني مجاني ومفتوح المصدر: تحليل ساكن بتتبّع تدفق البيانات في 12 لغة وOracle APEX وتطبيقات أندرويد، وفاحص مواقع سلبي بـ 184 فحصًا ودرجات كاشِف وObservatory وTLS. بلا اعتماديات، يعمل محليًا، بالعربية والإنجليزية.",
   "skip":"تخطَّ إلى المحتوى","brand":"كاشِف","gh.sr":"كاشِف على GitHub",
   "nav.label":"التنقّل الرئيسي","nav.menu":"القائمة","lang.label":"اللغة","theme.toLight":"التبديل إلى الوضع الفاتح","theme.toDark":"التبديل إلى الوضع الداكن",
-  "nav.product":"المنتج","nav.how":"آلية العمل","nav.accuracy":"الدقة","nav.ci":"التكامل المستمر","nav.compare":"المقارنة","nav.security":"الأمان","nav.faq":"الأسئلة الشائعة","nav.features":"المزايا","nav.download":"التحميل",
-  "hero.notes":"الجديد في هذا الإصدار",
-  "hero.h1":"تتبّع كل ثغرة <span class=\"grad\">من المُدخل حتى الأثر.</span>",
-  "hero.lead":"كاشِف أداة مجانية مفتوحة المصدر لاختبار أمان التطبيقات بالتحليل الساكن (SAST)، للمطوّرين وفرق الأمن. يتتبّع المدخلات غير الموثوقة عبر الدوال والملفات في 12 لغة وفي Oracle APEX وتطبيقات أندرويد، ويعرض مع كل نتيجة لتحليل التدفق المسار الدقيق من المصدر إلى نقطة الخطر. بلا أي اعتماديات، ويعمل بالكامل على جهازك.",
-  "cta.download":"حمّل كاشِف","cta.dlfor":"حمّل لنظام {os}","cta.github":"ضع نجمة على GitHub",
+  "nav.product":"المنتج","nav.accuracy":"الدقة","nav.ci":"التكامل المستمر","nav.compare":"المقارنة","nav.faq":"الأسئلة الشائعة","nav.features":"المزايا","nav.download":"التحميل",
+  "hero.notes":"الجديد: فاحص المواقع السلبي بُني من جديد",
+  "hero.h1":"من المصدر إلى نقطة الخطر، <span class=\"grad\">ومن الكود إلى الموقع.</span>",
+  "hero.lead":"كاشِف فاحص أمني مجاني ومفتوح المصدر. يتتبّع محرّك تدفق البيانات فيه المدخلات غير الموثوقة في 12 لغة، ويعرض المسار خلف كل نتيجة لتحليل التدفق. ويقرأ فاحص المواقع السلبي موقعًا مصرَّحًا لك باختباره كما يقرؤه المتصفح، ويحكم عليه بـ 184 فحصًا. بلا اعتماديات ولا حساب ولا قياس للاستخدام: يعمل على جهازك، بالعربية والإنجليزية.",
+  "cta.download":"حمّل كاشِف","cta.dlfor":"حمّل لنظام {os}",
   "os.label":"النظام:","os.win":"ويندوز (x64)","os.linux":"لينكس (x86-64)","os.mac-arm":"macOS ‏(Apple Silicon)","os.mac-x64":"macOS ‏(Intel)","os.all":"كل التنزيلات وpip",
   "os.short.win":"ويندوز","os.short.linux":"لينكس","os.short.mac-arm":"macOS ‏(Apple Silicon)","os.short.mac-x64":"Mac بمعالج Intel",
   "meta.free":"مجاني ومفتوح المصدر (MIT)","meta.local":"كودك لا يغادر جهازك","meta.os":"ويندوز · لينكس · macOS",
-  "proof.label":"حقائق أساسية","proof.py":"نتيجة OWASP Benchmark في Python","proof.java":"نتيجة OWASP Benchmark في Java","proof.langs":"لغة بتحليل تدفق البيانات","proof.deps":"اعتماديات تشغيل","proof.sarif":"لـ GitHub Code Scanning","proof.slsa":"مع كل إصدار",
+  "proof.label":"حقائق أساسية","proof.py":"نتيجة OWASP Benchmark في Python","proof.java":"نتيجة OWASP Benchmark في Java","proof.langs":"لغة بتحليل تدفق البيانات","proof.deps":"اعتمادية تشغيل",
   "prod.eyebrow":"المنتج","prod.h2":"منصة أمان متكاملة على جهازك.",
   "prod.sub":"لوحة تحكم ونتائج ومسارات تدفق البيانات وفحوصات وتقارير في واجهة ويب محلية، بالعربية والإنجليزية، بالوضعين الفاتح والداكن. بلا حساب ولا خادم يُثبَّت، ولا يُرفع أي شيء.",
   "prod.tabs":"لقطات من المنتج",
@@ -1198,14 +1673,14 @@ ar: {
   "shot.trace.cap":"كل نتيجة من تحليل التدفق تعرض المسار من المصدر إلى نقطة الخطر خطوةً خطوة، مع الكود في كل مرحلة.",
   "shot.findings.cap":"نتائج مرتّبة من الحرجة إلى المعلوماتية، مع القاعدة وCWE والموقع وتوصية الإصلاح. صفِّ وابحث وأخفِ ما راجعته.",
   "shot.dashboard.cap":"إجمالي النتائج حسب الخطورة، والقواعد الأكثر تكرارًا، وآخر الفحوصات في نظرة واحدة.",
-  "shot.scan.cap":"افحص مجلدًا أو أرشيفًا أو ملف APK أو JAR، أو موقعًا مصرَّحًا لك بفحصه. اختر ملف الفحص وابدأ.",
+  "shot.scan.cap":"افحص مجلدًا أو أرشيفًا أو ملف APK أو JAR، أو موقعًا مصرَّحًا لك بفحصه. اختر نمط الفحص وابدأ.",
   "shot.reports.cap":"صدّر تقارير HTML وMarkdown وJSON وSARIF لفريقك أو للمدققين أو لـ GitHub Code Scanning.",
   "shot.trace.alt":"واجهة كاشِف: نتيجة مع مسار تدفق البيانات من المصدر إلى نقطة الخطر",
   "shot.findings.alt":"واجهة كاشِف: قائمة النتائج مرتّبة حسب الخطورة مع توصيات الإصلاح",
   "shot.dashboard.alt":"واجهة كاشِف: لوحة التحكم بإجمالي النتائج حسب الخطورة وآخر الفحوصات",
   "shot.scan.alt":"واجهة كاشِف: صفحة فحص جديد للمجلدات والأرشيفات والتطبيقات والمواقع",
   "shot.reports.alt":"واجهة كاشِف: صفحة التقارير بصيغ HTML وMarkdown وJSON وSARIF",
-  "how.eyebrow":"آلية العمل","how.h2":"من المصدر إلى نقطة الخطر، مع الدليل.",
+  "how.eyebrow":"الكود · آلية العمل","how.h2":"من المصدر إلى نقطة الخطر، مع الدليل.",
   "how.sub":"يبني كاشِف نموذجًا لبرنامجك، ويتتبّع البيانات غير الموثوقة خلاله، ولا يُبلغ إلا حين تصل إلى عملية خطِرة، مع عرض كل خطوة.",
   "how.svg":"رسم توضيحي: بيانات غير موثوقة تنتقل من المصدر عبر خطوات الانتشار إلى نقطة الخطر",
   "how.s1.h":"المصدر","how.s1.p":"يحدّد مواضع دخول البيانات غير الموثوقة: معاملات الطلب والترويسات والكوكيز والملفات ومتغيرات البيئة وعناصر صفحات APEX.",
@@ -1217,13 +1692,13 @@ ar: {
   "feat.sub":"قواعد أنماط، ومحرّك تدفق بيانات عبر الملفات، ولغة استعلام، إضافة إلى إصلاحات تلقائية مُتحقَّق منها وكشف الأسرار وثغرات الاعتماديات مع قابلية الوصول وفحص الويب السلبي، في أداة واحدة تعمل في أي مكان.",
   "stat.rules":"قاعدة أنماط مدمجة","stat.df":"قاعدة لتدفق البيانات وAPEX","stat.apis":"واجهة مكتبة منمذجة","stat.vql":"استعلام VQL مدمج",
   "f1.h":"تحليل تدفق البيانات (Taint)","f1.p":"يتتبّع المدخلات غير الموثوقة عبر الدوال والأصناف والملفات، ويرفق بكل نتيجة المسار الكامل من المصدر إلى نقطة الخطر.",
-  "f2.h":"حسّاس للتدفق والسياق","f2.p":"طيّ الثوابت وحذف الفروع الميتة، مع تحليل points-to حسّاس للسياق (k=2)، فالمصنع المستدعى من موضعين يعيد كائنين مختلفين.",
+  "f2.h":"حسّاس للتدفق والسياق","f2.p":"طيّ الثوابت وحذف الفروع الميتة، مع تحليل points\u2011to حسّاس للسياق (k=2)، فالمصنع المستدعى من موضعين يعيد كائنين مختلفين.",
   "f3.h":"مُعقِّمات بحسب السياق","f3.p":"<code>html.escape</code> يحمي HTML فقط، لا SQL ولا shell. والمُعقِّم لا يُلغي إلا نقاط الخطر التي يحمي منها فعلًا.",
   "f4.h":"الحقن من الدرجة الثانية","f4.p":"يتتبّع بيانات المستخدم المكتوبة في جدول قاعدة بيانات ثم المقروءة لاحقًا في SQL أو أمر shell: الحقن المخزَّن، في كل اللغات.",
   "f5.h":"الأسرار، الآن وفي تاريخ git","f5.p":"أنماط خاصة بمزوّدي السحابة والدفع والمراسلة، مع تحليل العشوائية (الإنتروبيا) لالتقاط مفاتيح بلا صيغة معروفة. ويجد kashif history كل سرّ أُودِع يومًا ولو حذفه إيداع لاحق.",
   "f6.h":"الاعتماديات مع قابلية الوصول","f6.p":"يقرأ 23 نوعًا من ملفات التبعيات والقفل، ويستعلم OSV.dev عن الثغرات المعروفة، ويخبرك هل يستورد كودك الحزمة وهل يستدعي الدالة المصابة. الاستعلام اختياري، وهو الاتصال الشبكي الوحيد في فحص الكود.",
   "f7.h":"الأرشيفات وAPK وJAR","f7.p":"افحص ملفات zip وtar.gz وAPK وJAR وAAR وDEX مباشرة. ومع تثبيت jadx يُفكّ تجميع كود أندرويد وJava ويُحلَّل.",
-  "f8.h":"فحص ويب سلبي","f8.p":"ترويسات الأمان وCSP وTLS والكوكيز والمسارات المكشوفة الشائعة، مع زحف محدود المعدّل ووكيل مستخدم صريح.",
+  "f8.h":"فحص ويب سلبي","f8.p":"184 فحصًا للقراءة فقط: التوجيه وHSTS وCSP والترويسات وCORS والكوكيز ومحتوى الصفحة وTLS والشهادات والمكتبات والملفات المكشوفة، مع درجة كاشِف ودرجة MDN Observatory وجدول تغطية لا يُظهر فحصًا لم يُجرَ ناجحًا.","f8.more":"الفحوص الـ 184 وإصلاحاتها","f8.href":"web-checks.html?lang=ar",
   "f9.h":"قواعدك الخاصة","f9.p":"اكتب فحوصك بلغة VQL التصريحية (from/where/select) فوق قاعدة بيانات البرنامج على نهج CodeQL، ثم اختبرها واحزمها وشاركها عبر kashif rules.",
   "f10.h":"إصلاح تلقائي مُتحقَّق منه","f10.p":"إصلاحات حتمية لـ 39 قاعدة، من استعلامات SQL بمعاملات إلى yaml.safe_load. لا يُعرض الإصلاح إلا بعد التأكد أن الملف المعدَّل سليم وأن القاعدة لم تعد تنطبق؛ راجع الفرق أو طبّقه بـ ‎--fix.",
   "f11.h":"الفرز والسياسة والامتثال","f11.p":"قرارات فرز تعيش داخل المستودع، وبوابة سياسة في kashif.yml، وربط بعشرة أطر (OWASP وASVS وCWE Top 25 وPCI DSS وNIST وISO 27001…) مع تقرير للمدقق، وخريطة لسطح الهجوم.",
@@ -1232,7 +1707,7 @@ ar: {
   "lang.sub":"محرّك التلوّث نفسه يعمل على كل اللغات أدناه، إلى جانب قواعد أنماط للإعدادات والحاويات وملفات CI.",
   "cov1.h":"Oracle APEX وORDS","cov1.p":"يحلّل ملفات تصدير تطبيقات APEX والإضافات وحزم PL/SQL بحثًا عن حقن SQL والاستبدال النصي وXSS وحقن تعليمات المساعد الذكي، ويشير إلى الصفحة والمكوّن.",
   "cov2.h":"أندرويد APK وJAR عبر jadx","cov2.p":"يفكّ ملفات APK وJAR وAAR وDEX ويشغّل تحليل التدفق على الكود المفكوك، مع استبعاد مكتبات الطرف الثالث افتراضيًا.",
-  "cov3.h":"فحص ويب سلبي","cov3.p":"فحوص قراءة فقط لموقع مصرَّح لك باختباره: بلا حمولات ولا إرسال نماذج ولا تخمين. يتطلب <code>--authorized</code>.",
+  "cov3.more":"دليل فحص المواقع","cov3.href":"web-scanning.html?lang=ar","cov3.sends":"ما يرسله كاشِف","cov3.sends.href":"scanner.html#ar",
   "int.eyebrow":"التكامل المستمر وSARIF","int.h2":"يندمج في خط العمل الذي تستخدمه.",
   "int.sub":"ارفع تقرير SARIF إلى GitHub Code Scanning فتظهر النتائج في تبويب Security وعلى أسطر طلبات الدمج، مع الخطورة وCWE ومسار تدفق البيانات.",
   "copy":"نسخ","copied":"نُسخ","int.yaml":"سير عمل GitHub Actions","copied.sr":"نُسخ إلى الحافظة",
@@ -1240,7 +1715,7 @@ ar: {
   "int.audit.h":"ملف التدقيق","int.audit.p":"للمراجعات الأمنية، يعرض <code>--audit</code> أيضًا كل استدعاء خطِر (eval وshell وSQL وpickle…) لم يُثبت تحليل التدفق وصول مُدخل إليه، فيرى المراجع سطح الهجوم كاملًا.",
   "int.ide.h":"داخل محرّرك","int.ide.p":"النتائج نفسها التي يعطيها سطر الأوامر، في VS Code وأي محرّر يدعم LSP: الخطورة وCWE ومسار تدفق البيانات عبر الملفات عند التمرير، مع إصلاحات سريعة لتطبيق إصلاح مُتحقَّق منه أو كتم نتيجة أو إضافتها إلى خط الأساس. يعمل دون إنترنت، ولا يغادر شيء جهازك.","int.ide.lsp":"أي محرّر يدعم LSP","int.ide.vsix":"إضافة VS Code ‏(.vsix)",
   "files.h":"أي ملف أحتاج؟","files.p":"في كل إصدار الملفات نفسها، ويكفي معظم الناس ملف واحد: ملف نظامك أعلاه.","files.setup":"مثبّت: يضيف كاشِف إلى قائمة ابدأ وإلى PATH (يمكنك إلغاء ذلك)، ويُزال من إعدادات ويندوز. هو الملف المناسب على ويندوز.","files.win":"البرنامج نفسه في ملف واحد محمول، لا يُثبَّت شيء. لفلاشة، أو لجهاز لا يمكنك التثبيت عليه، أو لـ CI.","files.linux":"برنامج في ملف واحد لـ Linux بمعمارية 64 بت. اجعله قابلًا للتنفيذ ثم شغّله.","files.mac1":"لأجهزة Mac بمعالج Apple Silicon ‏(M1 وما بعده).","files.mac2":"لأجهزة Mac بمعالج Intel.","files.vsix":"إضافة تعرض النتائج داخل VS Code أثناء عملك. ثبّت كاشِف أولًا (يجب أن يكون في PATH)، ثم افتح في VS Code لوحة Extensions واختر من قائمة ⋯ الأمر Install from VSIX.","files.sums":"بصمة SHA-256 لكل ملف، لتتأكد أن ما نزّلته سليم.","files.sbom":"قائمة مكوّنات البرنامج (CycloneDX): كل ما بُني منه كاشِف.","files.legacy":"البرامج نفسها بالاسم القديم لكاشِف، باقية لتستطيع الإصدارات السابقة لـ 1.0 تحديث نفسها. لا تحتاجها.",
-  "int.pr.h":"على كل طلب دمج","int.pr.p":"تعليقات مراجعة على طلبات الدمج في GitHub، وتقارير GitLab SAST وCode Quality، وخطّاف pre-commit. والفحص المقيَّد بالفرق يعرض ما غيّره الفرع فقط.","int.pr.gh":"تعليقات طلبات الدمج في GitHub","int.pr.more":"إعداد CI وطلبات الدمج","int.pr.href":"docs.html?lang=ar#%D8%A7%D9%84%D8%AA%D9%83%D8%A7%D9%85%D9%84-%D9%85%D8%B9-github-code-scanning-sarif",
+  "int.pr.h":"على كل طلب دمج","int.pr.p":"تعليقات مراجعة على طلبات الدمج في GitHub، وتقارير GitLab SAST وCode Quality، وخطّاف pre\u2011commit. والفحص المقيَّد بالفرق يعرض ما غيّره الفرع فقط.","int.pr.gh":"تعليقات طلبات الدمج في GitHub","int.pr.more":"إعداد CI وطلبات الدمج","int.pr.href":"docs.html?lang=ar#%D8%A7%D9%84%D8%AA%D9%83%D8%A7%D9%85%D9%84-%D9%85%D8%B9-github-code-scanning-sarif",
   "int.out.h":"تقارير للأدوات التي تستخدمها","int.out.p":"تقرير SARIF مُتحقَّق منه مقابل مخطط OASIS 2.1.0 ويُفتح في GitHub وVS Code، والتصدير إلى DefectDojo وSonarQube وGitLab وCode Climate وJira وGitHub Issues وAWS Security Hub وغيرها. ولكل نتيجة بصمة ثابتة.",
   "acc.eyebrow":"الدقة","acc.h2":"نقيسها علنًا، وتعيد إنتاجها بأمر واحد.",
   "acc.sub":"نقيس كاشِف على OWASP Benchmark وننشر نتيجة كل فئة، بما فيها الفئات الأضعف.",
@@ -1270,7 +1745,7 @@ ar: {
   "cmp.r12":"السعر","cmp.r12.us":"مجاني (MIT)","cmp.freepaid":"مجاني محدود + مدفوع","cmp.oss":"مجاني للمستودعات العامة","cmp.free":"مجاني",
   "cmp.they.h":"أين تتقدّم الأدوات الراسخة","cmp.they.p":"لدى Semgrep وSonarQube وSnyk Code وCodeQL قواعد ونماذج مكتبات أكثر بكثير، وتكاملات IDE وطلبات الدمج، وسنوات من الضبط على مشاريع حقيقية. إن كنت تستخدمها فاحتفظ بها.",
   "cmp.we.h":"أين يناسب كاشِف","cmp.we.p":"محلي بالكامل بلا اعتماديات، ويغطي Oracle APEX وPL/SQL والأرشيفات وتطبيقات أندرويد وفحص الويب السلبي بواجهة عربية في أداة واحدة. ويستطيع دمج نتائج Semgrep وBandit وgitleaks وnpm audit في لوحته.",
-  "lim.h":"حدود معروفة","lim.1":"التحليل الساكن لا يغني عن المراجعة البشرية ولا عن اختبار الاختراق.","lim.2":"نماذج مكتبات أقل بكثير من الأدوات الراسخة، وضبط أقل على قواعد كود حقيقية كبيرة.","lim.3":"لم يُنمذج بعد: القوالب غير Jinja (مثل EJS وERB)، والقيم التي تنتقل بين ملفات PHP عبر include.","lim.4":"دون jadx تُفحص محتويات APK وJAR كنصوص فقط.",
+  "lim.h":"حدود معروفة","lim.1":"التحليل الساكن لا يغني عن المراجعة البشرية ولا عن اختبار الاختراق.","lim.2":"نماذج مكتبات أقل بكثير من الأدوات الراسخة، وضبط أقل على قواعد كود حقيقية كبيرة.","lim.3":"لم يُنمذج بعد: القوالب غير Jinja (مثل EJS وERB)، والقيم التي تنتقل بين ملفات PHP عبر include.","lim.4":"دون jadx تُفحص محتويات APK وJAR كنصوص فقط.","lim.5":"لا يرى الفحص السلبي للمواقع إلا الصفحات العامة، ولا يختبر الحقن ولا XSS ولا المصادقة ولا التحكم في الوصول ولا منطق العمل؛ ودرجته تقيس سلامة الإعدادات لا خلوّ الموقع من الثغرات.",
   "sec.eyebrow":"الأمان وسلسلة التوريد","sec.h2":"تحقّق من كل بايت تشغّله.",
   "sec.sub":"على أداة الأمان أن تلتزم بما تطلبه من غيرها. كل إصدار يُبنى في GitHub Actions ويُرفق بالأدلة التي تحتاجها للتحقق منه.",
   "sec.slsa.h":"شهادة منشأ SLSA","sec.slsa.p":"شهادات موقَّعة تُثبت أن كل ملف تنفيذي بُني من هذا المستودع بسير عمل الإصدار نفسه.",
@@ -1283,7 +1758,7 @@ ar: {
   "dl.eyebrow":"التحميل","dl.h2":"حمّل كاشِف <span class=\"ver opt\"></span>",
   "dl.sub":"مثبّت لويندوز وبرامج في ملف واحد لكل نظام. شغّل كاشِف بلا وسائط لفتح الواجهة، أو مرّر مسارًا للفحص من سطر الأوامر.",
   "dl.rec":"نظامك","dl.btn.win":"حمّل لويندوز","dl.btn.linux":"حمّل للينكس","dl.btn.mac1":"حمّل لـ Apple Silicon","dl.btn.mac2":"حمّل لـ Mac بمعالج Intel",
-  "dl.win.req":"x64 · مثبّت (موصى به)","dl.win.alt":"أو ملف ‎.exe المحمول (بلا تثبيت)","dl.alt.cmd":"أو ثبّته بأمر واحد","dl.lin.req":"x86-64 · Ubuntu 22.04+ وDebian 12 وRHEL 9+",
+  "dl.win.req":"x64 · مثبّت (موصى به)","dl.win.alt":"أو ملف ‎.exe المحمول (بلا تثبيت)","dl.alt.cmd":"أو ثبّته بأمر واحد","dl.lin.req":"x86-64 · Ubuntu 22.04+\u200e وDebian 12 وRHEL 9+\u200e",
   "dl.mac1":"macOS · Apple Silicon","dl.mac1.req":"arm64 · M1 وما بعده","dl.mac2":"macOS · Intel","dl.mac2.req":"x86_64",
   "run.win.h":"ويندوز","run.win.p":"شغّل kashif-setup.exe واتبع الخطوات، ثم افتح كاشِف من قائمة ابدأ أو استخدمه من أي نافذة أوامر جديدة:",
   "run.win.setup":"لا تريد التثبيت؟ نزّل <a href=\"https://github.com/abdulrahmanahmedelabed-prog/vulnscan/releases/latest/download/kashif-windows-x86_64.exe\">kashif-windows-x86_64.exe</a> وانقر عليه نقرتين لفتح الواجهة، أو شغّله من نافذة الأوامر مع مسار للفحص.",
@@ -1297,16 +1772,111 @@ ar: {
   "q2":"هل يرفع كاشِف الكود الخاص بي؟","a2":"لا. كل شيء يعمل محليًا، والواجهة تستمع على 127.0.0.1 فقط. الاتصال الشبكي الوحيد في فحص الكود، وهو اختياري، استعلام OSV.dev عن الاعتماديات، وترسل أسماء الحزم وإصداراتها فقط، لا الكود أبدًا. عطّلها بـ ‎--no-deps.",
   "q3":"هل يعمل دون إنترنت أو في شبكة معزولة؟","a3":"نعم. انسخ الملف التنفيذي (أو ثبّت حزمة Python) وشغّله بـ ‎--no-deps --no-external، ولن تحتاج أي خطوة من فحص الكود إلى الشبكة.",
   "q4":"ما مدى دقته؟","a4":"على OWASP Benchmark يحقق {overall_py}% في Python و{overall_java}% في Java (متوسط TPR − FPR لكل فئة، بأداة التقييم الخاصة بالمشروع)، ويمكنك إعادة إنتاج النتيجتين بأمر واحد. وBenchmark مجموعة اصطناعية، فالنتيجة تبيّن طريقة تفكير المحرّك لا دقته على كودك. وككل محلّل ساكن قد يُخطئ إيجابًا أو يفوّت ثغرات؛ فاعتبر نتائجه طبقة أولى قوية لا بديلًا عن المراجعة.",
-  "q5":"ما اللغات والأهداف المدعومة؟","a5":"تحليل تدفق البيانات لـ Python وJavaScript/TypeScript وJava وKotlin وC# وGo وPHP وC/C++ وRust وSwift وRuby وPL/SQL، إضافة إلى ملفات تصدير Oracle APEX وتطبيقات أندرويد APK/JAR (عبر jadx) والإعدادات والحاويات وملفات CI وفحص الويب السلبي.",
+  "q5":"ما اللغات والأهداف المدعومة؟","a5":"تحليل تدفق البيانات لـ Python وJavaScript/TypeScript وJava وKotlin وC#\u200e وGo وPHP وC/C++\u200e وRust وSwift وRuby وPL/SQL، إضافة إلى ملفات تصدير Oracle APEX وتطبيقات أندرويد APK/JAR (عبر jadx) والإعدادات والحاويات وملفات CI وفحص الويب السلبي.",
   "q6":"كيف أستخدمه في CI؟","a6":"شغّل kashif مع ‎-f sarif وارفع الملف إلى GitHub Code Scanning، أو استخدم ‎--fail-on high لإفشال البناء. ومع ‎--baseline لا يُفشل البناء إلا ما استجدّ بعد خط الأساس.",
   "q7":"كيف يقارَن بـ Semgrep وSonarQube وSnyk Code وCodeQL؟","a7":"لدى هذه الأدوات قواعد ونماذج مكتبات أكثر بكثير، وسنوات من الضبط على مشاريع حقيقية. أما نقاط قوة كاشِف فهي العمل محليًا بالكامل بلا اعتماديات، وتغطية Oracle APEX وPL/SQL والأرشيفات وتطبيقات أندرويد وفحص الويب السلبي، وواجهة عربية، في أداة واحدة. ويستطيع أيضًا دمج نتائج Semgrep وBandit وgitleaks وnpm audit في لوحته.",
   "q8":"كيف أبلّغ عن ثغرة في كاشِف نفسه؟","a8":"استخدم الإبلاغ الخاص عن الثغرات في GitHub كما هو موضّح في SECURITY.md، ولا تفتح بلاغًا عامًا.",
-  "final.h2":"ابدأ الفحص خلال دقيقة.","final.p":"نزّل ملفًا واحدًا، ووجّهه إلى مشروعك، واقرأ تقريرًا مرتّبًا من الحرج إلى المعلوماتي، مع مسار تدفق البيانات خلف كل نتيجة لتحليل التدفق.",
+  "final.h2":"ابدأ الفحص خلال دقيقة.","final.p":"نزّل ملفًا واحدًا، ووجّهه إلى مشروع أو إلى موقع مصرَّح لك باختباره، واقرأ تقريرًا مرتّبًا من الحرج إلى المعلوماتي، مع الدليل خلف كل نتيجة.",
   "foot.by":"من تطوير دائرة البرمجة في الجامعة الإسلامية بغزة.","foot.contact":"للتواصل:",
-  "foot.tag":"اختبار أمان التطبيقات بالتحليل الساكن، مفتوح المصدر، بتتبّع تدفق البيانات من المصدر إلى نقطة الخطر. يُطوَّر علنًا.",
+  "foot.tag":"فحص أمني مفتوح المصدر: تحليل ساكن بتتبّع تدفق البيانات للكود، وفحص سلبي للمواقع. يُطوَّر علنًا.",
   "foot.product":"المنتج","foot.res":"المصادر","foot.trust":"الثقة","foot.docs":"التوثيق","foot.changelog":"سجل التغييرات",
   "foot.sec":"سياسة الأمان","foot.report":"أبلغ عن ثغرة","foot.license":"رخصة MIT","foot.privacy":"الخصوصية",
   "foot.ver":"الإصدار","foot.lic":"رخصة MIT","foot.legal":"افحص فقط الأنظمة المصرَّح لك باختبارها.",
+  "nav.code":"الكود",
+  "nav.web":"فحص المواقع",
+  "cta.web":"كيف يعمل فحص المواقع",
+  "con.label":"أمثلة على الفحص",
+  "con.code":"الكود",
+  "con.web":"الموقع",
+  "con.cap":"مخرجات حقيقية مختصرة (بالإنجليزية): تطبيق Flask من 11 سطرًا، وصفحة اختبار ضعيفة عمدًا على خادم محلي (localhost).",
+  "proof.web":"فحصًا سلبيًا للمواقع",
+  "proof.i18n":"الواجهة وسطر الأوامر والتقارير",
+  "lens.eyebrow":"أداة واحدة وفاحصان",
+  "lens.h2":"تحليل ساكن للكود الذي تكتبه، وفحص سلبي للموقع الذي تنشره.",
+  "lens.sub":"يجد كلٌّ منهما ما لا يراه الآخر، ويعملان من البرنامج نفسه والواجهة نفسها، بصيغ التقارير نفسها ورموز الخروج نفسها في CI.",
+  "lens.code.tag":"الكود · SAST",
+  "lens.code.h":"يتتبّع المُدخل غير الموثوق حتى الاستدعاء الخطِر",
+  "lens.code.1":"تحليل تدفق البيانات في 12 لغة، ومعها Oracle APEX وتطبيقات أندرويد",
+  "lens.code.2":"المسار من المصدر إلى نقطة الخطر خلف كل نتيجة لتحليل التدفق",
+  "lens.code.3":"الأسرار، والاعتماديات مع قابلية الوصول، والإصلاح التلقائي المُتحقَّق منه",
+  "lens.code.4":"على OWASP Benchmark: ‏{overall_py}% في Python و{overall_java}% في Java",
+  "lens.code.more":"كيف يعمل تحليل تدفق البيانات",
+  "lens.web.tag":"الموقع · فحص سلبي",
+  "lens.web.h":"يقرأ موقعك كما يقرؤه المتصفح، ويقيّم دفاعاته",
+  "lens.web.1":"184 فحصًا: النقل وCSP والترويسات وCORS والكوكيز وكود الصفحة وTLS والملفات المكشوفة",
+  "lens.web.2":"طلبات GET عادية فقط، بفاصل لا يقل عن 0.2 ثانية، ضمن حدّ معلَن",
+  "lens.web.3":"درجة كاشِف، ودرجة متوافقة مع MDN Observatory، وأخرى متوافقة مع SSL Labs",
+  "lens.web.4":"جدول تغطية لا يُظهر فحصًا لم يُجرَ ناجحًا",
+  "lens.web.more":"ما الذي يفحصه فاحص المواقع",
+  "web.eyebrow":"فاحص المواقع السلبي",
+  "web.new":"جديد في 1.1",
+  "web.h2":"يقرأ موقعك كما يقرؤه المتصفح، ولا شيء أكثر.",
+  "web.sub":"وجّه كاشِف إلى موقع تملكه أو مصرَّح لك باختباره، فيطلب ما يتلقاه زائر مجهول، ويحكم عليه بـ 184 فحصًا، ويخبرك بكل ما أرسله.",
+  "web.sends.h":"ما يرسله، وما لا يفعله أبدًا",
+  "web.s1":"طلبات GET عادية فقط: بلا حمولات هجوم، ولا إرسال نماذج، ولا تخمين، ولا تجاوز لجدران الحماية.",
+  "web.s2":"فاصل لا يقل عن 0.2 ثانية بين أي طلبين إلى المضيف نفسه (0.5 ثانية افتراضيًا)، وطلب واحد في كل مرة. ويرفع Crawl\u2011delay الفاصل، وتكرار 429 أو 503 مع Retry-After يوقف الطلبات إلى ذلك المضيف.",
+  "web.s3":"وكيل مستخدم صريح يذكر كاشِف ويشير إلى صفحة تشرح الفاحص.",
+  "web.s4":"يحترم robots.txt عند الزحف، ولا يتبع أبدًا الروابط التي تغيّر الحالة مثل تسجيل الخروج.",
+  "web.s5":"لا يُرسَل شيء دون <code>--authorized</code>، ولا يكشف أي استعلام اسم الموقع لطرف ثالث.",
+  "web.bud.h":"اختر حدّ الطلبات",
+  "web.p.def":"الافتراضي",
+  "web.p.min.n":"10 طلبات على الأكثر",
+  "web.p.std.n":"45 طلبًا على الأكثر",
+  "web.p.deep.n":"150 طلبًا على الأكثر",
+  "web.p.min":"الصفحة وتوجيهاتها فقط، أي سلوك 1.0.",
+  "web.p.std":"يضيف نظير الصفحة عبر http أو https، وطلب CORS واحدًا بلا كوكيز، وrobots.txt وsecurity.txt والأيقونة، وحتى 15 سكربتًا أو ملف أنماط من الموقع نفسه.",
+  "web.p.deep":"يضيف قائمة ثابتة من 40 مسارًا شائع الانكشاف، و21 مسارًا خاصًا بالمنصات المكتشفة مثل صفحات الدخول (تُطلب مرة واحدة ولا يُرسَل إليها شيء)، والسكربتات الخارجية وخرائط المصدر والصور.",
+  "web.p.crawl":"صفحات الزحف (<code>--crawl</code>) خارج هذا الحد: من الأصل نفسه فقط، و500 صفحة على الأكثر.",
+  "web.fam.h":"184 فحصًا في 11 مجموعة",
+  "web.fam.sub":"لكل فحص معرّف ثابت وخطورة ودرجة ثقة، وربط بـ CWE وWSTG وASVS.",
+  "web.fam.cap":"فحوص الويب السلبية لكل مجموعة",
+  "web.fam.th1":"المجموعة",
+  "web.fam.th2":"الفحوص",
+  "fam.a":"النقل والتوجيه وHSTS",
+  "fam.b":"سياسة أمان المحتوى (CSP)",
+  "fam.c":"التضمين ونوع المحتوى والإحالة والصلاحيات والعزل والتخزين المؤقت",
+  "fam.d":"مشاركة الموارد بين المصادر (CORS)",
+  "fam.e":"الكوكيز",
+  "fam.f":"محتوى الصفحة والكود في المتصفح",
+  "fam.g":"كشف المعلومات",
+  "fam.h":"TLS والشهادات",
+  "fam.i":"المكونات والتقنيات",
+  "fam.j":"الملفات المكشوفة والملفات المعروفة",
+  "fam.k":"معلومات الفحص: الفحص غير الحاسم والفحوص التي تعذّر إجراؤها",
+  "web.gr.h":"ثلاث درجات، لكلٍّ منها أسبابها",
+  "web.g1.h":"درجة كاشِف للويب",
+  "web.g1.p":"ست مجموعات موزونة، وتُحَدّ الدرجة عند النتائج الخطيرة. وتعني <code>*</code> درجة مؤقتة، و<code>?</code> أن جدار حماية أجاب بدل الموقع.",
+  "web.g2.h":"HTTP Observatory",
+  "web.g2.p":"درجة متوافقة (الخوارزمية 6) تطابق المقيِّم الرسمي على حالات اختباره.",
+  "web.g3.h":"متوافقة مع SSL Labs",
+  "web.g3.p":"درجة TLS دون اختبارات الهجوم التي لا يجريها كاشِف.",
+  "web.cov.h":"تغطية لا تدّعي ما لم يحدث",
+  "web.cov.p":"ينتهي كل فحص بإحدى خمس حالات مع السبب. والفحص الذي لم يُجرَ لا يظهر ناجحًا أبدًا، ولا يدخل في أي درجة.",
+  "web.st.p":"ناجح",
+  "web.st.f":"فاشل",
+  "web.st.na":"غير منطبق",
+  "web.st.nt":"لم يُختبر",
+  "web.st.i":"غير حاسم",
+  "web.ev.h":"دليل يمكنك تكراره، وإصلاحات جاهزة للنسخ",
+  "web.ev.p":"تحمل كل نتيجة درجة ثقة (certain أو firm أو tentative)، والطلب، وسلسلة التوجيه، والترويسات كما وصلت مع حجب قيم الكوكيز، وأمر curl يكرّر الطلب. ومقاطع الإصلاح الجاهزة للنسخ تغطي 18 منصة، من nginx وIIS إلى Django وRails.",
+  "web.no.h":"ما لا يكشفه الفحص السلبي",
+  "web.no.1":"الصفحات التي تتطلب تسجيل الدخول: كاشِف لا يسجّل الدخول أبدًا.",
+  "web.no.2":"الحقن وXSS والمصادقة والتحكم في الوصول ومنطق العمل: فاختبارها يحتاج طلبات مصمَّمة لكسر التطبيق، ولا يرسلها كاشِف أبدًا.",
+  "web.no.3":"إلغاء الشهادة: يقرأ كاشِف استجابة OCSP المرفقة، لكنه لا يتصل بجهة إصدار الشهادة.",
+  "web.no.4":"الدرجة الجيدة لا تعني موقعًا سليمًا: اجمع فحص الموقع مع فحص لكود التطبيق نفسه.",
+  "web.m.h":"مقيس على مجموعة حالات محلية موسومة",
+  "web.m.1":"حالة اختبار على 127.0.0.1 بلا شبكة",
+  "web.m.2":"وسمًا تغطي القواعد الـ 184 كلها",
+  "web.m.3":"الدقة (precision) لنتائج certain وfirm",
+  "web.m.4":"الاستدعاء (recall) لكل قاعدة",
+  "web.m.p":"لكل حالة يجب أن تُكشف فيها قاعدة حالةُ فخّ مقابلة يجب ألا تُكشف فيها، ومنها حالات فخ من أكثر 20 عائلة إنذارات كاذبة في ZAP.",
+  "web.m.cav":"كتب المشروع هذه الحالات وضُبطت القواعد عليها، فالأرقام تقيس الانحدار على حالات معروفة لا الدقة على مواقع حقيقية. ولم تُجرَ بعد أي مقارنة بأداة أخرى.",
+  "q9":"هل فحص المواقع آمن على موقعي المنشور؟",
+  "a9":"صُمّم ليكون كذلك: طلبات GET عادية ضمن حدّ معلَن (45 طلبًا على الأكثر افتراضيًا)، بفاصل لا يقل عن 0.2 ثانية وطلب واحد في كل مرة، بوكيل مستخدم صريح وبلا حمولات. ولا تشغّله إلا على مواقع تملكها أو لديك تصريح كتابي باختبارها.",
+  "final.docs":"اقرأ التوثيق",
+  "final.docs.href":"docs.html?lang=ar",
+  "foot.web":"دليل فحص المواقع",
+  "foot.checks":"فحوص المواقع",
   "latest":"أحدث إصدار"
 }
 };
@@ -1450,7 +2020,7 @@ ar: {
     var ld = document.getElementById("ld-faq");
     if (ld) {
       var qs = [];
-      for (var i = 1; i <= 8; i++) qs.push({ "@type": "Question", "name": t("q" + i), "acceptedAnswer": { "@type": "Answer", "text": fill(t("a" + i)) } });
+      for (var i = 1; i <= 9; i++) qs.push({ "@type": "Question", "name": t("q" + i), "acceptedAnswer": { "@type": "Answer", "text": fill(t("a" + i)) } });
       ld.textContent = JSON.stringify({ "@context": "https://schema.org", "@type": "FAQPage", "inLanguage": state.lang, "mainEntity": qs });
     }
   }
@@ -1545,6 +2115,9 @@ ar: {
     });
   }
   setupTabs(document.getElementById("shot-tabs"), function (tab) { state.shot = tab.dataset.shot; renderShots(); });
+  setupTabs(document.getElementById("con-tabs"), function (tab) {
+    document.querySelectorAll("#con-tabs [role=tab]").forEach(function (x) { var p = document.getElementById(x.getAttribute("aria-controls")); if (p) p.hidden = x !== tab; });
+  });
   setupTabs(document.getElementById("suite-tabs"), function (tab) { state.suite = BENCH[tab.dataset.suite] ? tab.dataset.suite : "python"; apply(state.lang); });
 
   /* copy buttons */

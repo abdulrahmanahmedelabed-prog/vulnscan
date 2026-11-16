@@ -211,11 +211,17 @@ PATTERNS: list[tuple[str, str]] = [
     (r"الواجهة الأمامية \((?P<lang>[^)]+)\): تخطّت (?P<n>\d+) من (?P<total>\d+) عبارة في (?P<rel>.+?) "
      r"\(الأسطر (?P<lines>[^)]*)\) — frontend skipped .*",
      r"The \g<lang> frontend skipped \g<n> of \g<total> statements in \g<rel> (lines \g<lines>)"),
+    (r"عبارة متخطّاة في .+? — skipped statement at (?P<en>[^\u0600-\u06FF]+)", r"Skipped statement at \g<en>"),
     (r"ملفات متداخلة بعمق غير طبيعي \(مولَّدة أو عدائية\) استُثنيت من تحليل التدفق: (?P<files>.+?)"
      r" — too deeply nested for dataflow analysis",
      r"Abnormally deeply nested files (generated or hostile) were excluded from dataflow analysis: \g<files>"),
     (r"تعذّر تحليل تدفق البيانات \((?P<err>[\w.]+)\)؛ عُرضت نتائج القواعد فقط — dataflow analysis failed, pattern results only",
      r"Dataflow analysis failed (\g<err>); showing pattern-rule results only."),
+    (r"تعذّر تحليل تدفق البيانات لملفات (?P<lang>[\w+#-]+) \((?P<err>[\w.]+)\)؛ عُرضت نتائج القواعد لها فقط"
+     r" — [\w+#-]+ dataflow analysis failed, pattern results only",
+     r"Dataflow analysis of the \g<lang> files failed (\g<err>); showing pattern-rule results for them only."),
+    (r"تعذّر تحليل (?P<n>\d+) من الملفات فتُركت خارج الفحص: (?P<files>.+?) — files skipped after an analysis error",
+     r"\g<n> file(s) could not be analysed and were skipped: \g<files>"),
 
     # ---- scan notes and errors: server.py
     (r"فحص ويب سلبي مع زحف على (?P<n>\d+) صفحة من النطاق نفسه \(طلب كل (?P<delay>[\d.e+-]+) ثانية\)\.",
