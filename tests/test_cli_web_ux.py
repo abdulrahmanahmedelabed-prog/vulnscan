@@ -94,6 +94,11 @@ def site():
     httpd.server_close()
 
 
+# Windows answers a connection to a closed local port only after ~2 s of SYN retries (WSAECONNREFUSED), so a 1 s
+# timeout would report a timeout there instead of the refusal these tests are about.
+REFUSE_TIMEOUT = "6"
+
+
 def _closed_port() -> int:
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -249,7 +254,7 @@ def test_dns_failure_of_an_http_url_with_only_an_https_proxy_says_why():
 
 def test_cli_explains_an_unreachable_site_with_the_cli_wording(capsys):
     port = _closed_port()
-    assert main([f"http://127.0.0.1:{port}/", "--authorized", "--timeout", "1", "--lang", "both"]) == 2
+    assert main([f"http://127.0.0.1:{port}/", "--authorized", "--timeout", REFUSE_TIMEOUT, "--lang", "both"]) == 2
     err = capsys.readouterr().err.splitlines()
     assert err[0].startswith("✖ لم يُفحص الموقع — رفض الخادم") and err[1].startswith("✖ The site was not scanned:")
     assert f"Check that the service on port {port} is running." in err[1] and "Try https://" not in err[1]
@@ -361,7 +366,7 @@ def test_fail_on_inconclusive(site, capsys):
 def test_unreachable_site_still_writes_a_report_and_exits_2(fmt, tmp_path):
     out = tmp_path / f"r.{fmt}"
     url = f"http://127.0.0.1:{_closed_port()}/"
-    assert main([url, "--authorized", "--timeout", "1", "--lang", "en", "-f", fmt, "-o", str(out)]) == 2
+    assert main([url, "--authorized", "--timeout", REFUSE_TIMEOUT, "--lang", "en", "-f", fmt, "-o", str(out)]) == 2
     text = out.read_text(encoding="utf-8")
     if fmt == "json":
         doc = json.loads(text)
@@ -502,7 +507,7 @@ def test_old_saved_messages_are_still_translated():
 def test_engine_message_is_the_ui_wording(monkeypatch):
     port = _closed_port()
     with pytest.raises(web.WebUnreachable) as ei:
-        web.scan_web(f"http://127.0.0.1:{port}/", profile="minimal", timeout=1)
+        web.scan_web(f"http://127.0.0.1:{port}/", profile="minimal", timeout=float(REFUSE_TIMEOUT))
     msg = str(ei.value)
     assert f"تحقّق من أن الخدمة على المنفذ {LRI}{port}{PDI} تعمل" in msg and ei.value.code == "refused"
     assert os.linesep not in msg

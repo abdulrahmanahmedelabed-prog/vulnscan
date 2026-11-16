@@ -19,6 +19,19 @@ HTML = (UI / "index.html").read_text(encoding="utf-8")
 CSS = (UI / "styles.css").read_text(encoding="utf-8")
 NODE = shutil.which("node")
 
+def _run_node(code: str, **kw):
+    """Run ``code`` under Node.js from a temporary file (Windows limits a command line to 32 767 characters)."""
+    import os
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=".js")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(code)
+        return subprocess.run([NODE, path], **kw)
+    finally:
+        os.unlink(path)
+
+
 
 def _keys(lang: str) -> dict[str, str]:
     start = JS.index(f"\n  {lang}: {{")
@@ -43,7 +56,7 @@ def _node(body: str, data) -> dict:
             + _slice("const SCHEME = ", "const urlKey")
             + _slice("/* A web finding: no file location", "/* -------------------------------------------------------------- triage */")
             + "\nconst D = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n" + body)
-    res = subprocess.run([NODE, "-e", code], input=json.dumps(data), capture_output=True, text=True, encoding="utf-8",
+    res = _run_node(code, input=json.dumps(data), capture_output=True, text=True, encoding="utf-8",
                          timeout=60)
     assert res.returncode == 0, res.stderr
     return json.loads(res.stdout)

@@ -885,7 +885,7 @@ def test_os_resolver_maps_eai_codes(monkeypatch):
     monkeypatch.setattr(socket, "gethostbyname_ex", lambda h: ("edge.cdn.test.", ["www.site.test"], ["93.184.215.14"]))
     cases = [(socket.EAI_NONAME, "nxdomain"), (socket.EAI_AGAIN, "tempfail"), ("timeout", "tempfail"),
              (getattr(socket, "EAI_FAIL", -4), "tempfail")]
-    if hasattr(socket, "EAI_NODATA"):
+    if hasattr(socket, "EAI_NODATA") and socket.EAI_NODATA != socket.EAI_NONAME:   # one code on Windows (11001)
         cases.append((socket.EAI_NODATA, "nodata"))
     for code, status in cases:
         monkeypatch.setattr(socket, "getaddrinfo", fake(code))

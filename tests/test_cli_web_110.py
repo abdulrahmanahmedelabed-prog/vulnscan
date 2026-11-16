@@ -260,7 +260,8 @@ def test_unreachable_site_exits_2_with_the_explanation(capsys):
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
     s.close()
-    code = main([f"http://127.0.0.1:{port}/", "--authorized", "--no-proxy", "--timeout", "1", "--lang", "en"])
+    code = main([f"http://127.0.0.1:{port}/", "--authorized", "--no-proxy", "--timeout", "6", "--lang", "en"])
+    # 6 s, not 1: Windows reports a refused local connection only after ~2 s of SYN retries
     assert code == 2 and "refused" in capsys.readouterr().err.lower()
 
 

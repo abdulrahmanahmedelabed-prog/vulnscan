@@ -18,6 +18,19 @@ from vulnscan.i18n import bidi as B
 JS = (pathlib.Path(__file__).resolve().parents[1] / "vulnscan" / "ui" / "app.js").read_text(encoding="utf-8")
 NODE = shutil.which("node")
 
+def _run_node(code: str, **kw):
+    """Run ``code`` under Node.js from a temporary file (Windows limits a command line to 32 767 characters)."""
+    import os
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=".js")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(code)
+        return subprocess.run([NODE, path], **kw)
+    finally:
+        os.unlink(path)
+
+
 # Arabic engine and UI texts with code, header values, URLs, versions and dates (the strings that displayed reversed:
 # "Lax=SameSite", "includeSubDomains ;max-age=63072000", "12-11-2026" …)
 SAMPLES = [
@@ -69,7 +82,7 @@ process.stdout.write(JSON.stringify(out));
 """
     # app.js expects a DOM: give the slice the few globals it touches at load time
     stub = "const localStorage = {getItem: () => null, setItem: () => {}};\n"
-    res = subprocess.run([NODE, "-e", stub + script], input=json.dumps(SAMPLES), capture_output=True, text=True,
+    res = _run_node(stub + script, input=json.dumps(SAMPLES), capture_output=True, text=True,
                          encoding="utf-8", timeout=60)
     assert res.returncode == 0, res.stderr
     out = json.loads(res.stdout)
@@ -95,7 +108,7 @@ def test_finding_titles_get_an_explicit_direction_not_auto():
     script = ("const localStorage = {getItem: () => null, setItem: () => {}};\n" + prefix
               + "\nconst S = JSON.parse(require('fs').readFileSync(0, 'utf8'));"
                 "process.stdout.write(JSON.stringify(S.map((s) => dirOf(s))));")
-    res = subprocess.run([NODE, "-e", script], input=json.dumps(list(cases)), capture_output=True, text=True,
+    res = _run_node(script, input=json.dumps(list(cases)), capture_output=True, text=True,
                          encoding="utf-8", timeout=60)
     assert res.returncode == 0, res.stderr
     assert dict(zip(cases, json.loads(res.stdout))) == cases

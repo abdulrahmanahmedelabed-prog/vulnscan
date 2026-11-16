@@ -14,6 +14,8 @@ Containment: an unexpected error on one file or one manifest is recorded in the 
 import ast
 import pathlib
 
+import multiprocessing
+
 import pytest
 
 from vulnscan import js_frontend, sca, scanner, server, taint
@@ -143,6 +145,8 @@ def test_per_file_stage_error_skips_only_that_file(tmp_path, monkeypatch, jobs):
             raise AttributeError("'list' object has no attribute 'endswith'")
         return real(path, rel, *a, **k)
     monkeypatch.setattr(scanner, "_scan_bytes", scan_bytes)
+    if jobs > 1 and "fork" not in multiprocessing.get_all_start_methods():
+        pytest.skip("needs the fork start method: the patched stage does not reach spawned workers (Windows)")
     if jobs > 1:                          # the worker-process path: an error there is redone and contained here
         monkeypatch.setattr(scanner, "PARALLEL_MIN_FILES", 2)
         monkeypatch.setenv("KASHIF_MP_START", "fork")
