@@ -373,7 +373,7 @@ def test_unreachable_site_still_writes_a_report_and_exits_2(fmt, tmp_path):
         assert doc["target"] == url and doc["findings"] == [] and doc["generated_at"]
         assert doc["web"]["status"] == "unreachable" and doc["web"]["schema"] >= 1
         err = doc["web"]["error"]
-        assert err["code"] == "refused" and "Connection refused" in err["raw"]
+        assert err["code"] == "refused" and "refused" in err["raw"]   # Windows: "...actively refused it"
         assert to_en(err["ar"]) == err["en"]
     elif fmt == "sarif":
         run = json.loads(text)["runs"][0]

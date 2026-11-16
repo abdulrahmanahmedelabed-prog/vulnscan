@@ -391,6 +391,8 @@ def gate(summary: dict, mins: dict, defects: list[dict]) -> list[str]:
         if r is None:
             fails.append(f"{rule}: no longer scored (was in min-score.json)")
             continue
+        if not any(r.get(c) for c in ("tp", "fp", "fn", "tn")) and r.get("precision") is None and summary.get("skipped"):
+            continue    # every case labelling this rule was skipped on this platform (e.g. no 127.0.0.2 on macOS)
         for k in ("precision", "recall"):
             if floor.get(k) is not None and (r[k] is None or r[k] < floor[k]):
                 fails.append(f"{rule}: {k} {r[k]} < recorded {floor[k]}")

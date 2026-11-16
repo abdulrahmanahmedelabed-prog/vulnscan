@@ -1798,7 +1798,10 @@ class Fetcher:
 
     def _fail(self, e: BaseException, prep: _Prepared, source: str, req_headers: HeaderList, wd: _Watchdog, t0: float,
               base_flags: set[str], proxy: "Proxy | None" = None, *, sent: bool = False) -> Response:
-        code, msg = classify_error(e, deadline_fired=wd.fired, deadline=self._deadline(),
+        # A socket timeout that lands at the deadline is the deadline: the watchdog timer and the socket timeout race,
+        # and on macOS the timeout can win by a few milliseconds.
+        fired = wd.fired or (isinstance(e, (socket.timeout, TimeoutError)) and time.monotonic() >= wd.deadline_at - 0.02)
+        code, msg = classify_error(e, deadline_fired=fired, deadline=self._deadline(),
                                    proxy=proxy.display if proxy is not None else None, sent=sent)
         if code == "deadline":
             self._event("deadline", once=prep.url, url=prep.url[:300], seconds=f"{self._deadline():g}")

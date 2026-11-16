@@ -554,3 +554,14 @@ def test_min_score_has_a_floor_for_every_registry_rule():
     tp = {r for c in labels.values() for r, v in c["labels"].items() if v}
     trap = {r for c in labels.values() for r, v in c["labels"].items() if not v}
     assert set(_rules.RULE_IDS) <= tp and set(_rules.RULE_IDS) <= trap, sorted(set(_rules.RULE_IDS) - (tp & trap))
+
+
+def test_gate_skips_a_rule_whose_cases_were_all_skipped_on_this_platform():
+    """macOS cannot bind 127.0.0.2, so the WEB715 cases are skipped there: that is not a precision regression."""
+    mins = {"rules": {"WEB715": {"precision": 1.0, "recall": 1.0}}}
+    row = {"tp": 0, "fp": 0, "fn": 0, "tn": 0, "precision": None, "recall": None}
+    base = {"rules": {"WEB715": row}, "skipped": {"c1": "ip2: 127.0.0.2 cannot be bound"}, "macro_f1": None,
+            "precision_by_confidence": {}, "confidence_monotone": True, "expectation_failures": [],
+            "traffic_violations": {}, "server_violations": [], "errors": {}}
+    assert not [f for f in score.gate(base, mins, []) if "WEB715" in f]
+    assert [f for f in score.gate({**base, "skipped": {}}, mins, []) if "WEB715" in f]
