@@ -349,29 +349,21 @@ def test_resolved_path_prefix_check_needs_the_separator():
     """, "DF005")
 
 
-# ---------------------------------------------------------------- 7. request.path of a fixed Flask route
-FIXED_ROUTES = """
+# ---------------------------------------------------------------- 7. request.path is always input
+# (a fixed-route exemption was tried for 1.2 and dropped: a variable route can reach any view by means a static
+# analysis cannot see, e.g. add_url_rule(view_func=getattr(module, name)) or bp.url_prefix assigned later)
+ROUTES = """
 @app.route('/a/b', methods=['GET'])
 def fixed_get():
-    return fixed_post()  # SAFE
+    return fixed_post()  # VULN
 
 @app.route('/a/b', methods=['POST'])
 def fixed_post():
-    return '<p>' + request.path + '</p>'  # SAFE
+    return '<p>' + request.path + '</p>'  # VULN
 
 @app.route('/v/<x>')
 def variable():
     return '<p>' + request.path + '</p>'  # VULN
-
-@app.route('/c/d')
-def registered_again():
-    return '<p>' + request.path + '</p>'  # VULN
-
-app.add_url_rule('/z/<p>', view_func=registered_again)
-
-@app.route('/e/<y>')
-def caller():
-    return fixed_called()
 
 @app.route('/e')
 def fixed_called():
@@ -379,14 +371,31 @@ def fixed_called():
 """
 
 
-def test_request_path_of_a_fixed_route_is_not_input():
-    _check(FIXED_ROUTES, "DF013")
-    assert _lines(FIXED_ROUTES, "DF008") == {26}     # fixed_called is also reached from a route with a variable
+def test_request_path_is_input_even_in_a_fixed_route():
+    _check(ROUTES, "DF013")
+    assert _lines(ROUTES, "DF008") == {16}
 
 
-def test_blueprint_with_a_variable_prefix_keeps_request_path_tainted():
-    body = FIXED_ROUTES + "\nbp = Blueprint('b', __name__, url_prefix='/<lang>')\n"
-    assert _marked(FIXED_ROUTES, "# SAFE") <= _lines(body, "DF013")
+def test_request_path_with_routes_bound_dynamically():
+    _check("""
+    import sys
+
+    @app.route('/a')
+    def a(rest=None):
+        return '<h1>' + request.path + '</h1>'  # VULN
+
+    for _name in ('a',):
+        app.add_url_rule('/legacy/' + _name + '/<path:rest>', view_func=getattr(sys.modules[__name__], _name))
+
+    bp = Blueprint('bp', __name__)
+
+    @bp.route('/b')
+    def b(lang=None):
+        return '<h1>' + request.path + '</h1>'  # VULN
+
+    bp.url_prefix = '/<lang>'
+    app.register_blueprint(bp)
+    """, "DF013")
 
 
 # ---------------------------------------------------------------- 8. elementpath: the XPath is the second argument
@@ -572,3 +581,154 @@ def test_request_path_stays_input_in_an_error_handler():
 
     app.register_error_handler(410, gone)
     """, "DF013")
+
+
+# ---------------------------------------------------------------- 10. second review round (still reported)
+def test_count_and_find_need_a_str_value():
+    _check("""
+    @app.route('/a')
+    def a():
+        bar = request.get_json()['id']
+        root = lxml.etree.parse('e.xml')
+        if bar.count("'") != 0:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # VULN
+
+    @app.route('/b')
+    def b():
+        bar = request.get_json()['id']
+        root = lxml.etree.parse('e.xml')
+        if bar.find("'") >= 0:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # VULN
+
+    @app.route('/c')
+    def c():
+        bar = request.args.get('id')
+        root = lxml.etree.parse('e.xml')
+        if bar.count("'") != 0:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # SAFE
+    """, "DF015")
+
+
+def test_refresh_header_is_a_redirect_and_a_chosen_content_type_keeps_xss():
+    _check("""
+    @app.route('/a')
+    def a():
+        nxt = request.args.get('next')
+        return make_response(('redirecting', 200, {'Refresh': f'0; url={nxt}'}))  # VULN
+
+    @app.route('/b')
+    def b():
+        nxt = request.args.get('next')
+        return make_response('redirecting', {'refresh': '0;url=' + nxt})  # VULN
+    """, "DF008")
+    _check("""
+    @app.route('/c')
+    def c():
+        return make_response(('<b>hi</b>', {'Content-Type': request.args.get('t')}))  # VULN
+
+    @app.route('/d')
+    def d():
+        return make_response(('<b>hi</b>', {'Content-Type': 'text/plain', 'X': request.args.get('t')}))  # SAFE
+    """, "DF013")
+
+
+def test_walrus_inside_an_augmented_assignment_rebinds_the_guarded_name():
+    _check("""
+    @app.route('/a')
+    def a():
+        log = ''
+        name = request.args.get('f')
+        if '..' in name:
+            return 'no'
+        log += (name := request.args.get('g'))
+        p = f'{BASE}/{name}'
+        return open(p).read()  # VULN
+
+    @app.route('/b')
+    def b():
+        log = ''
+        name = request.args.get('f')
+        if '..' in name:
+            return 'no'
+        log += name
+        p = f'{BASE}/{name}'
+        return open(p).read()  # SAFE
+    """, "DF005")
+
+
+def test_decode_is_a_str_only_on_bytes():
+    _check("""
+    import base64
+    import jwt
+
+    @app.route('/a')
+    def a():
+        bar = jwt.decode(request.args.get('t'), 'k', algorithms=['HS256']).decode()
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # VULN
+
+    @app.route('/b')
+    def b():
+        bar = base64.b64decode(request.args.get('t')).decode('utf-8')
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # SAFE
+    """, "DF015")
+
+
+def test_setattr_on_a_configparser_drops_slot_precision():
+    _check("""
+    @app.route('/a')
+    def a():
+        conf = configparser.ConfigParser()
+        conf.add_section('s')
+        setattr(conf, 'optionxform', lambda o: o.lower().replace('-', '_'))
+        conf.set('s', 'a-b', request.args.get('x'))
+        conf.set('s', 'safe', 'x')
+        return eval(conf.get('s', 'a_b'))  # VULN
+    """, "DF001")
+
+
+def _scan_files(tmp_path, files: dict) -> set:
+    from vulnscan.scanner import scan_path
+    for rel, text in files.items():
+        (tmp_path / rel).write_text(textwrap.dedent(text), encoding="utf-8")
+    findings, _ = scan_path(tmp_path, jadx=False, notes=[])
+    return {(f.file, f.line) for f in findings if f.rule_id == "DF005"}
+
+
+GUARDED_OPEN = """\
+    @app.route('/p')
+    def p():
+        name = request.args.get('f')
+        if '..' in name:
+            return 'no'
+        p = {prefix} + name
+        return open(p).read()
+"""
+
+
+def test_star_import_makes_a_module_constant_unknown(tmp_path):
+    got = _scan_files(tmp_path, {
+        "local_settings.py": "UPLOAD_DIR = ''\n",
+        "settings.py": "UPLOAD_DIR = '/srv/uploads/'\ntry:\n    from local_settings import *\nexcept ImportError:\n    pass\n",
+        "app.py": "from flask import Flask, request\nimport settings\napp = Flask(__name__)\n\n"
+                  + textwrap.dedent(GUARDED_OPEN).format(prefix="settings.UPLOAD_DIR"),
+    })
+    assert ("app.py", 11) in got
+
+
+def test_dynamic_globals_make_a_module_constant_unknown(tmp_path):
+    body = textwrap.dedent(GUARDED_OPEN).format(prefix="DATA")
+    got = _scan_files(tmp_path, {
+        "app.py": "import json\nfrom flask import Flask, request\napp = Flask(__name__)\nDATA = '/srv/data/'\n"
+                  "globals().update(json.load(open('overrides.json')))\n\n" + body,
+        "safe.py": "from flask import Flask, request\napp = Flask(__name__)\nDATA = '/srv/data/'\n\n" + body,
+    })
+    assert ("app.py", 13) in got and ("safe.py", 11) not in got

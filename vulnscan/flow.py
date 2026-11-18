@@ -428,7 +428,8 @@ class FlowInterpreter:
                     holds = not positive
                 elif isinstance(op, ast.Gt) and k == none:
                     holds = not positive
-                if holds:
+                # (list.count / a project .find count or search elements: only a str's say nothing is in the text)
+                if holds and "str" in st.facts.get(left.func.value.id, ()):
                     return {left.func.value.id: frozenset({"absent:" + left.args[0].value})}
             # `u.netloc not in ALLOWED` false / `u.netloc == "host"` true, with u = urlparse(name)
             # (not u.hostname: "https://evil.example\\@good.example" has hostname good.example, and browsers read the
@@ -520,7 +521,7 @@ class FlowInterpreter:
         if not isinstance(f, ast.Attribute):
             return False
         if f.attr == "decode":
-            return True                      # bytes.decode
+            return _is_bytes(f.value)        # bytes.decode (jwt.decode / JSONDecoder().decode return objects)
         if f.attr in _STR_RESULT_METHODS:
             return self._is_str(f.value, st, depth + 1)
         if f.attr == "get" and isinstance(f.value, ast.Attribute) and f.value.attr in ("args", "form", "cookies", "headers", "values") \
@@ -881,7 +882,8 @@ class FlowInterpreter:
             c = fold(ast.BinOp(left=ast.Name(id=name, ctx=ast.Load()), op=s.op, right=s.value), st.consts) \
                 if name not in self.volatile else _MISSING
             keep_str = isinstance(s.op, ast.Add) and self._is_str(s.target, st) and self._is_str(s.value, st)
-            st = self.drop_facts(st, frozenset({name})).copy()
+            # every name the statement binds, the target and any `(n := …)` in the value
+            st = self.drop_facts(st, self._stores_cached(s)).copy()
             _set(st, name, o, c)
             if keep_str and name not in self.volatile:
                 st.facts[name] = frozenset({"str"})     # str + str
@@ -1115,6 +1117,25 @@ _SEP_ATTRS = {"os.sep", "os.path.sep", "posixpath.sep"}
 _STR_RESULT_METHODS = {"replace", "strip", "lstrip", "rstrip", "lower", "upper", "casefold", "title", "capitalize",
                        "swapcase", "format", "zfill", "center", "ljust", "rjust", "expandtabs", "translate",
                        "removeprefix", "removesuffix", "join"}
+
+
+def _is_bytes(e) -> bool:
+    """A value certainly bytes: a b"" literal, str.encode(), base64 output, request.get_data() / .data /
+    .query_string."""
+    if isinstance(e, ast.Constant):
+        return isinstance(e.value, bytes)
+    if isinstance(e, ast.Attribute):
+        return e.attr in ("query_string", "data") and _dotted_name(e.value).split(".")[-1] == "request"
+    if not isinstance(e, ast.Call):
+        return False
+    d = _dotted_name(e.func)
+    if d in ("base64.b64decode", "base64.b64encode", "base64.urlsafe_b64decode", "base64.urlsafe_b64encode",
+             "b64decode", "b64encode", "bytes"):
+        return True
+    if isinstance(e.func, ast.Attribute) and e.func.attr == "encode" and not e.keywords and len(e.args) <= 2:
+        return True
+    return isinstance(e.func, ast.Attribute) and e.func.attr == "get_data" and not e.keywords \
+        and _dotted_name(e.func.value).split(".")[-1] == "request"
 
 
 def _request_getlist(e) -> bool:

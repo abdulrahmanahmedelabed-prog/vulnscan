@@ -609,8 +609,7 @@ class _TrackDict(dict):
 
 
 class _Env:
-    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk", "webreq", "params", "vfields", "facts",
-                 "fixed_path")
+    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk", "webreq", "params", "vfields", "facts")
 
     def __init__(self):
         self.vfields: set = set()  # request fields an express-validator route middleware checked strictly
@@ -624,7 +623,6 @@ class _Env:
         self.consts: dict = {}    # var -> known constant at this point (flow refinement only)
         self.dk: dict = {}        # var -> ({const key: origin}, other-keys origin) (flow refinement only)
         self.facts: dict = {}     # var -> facts a guard proved about its value (flow refinement only, see flow.State)
-        self.fixed_path = False   # a Flask view reached only through routes without variable parts (request.path is fixed)
 
 
 _CONFINEMENT = {"is_relative_to", "isRelativeTo"}
@@ -747,6 +745,8 @@ def _response_parts(call):
     dicts = []
     for e in elts[1:]:
         if isinstance(e, ast.Dict) and all(isinstance(k, ast.Constant) and isinstance(k.value, str) for k in e.keys):
+            if any(k.value.lower() == "content-type" and not isinstance(v, ast.Constant) for k, v in zip(e.keys, e.values)):
+                return None              # a chosen Content-Type can make the body HTML: the whole call is one value
             dicts.append(e)
         elif not (isinstance(e, ast.Constant) and isinstance(e.value, (int, str))):
             return None
@@ -754,11 +754,11 @@ def _response_parts(call):
 
 
 def _location_values(call) -> list:
-    """Values a literal headers dict of make_response puts in the Location header (a redirect)."""
+    """Values a literal headers dict of make_response puts in a Location or Refresh header (a redirect)."""
     parts = _response_parts(call)
     if not parts:
         return []
-    return [v for d in parts[1] for k, v in zip(d.keys, d.values) if k.value.lower() == "location"]
+    return [v for d in parts[1] for k, v in zip(d.keys, d.values) if k.value.lower() in ("location", "refresh")]
 
 
 def _flask_response_tuple(call) -> bool:
@@ -2093,7 +2093,7 @@ class Project:
             v = env.consts.get(e.id, _flow._MISSING)
             if isinstance(v, str):
                 return v
-            if v is _flow._MISSING and e.id.isupper() and e.id not in self._attr_stores():
+            if v is _flow._MISSING and e.id.isupper() and e.id not in self._attr_stores() and self._consts_static(mod):
                 c = self._module_const(mod, e.id)
                 if isinstance(c, ast.Constant) and isinstance(c.value, str):
                     return c.value
@@ -2101,11 +2101,31 @@ class Project:
         if isinstance(e, ast.Attribute) and e.attr.isupper() and _chain(e) and e.attr not in self._attr_stores():
             canon = self._canon(mod, e)
             modpart, _, name = canon.rpartition(".")
-            if modpart in self.files:
+            if modpart in self.files and self._consts_static(modpart):
                 c = self._module_const(modpart, name)
                 if isinstance(c, ast.Constant) and isinstance(c.value, str):
                     return c.value
         return None
+
+    def _consts_static(self, mod) -> bool:
+        """Are the module-level names of `mod` bound only by its own statements? Not when it star-imports (`from x
+        import *` may rebind any of them, also after the assignment) or writes its namespace dynamically
+        (globals() / vars() / __dict__ / sys.modules)."""
+        cache = self.__dict__.setdefault("_consts_static_cache", {})
+        if mod not in cache:
+            tree = (self.files.get(mod) or {}).get("tree")
+            ok = tree is not None
+            for n in ast.walk(tree) if ok else ():
+                if isinstance(n, ast.ImportFrom) and any(a.name == "*" for a in n.names):
+                    ok = False
+                elif isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in ("globals", "vars", "exec"):
+                    ok = False
+                elif isinstance(n, ast.Attribute) and n.attr in ("__dict__", "modules"):
+                    ok = False
+                if not ok:
+                    break
+            cache[mod] = ok
+        return cache[mod]
 
     def _attr_stores(self) -> frozenset:
         """Attribute names some project file assigns (`settings.UPLOAD_DIR = …`, `setattr(m, "X", …)`): a module
@@ -2359,9 +2379,6 @@ class Project:
                 and any(k.arg == "type" and isinstance(k.value, ast.Name) and k.value.id in ("int", "float", "bool")
                         for k in node.keywords):
             return None              # werkzeug MultiDict.get(k, type=int): converted to a number (or the default)
-        if env.fixed_path and isinstance(node, ast.Attribute) and node.attr == "path" \
-                and self._canon(mod, node.value) == "flask.request":
-            return None              # request.path of a view whose every route is a fixed path: that path, not input
         src = self._is_source(mod, node, cls, env)
         if src:
             inc = getattr(node, _php_include.MARK, None)
@@ -2510,8 +2527,8 @@ class Project:
         return None
 
     def _header_sinks(self, mod, call) -> list:
-        """(sink, values) a call feeds besides its own sink: a Location header set through flask.make_response is a
-        redirect (DF008)."""
+        """(sink, values) a call feeds besides its own sink: a Location or Refresh header set through
+        flask.make_response is a redirect (DF008)."""
         if self.m.get("language") != "python" or _callee_bare(call) != "make_response" \
                 or self._canon(mod, call.func).split(".")[0] not in ("flask", "make_response"):
             return []
@@ -3027,110 +3044,6 @@ class Project:
                 if tree is not None else set()
         return hit
 
-    _ROUTE_DECORATORS = frozenset({"route", "get", "post", "put", "delete", "patch"})
-
-    def _fixed_route_view(self, mod, fn, seen=None) -> bool:
-        """A Flask view whose request.path can only be one of its fixed rules: every route decorator has a literal
-        rule without `<converter>` parts, no blueprint in the project takes a variable url_prefix, and the function
-        is referenced nowhere but in direct calls from other such views (a view registered again with
-        add_url_rule, or called from a route with variables, sees that route's path). Werkzeug redirects or rejects
-        any path that differs from the rule (merged or trailing slashes), so the handler never runs with another."""
-        cache = self.__dict__.setdefault("_fixed_route_cache", {})
-        hit = cache.get(id(fn))
-        if hit is not None and hit[0] is fn:
-            return hit[1]
-        seen = (seen or frozenset()) | {id(fn)}
-        # every decorator must be a literal route: @app.errorhandler(404), @app.before_request, @app.endpoint(...),
-        # or any other wrapper may run the function for other paths
-        routes = fn.decorator_list
-        ok = bool(routes) and all(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
-                                  and d.func.attr in self._ROUTE_DECORATORS
-                                  and d.args and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str)
-                                  and "<" not in d.args[0].value and not any(k.arg in ("rule", "endpoint") for k in d.keywords)
-                                  for d in routes) and self._flask_prefixes_fixed()
-        if ok:
-            for rmod, ref_fn, direct in self._name_refs().get(fn.name, ()):
-                if not direct or not isinstance(ref_fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    ok = False
-                    break
-                if id(ref_fn) in seen:
-                    continue
-                if not self._fixed_route_view(rmod, ref_fn, seen):
-                    ok = False
-                    break
-        if len(seen) == 1:
-            cache[id(fn)] = (fn, ok)
-        return ok
-
-    def _reads_request_path(self, fn) -> bool:
-        cache = self.__dict__.setdefault("_reads_path_cache", {})
-        hit = cache.get(id(fn))
-        if hit is None or hit[0] is not fn:
-            hit = cache[id(fn)] = (fn, any(isinstance(n, ast.Attribute) and n.attr == "path" and isinstance(n.value, ast.Name)
-                                           for n in _scope_nodes(fn)))
-        return hit[1]
-
-    def _flask_prefixes_fixed(self) -> bool:
-        """Routing in the project binds views only through their decorators: no Blueprint(...) / register_blueprint(...)
-        gives a url_prefix that is not a literal without `<converter>` parts (a prefix with a variable makes every
-        route of the blueprint variable), and no rule is bound by endpoint name (add_url_rule with an endpoint or
-        without view_func, url_map.add, Rule(endpoint=...), app.view_functions[...] = ...)."""
-        hit = self.__dict__.get("_flask_prefixes_fixed_cache")
-        if hit is None:
-            hit = True
-            for f in self.files.values():
-                for n in ast.walk(f["tree"]):
-                    if isinstance(n, ast.Attribute) and n.attr in ("view_functions", "url_map") \
-                            and not (isinstance(n.ctx, ast.Load) and n.attr == "url_map"):
-                        hit = False          # app.view_functions[...] = f / app.url_map = ...: endpoints rebound
-                        break
-                    if not isinstance(n, ast.Call):
-                        continue
-                    name = n.func.id if isinstance(n.func, ast.Name) else n.func.attr if isinstance(n.func, ast.Attribute) else ""
-                    # a rule bound by endpoint name reaches a view without naming the function: add_url_rule with an
-                    # endpoint or without view_func, url_map.add(Rule(...)), Rule(..., endpoint=...)
-                    if (name == "add_url_rule" and (len(n.args) > 1 or any(k.arg == "endpoint" for k in n.keywords)
-                                                    or not any(k.arg == "view_func" for k in n.keywords)
-                                                    and len(n.args) < 3)) \
-                            or (name == "add" and isinstance(n.func, ast.Attribute) and _dotted(n.func.value).endswith("url_map")) \
-                            or (name in ("Rule", "url_rule_class") and (len(n.args) > 1 or any(k.arg == "endpoint" for k in n.keywords))):
-                        hit = False
-                        break
-                    if name not in ("Blueprint", "register_blueprint"):
-                        continue
-                    pre = [k.value for k in n.keywords if k.arg in ("url_prefix", None)]
-                    if any(not (isinstance(v, ast.Constant) and (v.value is None or (isinstance(v.value, str) and "<" not in v.value)))
-                           for v in pre) or len(n.args) > (2 if name == "Blueprint" else 1):
-                        hit = False
-                        break
-                if not hit:
-                    break
-            self.__dict__["_flask_prefixes_fixed_cache"] = hit
-        return hit
-
-    def _name_refs(self) -> dict:
-        """name -> [(module, innermost enclosing function or None, referenced as the callee of a direct call?)] for every
-        Name / attribute reference in the project (Python)."""
-        hit = self.__dict__.get("_name_refs_cache")
-        if hit is not None:
-            return hit
-        out: dict = {}
-        for mod, f in self.files.items():
-            stack = [(f["tree"], None, None)]
-            while stack:
-                n, enc, parent = stack.pop()
-                key = n.id if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) else \
-                    n.attr if isinstance(n, ast.Attribute) else None
-                if key is not None:
-                    out.setdefault(key, []).append((mod, enc, isinstance(parent, ast.Call) and parent.func is n))
-                inner = n if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) else enc
-                body = {id(b) for b in n.body} if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) else None
-                for ch in ast.iter_child_nodes(n):
-                    # decorators and defaults run in the enclosing scope
-                    stack.append((ch, enc if body is not None and id(ch) not in body else inner, n))
-        self.__dict__["_name_refs_cache"] = out
-        return out
-
     def _called_by_name(self, mod, name) -> bool:
         """Is module-level function `name` of `mod` called directly: in its own module, or as an imported name
         (`from .exception import name`) in a module that calls it?"""
@@ -3176,9 +3089,6 @@ class Project:
     # --------------------------------------------------------- environment
     def _env(self, mod, cls, fn, path, seed_params: bool, entry: bool = False) -> _Env:
         env = _Env()
-        if self.m.get("language") == "python" and isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) \
-                and fn.decorator_list and self._reads_request_path(fn):
-            env.fixed_path = self._fixed_route_view(mod, fn)
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             entry_params = set(self._entry_params(mod, cls, fn)) if entry else set()
             gated = self._gated_language()
