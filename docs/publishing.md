@@ -92,8 +92,8 @@ vsce 4 or newer; the job uses `@vscode/vsce@4.1.0`), so no token is stored anywh
 1. Create a free Eclipse Foundation account (accounts.eclipse.org).
 2. Sign in to open-vsx.org with GitHub, link the Eclipse account in your profile and accept the Open VSX publisher
    agreement there.
-3. Create an access token (open-vsx.org, *Settings > Access Tokens*), then create the namespace once:
-   `npx ovsx create-namespace kashif -p <token>`. The namespace must equal the publisher in `package.json`.
+3. Create an access token (open-vsx.org, *Settings > Access Tokens*). The release job creates the namespace `kashif`
+   on its first run (`ovsx create-namespace`), so no command is needed; it must equal the publisher in `package.json`.
    Creating a namespace does not make it exclusive: to have extensions shown as verified, claim the namespace
    through the Open VSX namespace-ownership process (an issue on the Open VSX repository).
 4. Add the repository secret `OVSX_PAT` with the token. Open VSX tokens do not expire, so delete and replace it if
@@ -107,3 +107,19 @@ to the Foundation, from builds made on CI. Requirements include an OSI-approved 
 releases built by GitHub Actions from that repository, and a short application describing the project. After
 approval, signing is a step in the `build` job (SignPath's GitHub Action submits the unsigned `.exe` and returns the
 signed one) placed before the checksums and provenance are computed; that workflow change is not made yet.
+
+## Screenshots
+
+Before every release, regenerate the product screenshots from the release's own code and commit them:
+
+```bash
+python tools/screenshots/make.py
+git add site/img/shots docs/screenshots site/img/og-en.png site/img/og-ar.png
+```
+
+The script scans the demo project `tools/screenshots/acme-shop` (intentionally vulnerable, excluded from the
+self-scan) in a throwaway home, never your `~/.vulnscan`, runs a passive scan of a small storefront it serves on
+`localhost`, and captures 11 screens in English and Arabic, light and dark, with the version the UI reports. It then
+writes `site/img/shots/` (PNG and WebP, 2880x1800), the README copies in `docs/screenshots/` and the Open Graph
+cards. It needs Node.js with the `playwright` package and an installed Chromium (it never downloads one), and Pillow.
+`--only trace,web` redoes some screens; `--keep` keeps the raw captures. Look through a few images before committing.

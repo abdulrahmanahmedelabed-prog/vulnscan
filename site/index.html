@@ -1027,6 +1027,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
       <button type="button" role="tab" id="tab-trace" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="trace" data-i18n="shot.trace">Data-flow trace</button>
       <button type="button" role="tab" id="tab-scan" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="scan" data-i18n="shot.scan">New scan</button>
       <button type="button" role="tab" id="tab-reports" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="reports" data-i18n="shot.reports">Reports</button>
+      <button type="button" role="tab" id="tab-web" aria-controls="shot-panel" aria-selected="false" tabindex="-1" data-shot="web" data-i18n="shot.web">Web scan</button>
     </div>
     <div id="shot-panel" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
       <div class="frame">
@@ -1442,16 +1443,18 @@ en: {
   "prod.eyebrow":"Product","prod.h2":"A complete security workbench on localhost.",
   "prod.sub":"Dashboard, findings, data-flow traces, scans and reports in a local web UI, in English and Arabic, light and dark. No account, no server to install, nothing uploaded.",
   "prod.tabs":"Product screenshots",
-  "shot.trace":"Data-flow trace","shot.findings":"Findings","shot.dashboard":"Dashboard","shot.scan":"New scan","shot.reports":"Reports",
+  "shot.trace":"Data-flow trace","shot.findings":"Findings","shot.dashboard":"Dashboard","shot.scan":"New scan","shot.reports":"Reports","shot.web":"Web scan",
   "shot.trace.cap":"Every data-flow finding shows the path from source to sink, step by step, with the code at each hop.",
   "shot.findings.cap":"Findings ordered from critical to info, with rule, CWE, location and remediation advice. Filter, search and suppress.",
   "shot.dashboard.cap":"Severity totals, the most frequent rules and recent scans at a glance.",
   "shot.scan.cap":"Scan a folder, an archive, an APK or JAR, or (with authorization) a website. Pick a profile and go.",
+  "shot.web.cap":"Passive web scans grade a site you own (Kashif, Observatory and TLS grades) and show which checks passed, failed or could not be tested.",
   "shot.reports.cap":"Export HTML, Markdown, JSON and SARIF reports for your team, your auditors or GitHub Code Scanning.",
   "shot.trace.alt":"Kashif web UI: a finding with its data-flow trace from source to sink",
   "shot.findings.alt":"Kashif web UI: findings list ordered by severity with remediation advice",
   "shot.dashboard.alt":"Kashif web UI: dashboard with severity totals and recent scans",
   "shot.scan.alt":"Kashif web UI: new scan page for folders, archives, apps and websites",
+  "shot.web.alt":"Kashif web UI: passive web scan result with grades and check coverage",
   "shot.reports.alt":"Kashif web UI: reports page with HTML, Markdown, JSON and SARIF exports",
   "how.eyebrow":"Code · how it works","how.h2":"From source to sink, with the evidence attached.",
   "how.sub":"Kashif builds a model of your program, follows untrusted data through it, and reports only where that data reaches a dangerous operation, with every step shown.",
@@ -1669,16 +1672,18 @@ ar: {
   "prod.eyebrow":"المنتج","prod.h2":"منصة أمان متكاملة على جهازك.",
   "prod.sub":"لوحة تحكم ونتائج ومسارات تدفق البيانات وفحوصات وتقارير في واجهة ويب محلية، بالعربية والإنجليزية، بالوضعين الفاتح والداكن. بلا حساب ولا خادم يُثبَّت، ولا يُرفع أي شيء.",
   "prod.tabs":"لقطات من المنتج",
-  "shot.trace":"مسار تدفق البيانات","shot.findings":"النتائج","shot.dashboard":"لوحة التحكم","shot.scan":"فحص جديد","shot.reports":"التقارير",
+  "shot.trace":"مسار تدفق البيانات","shot.findings":"النتائج","shot.dashboard":"لوحة التحكم","shot.scan":"فحص جديد","shot.reports":"التقارير","shot.web":"فحص الويب",
   "shot.trace.cap":"كل نتيجة من تحليل التدفق تعرض المسار من المصدر إلى نقطة الخطر خطوةً خطوة، مع الكود في كل مرحلة.",
   "shot.findings.cap":"نتائج مرتّبة من الحرجة إلى المعلوماتية، مع القاعدة وCWE والموقع وتوصية الإصلاح. صفِّ وابحث وأخفِ ما راجعته.",
   "shot.dashboard.cap":"إجمالي النتائج حسب الخطورة، والقواعد الأكثر تكرارًا، وآخر الفحوصات في نظرة واحدة.",
   "shot.scan.cap":"افحص مجلدًا أو أرشيفًا أو ملف APK أو JAR، أو موقعًا مصرَّحًا لك بفحصه. اختر نمط الفحص وابدأ.",
+  "shot.web.cap":"الفحص السلبي للويب يقيّم موقعًا تملكه (درجات كاشِف وObservatory وTLS) ويبيّن أي الفحوص نجحت وأيها فشلت وأيها تعذّر اختباره.",
   "shot.reports.cap":"صدّر تقارير HTML وMarkdown وJSON وSARIF لفريقك أو للمدققين أو لـ GitHub Code Scanning.",
   "shot.trace.alt":"واجهة كاشِف: نتيجة مع مسار تدفق البيانات من المصدر إلى نقطة الخطر",
   "shot.findings.alt":"واجهة كاشِف: قائمة النتائج مرتّبة حسب الخطورة مع توصيات الإصلاح",
   "shot.dashboard.alt":"واجهة كاشِف: لوحة التحكم بإجمالي النتائج حسب الخطورة وآخر الفحوصات",
   "shot.scan.alt":"واجهة كاشِف: صفحة فحص جديد للمجلدات والأرشيفات والتطبيقات والمواقع",
+  "shot.web.alt":"واجهة كاشِف: نتيجة فحص ويب سلبي مع الدرجات وتغطية الفحوص",
   "shot.reports.alt":"واجهة كاشِف: صفحة التقارير بصيغ HTML وMarkdown وJSON وSARIF",
   "how.eyebrow":"الكود · آلية العمل","how.h2":"من المصدر إلى نقطة الخطر، مع الدليل.",
   "how.sub":"يبني كاشِف نموذجًا لبرنامجك، ويتتبّع البيانات غير الموثوقة خلاله، ولا يُبلغ إلا حين تصل إلى عملية خطِرة، مع عرض كل خطوة.",

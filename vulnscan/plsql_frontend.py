@@ -242,9 +242,67 @@ class Parser:
                     return
             self.i += 1
 
-    def record(self, line, msg):
+    def record(self, line, msg, start=None, where="body"):
+        """A skipped statement: (line, "{kind} message"), the kind of the statement that starts at token `start`."""
         if len(self.diagnostics) < 500:
-            self.diagnostics.append((line, msg))
+            kind = self.stmt_kind(start, where) if start is not None else ""
+            self.diagnostics.append((line, f"{{{kind}}} {msg}" if kind else msg))
+
+    def stmt_kind(self, start: int, where: str = "body") -> str:
+        """What a skipped statement is, from its first tokens: SQL UPDATE, assignment, procedure call, IF, loop,
+        declaration, CREATE PACKAGE BODY … (an English code; scanner.STMT_KINDS gives the Arabic)."""
+        try:
+            t = self.toks[start]
+            v = t.val if t.kind == "id" else ""
+            if where == "top":
+                if v == "create":
+                    words, k = [], start + 1
+                    while self.toks[k].kind == "id" and self.toks[k].val in ("or", "replace", "editionable", "noneditionable",
+                                                                             "force", "noforce", "and", "resolve", "compile",
+                                                                             "public", "editioning"):
+                        k += 1
+                    while self.toks[k].kind == "id" and len(words) < 2 and self.toks[k].val in (
+                            "package", "body", "procedure", "function", "trigger", "type", "view", "table", "java",
+                            "source", "synonym", "sequence", "index"):
+                        words.append(self.toks[k].val)
+                        k += 1
+                    return "CREATE " + " ".join(words).upper() if words else "CREATE"
+                if v in ("declare", "begin"):
+                    return "anonymous block"
+                return v.upper() if v.isalpha() else ""
+            if v in ("procedure", "function") and where == "decls":
+                return f"{v} declaration"
+            if where == "decls":
+                return "cursor declaration" if v == "cursor" else "type declaration" if v in ("type", "subtype") \
+                    else "declaration"
+            if v in SQL_DML:
+                return f"SQL {'SELECT' if v == 'with' else v.upper()}"
+            if v in ("if", "case", "return", "raise", "goto", "exit", "null", "commit", "rollback", "savepoint"):
+                return v.upper()
+            if v in ("loop", "while", "for", "forall"):
+                return "loop"
+            if v == "execute":
+                return "EXECUTE IMMEDIATE"
+            if v in ("open", "fetch", "close"):
+                return f"cursor {v.upper()}"
+            if v in ("begin", "declare"):
+                return "block"
+            if t.kind in ("id", "bind"):
+                k = start + 1
+                depth = 0
+                while self.toks[k].kind != "eof" and k < start + 400:
+                    x = self.toks[k]
+                    if x.kind == "punct" and x.val in ("(", "["):
+                        depth += 1
+                    elif x.kind == "punct" and x.val in (")", "]"):
+                        depth -= 1
+                    elif depth <= 0 and x.kind == "punct" and x.val in (":=", ";"):
+                        return "assignment" if x.val == ":=" else "procedure call"
+                    k += 1
+                return "procedure call"
+        except IndexError:
+            pass
+        return ""
 
     def skip_type(self, stops):
         """Skip a type (varchar2(100), t.c%type, number(10,2), …) up to a stop token at depth 0."""
@@ -264,7 +322,7 @@ class Parser:
                 if u is not None:
                     units.append(u)
             except ParseError as e:
-                self.record(self.toks[start].line, str(e))
+                self.record(self.toks[start].line, str(e), start, "top")
                 self.i = start + 1 if self.i == start else self.i
                 self.skip_to_semicolon()
         return units
@@ -471,7 +529,7 @@ class Parser:
                 self.eat(";")
                 self.n_statements += 1
             except ParseError as e:
-                self.record(line, str(e))
+                self.record(line, str(e), start, "decls")
                 if self.i == start:
                     self.i += 1
                 self.skip_to_semicolon()
@@ -559,7 +617,7 @@ class Parser:
                 out.extend(self.parse_stmt())
                 self.n_statements += 1
             except ParseError as e:
-                self.record(line, str(e))
+                self.record(line, str(e), start)
                 if self.i == start:
                     self.i += 1
                 self.skip_to_semicolon()

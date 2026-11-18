@@ -91,6 +91,10 @@ CONFIG_RULES = {
                "افحص الكود المصدري قبل لفّه (wrap)؛ اللفّ إخفاء لا حماية، ويمكن فكّه."),
     "APX023": ("low", "CWE-561", "Plug-in defined but not used by any component", "إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق",
                "احذف الإضافة غير المستخدمة من Shared Components › Plug-ins، أو تأكّد أنها مستخدمة في تطبيق آخر يشترك فيها."),
+    # plain PL/SQL packages too (vulnscan/plsql_authz.py); the advice of each finding names the routine and the guard
+    "APX024": ("medium", "CWE-862", "Package routine does not check authorization while its sibling routines do",
+               "روتين في حزمة PL/SQL لا يتحقق من الصلاحية بينما تتحقق منها الروتينات الشقيقة",
+               "أضف في بداية الروتين التحقق نفسه الذي تستدعيه الروتينات الشقيقة في الحزمة؛ فأي كود في المخطط نفسه يمكنه استدعاؤه مباشرة."),
 }
 for _rid, (_sev, _cwe, _t, _ta, _adv) in CONFIG_RULES.items():
     APEX_RULES.append({"id": _rid, "severity": _sev, "cwe": _cwe, "title": _t, "title_ar": _ta, "advice": _adv})
