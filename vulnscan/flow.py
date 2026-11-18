@@ -556,14 +556,22 @@ class FlowInterpreter:
             scopes = [self.fn]
             tree = (self.proj.files.get(self.mod) or {}).get("tree")
             if tree is not None and not isinstance(self.fn, ast.Module):
-                parents = {}
-                for n in ast.walk(tree):
-                    for ch in ast.iter_child_nodes(n):
-                        parents[id(ch)] = n
+                pkey = ("defparents", id(tree))     # enclosing function of every def / lambda: one walk per module
+                ph = self.cache.get(pkey)
+                if ph is None or ph[0] is not tree:
+                    parents = {}
+                    stack = [(tree, None)]
+                    while stack:
+                        n, enc = stack.pop()
+                        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                            parents[id(n)] = enc
+                            enc = n
+                        stack.extend((ch, enc) for ch in ast.iter_child_nodes(n))
+                    ph = self.cache[pkey] = (tree, parents)
+                parents = ph[1]
                 n = parents.get(id(self.fn))
                 while n is not None:
-                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-                        scopes.append(n)
+                    scopes.append(n)
                     n = parents.get(id(n))
             hit = (self.fn, frozenset().union(*[_bound_names(f) for f in scopes]) if not isinstance(self.fn, ast.Module)
                    else frozenset())
