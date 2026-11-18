@@ -295,7 +295,10 @@ jobs:
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         if: env.OVSX_PAT != ''
-        run: npx --yes ovsx@0.10.1 publish out/kashif-vscode.vsix --pat "$OVSX_PAT"
+        # creates the "kashif" namespace on the first release (it already exists afterwards: that error is ignored)
+        run: |
+          npx --yes ovsx@0.10.1 create-namespace kashif --pat "$OVSX_PAT" || true
+          npx --yes ovsx@0.10.1 publish out/kashif-vscode.vsix --pat "$OVSX_PAT"
 
   pypi-build:
     # The Python package for PyPI, as "kashif" (the import package stays `vulnscan`; PyPI's "vulnscan" is an unrelated

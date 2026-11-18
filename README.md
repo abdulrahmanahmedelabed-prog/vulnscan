@@ -250,7 +250,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.2.0`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.3.0`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `kashif . --diff-base origin/main` reports only what the branch introduces
@@ -288,7 +288,8 @@ Measured on the [OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/
 (1,230 test cases) and the [OWASP Benchmark for Java](https://github.com/OWASP-Benchmark/BenchmarkJava) v1.2
 (2,740 test cases). Score = mean over categories of TPR − FPR (Youden's J), the scoring method OWASP uses,
 computed by this project's own scorer (`bench/score_owasp.py`), not by OWASP's scorecard tool.
-**Python: 90.2% · Java: 98.3%.** (Python was 74.0% in 1.1.1; see CHANGELOG v1.2.0.)
+**Python: 90.2% · Java: 98.3%.** (Python was 74.0% in 1.1.1; see CHANGELOG v1.2.0.) On the same Python suite, with the same scorer, Bandit 1.9.4 scores 16.5% and Semgrep 1.186.0
+(community rules) 15.7%: see [docs/comparison.md](docs/comparison.md) for the per-category table and its limits.
 
 | Category | Py TPR % | Py FPR % | Py score | Java TPR % | Java FPR % | Java score |
 |---|---:|---:|---:|---:|---:|---:|
@@ -739,6 +740,7 @@ kashif ./my-apex-app        # f100.sql أو application/pages/*.sql، وملفا
 | `APX021` | الاستبدال دون النقطة الختامية |
 | `APX022` | وحدة PL/SQL ملفوفة (wrapped): تُذكر مرة واحدة ولا يُفحص نصّها (معلوماتية) |
 | `APX023` | إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق؛ وتُخفَّض خطورة ما يوجد داخلها درجة واحدة |
+| `APX024` | روتين عام في حزمة PL/SQL يصل إلى البيانات دون تحقق من الصلاحية بينما تتحقق منها معظم الروتينات الشقيقة بالاستدعاء نفسه (CWE-862، ثقة محتملة)؛ يعمل على ملفات `.pkb`/`.pks`/`.sql` لا على ملفات التصدير وحدها |
 
 أسماء الخصائص ومعانيها مأخوذة من ملفات تصدير أوراكل الرسمية نفسها، وقد جُرّبت الفحوص عليها.
 

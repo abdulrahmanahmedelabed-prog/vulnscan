@@ -317,7 +317,8 @@ def test_each_skipped_statement_has_location_and_reason(tmp_path):
     assert len(det) == 2, notes
     assert "bad.sql:2" in det[0] and "bad.sql:4" in det[1]
     en = [to_en(n) for n in det]
-    assert en[0] == "Skipped statement at bad.sql:2: unsupported or unexpected construct: ':='"
+    # 1.3.0: the note names the kind of statement
+    assert en[0] == "Skipped statement (assignment) at bad.sql:2: unsupported or unexpected construct: ':='"
     assert "SQL*Plus substitution variable" in en[1] and not any(has_arabic(x) for x in en)
 
 
@@ -336,7 +337,7 @@ def test_apex_block_skip_carries_the_component(tmp_path):
     notes: list = []
     scan_path(tmp_path, notes=notes)
     det = [to_en(n) for n in notes if n.startswith("عبارة متخطّاة")]
-    assert det and det[0].startswith("Skipped statement at f5.sql:3 [Page 5 › Process: Save]:"), det
+    assert det and det[0].startswith("Skipped statement (assignment) at f5.sql:3 [Page 5 › Process: Save]:"), det
 
 
 def test_fixture_counts_by_rule(scan):
