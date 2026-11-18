@@ -249,7 +249,8 @@ def t_absent(html: str, needles) -> bool:
 def test_fix_chip_is_hidden_for_web_scans_and_covered_notes_are_not_repeated():
     load = _slice("async function loadFindings(", "function renderFindings()")
     assert "$('#fix-filter').classList.toggle('hidden', cur.kind === 'url')" in load
-    assert "covered.has(i) ? ''" in load and "notes_covered" in load
+    assert "filter(({i}) => !covered.has(i))" in load and "notes_covered" in load
+    assert "note-group" in load and "notes.skipped" in load   # per-statement parser details fold under one line (1.3.1)
     assert "hasFix(f) && f.source !== 'web'" in JS
     assert 'id="findings-web-more"' in HTML and HTML.index('id="findings-list"') < HTML.index('id="findings-web-more"')
 

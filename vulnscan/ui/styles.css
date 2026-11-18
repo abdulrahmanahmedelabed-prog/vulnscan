@@ -302,6 +302,12 @@ label{display:block;font-weight:500;font-size:13px;color:var(--text-2);margin-bo
 .chip[aria-pressed="true"] .n{color:var(--c)}
 .notes{display:flex;flex-direction:column;gap:6px;margin-bottom:var(--s4)}
 .notes:empty{display:none}
+.note-group{display:flex;flex-direction:column;gap:6px}
+.note-group>summary{cursor:pointer;list-style:none}
+.note-group>summary::-webkit-details-marker{display:none}
+.note-group>summary::after{content:'▾';margin-inline-start:auto;color:var(--muted)}
+.note-group[open]>summary::after{content:'▴'}
+.note-group>div.note{margin-inline-start:var(--s5)}
 .note{display:flex;gap:var(--s2);align-items:flex-start;font-size:13px;color:var(--text-2);padding:var(--s2) var(--s3);background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
 .note .i{color:var(--accent-text);margin-top:1px;width:16px;height:16px}
 .findings{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
