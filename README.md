@@ -250,7 +250,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.1.1`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.2.0`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `kashif . --diff-base origin/main` reports only what the branch introduces
@@ -288,26 +288,26 @@ Measured on the [OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/
 (1,230 test cases) and the [OWASP Benchmark for Java](https://github.com/OWASP-Benchmark/BenchmarkJava) v1.2
 (2,740 test cases). Score = mean over categories of TPR − FPR (Youden's J), the scoring method OWASP uses,
 computed by this project's own scorer (`bench/score_owasp.py`), not by OWASP's scorecard tool.
-**Python: 74.0% · Java: 98.3%.**
+**Python: 90.2% · Java: 98.3%.** (Python was 74.0% in 1.1.1; see CHANGELOG v1.2.0.)
 
 | Category | Py TPR % | Py FPR % | Py score | Java TPR % | Java FPR % | Java score |
 |---|---:|---:|---:|---:|---:|---:|
-| cmdi (command injection) | 100.0 | 42.9 | 57.1 | 100.0 | 0.0 | 100.0 |
-| codeinj (code injection) | 100.0 | 45.5 | 54.5 | — | — | — |
+| cmdi (command injection) | 100.0 | 14.3 | 85.7 | 100.0 | 0.0 | 100.0 |
+| codeinj (code injection) | 100.0 | 0.0 | 100.0 | — | — | — |
 | crypto (weak cipher) | — | — | — | 100.0 | 0.0 | 100.0 |
-| deserialization (deserialization) | 100.0 | 8.3 | 91.7 | — | — | — |
+| deserialization (deserialization) | 100.0 | 2.8 | 97.2 | — | — | — |
 | hash (weak hashing) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
-| ldapi (LDAP injection) | 100.0 | 7.7 | 92.3 | 100.0 | 0.0 | 100.0 |
-| pathtraver (path traversal) | 92.3 | 46.6 | 45.7 | 100.0 | 0.0 | 100.0 |
-| redirect (open redirect) | 100.0 | 47.6 | 52.4 | — | — | — |
+| ldapi (LDAP injection) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
+| pathtraver (path traversal) | 92.3 | 35.0 | 57.4 | 100.0 | 0.0 | 100.0 |
+| redirect (open redirect) | 100.0 | 0.0 | 100.0 | — | — | — |
 | securecookie (insecure cookie) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
 | sqli (SQL injection) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
-| trustbound (trust boundary) | 100.0 | 36.8 | 63.2 | 100.0 | 0.0 | 100.0 |
+| trustbound (trust boundary) | 100.0 | 15.8 | 84.2 | 100.0 | 0.0 | 100.0 |
 | weakrand (weak randomness) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
-| xpathi (XPath injection) | 76.5 | 20.0 | 56.5 | 100.0 | 0.0 | 100.0 |
-| xss (cross-site scripting) | 100.0 | 43.1 | 56.9 | 100.0 | 18.2 | 81.8 |
+| xpathi (XPath injection) | 100.0 | 8.1 | 91.9 | 100.0 | 0.0 | 100.0 |
+| xss (cross-site scripting) | 100.0 | 19.0 | 81.0 | 100.0 | 18.2 | 81.8 |
 | xxe (XML external entities) | 100.0 | 35.0 | 65.0 | — | — | — |
-| **Overall** | | | **74.0** | | | **98.3** |
+| **Overall** | | | **90.2** | | | **98.3** |
 
 Each suite is scanned whole, as one application (the Python repository, the Java `src/main` tree), with the
 default profile. Reproduce either with one command:
@@ -1153,7 +1153,7 @@ Kashif — ./my-project  (156 ملفًا مفحوصًا، 37 نتيجة)
 
 نقيس كاشِف على مجموعتي OWASP Benchmark الرسميتين بطريقة OWASP في الحساب (متوسط معدّل الإيجابيات الصحيحة ناقص معدّل
 الإيجابيات الكاذبة لكل فئة)، بأداة التقييم الخاصة بالمشروع (`bench/score_owasp.py`) لا بأداة Scorecard الرسمية:
-**Python ‏74.0%** (1,230 حالة) و**Java ‏98.3%** (2,740 حالة؛ كانت 76.3% في 0.9). تُفحص كل مجموعة كاملة كتطبيق واحد
+**Python ‏90.2%** (1,230 حالة؛ كانت 74.0% في 1.1.1) و**Java ‏98.3%** (2,740 حالة؛ كانت 76.3% في 0.9). تُفحص كل مجموعة كاملة كتطبيق واحد
 بالملف الافتراضي، ولا يحوي المحرّك أي اسم أو مسار أو نتيجة من ملفات الاختبار.
 
 قفزة Java سببها إصلاحان عامّان في حلّ الاستدعاءات (استدعاء دالة بلا كائن يُحلّ إلى دالة الصنف نفسه، ودوال المكتبات
