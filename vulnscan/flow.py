@@ -297,6 +297,7 @@ class FlowInterpreter:
         env.consts = st.consts
         env.dk = dict(st.dk)
         env.facts = st.facts
+        env.bound = self._scope_bound()
         for name, elems in st.lk.items():         # a list of known length reads like a dict with int keys
             env.dk[name] = ({i: o for i, o in enumerate(elems)} | {i - len(elems): o for i, o in enumerate(elems)}, None)
         return env
@@ -448,7 +449,7 @@ class FlowInterpreter:
             return {}
         if isinstance(test, ast.Call) and isinstance(test.func, ast.Name) and test.func.id == "isinstance" and positive \
                 and len(test.args) == 2 and isinstance(test.args[0], ast.Name) and isinstance(test.args[1], ast.Name) \
-                and test.args[1].id == "str":
+                and test.args[1].id == "str" and self._module_ref(test.func) and self._module_ref(test.args[1]):
             return {test.args[0].id: frozenset({"str"})}
         if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and positive \
                 and test.func.attr in ("startswith", "endswith") and len(test.args) == 1 and not test.keywords:
@@ -512,11 +513,9 @@ class FlowInterpreter:
         if not isinstance(e, ast.Call):
             return False
         f = e.func
-        if isinstance(f, ast.Name) and f.id == "str":
+        if isinstance(f, ast.Name) and f.id == "str" and self._module_ref(f):
             return True
-        if _dotted_name(f).split(".")[-1] in ("unquote", "unquote_plus") and _dotted_name(f) in (
-                "unquote", "unquote_plus", "urllib.parse.unquote", "urllib.parse.unquote_plus", "parse.unquote",
-                "parse.unquote_plus"):
+        if self._module_ref(f) and self.proj._canon(self.mod, f) in ("urllib.parse.unquote", "urllib.parse.unquote_plus"):
             return True
         if not isinstance(f, ast.Attribute):
             return False
@@ -548,10 +547,41 @@ class FlowInterpreter:
             return frozenset("safe:" + c for c in self.proj._built_safe_cwes(self.mod, self.cls, value, self.env_for(st)))
         return frozenset()
 
+    def _scope_bound(self) -> frozenset:
+        """Names bound in this function or a function enclosing it (parameters, assignments, loop / with / except
+        targets, comprehension variables, imports, global / nonlocal): such a name is not the module's import."""
+        key = ("bound", id(self.fn))
+        hit = self.cache.get(key)
+        if hit is None or hit[0] is not self.fn:
+            scopes = [self.fn]
+            tree = (self.proj.files.get(self.mod) or {}).get("tree")
+            if tree is not None and not isinstance(self.fn, ast.Module):
+                parents = {}
+                for n in ast.walk(tree):
+                    for ch in ast.iter_child_nodes(n):
+                        parents[id(ch)] = n
+                n = parents.get(id(self.fn))
+                while n is not None:
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                        scopes.append(n)
+                    n = parents.get(id(n))
+            hit = (self.fn, frozenset().union(*[_bound_names(f) for f in scopes]) if not isinstance(self.fn, ast.Module)
+                   else frozenset())
+            self.cache[key] = hit
+        return hit[1]
+
+    def _module_ref(self, e) -> bool:
+        """`e` (a name or dotted chain) refers to what the module imported, not to a local of the same name."""
+        root = e
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        return isinstance(root, ast.Name) and root.id not in self._scope_bound()
+
     def _flask_request(self, e) -> bool:
         """`e` is Flask's / Quart's global request (werkzeug MultiDicts of str), not another framework's request
-        object (Twisted's request.args holds lists of bytes)."""
-        return self.proj._canon(self.mod, e) in ("flask.request", "quart.request", "flask.globals.request")
+        object (Twisted's request.args holds lists of bytes), nor a parameter or local that shadows the import."""
+        return self._module_ref(e) and self.proj._canon(self.mod, e) in ("flask.request", "quart.request",
+                                                                          "flask.globals.request")
 
     def _request_getlist(self, e) -> bool:
         """request.args / form / headers / cookies / values .getlist(k) without type=: a fresh list of str."""
@@ -569,8 +599,8 @@ class FlowInterpreter:
             return e.attr in ("query_string", "data") and self._flask_request(e.value)
         if not isinstance(e, ast.Call):
             return False
-        if self.proj._canon(self.mod, e.func) in ("base64.b64decode", "base64.b64encode", "base64.urlsafe_b64decode",
-                                                  "base64.urlsafe_b64encode"):
+        if self._module_ref(e.func) and self.proj._canon(self.mod, e.func) in (
+                "base64.b64decode", "base64.b64encode", "base64.urlsafe_b64decode", "base64.urlsafe_b64encode"):
             return True
         if isinstance(e.func, ast.Attribute) and e.func.attr == "encode" and not e.keywords and len(e.args) <= 2:
             return self._is_str(e.func.value, st, depth + 1)
@@ -824,6 +854,7 @@ class FlowInterpreter:
                     st.facts[name] = frozenset(fct)
             if trackable:
                 if isinstance(value, ast.Call) and _is_config_parser(value) \
+                        and self._module_ref(value.func) \
                         and self.proj._canon(self.mod, value.func).startswith("configparser."):
                     st.dk[name] = ({_CFG: None}, None)   # configparser: (section, option) -> value
                 elif isinstance(value, ast.Dict) and all(isinstance(k, ast.Constant) for k in value.keys):
@@ -1224,6 +1255,34 @@ def _value_facts(value) -> frozenset:
             and isinstance(value.args[0], ast.Name):
         return frozenset({"urlof:" + value.args[0].id})
     return frozenset()
+
+
+def _bound_names(fn) -> frozenset:
+    """Every name a function binds anywhere in it (nested scopes included: an over-approximation), except a plain
+    `import pkg.mod`, which binds pkg to the package itself."""
+    out = set()
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+            out.add(n.id)
+        elif isinstance(n, ast.arg):
+            out.add(n.arg)
+        elif isinstance(n, ast.ImportFrom):
+            out.update(a.asname or a.name for a in n.names)
+        elif isinstance(n, ast.Import):
+            # `import pkg.mod` binds pkg to that package, as at module level: a dotted reference still resolves
+            # through the import; `import x as name` binds name to something else
+            out.update(a.asname for a in n.names if a.asname)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            out.add(n.name)
+        elif isinstance(n, (ast.Global, ast.Nonlocal)):
+            out.update(n.names)
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n is not fn:
+            out.add(n.name)
+        elif n.__class__.__name__ in ("MatchAs", "MatchStar") and getattr(n, "name", None):
+            out.add(n.name)
+        elif n.__class__.__name__ == "MatchMapping" and getattr(n, "rest", None):
+            out.add(n.rest)
+    return frozenset(out)
 
 
 def _shallow_stores(s) -> frozenset:

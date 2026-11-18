@@ -862,3 +862,49 @@ def test_dynamic_namespace_writes_make_module_constants_unknown(tmp_path):
                                f"DATA = '/srv/data/'\n{stmt}\n\n" + body)
     got = _scan_files(tmp_path, files)
     assert {(f"app{i}.py", 13) for i in range(len(NAMESPACE_WRITES))} <= got
+
+
+# ---------------------------------------------------------------- 12. fourth review round (still reported)
+def test_a_parameter_named_request_shadows_flask_request():
+    code = textwrap.dedent("""\
+        import lxml.etree
+        from flask import request
+
+        def search(request):
+            bar = request.args.get(b'id')
+            root = lxml.etree.parse('e.xml')
+            if "'" in bar:
+                return []
+            q = f"/E[@id='{bar}']"
+            return root.xpath(q)
+
+        def search_lambda():
+            pick = lambda request: request.args.get('id')
+            bar = pick(object())
+            if "'" in bar:
+                return []
+            return lxml.etree.parse('e.xml').xpath(f"/E[@id='{bar}']")
+
+        def search_flask():
+            bar = request.args.get('id')
+            root = lxml.etree.parse('e.xml')
+            if "'" in bar:
+                return []
+            q = f"/E[@id='{bar}']"
+            return root.xpath(q)
+        """)
+    got = {f.line for f in analyze("helpers.py", code) if f.rule_id == "DF015"}
+    assert 10 in got          # the parameter (a Twisted request in the caller) is not Flask's request
+    assert 26 not in got      # the module's flask.request: request.args.get returns a str
+
+
+def test_a_local_shadowing_a_module_constant_is_not_known_text():
+    _check("""
+    @app.route('/a')
+    def a(BASE='/'):
+        name = request.args.get('f')
+        if '..' in name:
+            return 'no'
+        p = BASE + '/' + name
+        return open(p).read()  # VULN
+    """, "DF005")

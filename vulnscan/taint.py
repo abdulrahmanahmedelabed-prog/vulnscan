@@ -609,7 +609,8 @@ class _TrackDict(dict):
 
 
 class _Env:
-    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk", "webreq", "params", "vfields", "facts")
+    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk", "webreq", "params", "vfields", "facts",
+                 "bound")
 
     def __init__(self):
         self.vfields: set = set()  # request fields an express-validator route middleware checked strictly
@@ -623,6 +624,7 @@ class _Env:
         self.consts: dict = {}    # var -> known constant at this point (flow refinement only)
         self.dk: dict = {}        # var -> ({const key: origin}, other-keys origin) (flow refinement only)
         self.facts: dict = {}     # var -> facts a guard proved about its value (flow refinement only, see flow.State)
+        self.bound = None         # names the function (or an enclosing one) binds (flow refinement only)
 
 
 _CONFINEMENT = {"is_relative_to", "isRelativeTo"}
@@ -2107,16 +2109,19 @@ class Project:
         (also through `pkg.mod.NAME`)."""
         if isinstance(e, ast.Constant) and isinstance(e.value, str):
             return e.value
+        bound = getattr(env, "bound", None)
         if isinstance(e, ast.Name):
             v = env.consts.get(e.id, _flow._MISSING)
             if isinstance(v, str):
                 return v
-            if v is _flow._MISSING and e.id.isupper() and e.id not in self._attr_stores() and self._consts_static(mod):
+            # a module constant only when no local of the function shadows the name (unknown scope: unknown)
+            if v is _flow._MISSING and bound is not None and e.id not in bound and e.id.isupper() and e.id not in self._attr_stores() and self._consts_static(mod):
                 c = self._module_const(mod, e.id)
                 if isinstance(c, ast.Constant) and isinstance(c.value, str):
                     return c.value
             return None
-        if isinstance(e, ast.Attribute) and e.attr.isupper() and _chain(e) and e.attr not in self._attr_stores():
+        if isinstance(e, ast.Attribute) and e.attr.isupper() and _chain(e) and e.attr not in self._attr_stores() \
+                and bound is not None and _chain(e).split(".")[0] not in bound:
             canon = self._canon(mod, e)
             modpart, _, name = canon.rpartition(".")
             if modpart in self.files and self._consts_static(modpart):
