@@ -609,7 +609,8 @@ class _TrackDict(dict):
 
 
 class _Env:
-    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk", "webreq", "params", "vfields")
+    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk", "webreq", "params", "vfields", "facts",
+                 "fixed_path")
 
     def __init__(self):
         self.vfields: set = set()  # request fields an express-validator route middleware checked strictly
@@ -622,6 +623,8 @@ class _Env:
         self.funcs: dict = {}     # var -> function qual (h = helper / partial)
         self.consts: dict = {}    # var -> known constant at this point (flow refinement only)
         self.dk: dict = {}        # var -> ({const key: origin}, other-keys origin) (flow refinement only)
+        self.facts: dict = {}     # var -> facts a guard proved about its value (flow refinement only, see flow.State)
+        self.fixed_path = False   # a Flask view reached only through routes without variable parts (request.path is fixed)
 
 
 _CONFINEMENT = {"is_relative_to", "isRelativeTo"}
@@ -684,6 +687,49 @@ def _key_guard(test, value):
                 table = test.args[0] if name == "hasOwn" else args[1]   # Object.hasOwn(t, k) / in_array($k, $allowed)
             return "all", table              # Object.hasOwn(t, k) / PHP in_array($k, $allowed) / array_key_exists($k, $t)
     return None, None
+
+
+_CODE_CWES = frozenset({"CWE-94", "CWE-95"})
+
+
+def _guard_facts_protect(si, arg, facts) -> bool:
+    """Facts the flow refinement proved for the variable passed to a sink (see flow.FlowInterpreter.refine):
+
+    * "confined": a normalised path (Path.resolve / os.path.realpath / abspath / normpath) whose prefix check against
+      a directory and separator passed -> path sinks;
+    * "hostok": `u = urlparse(x)` and u.netloc / u.hostname passed an allow-list of hosts -> redirect / SSRF;
+    * starts/ends with a quote and no such quote in between (`not x.startswith("'") or not x.endswith("'") or
+      "'" in x[1:-1]` rejected): x is a single string literal, so eval / exec of x yields a string -> code injection."""
+    cwe = si[5]
+    name = arg.id if isinstance(arg, ast.Name) else None
+    if name is None and cwe in _PATH_CWES and isinstance(arg, ast.Call) and _dotted(arg.func) in ("str", "os.fspath") \
+            and len(arg.args) == 1 and isinstance(arg.args[0], ast.Name):
+        name = arg.args[0].id
+    f = facts.get(name, ()) if name else ()
+    if not f:
+        return False
+    if cwe in _PATH_CWES:
+        return "confined" in f
+    if cwe in ("CWE-601", "CWE-918"):
+        return "hostok" in f and isinstance(arg, ast.Name)
+    if cwe in _CODE_CWES:
+        return any({"starts:" + q, "ends:" + q, "nomid:" + q} <= f for q in ("'", '"'))
+    return False
+
+
+def _callee_bare(call) -> str:
+    f = call.func
+    return f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else ""
+
+
+def _flask_response_tuple(call) -> bool:
+    return _callee_bare(call) == "make_response" and len(call.args) == 1 and isinstance(call.args[0], ast.Tuple) \
+        and bool(call.args[0].elts) and not isinstance(call.args[0].elts[0], ast.Starred)
+
+
+def _has_replace(node) -> bool:
+    return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "replace"
+               for n in ast.walk(node))
 
 
 def _paths(expr) -> set:
@@ -1755,6 +1801,9 @@ class Project:
         kws = si[9] if len(si) > 9 else ()
         if kws:
             out.extend(k.value for k in call.keywords if k.arg and k.arg.lower() in kws)
+        if si[5] == "CWE-79" and _flask_response_tuple(call):
+            # flask.make_response((body, headers)) / ((body, status, headers)): only the body is the page
+            out = [call.args[0].elts[0] if a is call.args[0] else a for a in out]
         return out
 
     def _list_elem_only(self, mod, cls, arg, env) -> bool:
@@ -1995,9 +2044,148 @@ class Project:
             return None
         return min(origins, key=lambda o: self._ORIGIN_RANK.get(o[0], 9))
 
+    # ------------------------------------------------- string building: where a tainted piece lands
+    def _str_const_of(self, mod, e, env):
+        """The text of an untainted piece when it is known: a literal, a local constant, a module-level CONSTANT
+        (also through `pkg.mod.NAME`)."""
+        if isinstance(e, ast.Constant) and isinstance(e.value, str):
+            return e.value
+        if isinstance(e, ast.Name):
+            v = env.consts.get(e.id, _flow._MISSING)
+            if isinstance(v, str):
+                return v
+            if v is _flow._MISSING and e.id.isupper():
+                c = self._module_const(mod, e.id)
+                if isinstance(c, ast.Constant) and isinstance(c.value, str):
+                    return c.value
+            return None
+        if isinstance(e, ast.Attribute) and e.attr.isupper() and _chain(e):
+            canon = self._canon(mod, e)
+            modpart, _, name = canon.rpartition(".")
+            if modpart in self.files:
+                c = self._module_const(modpart, name)
+                if isinstance(c, ast.Constant) and isinstance(c.value, str):
+                    return c.value
+        return None
+
+    @staticmethod
+    def _str_pieces(node):
+        """A string built by concatenation (f-string, `+`, `"".join([...])`) as its pieces: ("lit", text) or
+        ("val", expr). None for anything else (a conversion like `{x!r}` or a format spec changes the text)."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return [("lit", node.value)]
+        if isinstance(node, ast.JoinedStr):
+            out = []
+            for v in node.values:
+                if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                    out.append(("lit", v.value))
+                elif isinstance(v, ast.FormattedValue) and v.conversion in (-1, ord("s")) and v.format_spec is None:
+                    out.append(("val", v.value))
+                else:
+                    return None
+            return out
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            a, b = Project._str_pieces(node.left), Project._str_pieces(node.right)
+            if a is None and not isinstance(node.left, ast.BinOp):
+                a = [("val", node.left)]
+            if b is None and not isinstance(node.right, ast.BinOp):
+                b = [("val", node.right)]
+            return None if a is None or b is None else a + b
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "join" \
+                and isinstance(node.func.value, ast.Constant) and isinstance(node.func.value.value, str) \
+                and len(node.args) == 1 and not node.keywords and isinstance(node.args[0], (ast.List, ast.Tuple)) \
+                and not any(isinstance(e, ast.Starred) for e in node.args[0].elts):
+            out = []
+            for i, e in enumerate(node.args[0].elts):
+                if i and node.func.value.value:
+                    out.append(("lit", node.func.value.value))
+                out.extend(Project._str_pieces(e) or [("val", e)])
+            return out
+        return None
+
+    def _built_string_taints(self, mod, cls, node, env):
+        """Origins of a built string, each marked safe for the sinks its place in the string protects it from
+        (None when `node` is not a concatenation):
+
+        * a path: a value with no ".." / "../" (a guard rejected it) that starts a segment after a known directory
+          prefix ("./files/" + name) cannot leave that directory: an absolute value is appended, not substituted,
+          and without ".." it cannot climb (with only "../" rejected, a final ".." names the directory's parent
+          itself, never a file in it);
+        * an XPath string literal: a value with no quote of the kind that delimits it (rejected by a guard, or
+          replaced by `.replace("'", "&apos;")`) cannot close the literal, and XPath literals have no escapes."""
+        pieces = self._str_pieces(node)
+        if pieces is None or len(pieces) < 2:
+            return None
+        facts = getattr(env, "facts", None) or {}
+        per = [self._taints(mod, cls, e, env) if k == "val" else [] for k, e in pieces]
+        if not any(per):
+            return []
+        consts = [e if k == "lit" else (None if per[i] else self._str_const_of(mod, e, env)) for i, (k, e) in enumerate(pieces)]
+        extra = [frozenset()] * len(pieces)
+        # path: the known text before the first tainted piece
+        first = next(i for i, o in enumerate(per) if o)
+        prefix = "".join(c for c in consts[:first]) if all(c is not None for c in consts[:first]) else None
+        if prefix and prefix[-1] in "/\\" and prefix.rstrip("/\\"):
+            for i in range(first, len(pieces)):
+                if not per[i]:
+                    continue
+                k, e = pieces[i]
+                f = facts.get(e.id, ()) if isinstance(e, ast.Name) else ()
+                if "absent:.." not in f and "absent:../" not in f:
+                    continue
+                before = consts[i - 1]
+                after = consts[i + 1] if i + 1 < len(pieces) else ""
+                if before is None or before[-1:] not in ("/", "\\") or after is None:
+                    continue
+                if after == "." or after.startswith(("./", ".\\", "..")):
+                    continue
+                if "absent:.." not in f and after[:1] in ("/", "\\"):
+                    continue            # "..", then "/" from the literal
+                extra[i] = extra[i] | _PATH_CWES
+        # XPath: lex the quotes of the known text; a tainted piece must sit inside a literal it cannot close
+        state = None                     # None: outside a literal, "'" / '"': inside one, "?": unknown from here on
+        for i, (k, e) in enumerate(pieces):
+            if state == "?":
+                break
+            c = consts[i]
+            if c is not None:
+                for ch in c:
+                    if state is None and ch in "'\"":
+                        state = ch
+                    elif state == ch:
+                        state = None
+                continue
+            if not per[i]:
+                state = "?"              # an untainted value of unknown text may hold quotes
+                continue
+            if state in ("'", '"') and self._quote_free(e, state, facts):
+                extra[i] = extra[i] | {"CWE-643"}
+            else:
+                state = "?"
+        out = []
+        for o_list, x in zip(per, extra):
+            for o in o_list:
+                out.append(o if not x else (o[0], o[1], _trail(o), _safe_for(o) | x) + tuple(o[4:]))
+        return out
+
+    @staticmethod
+    def _quote_free(e, q, facts) -> bool:
+        """The value of `e` contains no `q`: a guard rejected it, or `x.replace(q, r)` removed every one."""
+        if isinstance(e, ast.Name):
+            return "absent:" + q in facts.get(e.id, ())
+        return isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "replace" \
+            and len(e.args) == 2 and not e.keywords and isinstance(e.args[0], ast.Constant) and e.args[0].value == q \
+            and isinstance(e.args[1], ast.Constant) and isinstance(e.args[1].value, str) and q not in e.args[1].value
+
     def _taints(self, mod, cls, node, env) -> list:
         """All taint origins of an expression: a + b carries both a's and b's origins, so a parameter
         concatenated with a field still reaches the sink summary as a parameter flow."""
+        if isinstance(node, (ast.JoinedStr, ast.BinOp, ast.Call)) and self.m.get("language") == "python" \
+                and (not isinstance(node, ast.BinOp) or isinstance(node.op, ast.Add)) \
+                and (getattr(env, "facts", None) or _has_replace(node)):
+            built = self._built_string_taints(mod, cls, node, env)
+            if built is not None:
+                return built
         if isinstance(node, ast.BinOp):
             return self._taints(mod, cls, node.left, env) + self._taints(mod, cls, node.right, env)
         if isinstance(node, ast.BoolOp):
@@ -2111,6 +2299,9 @@ class Project:
                 and any(k.arg == "type" and isinstance(k.value, ast.Name) and k.value.id in ("int", "float", "bool")
                         for k in node.keywords):
             return None              # werkzeug MultiDict.get(k, type=int): converted to a number (or the default)
+        if env.fixed_path and isinstance(node, ast.Attribute) and node.attr == "path" \
+                and self._canon(mod, node.value) == "flask.request":
+            return None              # request.path of a view whose every route is a fixed path: that path, not input
         src = self._is_source(mod, node, cls, env)
         if src:
             inc = getattr(node, _php_include.MARK, None)
@@ -2120,6 +2311,10 @@ class Project:
             return ("source", src, trail)
         if isinstance(node, ast.Name):
             return env.tainted.get(node.id)
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in env.dk \
+                and _flow._CFG in env.dk[node.value.id][0]:
+            m, other = env.dk[node.value.id]          # conf["section"]: every option of the section
+            return next((v for k, v in m.items() if k is not _flow._CFG and v), other)
         if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in env.dk:
             m, other = env.dk[node.value.id]
             key = _flow.fold(node.slice, env.consts)
@@ -2175,6 +2370,16 @@ class Project:
                         return (o[0], o[1], _trail(o), _safe_for(o) | skind)
                 return None
             f = node.func
+            if self.m.get("language") == "python" and _callee_bare(node) == "make_response" and node.args \
+                    and not any(isinstance(a, ast.Starred) for a in node.args) and not node.keywords \
+                    and canon.split(".")[0] in ("flask", "make_response"):
+                # flask.make_response(body, status, headers) / ((body, status, headers)): the response carries the
+                # body's data as its page; header values are not part of the HTML (no header rule reads them here)
+                body = node.args[0].elts[0] if _flask_response_tuple(node) else node.args[0]
+                return self._taint(mod, cls, body, env)
+            if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in env.dk \
+                    and _flow._CFG in env.dk[f.value.id][0]:
+                return self._config_read(mod, cls, node, env)
             if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in env.dk \
                     and f.attr in _KEYED_READS:
                 m, other = env.dk[f.value.id]
@@ -2242,6 +2447,26 @@ class Project:
                     return o
             return None
         return None
+
+    def _config_read(self, mod, cls, node, env):
+        """`conf.get(section, option)` on a configparser the flow refinement tracks: the value stored in that slot
+        (or in the DEFAULT section, which every section inherits), plus a `fallback=`; any other read sees every
+        slot. A slot written with an unknown option may be any slot (`other`)."""
+        f = node.func
+        m, other = env.dk[f.value.id]
+        live = [v for k, v in m.items() if k is not _flow._CFG and v] + ([other] if other else [])
+        kws = {k.arg for k in node.keywords}
+        if f.attr not in ("get", "getint", "getfloat", "getboolean") or len(node.args) != 2 \
+                or not kws <= {"raw", "fallback"}:
+            return live[0] if live else self._taint(mod, cls, f.value, env)
+        key = _flow.cfg_key(_flow.fold(node.args[0], env.consts), _flow.fold(node.args[1], env.consts))
+        if key is _flow._MISSING:
+            return live[0] if live else None
+        hit = m[key] if key in m else m.get(("DEFAULT", key[1]))
+        if hit or other:
+            return hit or other
+        fb = next((k.value for k in node.keywords if k.arg == "fallback"), None)
+        return self._taint(mod, cls, fb, env) if fb is not None else None
 
     # ------------------------------------------------- form / schema validation (Django, DRF, WTForms, pydantic)
     def _class_field_value(self, cq, field):
@@ -2584,6 +2809,8 @@ class Project:
         JSON, and a handler that set a non-HTML Content-Type (JSON, event stream, plain text) writes no HTML."""
         if si[5] == "CWE-611" and self._xml_hardened(fn):
             return False                     # the parser was configured without DTDs / external entities
+        if env is not None and getattr(env, "facts", None) and _guard_facts_protect(si, arg, env.facts):
+            return False                     # a guard on the path to this sink proved the value harmless for it
         if self.m.get("language") != "javascript":
             return True
         if si[0] == "DF016" and isinstance(arg, (ast.Dict, ast.List)):
@@ -2728,6 +2955,92 @@ class Project:
                 if tree is not None else set()
         return hit
 
+    _ROUTE_DECORATORS = frozenset({"route", "get", "post", "put", "delete", "patch"})
+
+    def _fixed_route_view(self, mod, fn, seen=None) -> bool:
+        """A Flask view whose request.path can only be one of its fixed rules: every route decorator has a literal
+        rule without `<converter>` parts, no blueprint in the project takes a variable url_prefix, and the function
+        is referenced nowhere but in direct calls from other such views (a view registered again with
+        add_url_rule, or called from a route with variables, sees that route's path). Werkzeug redirects or rejects
+        any path that differs from the rule (merged or trailing slashes), so the handler never runs with another."""
+        cache = self.__dict__.setdefault("_fixed_route_cache", {})
+        hit = cache.get(id(fn))
+        if hit is not None and hit[0] is fn:
+            return hit[1]
+        seen = (seen or frozenset()) | {id(fn)}
+        routes = [d for d in fn.decorator_list if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                  and d.func.attr in self._ROUTE_DECORATORS]
+        ok = bool(routes) and all(d.args and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str)
+                                  and "<" not in d.args[0].value and not any(k.arg == "rule" for k in d.keywords)
+                                  for d in routes) and self._flask_prefixes_fixed()
+        if ok:
+            for rmod, ref_fn, direct in self._name_refs().get(fn.name, ()):
+                if not direct or not isinstance(ref_fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    ok = False
+                    break
+                if id(ref_fn) in seen:
+                    continue
+                if not self._fixed_route_view(rmod, ref_fn, seen):
+                    ok = False
+                    break
+        if len(seen) == 1:
+            cache[id(fn)] = (fn, ok)
+        return ok
+
+    def _reads_request_path(self, fn) -> bool:
+        cache = self.__dict__.setdefault("_reads_path_cache", {})
+        hit = cache.get(id(fn))
+        if hit is None or hit[0] is not fn:
+            hit = cache[id(fn)] = (fn, any(isinstance(n, ast.Attribute) and n.attr == "path" and isinstance(n.value, ast.Name)
+                                           for n in _scope_nodes(fn)))
+        return hit[1]
+
+    def _flask_prefixes_fixed(self) -> bool:
+        """No Blueprint(...) / register_blueprint(...) in the project gives a url_prefix that is not a literal
+        without `<converter>` parts (a prefix with a variable makes every route of the blueprint variable)."""
+        hit = self.__dict__.get("_flask_prefixes_fixed_cache")
+        if hit is None:
+            hit = True
+            for f in self.files.values():
+                for n in ast.walk(f["tree"]):
+                    if not isinstance(n, ast.Call):
+                        continue
+                    name = n.func.id if isinstance(n.func, ast.Name) else n.func.attr if isinstance(n.func, ast.Attribute) else ""
+                    if name not in ("Blueprint", "register_blueprint"):
+                        continue
+                    pre = [k.value for k in n.keywords if k.arg in ("url_prefix", None)]
+                    if any(not (isinstance(v, ast.Constant) and (v.value is None or (isinstance(v.value, str) and "<" not in v.value)))
+                           for v in pre) or len(n.args) > (2 if name == "Blueprint" else 1):
+                        hit = False
+                        break
+                if not hit:
+                    break
+            self.__dict__["_flask_prefixes_fixed_cache"] = hit
+        return hit
+
+    def _name_refs(self) -> dict:
+        """name -> [(module, innermost enclosing function or None, referenced as the callee of a direct call?)] for every
+        Name / attribute reference in the project (Python)."""
+        hit = self.__dict__.get("_name_refs_cache")
+        if hit is not None:
+            return hit
+        out: dict = {}
+        for mod, f in self.files.items():
+            stack = [(f["tree"], None, None)]
+            while stack:
+                n, enc, parent = stack.pop()
+                key = n.id if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) else \
+                    n.attr if isinstance(n, ast.Attribute) else None
+                if key is not None:
+                    out.setdefault(key, []).append((mod, enc, isinstance(parent, ast.Call) and parent.func is n))
+                inner = n if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) else enc
+                body = {id(b) for b in n.body} if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) else None
+                for ch in ast.iter_child_nodes(n):
+                    # decorators and defaults run in the enclosing scope
+                    stack.append((ch, enc if body is not None and id(ch) not in body else inner, n))
+        self.__dict__["_name_refs_cache"] = out
+        return out
+
     def _called_by_name(self, mod, name) -> bool:
         """Is module-level function `name` of `mod` called directly: in its own module, or as an imported name
         (`from .exception import name`) in a module that calls it?"""
@@ -2773,6 +3086,9 @@ class Project:
     # --------------------------------------------------------- environment
     def _env(self, mod, cls, fn, path, seed_params: bool, entry: bool = False) -> _Env:
         env = _Env()
+        if self.m.get("language") == "python" and isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and fn.decorator_list and self._reads_request_path(fn):
+            env.fixed_path = self._fixed_route_view(mod, fn)
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             entry_params = set(self._entry_params(mod, cls, fn)) if entry else set()
             gated = self._gated_language()

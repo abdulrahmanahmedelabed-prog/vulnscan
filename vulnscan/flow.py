@@ -189,20 +189,25 @@ def _too_big(a, b) -> bool:
 class State:
     """Abstract state at one program point."""
 
-    __slots__ = ("tainted", "consts", "dk", "lk")
+    __slots__ = ("tainted", "consts", "dk", "lk", "facts")
 
-    def __init__(self, tainted=None, consts=None, dk=None, lk=None):
+    def __init__(self, tainted=None, consts=None, dk=None, lk=None, facts=None):
         self.tainted: dict = tainted if tainted is not None else {}   # name -> origin
         self.consts: dict = consts if consts is not None else {}      # name -> python constant
         self.dk: dict = dk if dk is not None else {}                  # name -> ({const key: origin|None}, other origin|None)
         self.lk: dict = lk if lk is not None else {}                  # name -> [origin|None, ...] (list, known length)
+        # name -> frozenset of facts a guard established about the name's CURRENT value (see FlowInterpreter.refine):
+        # "absent:<s>" (the text has no <s>), "starts:<s>" / "ends:<s>", "nomid:<c>" (no <c> between the first and
+        # last character), "resolved" (an absolute, normalised path), "confined" (a resolved path checked against a
+        # directory prefix), "urlof:<n>" (urlparse(<n>)), "hostok" (the URL's host passed an allow-list)
+        self.facts: dict = facts if facts is not None else {}
 
     def copy(self) -> "State":
         return State(dict(self.tainted), dict(self.consts), {k: (dict(m), o) for k, (m, o) in self.dk.items()},
-                     {k: list(v) for k, v in self.lk.items()})
+                     {k: list(v) for k, v in self.lk.items()}, dict(self.facts))
 
     def same(self, other: "State") -> bool:
-        return (set(self.tainted) == set(other.tainted) and self.consts == other.consts
+        return (set(self.tainted) == set(other.tainted) and self.consts == other.consts and self.facts == other.facts
                 and {k: tuple(bool(x) for x in v) for k, v in self.lk.items()} ==
                 {k: tuple(bool(x) for x in v) for k, v in other.lk.items()}
                 and {k: (set(k2 for k2, v in m.items() if v), bool(o)) for k, (m, o) in self.dk.items()}
@@ -233,7 +238,12 @@ def join(a: State | None, b: State | None) -> State | None:
         la, lb = a.lk[name], b.lk[name]
         if len(la) == len(lb):
             lk[name] = [x or y for x, y in zip(la, lb)]
-    return State(tainted, consts, dk, lk)
+    facts = {}
+    for name in set(a.facts) & set(b.facts):        # a fact holds after the join only if it holds on both paths
+        f = a.facts[name] & b.facts[name]
+        if f:
+            facts[name] = f
+    return State(tainted, consts, dk, lk, facts)
 
 
 def _merge_origin(a, b):
@@ -286,6 +296,7 @@ class FlowInterpreter:
         env.tainted = st.tainted
         env.consts = st.consts
         env.dk = dict(st.dk)
+        env.facts = st.facts
         for name, elems in st.lk.items():         # a list of known length reads like a dict with int keys
             env.dk[name] = ({i: o for i, o in enumerate(elems)} | {i - len(elems): o for i, o in enumerate(elems)}, None)
         return env
@@ -328,8 +339,122 @@ class FlowInterpreter:
             if st is None:
                 self.mark_dead(stmts[i:])
                 return None
+            if st.facts:
+                st = self.drop_facts(st, self._stores_cached(s))
             st = self.stmt(s, st)
         return st
+
+    # ---------------------------------------------------------------- guard facts
+    def _stores_cached(self, s) -> frozenset:
+        key = ("stores", id(s))
+        hit = self.cache.get(key)
+        if hit is None or hit[0] is not s:
+            hit = (s, _shallow_stores(s))
+            self.cache[key] = hit
+        return hit[1]
+
+    @staticmethod
+    def drop_facts(st: State, names) -> State:
+        """Names (re)bound by the next statement lose what a guard proved about their old value, and so does a parsed
+        URL whose source text is rebound."""
+        hit = [n for n in st.facts if n in names or any(f.startswith("urlof:") and f[6:] in names for f in st.facts[n])]
+        if not hit:
+            return st
+        st = st.copy()
+        for n in hit:
+            st.facts.pop(n, None)
+        return st
+
+    def refine(self, test, positive: bool, st: State) -> State:
+        """The state on the branch where `test` is `positive`, with the facts the test proves (Python only)."""
+        if self.proj.m.get("language") != "python":
+            return st
+        try:
+            got = self._facts_of(test, positive, st)
+        except RecursionError:
+            return st
+        got = {n: f for n, f in got.items() if f and n not in self.volatile}
+        if not got:
+            return st
+        st = st.copy()
+        for n, f in got.items():
+            st.facts[n] = st.facts.get(n, frozenset()) | f
+        return st
+
+    def _facts_of(self, test, positive: bool, st: State) -> dict:
+        """name -> facts that hold where `test` evaluates to `positive`."""
+        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+            return self._facts_of(test.operand, not positive, st)
+        if isinstance(test, ast.BoolOp):
+            parts = [self._facts_of(v, positive, st) for v in test.values]
+            if isinstance(test.op, ast.And) == positive:
+                out: dict = {}            # every part holds (a and b true / a or b false): all their facts
+                for p in parts:
+                    for n, f in p.items():
+                        out[n] = out.get(n, frozenset()) | f
+                return out
+            common = set.intersection(*[set(p) for p in parts]) if parts else set()
+            return {n: frozenset.intersection(*[p[n] for p in parts]) for n in common}
+        if isinstance(test, ast.Compare) and len(test.ops) == 1:
+            op, left, right = test.ops[0], test.left, test.comparators[0]
+            # `"x" in name` false / `"x" not in name` true: the text has no "x"
+            if isinstance(op, (ast.In, ast.NotIn)) and isinstance(op, ast.NotIn) == positive \
+                    and isinstance(left, ast.Constant) and isinstance(left.value, str) and left.value:
+                if isinstance(right, ast.Name):
+                    return {right.id: frozenset({"absent:" + left.value})}
+                # `q in name[1:-1]` false: no q between the first and the last character
+                if isinstance(right, ast.Subscript) and isinstance(right.value, ast.Name) and len(left.value) == 1 \
+                        and isinstance(right.slice, ast.Slice) and right.slice.step is None \
+                        and _int_const(right.slice.lower) == 1 and _int_const(right.slice.upper) == -1:
+                    return {right.value.id: frozenset({"nomid:" + left.value})}
+            # `name.find("x") == -1` / `< 0` true, `!= -1` / `>= 0` / `> -1` false; `name.count("x") == 0` true
+            if isinstance(left, ast.Call) and isinstance(left.func, ast.Attribute) and isinstance(left.func.value, ast.Name) \
+                    and left.func.attr in ("find", "count") and len(left.args) == 1 and not left.keywords \
+                    and isinstance(left.args[0], ast.Constant) and isinstance(left.args[0].value, str) and left.args[0].value:
+                k = _int_const(right)
+                none = {"find": -1, "count": 0}[left.func.attr]
+                holds = None
+                if isinstance(op, ast.Eq) and k == none:
+                    holds = positive
+                elif isinstance(op, ast.NotEq) and k == none:
+                    holds = not positive
+                elif left.func.attr == "find" and isinstance(op, ast.Lt) and k == 0:
+                    holds = positive
+                elif isinstance(op, ast.GtE) and k == none + 1:
+                    holds = not positive
+                elif isinstance(op, ast.Gt) and k == none:
+                    holds = not positive
+                if holds:
+                    return {left.func.value.id: frozenset({"absent:" + left.args[0].value})}
+            # `u.netloc not in ALLOWED` false / `u.netloc == "host"` true, with u = urlparse(name)
+            if isinstance(left, ast.Attribute) and left.attr in ("netloc", "hostname") and isinstance(left.value, ast.Name):
+                allowed = (isinstance(op, ast.In) and positive) or (isinstance(op, ast.NotIn) and not positive)
+                if isinstance(op, (ast.In, ast.NotIn)):
+                    allowed = allowed and isinstance(right, (ast.List, ast.Tuple, ast.Set)) and bool(right.elts) \
+                        and all(isinstance(e, ast.Constant) and isinstance(e.value, str) and e.value for e in right.elts)
+                else:
+                    allowed = ((isinstance(op, ast.Eq) and positive) or (isinstance(op, ast.NotEq) and not positive)) \
+                        and isinstance(right, ast.Constant) and isinstance(right.value, str) and bool(right.value)
+                if allowed:
+                    srcs = [f[6:] for f in st.facts.get(left.value.id, ()) if f.startswith("urlof:")]
+                    return {n: frozenset({"hostok"}) for n in srcs}
+            return {}
+        if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and positive \
+                and test.func.attr in ("startswith", "endswith") and len(test.args) == 1 and not test.keywords:
+            recv, arg = test.func.value, test.args[0]
+            if isinstance(recv, ast.Call) and isinstance(recv.func, ast.Name) and recv.func.id in ("str", "os.fspath") \
+                    and len(recv.args) == 1 and not recv.keywords:
+                recv = recv.args[0]          # str(p).startswith(...)
+            if not isinstance(recv, ast.Name):
+                return {}
+            out = set()
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str) and arg.value and recv is test.func.value:
+                out.add(("starts:" if test.func.attr == "startswith" else "ends:") + arg.value)
+            if test.func.attr == "startswith" and "resolved" in st.facts.get(recv.id, ()) \
+                    and _dir_prefix(arg) and not self.taint(arg, st):
+                out.add("confined")      # a normalised absolute path inside an (untainted) directory/ prefix
+            return {recv.id: frozenset(out)} if out else {}
+        return {}
 
     def stmt(self, s, st: State) -> State | None:
         if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -428,8 +553,8 @@ class FlowInterpreter:
                 return self.block(s.body, st)
             self.mark_dead(s.body)
             return self.block(s.orelse, st)
-        a = self.block(s.body, st.copy())
-        b = self.block(s.orelse, st.copy())
+        a = self.block(s.body, self.refine(s.test, True, st).copy())
+        b = self.block(s.orelse, self.refine(s.test, False, st).copy())
         return join(a, b)
 
     def loop(self, s, st: State) -> State | None:
@@ -525,7 +650,7 @@ class FlowInterpreter:
             st.consts.pop(n, None)
             st.dk.pop(n, None)
             st.lk.pop(n, None)
-        return st
+        return self.drop_facts(st, frozenset(names))   # (no fixpoint was reached: what guards proved may not hold)
 
     def may_alias(self, name) -> set:
         return self.alias.get(name, {name})
@@ -568,8 +693,16 @@ class FlowInterpreter:
                 st.consts.pop(name, None)
             st.dk.pop(name, None)
             st.lk.pop(name, None)
+            st.facts.pop(name, None)
+            if name not in self.volatile and self.proj.m.get("language") == "python":
+                fct = _value_facts(value)
+                if fct:
+                    st.facts[name] = fct
             if trackable:
-                if isinstance(value, ast.Dict) and all(isinstance(k, ast.Constant) for k in value.keys):
+                if isinstance(value, ast.Call) and _is_config_parser(value) \
+                        and self.proj._canon(self.mod, value.func).startswith("configparser."):
+                    st.dk[name] = ({_CFG: None}, None)   # configparser: (section, option) -> value
+                elif isinstance(value, ast.Dict) and all(isinstance(k, ast.Constant) for k in value.keys):
                     st.dk[name] = ({k.value: self.taint(v, st) for k, v in zip(value.keys, value.values)}, None)
                 elif isinstance(value, ast.Call) and _is_empty_dict_call(value):
                     st.dk[name] = ({}, None)
@@ -595,6 +728,10 @@ class FlowInterpreter:
             name = tgt.value.id
             o = self.taint(value, st)
             st = st.copy()
+            if name in st.dk and _CFG in st.dk[name][0]:
+                st.dk.pop(name)                      # conf["section"] = {...}: a whole section, layout unknown
+                self.taint_group(st, name, o)
+                return st
             if self.weak and not o:
                 return st                            # inside a guarded try: an exception may skip this overwrite
             key = fold(tgt.slice, st.consts)
@@ -654,11 +791,14 @@ class FlowInterpreter:
         if isinstance(s.target, ast.Name):
             name = s.target.id
             o = st.tainted.get(name) or self.taint(s.value, st)
+            # `s += x` on a str / number / bytes value builds a new object and rebinds s: a name that shared the
+            # old value (`copy = s`) still holds it, unlike `lst += x`, which extends the list in place
+            immutable = name in st.consts and name not in self.volatile
             c = fold(ast.BinOp(left=ast.Name(id=name, ctx=ast.Load()), op=s.op, right=s.value), st.consts) \
                 if name not in self.volatile else _MISSING
             st = st.copy()
             _set(st, name, o, c)
-            if o:
+            if o and not immutable:
                 self.taint_group(st, name, o)
             return st
         if isinstance(s.target, ast.Subscript):
@@ -741,6 +881,8 @@ class FlowInterpreter:
                 self.taint_group(st, name, o)
             self._retaint(st, name)
             return st
+        if name in st.dk and _CFG in st.dk[name][0]:
+            return self.config_write(name, f.attr, args, kwargs, st)
         if name in st.dk:
             m, other = st.dk[name]
             if f.attr in ("put", "setProperty", "set", "__setitem__", "Add", "putIfAbsent", "setdefault") and len(args) == 2:
@@ -784,6 +926,32 @@ class FlowInterpreter:
         return st
 
 
+    def config_write(self, name, attr, args, kwargs, st: State) -> State:
+        """A call on a tracked configparser (st was copied by the caller). `set(section, option, value)` with a
+        constant section and option is a strong update of that slot; adding or querying sections changes no value.
+        Anything else, or a value that interpolation could expand (not a %-free constant), forgets the layout."""
+        m, other = st.dk[name]
+        vals = args + [k.value for k in kwargs]
+        o = next((self.taint(a, st) for a in vals if self.taint(a, st)), None)
+        if attr in _CFG_QUERIES and not o:
+            return st
+        if attr == "set" and len(args) == 3 and not kwargs:
+            key = cfg_key(fold(args[0], st.consts), fold(args[1], st.consts))
+            v = fold(args[2], st.consts)
+            vo = self.taint(args[2], st)
+            # a constant with no interpolation syntax (BasicInterpolation "%(x)s", ExtendedInterpolation "${x}")
+            if key is not _MISSING and (vo or (isinstance(v, str) and "%" not in v and "$" not in v)):
+                if vo or not self.weak:          # (inside a guarded try the write may be skipped: keep the old value)
+                    m[key] = vo
+                self._retaint(st, name)
+                return st
+        st.dk.pop(name, None)
+        self.taint_group(st, name, o)
+        return st
+
+
+_CFG_QUERIES = {"add_section", "has_section", "has_option", "sections", "options"}
+
 _READ_ONLY = {"get", "getOrDefault", "keys", "values", "items", "copy", "index", "count", "size", "isEmpty", "contains",
               "containsKey", "containsValue", "peek", "peekFirst", "peekLast", "getFirst", "getLast", "toString",
               "__len__", "__getitem__", "startswith", "endswith", "find", "first", "last", "length", "indexOf",
@@ -825,6 +993,111 @@ def _pat(p, subj, consts):
             return True
         return None if any(r is None for r in res) else False
     return None
+
+
+_CFG = ("<configparser>",)     # dk marker: the container is a configparser.ConfigParser keyed by (section, option)
+_CFG_CLASSES = {"ConfigParser", "RawConfigParser", "SafeConfigParser"}
+_CFG_SAFE_KW = {"allow_no_value", "delimiters", "comment_prefixes", "inline_comment_prefixes", "strict",
+                "empty_lines_in_values", "interpolation", "dict_type"}
+
+
+def _is_config_parser(call: ast.Call) -> bool:
+    """`configparser.ConfigParser()` with no defaults and the standard DEFAULT section (both would add keys)."""
+    return _callee_name(call) in _CFG_CLASSES and not call.args and all(k.arg in _CFG_SAFE_KW for k in call.keywords)
+
+
+def cfg_key(section, option):
+    """The slot of (section, option): option names are case-folded by the default optionxform."""
+    if isinstance(section, str) and isinstance(option, str):
+        return (section, option.lower())
+    return _MISSING
+
+
+def _int_const(e):
+    if isinstance(e, ast.Constant) and isinstance(e.value, int) and not isinstance(e.value, bool):
+        return e.value
+    if isinstance(e, ast.UnaryOp) and isinstance(e.op, ast.USub) and isinstance(e.operand, ast.Constant) \
+            and isinstance(e.operand.value, int) and not isinstance(e.operand.value, bool):
+        return -e.operand.value
+    return None
+
+
+_SEP_ATTRS = {"os.sep", "os.path.sep", "posixpath.sep"}
+
+
+def _dir_prefix(e) -> bool:
+    """An expression whose text is a directory followed by a separator: "/srv/data/", base + os.sep,
+    f"{base}/", os.path.join(base, ""). A prefix check against it confines a normalised path to that directory
+    (without the trailing separator "/srv/data" would also admit "/srv/data-old/…")."""
+    def sep(x):
+        if isinstance(x, ast.Constant) and isinstance(x.value, str):
+            return x.value in ("/", "\\")
+        return _dotted_name(x) in _SEP_ATTRS
+    if isinstance(e, ast.Constant) and isinstance(e.value, str):
+        return len(e.value) > 1 and e.value[-1] in "/\\" and bool(e.value.rstrip("/\\"))
+    if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add):
+        if sep(e.right):
+            return True
+        return isinstance(e.right, ast.Constant) and isinstance(e.right.value, str) and len(e.right.value) > 1 \
+            and e.right.value[-1] in "/\\"
+    if isinstance(e, ast.JoinedStr) and len(e.values) > 1:
+        last = e.values[-1]
+        return isinstance(last, ast.Constant) and isinstance(last.value, str) and last.value[-1:] in ("/", "\\")
+    if isinstance(e, ast.Call) and _dotted_name(e.func) in ("os.path.join", "posixpath.join") and len(e.args) >= 2 \
+            and isinstance(e.args[-1], ast.Constant) and e.args[-1].value == "":
+        return True
+    return False
+
+
+def _dotted_name(e) -> str:
+    parts = []
+    while isinstance(e, ast.Attribute):
+        parts.append(e.attr)
+        e = e.value
+    if isinstance(e, ast.Name):
+        return ".".join([e.id] + parts[::-1])
+    return ""
+
+
+_NORMALISERS = {"os.path.realpath", "os.path.abspath", "os.path.normpath", "posixpath.realpath", "posixpath.abspath",
+                "posixpath.normpath", "realpath", "abspath", "normpath"}
+
+
+def _value_facts(value) -> frozenset:
+    """Facts a value carries from how it was computed: a normalised path, a parsed URL."""
+    if not isinstance(value, ast.Call):
+        return frozenset()
+    f = value.func
+    if isinstance(f, ast.Attribute) and f.attr == "resolve" and not value.args \
+            and all(k.arg == "strict" for k in value.keywords):
+        return frozenset({"resolved"})                 # pathlib.Path.resolve(): absolute, no "..", links followed
+    if _dotted_name(f) in _NORMALISERS and len(value.args) == 1 and not value.keywords:
+        return frozenset({"resolved"})
+    if _callee_name(value) in ("urlparse", "urlsplit") and len(value.args) == 1 and not value.keywords \
+            and isinstance(value.args[0], ast.Name):
+        return frozenset({"urlof:" + value.args[0].id})
+    return frozenset()
+
+
+def _shallow_stores(s) -> frozenset:
+    """Names a statement binds itself (its own targets and header, not the statements nested in its body)."""
+    out = set()
+    if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return frozenset({s.name})
+    if isinstance(s, (ast.Import, ast.ImportFrom)):
+        return frozenset((a.asname or a.name).split(".")[0] for a in s.names)
+    for n in _nodes_of(s):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+            out.add(n.id)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            out.add(n.name)
+        elif isinstance(n, (ast.Global, ast.Nonlocal)):
+            out.update(n.names)
+        elif n.__class__.__name__ in ("MatchAs", "MatchStar") and getattr(n, "name", None):
+            out.add(n.name)
+        elif n.__class__.__name__ == "MatchMapping" and getattr(n, "rest", None):
+            out.add(n.rest)
+    return frozenset(out)
 
 
 def _set(st: State, name, origin, const, keep_taint: bool = False):
@@ -1102,7 +1375,7 @@ def _nodes_of(stmt):
             stack.append(ch)
 
 
-_ALL_CONTAINER_METHODS = (_READ_ONLY | _CONTAINER_ADDS | _KNOWN_DICT_WRITES | _INNER_RETURNING |
+_ALL_CONTAINER_METHODS = (_READ_ONLY | _CONTAINER_ADDS | _KNOWN_DICT_WRITES | _INNER_RETURNING | _CFG_QUERIES |
                           {"pop", "remove", "removeFirst", "removeLast", "shift", "poll", "pollFirst", "pollLast",
                            "popleft", "clear", "insert", "addFirst", "appendleft", "unshift", "offerFirst", "push_front",
                            "sort", "reverse", "putIfAbsent"})
