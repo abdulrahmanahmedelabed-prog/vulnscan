@@ -151,7 +151,8 @@ def test_quote_rejection_protects_only_the_literal_it_delimits():
         root = lxml.etree.parse('e.xml')
         root.xpath("".join(["/E[@id='", bar.replace("'", "&apos;"), "']"]))  # SAFE
         root.xpath(f"/E[@id='{bar.replace('a', 'b')}']")  # VULN
-        root.xpath(f'/E[@id="{bar.replace("'", "&apos;")}"]')  # VULN
+        q2 = bar.replace("'", "&apos;")
+        root.xpath(f'/E[@id="{q2}"]')  # VULN
         if '"' in bar:
             return 'no'
         root.xpath(f"/E[@id='{bar}']")  # VULN
