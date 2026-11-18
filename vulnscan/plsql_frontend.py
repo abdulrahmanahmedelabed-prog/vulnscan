@@ -1264,14 +1264,18 @@ class Parser:
                 self.i += 1
                 kws.append(ast.keyword(arg=k, value=self.parse_expr()))
             else:
-                self.opt("distinct", "all")
+                self.opt("distinct", "all", "unique")
+                # trim(both|leading|trailing [c] from s); json_object(key 'k' value v)
+                if self.at("both", "leading", "trailing", "key") and self.peek().kind in ("str", "bind", "num", "id"):
+                    self.i += 1
+                    if self.opt("from"):
+                        args.append(self.parse_expr())
+                        self._arg_tail(args)
+                        if not self.opt(","):
+                            break
+                        continue
                 args.append(self.parse_expr())
-                if self.at("as") or self.at("from") or self.at("using") or self.at("returning") or self.at("default"):
-                    while not self.at(",", ")") and self.t.kind != "eof":   # cast(x as t) / extract(y from d) / trim(x from y)
-                        if self.at("("):
-                            self.skip_balanced()
-                            continue
-                        self.i += 1
+                self._arg_tail(args)
             if not self.opt(","):
                 break
         self.eat(")")
@@ -1281,6 +1285,22 @@ class Parser:
             if name.lower() not in BUILTIN_BINDS and re.match(r"^[A-Z][A-Z0-9_$#]*$", name):
                 return _item(name, line)              # v('P1_X') -> apex_item.P1_X
         return _mk(ast.Call, line, func=func, args=args, keywords=kws)
+
+    def _arg_tail(self, args) -> None:
+        """What may follow an argument before `,` or `)`: another value that keeps its data (json_object's
+        `'k' : v` / `'k' value v`, trim's / extract's `from s`), or a clause with no data to follow (cast's `as t`,
+        `format json`, `absent on null`, `returning t`, `order by …`, `default … on conversion error`), skipped."""
+        while not self.at(",", ")") and self.t.kind != "eof":
+            if self.at(":", "value", "from"):
+                self.i += 1
+                args.append(self.parse_expr())
+            elif self.t.kind == "bind":            # 'k':v written without a space: v is a variable, unless a page item
+                tok = self.eat()
+                args.append(_item(tok.raw, tok.line) if re.match(r"(?i)^p\d+_", tok.raw) else _name(tok.val, tok.line))
+            elif self.at("("):
+                self.skip_balanced()
+            else:
+                self.i += 1
 
     def parse_primary(self):
         t = self.t
