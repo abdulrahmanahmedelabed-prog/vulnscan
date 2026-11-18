@@ -92,8 +92,8 @@ vsce 4 or newer; the job uses `@vscode/vsce@4.1.0`), so no token is stored anywh
 1. Create a free Eclipse Foundation account (accounts.eclipse.org).
 2. Sign in to open-vsx.org with GitHub, link the Eclipse account in your profile and accept the Open VSX publisher
    agreement there.
-3. Create an access token (open-vsx.org, *Settings > Access Tokens*), then create the namespace once:
-   `npx ovsx create-namespace kashif -p <token>`. The namespace must equal the publisher in `package.json`.
+3. Create an access token (open-vsx.org, *Settings > Access Tokens*). The release job creates the namespace `kashif`
+   on its first run (`ovsx create-namespace`), so no command is needed; it must equal the publisher in `package.json`.
    Creating a namespace does not make it exclusive: to have extensions shown as verified, claim the namespace
    through the Open VSX namespace-ownership process (an issue on the Open VSX repository).
 4. Add the repository secret `OVSX_PAT` with the token. Open VSX tokens do not expire, so delete and replace it if
