@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ast
 import re
+import warnings
 
 KEYWORDS = {
     "var", "let", "const", "function", "class", "extends", "return", "if", "else", "for", "while", "do",
@@ -269,6 +270,14 @@ def resolve_specifier(spec: str, cur_mod: str) -> str:
 
 
 _JS_BINOP = {"+": ast.Add, "-": ast.Sub, "*": ast.Mult, "/": ast.Div, "%": ast.Mod}   # others: never folded
+
+
+def _unescape(body: str) -> str:
+    """A JS string literal's escapes, best effort. Invalid escapes (``\\p``, ``\\^``) are legal in JS and kept as the
+    character, which is what ``unicode_escape`` does; its DeprecationWarning for them is noise, so it is silenced."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return bytes(body, "utf-8").decode("unicode_escape", errors="ignore")
 
 class Parser:
     def __init__(self, src: str, rel: str = "file.js"):
@@ -1388,7 +1397,7 @@ class Parser:
             return _const(v, line)
         if t.kind == "str":
             self.i += 1
-            return _const(bytes(t.val[1:-1], "utf-8").decode("unicode_escape", errors="ignore") if "\\" in t.val else t.val[1:-1], line)
+            return _const(_unescape(t.val[1:-1]) if "\\" in t.val else t.val[1:-1], line)
         if t.kind == "tpl":
             self.i += 1
             return self.parse_template(t)
