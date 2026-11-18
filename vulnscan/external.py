@@ -21,9 +21,9 @@ _NPM_SEV = {"critical": "critical", "high": "high", "moderate": "medium", "low":
 
 def _run(cmd: list[str], cwd: pathlib.Path, timeout: int = 600) -> str | None:
     try:
-        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, errors="replace", timeout=timeout)
         return p.stdout
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return None
 
 
@@ -49,7 +49,7 @@ def run_external(root: pathlib.Path, tools: list[str] | None = None) -> tuple[li
                                        r.get("more_info", ""), r.get("issue_cwe", {}).get("id", "") and f"CWE-{r['issue_cwe']['id']}",
                                        source="bandit"))
                 ran.append("bandit")
-            except (ValueError, KeyError):
+            except Exception:  # noqa: BLE001 - a tool's unexpected output never stops the scan
                 pass
     if "semgrep" in tools and shutil.which("semgrep"):
         txt = _run(["semgrep", "--config", "auto", "--json", "--quiet", "."], root)
@@ -64,7 +64,7 @@ def run_external(root: pathlib.Path, tools: list[str] | None = None) -> tuple[li
                                        ",".join(ex.get("metadata", {}).get("cwe", [])) if isinstance(ex.get("metadata", {}).get("cwe"), list) else str(ex.get("metadata", {}).get("cwe", "")),
                                        source="semgrep"))
                 ran.append("semgrep")
-            except (ValueError, KeyError):
+            except Exception:  # noqa: BLE001 - a tool's unexpected output never stops the scan
                 pass
     if "gitleaks" in tools and shutil.which("gitleaks"):
         rep = root.resolve() / ".vulnscan-gitleaks.json"   # absolute: the value can never look like an option
@@ -77,7 +77,7 @@ def run_external(root: pathlib.Path, tools: list[str] | None = None) -> tuple[li
                                        "سر مكتشف بواسطة gitleaks", r.get("File", ""), r.get("StartLine", 0),
                                        (r.get("Match") or "")[:80] + "…", "أبطل السر وأزله من التاريخ.", "CWE-798", source="gitleaks"))
                 ran.append("gitleaks")
-            except ValueError:
+            except Exception:  # noqa: BLE001 - a tool's unexpected output never stops the scan
                 pass
             finally:
                 rep.unlink(missing_ok=True)
@@ -93,6 +93,6 @@ def run_external(root: pathlib.Path, tools: list[str] | None = None) -> tuple[li
                                        f"حزمة npm مصابة: {name}", "package-lock.json", 0, via[0].get("url", "") if via else "",
                                        f"حدّث {name} (npm audit fix).", "", source="npm"))
                 ran.append("npm")
-            except ValueError:
+            except Exception:  # noqa: BLE001 - a tool's unexpected output never stops the scan
                 pass
     return out, ran

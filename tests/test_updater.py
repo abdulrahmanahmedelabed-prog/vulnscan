@@ -928,8 +928,10 @@ def test_version_output_is_what_v09_updaters_accept(capsys):
         cli.main(["--version"])
     assert e.value.code == 0
     out = capsys.readouterr().out
-    assert out.strip() == f"vulnscan {__version__}"
+    assert out.strip() == f"kashif {__version__} (vulnscan {__version__})"
+    # the exact search a v0.9.x updater runs on the new binary still matches (and so does ours)
     assert re.search(rf"\bvulnscan\s+v?{re.escape(__version__)}(?![\w.+-])", out)
+    assert re.search(rf"\bkashif\s+v?{re.escape(__version__)}(?![\w.+-])", out)
 
 
 def test_job_refuses_second_install_and_double_restart():

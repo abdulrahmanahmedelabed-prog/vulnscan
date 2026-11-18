@@ -170,10 +170,6 @@ CATALOG: dict[str, str] = {
     "خط الأساس غير موجود أو فارغ؛ كل النتائج تُعرض كجديدة.":
         "Baseline is missing or empty; all findings are reported as new.",
     # ------------------------------------------------------------------ scan notes and errors (server.py)
-    "فحص عنوان ويب يتطلب تأكيد الصلاحية.": "Scanning a web URL requires confirming that you are authorized.",
-    "فحص ويب سلبي أعمق: تحليل الصفحة ومسارات مكشوفة شائعة.":
-        "Deeper passive web scan: page analysis and common exposed paths.",
-    "فحص ويب سلبي: طلب واحد فقط.": "Passive web scan: a single request.",
     "تدفق بيانات": "data flow",
 }
 

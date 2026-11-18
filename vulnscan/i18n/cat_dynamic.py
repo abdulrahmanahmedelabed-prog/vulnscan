@@ -220,6 +220,8 @@ PATTERNS: list[tuple[str, str]] = [
     (r"تعذّر تحليل تدفق البيانات لملفات (?P<lang>[\w+#-]+) \((?P<err>[\w.]+)\)؛ عُرضت نتائج القواعد لها فقط"
      r" — [\w+#-]+ dataflow analysis failed, pattern results only",
      r"Dataflow analysis of the \g<lang> files failed (\g<err>); showing pattern-rule results for them only."),
+    (r"تعذّر فحص الاعتماديات \((?P<err>[\w.]+)\)؛ استمر الفحص دونه — dependency audit failed",
+     r"The dependency audit failed (\g<err>); the scan went on without it."),
     (r"تعذّر تحليل (?P<n>\d+) من الملفات فتُركت خارج الفحص: (?P<files>.+?) — files skipped after an analysis error",
      r"\g<n> file(s) could not be analysed and were skipped: \g<files>"),
 
