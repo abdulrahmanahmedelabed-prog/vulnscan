@@ -40,15 +40,33 @@ def _check(body: str, rule: str) -> None:
 
 # ---------------------------------------------------------------- 1. guards that end the request
 def test_dotdot_rejection_confines_a_path_under_a_fixed_directory():
-    _check("""
+    _check(r"""
     @app.route('/a')
     def a():
+        name = request.args.get('f')
+        file_name = None
+        if '..' in name:
+            return 'no'
+        file_name = f'{BASE}/{name}'
+        return open(file_name).read()  # SAFE
+
+    @app.route('/a2')
+    def a2():
+        name = request.args.get('f')
+        file_name = None
+        if '../' in name or '..\\' in name:
+            return 'no'
+        file_name = f'{BASE}/{name}'
+        return open(file_name).read()  # SAFE
+
+    @app.route('/win')
+    def win():
         name = request.args.get('f')
         file_name = None
         if '../' in name:
             return 'no'
         file_name = f'{BASE}/{name}'
-        return open(file_name).read()  # SAFE
+        return open(file_name).read()  # VULN
 
     @app.route('/b')
     def b():
@@ -380,3 +398,177 @@ def test_elementpath_select_checks_the_path_argument():
         elementpath.select(root, "/E[@id='" + request.args.get('id') + "']")  # VULN
         elementpath.select(root, '/E')  # SAFE
     """, "DF015")
+
+
+# ---------------------------------------------------------------- 9. bypasses found in review (still reported)
+def test_substring_rejection_needs_a_str_value():
+    _check("""
+    @app.route('/a')
+    def a():
+        bar = request.get_json()['id']
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        q = f"/E[@id='{bar}']"
+        return str(root.xpath(q))  # VULN
+
+    @app.route('/b')
+    def b():
+        bar = request.args.getlist('id')
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        q = f"/E[@id='{bar}']"
+        return str(root.xpath(q))  # VULN
+
+    @app.route('/c')
+    def c():
+        bar = request.args.getlist('id')[0]
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        q = f"/E[@id='{bar}']"
+        return str(root.xpath(q))  # SAFE
+
+    @app.route('/d')
+    def d():
+        bar = request.get_json()['id']
+        root = lxml.etree.parse('e.xml')
+        if not isinstance(bar, str) or "'" in bar:
+            return 'no'
+        q = f"/E[@id='{bar}']"
+        return str(root.xpath(q))  # SAFE
+    """, "DF015")
+
+
+def test_hostname_allow_list_is_not_trusted():
+    _check("""
+    @app.route('/a')
+    def a():
+        target = request.args.get('next')
+        u = urllib.parse.urlparse(target)
+        if u.hostname not in ('good.example', 'www.good.example'):
+            return 'bad host', 400
+        return redirect(target)  # VULN
+    """, "DF008")
+
+
+def test_location_header_through_make_response_is_a_redirect():
+    _check("""
+    @app.route('/a')
+    def a():
+        nxt = request.args.get('next')
+        return make_response(('', 302, {'Location': nxt}))  # VULN
+
+    @app.route('/b')
+    def b():
+        nxt = request.args.get('next')
+        return make_response('', 302, {'location': nxt})  # VULN
+
+    @app.route('/c')
+    def c():
+        nxt = request.args.get('next')
+        resp = make_response(('redirecting', {'Location': nxt, 'X': 'y'}))  # VULN
+        resp.status_code = 302
+        return resp
+
+    @app.route('/d')
+    def d():
+        nxt = request.args.get('next')
+        return make_response(('', 302, {'X-Next': nxt}))  # SAFE
+    """, "DF008")
+    # headers that are not a literal dict: the whole call stays one value, as in 1.1.1
+    assert _lines("""
+    @app.route('/e')
+    def e():
+        hdrs = {'X': request.args.get('x')}
+        return make_response(('body', hdrs))
+    """, "DF013") == {5}
+
+
+def test_configparser_vars_and_optionxform_keep_the_taint():
+    _check("""
+    @app.route('/a')
+    def a():
+        conf = configparser.ConfigParser()
+        conf.add_section('s')
+        conf.set('s', 'safe', 'x')
+        return eval(conf.get('s', 'safe', vars={'safe': request.args.get('x')}))  # VULN
+
+    @app.route('/b')
+    def b():
+        conf = configparser.ConfigParser()
+        conf.add_section('s')
+        conf.optionxform = lambda o: o.replace('_', '')
+        conf.set('s', 'sa_fe', request.args.get('x'))
+        conf.set('s', 'safe', 'x')
+        return eval(conf.get('s', 'safe'))  # VULN
+    """, "DF001")
+
+
+def test_directory_prefix_must_be_known_text():
+    _check("""
+    @app.route('/a')
+    def a():
+        p = os.path.abspath(request.args.get('f'))
+        base = os.environ.get('UPLOAD_DIR', '')
+        if not p.startswith(base + os.sep):
+            return 'no'
+        return open(p).read()  # VULN
+    """, "DF005")
+
+
+def test_module_constant_rebound_elsewhere_is_not_a_known_directory(tmp_path):
+    from vulnscan.scanner import scan_path
+    (tmp_path / "settings.py").write_text("UPLOAD_DIR = '/srv/uploads/'\n", encoding="utf-8")
+    (tmp_path / "boot.py").write_text("import os\nimport settings\nsettings.UPLOAD_DIR = os.environ.get('D', '')\n",
+                                      encoding="utf-8")
+    (tmp_path / "app.py").write_text(
+        "from flask import Flask, request\nimport settings\napp = Flask(__name__)\n\n"
+        "@app.route('/p')\ndef p():\n    name = request.args.get('f')\n    if '..' in name:\n        return 'no'\n"
+        "    p = settings.UPLOAD_DIR + name\n    return open(p).read()\n", encoding="utf-8")
+    findings, _ = scan_path(tmp_path, jadx=False, notes=[])
+    assert ("app.py", 11) in {(f.file, f.line) for f in findings if f.rule_id == "DF005"}
+
+
+ROUTED_ELSEWHERE = """
+@app.route('/a')
+def a(rest=None):
+    return '<h1>' + request.path + '</h1>'  # VULN
+
+app.add_url_rule('/go/<path:rest>', endpoint='a')
+"""
+
+
+def test_request_path_stays_input_when_rules_are_bound_by_endpoint():
+    _check(ROUTED_ELSEWHERE, "DF013")
+    _check("""
+    @app.route('/d')
+    @app.endpoint('dyn')
+    def d(p=None):
+        return '<h1>' + request.path + '</h1>'  # VULN
+
+    app.url_map.add(app.url_rule_class('/dyn/<path:p>', endpoint='dyn'))
+    """, "DF013")
+    _check("""
+    @app.route('/v')
+    def v():
+        return '<h1>' + request.path + '</h1>'  # VULN
+
+    app.view_functions['other'] = v
+    """, "DF013")
+
+
+def test_request_path_stays_input_in_an_error_handler():
+    _check("""
+    @app.route('/notfound')
+    @app.errorhandler(404)
+    def nf(e=None):
+        return '<h1>' + request.path + ' not found</h1>', 404  # VULN
+
+    @app.route('/gone')
+    def gone(e=None):
+        return '<h1>' + request.path + '</h1>'  # VULN
+
+    app.register_error_handler(410, gone)
+    """, "DF013")

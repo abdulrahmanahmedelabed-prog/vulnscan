@@ -339,8 +339,8 @@ class FlowInterpreter:
             if st is None:
                 self.mark_dead(stmts[i:])
                 return None
-            if st.facts:
-                st = self.drop_facts(st, self._stores_cached(s))
+            if st.facts and not (isinstance(s, ast.AugAssign) and isinstance(s.target, ast.Name)):
+                st = self.drop_facts(st, self._stores_cached(s))     # (`s += x` updates its own facts: aug)
             st = self.stmt(s, st)
         return st
 
@@ -401,6 +401,10 @@ class FlowInterpreter:
             if isinstance(op, (ast.In, ast.NotIn)) and isinstance(op, ast.NotIn) == positive \
                     and isinstance(left, ast.Constant) and isinstance(left.value, str) and left.value:
                 if isinstance(right, ast.Name):
+                    # on a list (getlist, JSON) `in` tests membership and str(list) adds quotes and brackets: the
+                    # text is known to lack the substring only when the value is known to be a str
+                    if "str" not in st.facts.get(right.id, ()):
+                        return {}
                     return {right.id: frozenset({"absent:" + left.value})}
                 # `q in name[1:-1]` false: no q between the first and the last character
                 if isinstance(right, ast.Subscript) and isinstance(right.value, ast.Name) and len(left.value) == 1 \
@@ -427,7 +431,9 @@ class FlowInterpreter:
                 if holds:
                     return {left.func.value.id: frozenset({"absent:" + left.args[0].value})}
             # `u.netloc not in ALLOWED` false / `u.netloc == "host"` true, with u = urlparse(name)
-            if isinstance(left, ast.Attribute) and left.attr in ("netloc", "hostname") and isinstance(left.value, ast.Name):
+            # (not u.hostname: "https://evil.example\\@good.example" has hostname good.example, and browsers read the
+            # backslash as "/", going to evil.example; urlparse's netloc keeps the whole authority)
+            if isinstance(left, ast.Attribute) and left.attr == "netloc" and isinstance(left.value, ast.Name):
                 allowed = (isinstance(op, ast.In) and positive) or (isinstance(op, ast.NotIn) and not positive)
                 if isinstance(op, (ast.In, ast.NotIn)):
                     allowed = allowed and isinstance(right, (ast.List, ast.Tuple, ast.Set)) and bool(right.elts) \
@@ -439,6 +445,10 @@ class FlowInterpreter:
                     srcs = [f[6:] for f in st.facts.get(left.value.id, ()) if f.startswith("urlof:")]
                     return {n: frozenset({"hostok"}) for n in srcs}
             return {}
+        if isinstance(test, ast.Call) and isinstance(test.func, ast.Name) and test.func.id == "isinstance" and positive \
+                and len(test.args) == 2 and isinstance(test.args[0], ast.Name) and isinstance(test.args[1], ast.Name) \
+                and test.args[1].id == "str":
+            return {test.args[0].id: frozenset({"str"})}
         if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and positive \
                 and test.func.attr in ("startswith", "endswith") and len(test.args) == 1 and not test.keywords:
             recv, arg = test.func.value, test.args[0]
@@ -451,10 +461,77 @@ class FlowInterpreter:
             if isinstance(arg, ast.Constant) and isinstance(arg.value, str) and arg.value and recv is test.func.value:
                 out.add(("starts:" if test.func.attr == "startswith" else "ends:") + arg.value)
             if test.func.attr == "startswith" and "resolved" in st.facts.get(recv.id, ()) \
-                    and _dir_prefix(arg) and not self.taint(arg, st):
+                    and _dir_prefix(arg, lambda x: self._nonempty_dir(x, st)) and not self.taint(arg, st):
                 out.add("confined")      # a normalised absolute path inside an (untainted) directory/ prefix
             return {recv.id: frozenset(out)} if out else {}
         return {}
+
+    def _nonempty_dir(self, e, st: State) -> bool:
+        """`e` is text that is neither empty nor only separators, so `e + os.sep` names a directory (an empty
+        `base` would make the prefix "/" and admit every absolute path)."""
+        if isinstance(e, ast.Call) and _dotted_name(e.func) in ("str", "os.fspath") and len(e.args) == 1:
+            e = e.args[0]
+        if isinstance(e, ast.Name) and "resolved" in st.facts.get(e.id, ()):
+            return True                  # resolve() / realpath / abspath / normpath never return "" (at least ".")
+        if isinstance(e, ast.Call) and _value_facts(e) == frozenset({"resolved"}):
+            return True
+        text = self.proj._str_const_of(self.mod, e, self.env_for(st))
+        return bool(text) and bool(text.rstrip("/\\"))
+
+    def _is_str(self, e, st: State, depth: int = 0) -> bool:
+        """Is the value of `e` certainly a str (or does evaluating it raise)? Literals, f-strings, str methods,
+        slices of a str, the str-returning request accessors (`request.args.get(k)`, `.form`, `.cookies`, `.headers`,
+        `.values`, `get_data(as_text=True)`), urllib unquote."""
+        if depth > 8:
+            return False
+        if isinstance(e, ast.Constant):
+            return isinstance(e.value, str)
+        if isinstance(e, ast.JoinedStr):
+            return True
+        if isinstance(e, ast.Name):
+            return "str" in st.facts.get(e.id, ()) or isinstance(st.consts.get(e.id), str)
+        if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add):
+            return self._is_str(e.left, st, depth + 1) and self._is_str(e.right, st, depth + 1)
+        if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Mod):
+            return isinstance(e.left, ast.Constant) and isinstance(e.left.value, str)
+        if isinstance(e, ast.IfExp):
+            return self._is_str(e.body, st, depth + 1) and self._is_str(e.orelse, st, depth + 1)
+        if isinstance(e, ast.BoolOp):
+            return all(self._is_str(v, st, depth + 1) for v in e.values)
+        if isinstance(e, ast.Subscript):
+            if self._is_str(e.value, st, depth + 1):
+                return True                  # a slice or a character of a str
+            if ((isinstance(e.value, ast.Name) and "strlist" in st.facts.get(e.value.id, ()))
+                    or _request_getlist(e.value)) and not isinstance(e.slice, ast.Slice):
+                return True                  # one item of request.args.getlist(k)
+            v = e.value                      # one item of s.split(...): a str
+            return not isinstance(e.slice, ast.Slice) and isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute) \
+                and v.func.attr in ("split", "rsplit", "splitlines", "partition", "rpartition") \
+                and self._is_str(v.func.value, st, depth + 1)
+        if not isinstance(e, ast.Call):
+            return False
+        f = e.func
+        if isinstance(f, ast.Name) and f.id == "str":
+            return True
+        if _dotted_name(f).split(".")[-1] in ("unquote", "unquote_plus") and _dotted_name(f) in (
+                "unquote", "unquote_plus", "urllib.parse.unquote", "urllib.parse.unquote_plus", "parse.unquote",
+                "parse.unquote_plus"):
+            return True
+        if not isinstance(f, ast.Attribute):
+            return False
+        if f.attr == "decode":
+            return True                      # bytes.decode
+        if f.attr in _STR_RESULT_METHODS:
+            return self._is_str(f.value, st, depth + 1)
+        if f.attr == "get" and isinstance(f.value, ast.Attribute) and f.value.attr in ("args", "form", "cookies", "headers", "values") \
+                and _dotted_name(f.value.value).split(".")[-1] == "request" and len(e.args) in (1, 2) \
+                and not e.keywords and (len(e.args) == 1 or (isinstance(e.args[1], ast.Constant)
+                                                            and (e.args[1].value is None or isinstance(e.args[1].value, str)))):
+            return True                      # werkzeug MultiDict / Headers .get(k[, str default])
+        if f.attr == "get_data" and _dotted_name(f.value).split(".")[-1] == "request" and any(
+                k.arg == "as_text" and isinstance(k.value, ast.Constant) and k.value.value is True for k in e.keywords):
+            return True
+        return False
 
     def stmt(self, s, st: State) -> State | None:
         if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -679,6 +756,7 @@ class FlowInterpreter:
     def assign(self, tgt, value, st: State) -> State:
         if isinstance(tgt, ast.Name):
             name = tgt.id
+            is_str = self.proj.m.get("language") == "python" and self._is_str(value, st)
             o = self.stepped(self.taint(value, st), name, value)
             st = st.copy()
             if o:
@@ -695,9 +773,10 @@ class FlowInterpreter:
             st.lk.pop(name, None)
             st.facts.pop(name, None)
             if name not in self.volatile and self.proj.m.get("language") == "python":
-                fct = _value_facts(value)
+                fct = _value_facts(value) | ({"str"} if is_str else frozenset()) \
+                    | ({"strlist"} if _request_getlist(value) else frozenset())
                 if fct:
-                    st.facts[name] = fct
+                    st.facts[name] = frozenset(fct)
             if trackable:
                 if isinstance(value, ast.Call) and _is_config_parser(value) \
                         and self.proj._canon(self.mod, value.func).startswith("configparser."):
@@ -770,6 +849,11 @@ class FlowInterpreter:
             return st
         if isinstance(tgt, ast.Starred):
             return self.assign(tgt.value, value, st)
+        if isinstance(tgt, ast.Attribute) and isinstance(tgt.value, ast.Name) and tgt.value.id in st.dk \
+                and _CFG in st.dk[tgt.value.id][0]:
+            st = st.copy()                            # conf.optionxform = ...: option names may now map differently
+            st.dk.pop(tgt.value.id, None)
+            return st
         return st                                     # attribute targets: handled by the main engine
 
     def _retaint(self, st: State, name) -> None:
@@ -796,8 +880,11 @@ class FlowInterpreter:
             immutable = name in st.consts and name not in self.volatile
             c = fold(ast.BinOp(left=ast.Name(id=name, ctx=ast.Load()), op=s.op, right=s.value), st.consts) \
                 if name not in self.volatile else _MISSING
-            st = st.copy()
+            keep_str = isinstance(s.op, ast.Add) and self._is_str(s.target, st) and self._is_str(s.value, st)
+            st = self.drop_facts(st, frozenset({name})).copy()
             _set(st, name, o, c)
+            if keep_str and name not in self.volatile:
+                st.facts[name] = frozenset({"str"})     # str + str
             if o and not immutable:
                 self.taint_group(st, name, o)
             return st
@@ -1025,7 +1112,20 @@ def _int_const(e):
 _SEP_ATTRS = {"os.sep", "os.path.sep", "posixpath.sep"}
 
 
-def _dir_prefix(e) -> bool:
+_STR_RESULT_METHODS = {"replace", "strip", "lstrip", "rstrip", "lower", "upper", "casefold", "title", "capitalize",
+                       "swapcase", "format", "zfill", "center", "ljust", "rjust", "expandtabs", "translate",
+                       "removeprefix", "removesuffix", "join"}
+
+
+def _request_getlist(e) -> bool:
+    """request.args / form / headers / cookies / values .getlist(k) without type=: a fresh list of str."""
+    return isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "getlist" \
+        and len(e.args) == 1 and not e.keywords and isinstance(e.func.value, ast.Attribute) \
+        and e.func.value.attr in ("args", "form", "cookies", "headers", "values") \
+        and _dotted_name(e.func.value.value).split(".")[-1] == "request"
+
+
+def _dir_prefix(e, nonempty) -> bool:
     """An expression whose text is a directory followed by a separator: "/srv/data/", base + os.sep,
     f"{base}/", os.path.join(base, ""). A prefix check against it confines a normalised path to that directory
     (without the trailing separator "/srv/data" would also admit "/srv/data-old/…")."""
@@ -1037,15 +1137,19 @@ def _dir_prefix(e) -> bool:
         return len(e.value) > 1 and e.value[-1] in "/\\" and bool(e.value.rstrip("/\\"))
     if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add):
         if sep(e.right):
-            return True
+            return nonempty(e.left)
         return isinstance(e.right, ast.Constant) and isinstance(e.right.value, str) and len(e.right.value) > 1 \
-            and e.right.value[-1] in "/\\"
+            and e.right.value[-1] in "/\\" and bool(e.right.value.strip("/\\"))
     if isinstance(e, ast.JoinedStr) and len(e.values) > 1:
         last = e.values[-1]
-        return isinstance(last, ast.Constant) and isinstance(last.value, str) and last.value[-1:] in ("/", "\\")
-    if isinstance(e, ast.Call) and _dotted_name(e.func) in ("os.path.join", "posixpath.join") and len(e.args) >= 2 \
+        head = e.values[:-1]
+        return isinstance(last, ast.Constant) and isinstance(last.value, str) and last.value[-1:] in ("/", "\\") and (
+            bool(last.value.strip("/\\")) or (len(head) == 1 and isinstance(head[0], ast.FormattedValue)
+                                               and head[0].conversion == -1 and head[0].format_spec is None
+                                               and nonempty(head[0].value)))
+    if isinstance(e, ast.Call) and _dotted_name(e.func) in ("os.path.join", "posixpath.join") and len(e.args) == 2 \
             and isinstance(e.args[-1], ast.Constant) and e.args[-1].value == "":
-        return True
+        return nonempty(e.args[0])
     return False
 
 

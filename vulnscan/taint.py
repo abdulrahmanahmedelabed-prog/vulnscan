@@ -689,6 +689,13 @@ def _key_guard(test, value):
     return None, None
 
 
+class _AllNames(frozenset):
+    """Contains every name (a `setattr` with a computed name may rebind any attribute)."""
+
+    def __contains__(self, item) -> bool:
+        return True
+
+
 _CODE_CWES = frozenset({"CWE-94", "CWE-95"})
 
 
@@ -697,7 +704,7 @@ def _guard_facts_protect(si, arg, facts) -> bool:
 
     * "confined": a normalised path (Path.resolve / os.path.realpath / abspath / normpath) whose prefix check against
       a directory and separator passed -> path sinks;
-    * "hostok": `u = urlparse(x)` and u.netloc / u.hostname passed an allow-list of hosts -> redirect / SSRF;
+    * "hostok": `u = urlparse(x)` and u.netloc passed an allow-list of hosts -> redirect / SSRF;
     * starts/ends with a quote and no such quote in between (`not x.startswith("'") or not x.endswith("'") or
       "'" in x[1:-1]` rejected): x is a single string literal, so eval / exec of x yields a string -> code injection."""
     cwe = si[5]
@@ -722,9 +729,41 @@ def _callee_bare(call) -> str:
     return f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else ""
 
 
+def _response_parts(call):
+    """flask.make_response(body) / ((body, status, headers)) / (body, status, headers), with every part after the body
+    a literal status or a dict literal with constant keys: (body, [header dicts]). None for any other shape (a headers
+    variable may hold anything), which keeps the whole call as one value."""
+    if _callee_bare(call) != "make_response" or call.keywords or not call.args \
+            or any(isinstance(a, ast.Starred) for a in call.args):
+        return None
+    if len(call.args) == 1 and isinstance(call.args[0], ast.Tuple):
+        elts = call.args[0].elts
+    elif len(call.args) == 1:
+        return call.args[0], []
+    else:
+        elts = call.args
+    if not elts or len(elts) > 3 or any(isinstance(e, ast.Starred) for e in elts):
+        return None
+    dicts = []
+    for e in elts[1:]:
+        if isinstance(e, ast.Dict) and all(isinstance(k, ast.Constant) and isinstance(k.value, str) for k in e.keys):
+            dicts.append(e)
+        elif not (isinstance(e, ast.Constant) and isinstance(e.value, (int, str))):
+            return None
+    return elts[0], dicts
+
+
+def _location_values(call) -> list:
+    """Values a literal headers dict of make_response puts in the Location header (a redirect)."""
+    parts = _response_parts(call)
+    if not parts:
+        return []
+    return [v for d in parts[1] for k, v in zip(d.keys, d.values) if k.value.lower() == "location"]
+
+
 def _flask_response_tuple(call) -> bool:
-    return _callee_bare(call) == "make_response" and len(call.args) == 1 and isinstance(call.args[0], ast.Tuple) \
-        and bool(call.args[0].elts) and not isinstance(call.args[0].elts[0], ast.Starred)
+    parts = _response_parts(call)
+    return parts is not None and len(call.args) == 1 and isinstance(call.args[0], ast.Tuple)
 
 
 def _has_replace(node) -> bool:
@@ -2054,12 +2093,12 @@ class Project:
             v = env.consts.get(e.id, _flow._MISSING)
             if isinstance(v, str):
                 return v
-            if v is _flow._MISSING and e.id.isupper():
+            if v is _flow._MISSING and e.id.isupper() and e.id not in self._attr_stores():
                 c = self._module_const(mod, e.id)
                 if isinstance(c, ast.Constant) and isinstance(c.value, str):
                     return c.value
             return None
-        if isinstance(e, ast.Attribute) and e.attr.isupper() and _chain(e):
+        if isinstance(e, ast.Attribute) and e.attr.isupper() and _chain(e) and e.attr not in self._attr_stores():
             canon = self._canon(mod, e)
             modpart, _, name = canon.rpartition(".")
             if modpart in self.files:
@@ -2067,6 +2106,26 @@ class Project:
                 if isinstance(c, ast.Constant) and isinstance(c.value, str):
                     return c.value
         return None
+
+    def _attr_stores(self) -> frozenset:
+        """Attribute names some project file assigns (`settings.UPLOAD_DIR = …`, `setattr(m, "X", …)`): a module
+        constant of that name may be rebound from outside its module, so its text is not known."""
+        hit = self.__dict__.get("_attr_stores_cache")
+        if hit is None:
+            out = set()
+            for f in self.files.values():
+                for n in ast.walk(f["tree"]):
+                    if isinstance(n, ast.Attribute) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                        out.add(n.attr)
+                    elif isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in ("setattr", "delattr") \
+                            and len(n.args) >= 2:
+                        a = n.args[1]
+                        if isinstance(a, ast.Constant) and isinstance(a.value, str):
+                            out.add(a.value)
+                        else:
+                            out.add("*")
+            hit = self.__dict__["_attr_stores_cache"] = frozenset(out)
+        return hit if "*" not in hit else _AllNames()
 
     @staticmethod
     def _str_pieces(node):
@@ -2131,7 +2190,8 @@ class Project:
                     continue
                 k, e = pieces[i]
                 f = facts.get(e.id, ()) if isinstance(e, ast.Name) else ()
-                if "absent:.." not in f and "absent:../" not in f:
+                # rejecting ".." covers every separator; "../" alone lets Windows' "..\\" through
+                if "absent:.." not in f and not {"absent:../", "absent:..\\"} <= f:
                     continue
                 before = consts[i - 1]
                 after = consts[i + 1] if i + 1 < len(pieces) else ""
@@ -2370,13 +2430,14 @@ class Project:
                         return (o[0], o[1], _trail(o), _safe_for(o) | skind)
                 return None
             f = node.func
-            if self.m.get("language") == "python" and _callee_bare(node) == "make_response" and node.args \
-                    and not any(isinstance(a, ast.Starred) for a in node.args) and not node.keywords \
+            if self.m.get("language") == "python" and _callee_bare(node) == "make_response" \
                     and canon.split(".")[0] in ("flask", "make_response"):
                 # flask.make_response(body, status, headers) / ((body, status, headers)): the response carries the
-                # body's data as its page; header values are not part of the HTML (no header rule reads them here)
-                body = node.args[0].elts[0] if _flask_response_tuple(node) else node.args[0]
-                return self._taint(mod, cls, body, env)
+                # body's data as its page. Header values are not HTML; a tainted Location is reported at the call
+                # as a redirect (_header_sinks). Headers that are not a literal dict keep the whole call tainted.
+                parts = _response_parts(node)
+                if parts is not None:
+                    return self._taint(mod, cls, parts[0], env)
             if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in env.dk \
                     and _flow._CFG in env.dk[f.value.id][0]:
                 return self._config_read(mod, cls, node, env)
@@ -2448,6 +2509,18 @@ class Project:
             return None
         return None
 
+    def _header_sinks(self, mod, call) -> list:
+        """(sink, values) a call feeds besides its own sink: a Location header set through flask.make_response is a
+        redirect (DF008)."""
+        if self.m.get("language") != "python" or _callee_bare(call) != "make_response" \
+                or self._canon(mod, call.func).split(".")[0] not in ("flask", "make_response"):
+            return []
+        vals = _location_values(call)
+        if not vals:
+            return []
+        si = next((x for x in self.m["sinks"] if x[0] == "DF008"), None)
+        return [(si, vals)] if si else []
+
     def _config_read(self, mod, cls, node, env):
         """`conf.get(section, option)` on a configparser the flow refinement tracks: the value stored in that slot
         (or in the DEFAULT section, which every section inherits), plus a `fallback=`; any other read sees every
@@ -2455,18 +2528,17 @@ class Project:
         f = node.func
         m, other = env.dk[f.value.id]
         live = [v for k, v in m.items() if k is not _flow._CFG and v] + ([other] if other else [])
-        kws = {k.arg for k in node.keywords}
+        # every keyword value may be the result: vars={...} overrides the stored option, fallback= replaces a
+        # missing one (raw=True only switches interpolation off)
+        kw = next((o for o in (self._taint(mod, cls, k.value, env) for k in node.keywords if k.arg != "raw") if o), None)
         if f.attr not in ("get", "getint", "getfloat", "getboolean") or len(node.args) != 2 \
-                or not kws <= {"raw", "fallback"}:
-            return live[0] if live else self._taint(mod, cls, f.value, env)
+                or not {k.arg for k in node.keywords} <= {"raw", "fallback", "vars"}:
+            return (live[0] if live else None) or kw or self._taint(mod, cls, f.value, env)
         key = _flow.cfg_key(_flow.fold(node.args[0], env.consts), _flow.fold(node.args[1], env.consts))
         if key is _flow._MISSING:
-            return live[0] if live else None
+            return (live[0] if live else None) or kw
         hit = m[key] if key in m else m.get(("DEFAULT", key[1]))
-        if hit or other:
-            return hit or other
-        fb = next((k.value for k in node.keywords if k.arg == "fallback"), None)
-        return self._taint(mod, cls, fb, env) if fb is not None else None
+        return hit or other or kw
 
     # ------------------------------------------------- form / schema validation (Django, DRF, WTForms, pydantic)
     def _class_field_value(self, cq, field):
@@ -2968,10 +3040,13 @@ class Project:
         if hit is not None and hit[0] is fn:
             return hit[1]
         seen = (seen or frozenset()) | {id(fn)}
-        routes = [d for d in fn.decorator_list if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
-                  and d.func.attr in self._ROUTE_DECORATORS]
-        ok = bool(routes) and all(d.args and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str)
-                                  and "<" not in d.args[0].value and not any(k.arg == "rule" for k in d.keywords)
+        # every decorator must be a literal route: @app.errorhandler(404), @app.before_request, @app.endpoint(...),
+        # or any other wrapper may run the function for other paths
+        routes = fn.decorator_list
+        ok = bool(routes) and all(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                                  and d.func.attr in self._ROUTE_DECORATORS
+                                  and d.args and isinstance(d.args[0], ast.Constant) and isinstance(d.args[0].value, str)
+                                  and "<" not in d.args[0].value and not any(k.arg in ("rule", "endpoint") for k in d.keywords)
                                   for d in routes) and self._flask_prefixes_fixed()
         if ok:
             for rmod, ref_fn, direct in self._name_refs().get(fn.name, ()):
@@ -2996,16 +3071,31 @@ class Project:
         return hit[1]
 
     def _flask_prefixes_fixed(self) -> bool:
-        """No Blueprint(...) / register_blueprint(...) in the project gives a url_prefix that is not a literal
-        without `<converter>` parts (a prefix with a variable makes every route of the blueprint variable)."""
+        """Routing in the project binds views only through their decorators: no Blueprint(...) / register_blueprint(...)
+        gives a url_prefix that is not a literal without `<converter>` parts (a prefix with a variable makes every
+        route of the blueprint variable), and no rule is bound by endpoint name (add_url_rule with an endpoint or
+        without view_func, url_map.add, Rule(endpoint=...), app.view_functions[...] = ...)."""
         hit = self.__dict__.get("_flask_prefixes_fixed_cache")
         if hit is None:
             hit = True
             for f in self.files.values():
                 for n in ast.walk(f["tree"]):
+                    if isinstance(n, ast.Attribute) and n.attr in ("view_functions", "url_map") \
+                            and not (isinstance(n.ctx, ast.Load) and n.attr == "url_map"):
+                        hit = False          # app.view_functions[...] = f / app.url_map = ...: endpoints rebound
+                        break
                     if not isinstance(n, ast.Call):
                         continue
                     name = n.func.id if isinstance(n.func, ast.Name) else n.func.attr if isinstance(n.func, ast.Attribute) else ""
+                    # a rule bound by endpoint name reaches a view without naming the function: add_url_rule with an
+                    # endpoint or without view_func, url_map.add(Rule(...)), Rule(..., endpoint=...)
+                    if (name == "add_url_rule" and (len(n.args) > 1 or any(k.arg == "endpoint" for k in n.keywords)
+                                                    or not any(k.arg == "view_func" for k in n.keywords)
+                                                    and len(n.args) < 3)) \
+                            or (name == "add" and isinstance(n.func, ast.Attribute) and _dotted(n.func.value).endswith("url_map")) \
+                            or (name in ("Rule", "url_rule_class") and (len(n.args) > 1 or any(k.arg == "endpoint" for k in n.keywords))):
+                        hit = False
+                        break
                     if name not in ("Blueprint", "register_blueprint"):
                         continue
                     pre = [k.value for k in n.keywords if k.arg in ("url_prefix", None)]
@@ -3810,6 +3900,14 @@ class Project:
                 if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
                     for o in origins:
                         record(o, (si, at_path, at_line))
+        for si2, vals in self._header_sinks(mod, call):
+            for arg in vals:
+                if not self._sink_arg_ok(fn, si2, arg, env):
+                    continue
+                origins = [o for o in self._taints(mod, cls, arg, env) if _unsafe_for(o, si2)]
+                if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si2):
+                    for o in origins:
+                        record(o, (si2, path, call.lineno))
         cb_param = self._callback_param(fn, call)
         if cb_param is not None:
             pos = [(i, self._taint(mod, cls, a, env)) for i, a in enumerate(call.args)]
@@ -3936,6 +4034,13 @@ class Project:
                         if o and o[0] in {"source", "retsource"} \
                                 and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
                             self._emit(si, path, call.lineno, o, None, None)
+                            break
+                for si2, vals in self._header_sinks(mod, call):
+                    for arg in vals:
+                        o = self._sink_taint(mod, cls, arg, env, si2) if self._sink_arg_ok(fn, si2, arg, env) else None
+                        if o and o[0] in {"source", "retsource"} \
+                                and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si2):
+                            self._emit(si2, path, call.lineno, o, None, None)
                             break
                 if self._callback_param(fn, call) is not None:
                     continue
