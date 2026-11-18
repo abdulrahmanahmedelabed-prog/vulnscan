@@ -503,7 +503,7 @@ class FlowInterpreter:
             if self._is_str(e.value, st, depth + 1):
                 return True                  # a slice or a character of a str
             if ((isinstance(e.value, ast.Name) and "strlist" in st.facts.get(e.value.id, ()))
-                    or _request_getlist(e.value)) and not isinstance(e.slice, ast.Slice):
+                    or self._request_getlist(e.value)) and not isinstance(e.slice, ast.Slice):
                 return True                  # one item of request.args.getlist(k)
             v = e.value                      # one item of s.split(...): a str
             return not isinstance(e.slice, ast.Slice) and isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute) \
@@ -521,18 +521,61 @@ class FlowInterpreter:
         if not isinstance(f, ast.Attribute):
             return False
         if f.attr == "decode":
-            return _is_bytes(f.value)        # bytes.decode (jwt.decode / JSONDecoder().decode return objects)
+            return self._is_bytes(f.value, st, depth + 1)   # bytes.decode (jwt.decode / JSONDecoder().decode return objects)
         if f.attr in _STR_RESULT_METHODS:
             return self._is_str(f.value, st, depth + 1)
         if f.attr == "get" and isinstance(f.value, ast.Attribute) and f.value.attr in ("args", "form", "cookies", "headers", "values") \
-                and _dotted_name(f.value.value).split(".")[-1] == "request" and len(e.args) in (1, 2) \
+                and self._flask_request(f.value.value) and len(e.args) in (1, 2) \
                 and not e.keywords and (len(e.args) == 1 or (isinstance(e.args[1], ast.Constant)
                                                             and (e.args[1].value is None or isinstance(e.args[1].value, str)))):
             return True                      # werkzeug MultiDict / Headers .get(k[, str default])
-        if f.attr == "get_data" and _dotted_name(f.value).split(".")[-1] == "request" and any(
+        if f.attr == "get_data" and self._flask_request(f.value) and any(
                 k.arg == "as_text" and isinstance(k.value, ast.Constant) and k.value.value is True for k in e.keywords):
             return True
         return False
+
+    def _safe_built(self, value, st: State) -> frozenset:
+        """"safe:<cwe>" facts for a name assigned a built string whose tainted pieces all sit where they cannot
+        harm that sink (taint.Project._built_safe_cwes), or a plain alias of such a name. Nothing else carries them:
+        any call or further building in between may undo the protection (unquote turns %2e%2e into ..)."""
+        if self.proj.m.get("language") != "python":
+            return frozenset()
+        if isinstance(value, ast.Name):
+            return frozenset(f for f in st.facts.get(value.id, ()) if f.startswith("safe:"))
+        if isinstance(value, (ast.JoinedStr, ast.BinOp, ast.Call)) and (st.facts or any(
+                isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "replace"
+                for n in ast.walk(value))):
+            return frozenset("safe:" + c for c in self.proj._built_safe_cwes(self.mod, self.cls, value, self.env_for(st)))
+        return frozenset()
+
+    def _flask_request(self, e) -> bool:
+        """`e` is Flask's / Quart's global request (werkzeug MultiDicts of str), not another framework's request
+        object (Twisted's request.args holds lists of bytes)."""
+        return self.proj._canon(self.mod, e) in ("flask.request", "quart.request", "flask.globals.request")
+
+    def _request_getlist(self, e) -> bool:
+        """request.args / form / headers / cookies / values .getlist(k) without type=: a fresh list of str."""
+        return isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "getlist" \
+            and len(e.args) == 1 and not e.keywords and isinstance(e.func.value, ast.Attribute) \
+            and e.func.value.attr in ("args", "form", "cookies", "headers", "values") \
+            and self._flask_request(e.func.value.value)
+
+    def _is_bytes(self, e, st: State, depth: int = 0) -> bool:
+        """A value certainly bytes: a b"" literal, str.encode() on a known str, base64 output, Flask's
+        request.get_data() / .data / .query_string."""
+        if isinstance(e, ast.Constant):
+            return isinstance(e.value, bytes)
+        if isinstance(e, ast.Attribute):
+            return e.attr in ("query_string", "data") and self._flask_request(e.value)
+        if not isinstance(e, ast.Call):
+            return False
+        if self.proj._canon(self.mod, e.func) in ("base64.b64decode", "base64.b64encode", "base64.urlsafe_b64decode",
+                                                  "base64.urlsafe_b64encode"):
+            return True
+        if isinstance(e.func, ast.Attribute) and e.func.attr == "encode" and not e.keywords and len(e.args) <= 2:
+            return self._is_str(e.func.value, st, depth + 1)
+        return isinstance(e.func, ast.Attribute) and e.func.attr == "get_data" and not e.keywords and not e.args \
+            and self._flask_request(e.func.value)
 
     def stmt(self, s, st: State) -> State | None:
         if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -758,6 +801,7 @@ class FlowInterpreter:
         if isinstance(tgt, ast.Name):
             name = tgt.id
             is_str = self.proj.m.get("language") == "python" and self._is_str(value, st)
+            safe = self._safe_built(value, st)
             o = self.stepped(self.taint(value, st), name, value)
             st = st.copy()
             if o:
@@ -775,7 +819,7 @@ class FlowInterpreter:
             st.facts.pop(name, None)
             if name not in self.volatile and self.proj.m.get("language") == "python":
                 fct = _value_facts(value) | ({"str"} if is_str else frozenset()) \
-                    | ({"strlist"} if _request_getlist(value) else frozenset())
+                    | ({"strlist"} if self._request_getlist(value) else frozenset()) | safe
                 if fct:
                     st.facts[name] = frozenset(fct)
             if trackable:
@@ -903,6 +947,11 @@ class FlowInterpreter:
             hit = (expr, [n for n in ast.walk(expr) if isinstance(n, ast.Call)] if expr is not None else [])
             self.cache[key] = hit
         for n in hit[1]:
+            if isinstance(n.func, ast.Name) and n.func.id in ("setattr", "delattr") and n.args \
+                    and isinstance(n.args[0], ast.Name) and n.args[0].id in st.dk and _CFG in st.dk[n.args[0].id][0]:
+                st = st.copy()                   # setattr(conf, "optionxform", f): option names may map differently
+                st.dk.pop(n.args[0].id, None)
+                continue
             if isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) and n.func.attr not in _READ_ONLY:
                 st = self.container_write(n, st)
             elif isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Call) and n.func.attr in _CONTAINER_ADDS:
@@ -1117,33 +1166,6 @@ _SEP_ATTRS = {"os.sep", "os.path.sep", "posixpath.sep"}
 _STR_RESULT_METHODS = {"replace", "strip", "lstrip", "rstrip", "lower", "upper", "casefold", "title", "capitalize",
                        "swapcase", "format", "zfill", "center", "ljust", "rjust", "expandtabs", "translate",
                        "removeprefix", "removesuffix", "join"}
-
-
-def _is_bytes(e) -> bool:
-    """A value certainly bytes: a b"" literal, str.encode(), base64 output, request.get_data() / .data /
-    .query_string."""
-    if isinstance(e, ast.Constant):
-        return isinstance(e.value, bytes)
-    if isinstance(e, ast.Attribute):
-        return e.attr in ("query_string", "data") and _dotted_name(e.value).split(".")[-1] == "request"
-    if not isinstance(e, ast.Call):
-        return False
-    d = _dotted_name(e.func)
-    if d in ("base64.b64decode", "base64.b64encode", "base64.urlsafe_b64decode", "base64.urlsafe_b64encode",
-             "b64decode", "b64encode", "bytes"):
-        return True
-    if isinstance(e.func, ast.Attribute) and e.func.attr == "encode" and not e.keywords and len(e.args) <= 2:
-        return True
-    return isinstance(e.func, ast.Attribute) and e.func.attr == "get_data" and not e.keywords \
-        and _dotted_name(e.func.value).split(".")[-1] == "request"
-
-
-def _request_getlist(e) -> bool:
-    """request.args / form / headers / cookies / values .getlist(k) without type=: a fresh list of str."""
-    return isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "getlist" \
-        and len(e.args) == 1 and not e.keywords and isinstance(e.func.value, ast.Attribute) \
-        and e.func.value.attr in ("args", "form", "cookies", "headers", "values") \
-        and _dotted_name(e.func.value.value).split(".")[-1] == "request"
 
 
 def _dir_prefix(e, nonempty) -> bool:

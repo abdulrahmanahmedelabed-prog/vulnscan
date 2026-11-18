@@ -732,3 +732,133 @@ def test_dynamic_globals_make_a_module_constant_unknown(tmp_path):
         "safe.py": "from flask import Flask, request\napp = Flask(__name__)\nDATA = '/srv/data/'\n\n" + body,
     })
     assert ("app.py", 13) in got and ("safe.py", 11) not in got
+
+
+# ---------------------------------------------------------------- 11. third review round (still reported)
+def test_decoding_a_built_string_drops_its_protection():
+    _check("""
+    import html
+    from urllib.parse import unquote
+
+    @app.route('/a')
+    def a():
+        name = request.args.get('f')
+        if '..' in name:
+            return 'no'
+        p = f'{BASE}/{name}'
+        q = p
+        open(q).read()  # SAFE
+        open(unquote(p)).read()  # VULN
+        p = unquote(p)
+        return open(p).read()  # VULN
+
+    @app.route('/b')
+    def b():
+        name = request.args.get('f')
+        if '..' in name:
+            return 'no'
+        p = html.unescape(f'{BASE}/{name}')
+        return open(p).read()  # VULN
+    """, "DF005")
+    _check("""
+    import html
+    from urllib.parse import unquote
+
+    @app.route('/a')
+    def a():
+        bar = request.args.get('id')
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        q = f"/E[@id='{bar}']"
+        root.xpath(q)  # SAFE
+        root.xpath(unquote(q))  # VULN
+        q = html.unescape(q)
+        return str(root.xpath(q))  # VULN
+    """, "DF015")
+
+
+def test_request_args_of_another_framework_is_not_known_str():
+    code = textwrap.dedent("""\
+        import lxml.etree
+        from twisted.web import resource
+
+        class Search(resource.Resource):
+            def render_GET(self, request):
+                bar = request.args.get(b'id')
+                root = lxml.etree.parse('e.xml')
+                if "'" in bar:
+                    return b'no'
+                q = f"/E[@id='{bar}']"
+                return str(root.xpath(q)).encode()
+        """)
+    assert 11 in {f.line for f in analyze("res.py", code) if f.rule_id == "DF015"}   # twisted: lists of bytes
+
+
+def test_encode_is_bytes_only_on_a_known_str():
+    _check("""
+    @app.route('/a')
+    def a():
+        bar = request.get_json()['id'].encode().decode()
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # VULN
+
+    @app.route('/b')
+    def b():
+        bar = request.args.get('id').encode('utf-8').decode('utf-8')
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # SAFE
+    """, "DF015")
+
+
+def test_file_serving_headers_are_path_sinks():
+    _check("""
+    @app.route('/a')
+    def a():
+        return make_response(('', {'X-Accel-Redirect': '/protected/' + request.args.get('f')}))  # VULN
+
+    @app.route('/b')
+    def b():
+        return make_response(('', 200, {'x-sendfile': request.args.get('f')}))  # VULN
+
+    @app.route('/c')
+    def c():
+        return make_response('', 200, {'X-LiteSpeed-Location': request.args.get('f')})  # VULN
+    """, "DF005")
+    assert not _lines("""
+    @app.route('/d')
+    def d():
+        return make_response(('static', {'X-Request-Id': request.args.get('f')}))
+    """, "DF013")
+
+
+def test_delattr_on_a_configparser_drops_slot_precision():
+    # precision is given up after delattr: the untainted slot is reported, as for any untracked parser
+    _check("""
+    @app.route('/a')
+    def a():
+        conf = configparser.ConfigParser()
+        conf.add_section('s')
+        conf.set('s', 'keyB', request.args.get('x'))
+        delattr(conf, 'optionxform')
+        conf.set('s', 'keyA', 'x')
+        return eval(conf.get('s', 'keyA'))  # VULN
+    """, "DF001")
+
+
+NAMESPACE_WRITES = ["locals().update(json.load(open('o.json')))", "builtins.exec(open('o.py').read())",
+                    "sys._getframe().f_globals.update({})", "importlib.reload(sys.modules[__name__])"]
+
+
+def test_dynamic_namespace_writes_make_module_constants_unknown(tmp_path):
+    body = textwrap.dedent(GUARDED_OPEN).format(prefix="DATA")
+    files = {}
+    for i, stmt in enumerate(NAMESPACE_WRITES):
+        files[f"app{i}.py"] = ("import builtins, importlib, json, sys\nfrom flask import Flask, request\napp = Flask(__name__)\n"
+                               f"DATA = '/srv/data/'\n{stmt}\n\n" + body)
+    got = _scan_files(tmp_path, files)
+    assert {(f"app{i}.py", 13) for i in range(len(NAMESPACE_WRITES))} <= got
