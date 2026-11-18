@@ -140,6 +140,7 @@ const I18N = {
       'scan.nSelected': {one: 'ملف واحد محدد', two: 'ملفان محددان', few: '{n} ملفات محددة', many: '{n} ملفًا محددًا', other: '{n} ملف محدد'},
       'find.nFiles': {one: 'ملف واحد مفحوص', two: 'ملفان مفحوصان', few: '{n} ملفات مفحوصة', many: '{n} ملفًا مفحوصًا', other: '{n} ملف مفحوص'},
       'find.nPages': {one: 'صفحة واحدة مفحوصة', two: 'صفحتان مفحوصتان', few: '{n} صفحات مفحوصة', many: '{n} صفحةً مفحوصةً', other: '{n} صفحة مفحوصة'},
+      'notes.skipped': {one: 'تفاصيل عبارة واحدة لم يحلّلها المحلّل — ليست ثغرات، بل أجزاء لم تُفحص', two: 'تفاصيل عبارتين لم يحلّلهما المحلّل — ليستا ثغرات، بل أجزاء لم تُفحص', few: 'تفاصيل {n} عبارات لم يحلّلها المحلّل — ليست ثغرات، بل أجزاء لم تُفحص', many: 'تفاصيل {n} عبارةً لم يحلّلها المحلّل — ليست ثغرات، بل أجزاء لم تُفحص', other: 'تفاصيل {n} عبارة لم يحلّلها المحلّل — ليست ثغرات، بل أجزاء لم تُفحص'},
       'find.nFindings': {one: 'نتيجة واحدة', two: 'نتيجتان', few: '{n} نتائج', many: '{n} نتيجةً', other: '{n} نتيجة'},
       'find.onPages': {one: 'ظهرت في صفحة واحدة', two: 'ظهرت في صفحتين', few: 'ظهرت في {n} صفحات', many: 'ظهرت في {n} صفحةً', other: 'ظهرت في {n} صفحة'},
       'find.group': {one: 'النمط نفسه في موضع واحد', two: 'النمط نفسه في موضعين', few: 'النمط نفسه في {n} مواضع', many: 'النمط نفسه في {n} موضعًا', other: 'النمط نفسه في {n} موضع'},
@@ -304,6 +305,7 @@ const I18N = {
       'scan.nSelected': {one: '{n} file selected', other: '{n} files selected'},
       'find.nFiles': {one: '{n} file scanned', other: '{n} files scanned'},
       'find.nPages': {one: '{n} page scanned', other: '{n} pages scanned'},
+      'notes.skipped': {one: 'Details of {n} statement the parser skipped — not a vulnerability, a part that was not analysed', other: 'Details of {n} statements the parser skipped — not vulnerabilities, parts that were not analysed'},
       'find.nFindings': {one: '{n} finding', other: '{n} findings'},
       'find.onPages': {one: 'Seen on {n} page', other: 'Seen on {n} pages'},
       'find.group': {one: 'Same pattern in {n} place', other: 'Same pattern in {n} places'},
@@ -1176,7 +1178,14 @@ async function loadFindings(arg) {
   const covered = new Set(cur.kind === 'url' && cur.web && Array.isArray(cur.web.notes_covered) ? cur.web.notes_covered : []);
   $('#fix-filter').classList.toggle('hidden', cur.kind === 'url');
   if (cur.kind === 'url') $('#fix-filter').setAttribute('aria-pressed', 'false');
-  setHTML($('#findings-notes'), notesOf(cur).map((n, i) => (covered.has(i) ? '' : `<div class="note">${ic('info')}<span>${bidi(n)}</span></div>`)).join('')
+  // per-statement parser details (one per skipped statement) fold under one line: they explain coverage, not findings
+  const rawNotes = Array.isArray(cur.notes) ? cur.notes : [];
+  const isSkipDetail = (i) => /— skipped statement /.test(String(rawNotes[i] || ''));
+  const noteRow = (n) => `<div class="note">${ic('info')}<span>${bidi(n)}</span></div>`;
+  const shownNotes = notesOf(cur).map((n, i) => ({n, i})).filter(({i}) => !covered.has(i));
+  const skipRows = shownNotes.filter(({i}) => isSkipDetail(i));
+  setHTML($('#findings-notes'), shownNotes.filter(({i}) => !isSkipDetail(i)).map(({n}) => noteRow(n)).join('')
+    + (skipRows.length ? `<details class="note-group"><summary class="note">${ic('info')}<span>${esc(tn('notes.skipped', skipRows.length))}</span></summary>${skipRows.map(({n}) => noteRow(n)).join('')}</details>` : '')
     + (tri.err ? `<div class="note warn">${ic('warning')}<span>${esc(t('tri.loadFail', {err: tri.err}))}</span></div>` : ''));
   loadWebPanel(cur);
   renderFindings();

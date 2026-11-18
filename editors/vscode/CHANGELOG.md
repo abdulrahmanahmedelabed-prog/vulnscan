@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+
+- Released with Kashif 1.3.1 (the extension follows the Kashif version). The extension itself is unchanged.
+
 ## 1.3.0
 
 - First release published to the Visual Studio Marketplace and Open VSX. The extension itself is unchanged.
