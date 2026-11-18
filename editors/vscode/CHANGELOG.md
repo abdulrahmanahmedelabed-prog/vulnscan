@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+
+- Released with Kashif 1.2.0 (the extension follows the Kashif version). The extension itself is unchanged; Kashif 1.2.0
+  makes Python dataflow results more precise (fewer false positives), so editor diagnostics follow.
+
 ## 1.1.1
 
 - Released with Kashif 1.1.1 (the extension follows the Kashif version); the extension itself is unchanged.
