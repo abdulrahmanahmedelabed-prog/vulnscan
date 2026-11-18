@@ -219,3 +219,25 @@ def test_a_failing_manifest_parser_is_skipped(tmp_path, monkeypatch):
         return hit
     monkeypatch.setattr(sca, "_parser_for", parser_for)
     assert [(p.ecosystem, p.name) for p in sca.collect(root)] == [("PyPI", "flask")]
+
+
+def test_dependency_audit_error_is_a_note_not_a_failed_scan(tmp_path, monkeypatch):
+    from vulnscan import deps
+    from vulnscan.i18n import to_en
+
+    def boom(*a, **k):
+        raise TypeError("odd manifest")
+    monkeypatch.setattr(deps.sca, "collect", boom)
+    findings, note = deps.audit_dependencies(tmp_path)
+    assert findings == [] and "TypeError" in note
+    assert to_en(note) == "The dependency audit failed (TypeError); the scan went on without it."
+
+
+def test_external_tool_odd_output_never_stops_the_scan(tmp_path, monkeypatch):
+    from vulnscan import external
+    monkeypatch.setattr(external.shutil, "which", lambda name: "/bin/" + name)
+    outputs = {"bandit": '{"results": [null]}', "semgrep": '[1, 2]', "npm": '{"vulnerabilities": [1]}'}
+    monkeypatch.setattr(external, "_run", lambda cmd, cwd, timeout=600: outputs.get(cmd[0]))
+    (tmp_path / "package-lock.json").write_text("{}")
+    findings, ran = external.run_external(tmp_path, ["bandit", "semgrep", "gitleaks", "npm"])
+    assert findings == [] and ran == []

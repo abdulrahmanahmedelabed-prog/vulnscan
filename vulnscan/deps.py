@@ -429,7 +429,17 @@ def audit_dependencies(root: pathlib.Path, timeout: float = 20.0, *, fetcher=Non
                        use_cache: bool = True, reachability: bool = True) -> tuple[list[Finding], str | None]:
     """Query OSV for every pinned package. Returns (findings, note or None); the note is set when OSV could not
     be reached for some or all packages. ``fetcher(url, payload_or_None, timeout) -> dict`` replaces the HTTP
-    client (tests replay recorded OSV answers through it)."""
+    client (tests replay recorded OSV answers through it). An unexpected error never stops the scan: it becomes
+    the note and the code scan's results stand (as one file's analysis error does, scanner._contained_stage)."""
+    try:
+        return _audit_dependencies(root, timeout, fetcher=fetcher, cache_dir=cache_dir, use_cache=use_cache,
+                                   reachability=reachability)
+    except Exception as e:  # noqa: BLE001 - containment: report and go on
+        return [], f"تعذّر فحص الاعتماديات ({type(e).__name__})؛ استمر الفحص دونه — dependency audit failed"
+
+
+def _audit_dependencies(root: pathlib.Path, timeout: float, *, fetcher, cache_dir: pathlib.Path | None,
+                        use_cache: bool, reachability: bool) -> tuple[list[Finding], str | None]:
     root = pathlib.Path(root)
     pkgs = sca.collect(root)
     if not pkgs:
