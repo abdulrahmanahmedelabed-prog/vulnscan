@@ -923,6 +923,34 @@ _SKIP_REASONS = [
     (re.compile(r"missing " + _Q.format("what") + r"(?: (?:at )?line \d+)?"), "خطأ في التحليل: ينقص {what}", "parse error: missing {what}"),
     (re.compile(r"(?:sql )?frontend failure: (?P<err>.+)"), "عطل داخلي في الواجهة الأمامية: {err}", "internal frontend failure: {err}"),
 ]
+# The kind of a skipped statement (the PL/SQL frontend's English code, "{kind} message") -> Arabic
+STMT_KINDS = {"assignment": ("إسناد", "assignment"), "procedure call": ("استدعاء إجراء", "procedure call"),
+              "declaration": ("تعريف متغير", "variable declaration"),
+              "cursor declaration": ("تعريف مؤشر", "cursor declaration"),
+              "type declaration": ("تعريف نوع", "type declaration"),
+              "procedure declaration": ("تعريف إجراء", "procedure declaration"),
+              "function declaration": ("تعريف دالة", "function declaration"), "loop": ("حلقة", "loop"),
+              "block": ("كتلة BEGIN … END", "BEGIN … END block"),
+              "anonymous block": ("كتلة مجهولة", "anonymous block")}
+_KIND_CODE = re.compile(r"(?:SQL|cursor) [A-Z]+|CREATE(?: [A-Z]+){0,2}|[A-Z][A-Z ]*|[a-z][a-z ]*")
+
+
+def stmt_kind(code: str) -> tuple[str, str]:
+    """A statement kind code -> (Arabic, English); ("", "") for an unknown code."""
+    code = code.strip()
+    if not _KIND_CODE.fullmatch(code):
+        return "", ""
+    if code in STMT_KINDS:
+        return STMT_KINDS[code]
+    if code.startswith("SQL "):
+        return f"جملة SQL ‏{code[4:]}", f"SQL {code[4:]} statement"
+    if code.startswith("cursor "):
+        return f"عملية مؤشر {code[7:]}", f"cursor {code[7:]}"
+    if code.isupper():
+        return f"عبارة {code}", f"{code} statement"
+    return "", ""
+
+
 SKIP_DETAIL_PER_FILE = 25
 SKIP_DETAIL_TOTAL = 200
 
@@ -958,10 +986,15 @@ def frontend_notes(projects) -> list[str]:
                     break
                 m = re.match(r"\[([^\]]+)\] (.*)", str(msg), re.S)
                 label, msg = (m.group(1), m.group(2)) if m else ("", str(msg))
+                k = re.match(r"\{([^{}]*)\} (.*)", msg, re.S)
+                kind_ar, kind_en = stmt_kind(k.group(1)) if k else ("", "")
+                msg = k.group(2) if k else msg
                 ar, en = skip_reason(msg)
                 where_ar = f"{rel}:{ln}" + (f" [{label}]" if label else "")
                 where_en = f"{rel}:{ln}" + (f" [{to_en(label)}]" if label else "")
-                details.append(f"عبارة متخطّاة في {where_ar}: {ar} — skipped statement at {where_en}: {en}")
+                what_ar = f" ({kind_ar})" if kind_ar else ""
+                what_en = f" ({kind_en})" if kind_en else ""
+                details.append(f"عبارة متخطّاة{what_ar} في {where_ar}: {ar} — skipped statement{what_en} at {where_en}: {en}")
     return out + details
 
 

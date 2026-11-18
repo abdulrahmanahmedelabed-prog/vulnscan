@@ -5124,7 +5124,7 @@ def _label_findings(findings: list, ranges: list) -> None:
 
 def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     """PL/SQL sources and Oracle APEX exports (application / page / plug-in), plus embedded JavaScript and Java."""
-    from . import apex_export, cfamily_frontend, js_frontend
+    from . import apex_export, cfamily_frontend, js_frontend, plsql_authz
     from . import plsql_frontend as pf
     projects, findings = [], []
     units_by_file: list = []
@@ -5138,6 +5138,8 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     # per application id (None: exports that do not say): plug-ins defined per export, plug-ins any component uses
     # ('PLUGIN_<NAME>'), and "flow" / "page": whether the scan holds the application definition and its pages
     apps: dict = {}
+    authz_specs: dict = {}       # APX024: package specs (name -> routine names) and bodies, from every plain PL/SQL file
+    authz_bodies: list = []
 
     def add_blocks(rel, blocks, diag):
         """Extracted code blocks (APEX export / readable YAML / ORDS handlers) -> units at their real lines."""
@@ -5174,6 +5176,10 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
         diag["skipped"] += d["skipped"]
         diag["lines"].extend((ln + delta, msg) for ln, msg in d["lines"])
         findings.extend(apex_export.password_findings(text, rel, 1 + delta))   # custom authentication in packages
+        specs, bodies = plsql_authz.collect(text, rel, delta)
+        for name, routines in specs.items():
+            authz_specs.setdefault(name, set()).update(routines)
+        authz_bodies.extend(bodies)
         ords = apex_export.extract_ords(text, rel)
         for b in ords:
             b.line += delta
@@ -5248,6 +5254,7 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     for app in apps.values():
         if app["defs"] and app["parts"] >= {"flow", "page"}:
             _mark_unused_components(findings, app["defs"], app["refs"], shared_lines)
+    findings.extend(plsql_authz.findings(authz_specs, authz_bodies, shared_lines))
     return projects, findings
 
 

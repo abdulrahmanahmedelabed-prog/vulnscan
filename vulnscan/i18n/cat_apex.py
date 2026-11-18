@@ -1,4 +1,6 @@
-"""English catalog: vulnscan/apex_export.py: Oracle APEX checks (APX001-APX023) and component labels.
+"""English catalog: vulnscan/apex_export.py: Oracle APEX checks (APX001-APX024) and component labels.
+
+APX024 itself is computed in vulnscan/plsql_authz.py; its texts are here with the other APX rules.
 
 vulnscan/plsql_frontend.py emits no Arabic text, so it has no entries here.
 """
@@ -62,6 +64,8 @@ CATALOG: dict[str, str] = {
     "يُسمح بالاستبدال دون النقطة الختامية (&ITEM)": "Substitutions without the trailing dot (&ITEM) are allowed",
     "وحدة PL/SQL ملفوفة (wrapped): لا يمكن فحص الكود فيها": "Wrapped PL/SQL unit: its code cannot be scanned",
     "إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق": "Plug-in defined but not used by any component of the application",
+    "روتين في حزمة PL/SQL لا يتحقق من الصلاحية بينما تتحقق منها الروتينات الشقيقة":
+        "PL/SQL package routine does not check authorization while its sibling routines do",
 
     # ---- remediation advice
     "استخدم متغير الربط :ITEM بدل &ITEM.": "Use the bind variable :ITEM instead of &ITEM.",
@@ -107,6 +111,9 @@ CATALOG: dict[str, str] = {
     "اجعل Substitutions = Exact substitutions only.": "Set Substitutions to Exact substitutions only.",
     "افحص الكود المصدري قبل لفّه (wrap)؛ اللفّ إخفاء لا حماية، ويمكن فكّه.":
         "Scan the source code before it is wrapped; wrapping hides the code, it does not protect it, and it can be unwrapped.",
+    "أضف في بداية الروتين التحقق نفسه الذي تستدعيه الروتينات الشقيقة في الحزمة؛ فأي كود في المخطط نفسه يمكنه استدعاؤه مباشرة.":
+        "Add at the start of the routine the same check its sibling routines in the package call: any code in the same "
+        "schema can call it directly.",
     "احذف الإضافة غير المستخدمة من Shared Components › Plug-ins، أو تأكّد أنها مستخدمة في تطبيق آخر يشترك فيها.":
         "Delete the unused plug-in from Shared Components › Plug-ins, or make sure another application that subscribes "
         "to it uses it.",
@@ -119,7 +126,25 @@ _PAGE = r"[^›\[\]]+?"
 # a component label as apex_export builds it (also the YAML form, whose page may be a page name)
 _LABEL = rf"(?:التطبيق|(?:ORDS|JSON) › [^\[\]]*(?:\[\d+\][^\[\]]*)*|صفحة {_PAGE}(?: › {_COMP_RX}(?:: [^\[\]]*)?)?|(?:{_COMP})(?:: [^\[\]]*)?)(?: \(يُحفظ في [\w$#]+\.[\w$#]+\))?"
 
+_ID = r"[\w$#.]+"
 PATTERNS: list[tuple[str, str]] = [
+    # ---- APX024 (vulnscan/plsql_authz.py): routine, guard, counts and what the routine accesses
+    (rf"(?P<r>{_ID}) لا يتحقق من الصلاحية، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة "
+     rf"(?P<g>{_ID}) قبل عملها\. وهو (?P<acc>.+?)\. أضف التحقق نفسه \((?P=g)\) في بدايته كما تفعل الروتينات "
+     r"الشقيقة؛ فأي كود في المخطط نفسه \(صفحة APEX أخرى مثلًا\) يمكنه استدعاؤه مباشرة\.",
+     r"\g<r> does not check authorization, while \g<k> of the \g<n> public routines of the package call \g<g> before "
+     r"their work. It \g<acc>. Add the same check (\g<g>) at its start, as the sibling routines do: any code in the "
+     r"same schema (another APEX page, for example) can call it directly."),
+    (rf"يُعيد قيمة (?P<t>[A-Z]+) مقروءة باستعلام(?P<o> \({_ID}(?:, {_ID})*\))?",
+     r"returns a \g<t> value read by a query\g<o>"),
+    (rf"يُعيد بيانات مقروءة باستعلام(?P<o> \({_ID}(?:, {_ID})*\))?", r"returns data read by a query\g<o>"),
+    (rf"يقرأ البيانات باستعلام(?P<o> \({_ID}(?:, {_ID})*\))?", r"reads data with a query\g<o>"),
+    (rf"يعدّل البيانات \(DML\)(?P<o> \({_ID}(?:, {_ID})*\))?", r"changes data (DML)\g<o>"),
+    (rf"ينفّذ SQL ديناميكيًا(?P<o> \({_ID}(?:, {_ID})*\))?", r"runs dynamic SQL\g<o>"),
+    (rf"يكتب بيانات إلى المتصفح \(htp / wpg_docload\)(?P<o> \({_ID}(?:, {_ID})*\))?",
+     r"writes data to the browser (htp / wpg_docload)\g<o>"),
+    (rf"يستدعي (?P<h>{_ID}) الذي يصل إلى البيانات دون تحقق", r"calls \g<h>, which accesses data without a check"),
+
     # ---- APX001-APX005 (substitution strings), built per item
     (rf"سلسلة استبدال &{_ITEM}\. داخل (?P<kind>SQL|PL/SQL) \(حقن\)",
      r"Substitution string &\g<item>. inside \g<kind> (injection)"),
