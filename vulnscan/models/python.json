@@ -744,13 +744,31 @@
       "names": [
         "XPathEvaluator",
         "elementpath.Selector",
-        "elementpath.iter_select",
-        "elementpath.select",
         "etree.XPath",
         "etree.XPathEvaluator",
         "lxml.etree.XPath",
         "lxml.etree.XPathEvaluator",
         "xpath"
+      ],
+      "title": "Tainted data reaches an XPath query",
+      "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",
+      "advice": "استخدم متغيرات XPath المُعَلَّمة بدل تركيب الاستعلام."
+    },
+    {
+      "rule": "DF015",
+      "severity": "high",
+      "cwe": "CWE-643",
+      "label": "XPath query",
+      "_comment": "elementpath.select(root, path) / iter_select(root, path): the XPath expression is the second argument",
+      "args": [
+        1
+      ],
+      "kwargs": [
+        "path"
+      ],
+      "names": [
+        "elementpath.iter_select",
+        "elementpath.select"
       ],
       "title": "Tainted data reaches an XPath query",
       "title_ar": "بيانات غير موثوقة تصل إلى استعلام XPath",

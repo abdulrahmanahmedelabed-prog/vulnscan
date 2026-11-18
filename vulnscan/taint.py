@@ -609,7 +609,8 @@ class _TrackDict(dict):
 
 
 class _Env:
-    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk", "webreq", "params", "vfields")
+    __slots__ = ("tainted", "types", "inst", "elem", "funcs", "consts", "dk", "webreq", "params", "vfields", "facts",
+                 "bound")
 
     def __init__(self):
         self.vfields: set = set()  # request fields an express-validator route middleware checked strictly
@@ -622,6 +623,8 @@ class _Env:
         self.funcs: dict = {}     # var -> function qual (h = helper / partial)
         self.consts: dict = {}    # var -> known constant at this point (flow refinement only)
         self.dk: dict = {}        # var -> ({const key: origin}, other-keys origin) (flow refinement only)
+        self.facts: dict = {}     # var -> facts a guard proved about its value (flow refinement only, see flow.State)
+        self.bound = None         # names the function (or an enclosing one) binds (flow refinement only)
 
 
 _CONFINEMENT = {"is_relative_to", "isRelativeTo"}
@@ -684,6 +687,108 @@ def _key_guard(test, value):
                 table = test.args[0] if name == "hasOwn" else args[1]   # Object.hasOwn(t, k) / in_array($k, $allowed)
             return "all", table              # Object.hasOwn(t, k) / PHP in_array($k, $allowed) / array_key_exists($k, $t)
     return None, None
+
+
+_NAMESPACE_WRITERS = frozenset({"globals", "locals", "vars", "exec", "eval", "compile", "setattr", "delattr",
+                                "__import__"})
+_NAMESPACE_ATTRS = frozenset({"__dict__", "modules", "f_globals", "f_locals", "_getframe", "currentframe", "reload",
+                              "__setattr__"})
+
+
+class _AllNames(frozenset):
+    """Contains every name (a `setattr` with a computed name may rebind any attribute)."""
+
+    def __contains__(self, item) -> bool:
+        return True
+
+
+_CODE_CWES = frozenset({"CWE-94", "CWE-95"})
+
+
+def _guard_facts_protect(si, arg, facts) -> bool:
+    """Facts the flow refinement proved for the variable passed to a sink (see flow.FlowInterpreter.refine):
+
+    * "confined": a normalised path (Path.resolve / os.path.realpath / abspath / normpath) whose prefix check against
+      a directory and separator passed -> path sinks;
+    * "hostok": `u = urlparse(x)` and u.netloc passed an allow-list of hosts -> redirect / SSRF;
+    * starts/ends with a quote and no such quote in between (`not x.startswith("'") or not x.endswith("'") or
+      "'" in x[1:-1]` rejected): x is a single string literal, so eval / exec of x yields a string -> code injection."""
+    cwe = si[5]
+    name = arg.id if isinstance(arg, ast.Name) else None
+    if name is None and cwe in _PATH_CWES and isinstance(arg, ast.Call) and _dotted(arg.func) in ("str", "os.fspath") \
+            and len(arg.args) == 1 and isinstance(arg.args[0], ast.Name):
+        name = arg.args[0].id
+    f = facts.get(name, ()) if name else ()
+    if not f:
+        return False
+    if cwe in _PATH_CWES:
+        return "confined" in f
+    if cwe in ("CWE-601", "CWE-918"):
+        return "hostok" in f and isinstance(arg, ast.Name)
+    if cwe in _CODE_CWES:
+        return any({"starts:" + q, "ends:" + q, "nomid:" + q} <= f for q in ("'", '"'))
+    return False
+
+
+def _callee_bare(call) -> str:
+    f = call.func
+    return f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else ""
+
+
+def _response_parts(call):
+    """flask.make_response(body) / ((body, status, headers)) / (body, status, headers), with every part after the body
+    a literal status or a dict literal with constant keys: (body, [header dicts]). None for any other shape (a headers
+    variable may hold anything), which keeps the whole call as one value."""
+    if _callee_bare(call) != "make_response" or call.keywords or not call.args \
+            or any(isinstance(a, ast.Starred) for a in call.args):
+        return None
+    if len(call.args) == 1 and isinstance(call.args[0], ast.Tuple):
+        elts = call.args[0].elts
+    elif len(call.args) == 1:
+        return call.args[0], []
+    else:
+        elts = call.args
+    if not elts or len(elts) > 3 or any(isinstance(e, ast.Starred) for e in elts):
+        return None
+    dicts = []
+    for e in elts[1:]:
+        if isinstance(e, ast.Dict) and all(isinstance(k, ast.Constant) and isinstance(k.value, str) for k in e.keys):
+            if any(k.value.lower() == "content-type" and not isinstance(v, ast.Constant) for k, v in zip(e.keys, e.values)):
+                return None              # a chosen Content-Type can make the body HTML: the whole call is one value
+            dicts.append(e)
+        elif not (isinstance(e, ast.Constant) and isinstance(e.value, (int, str))):
+            return None
+    return elts[0], dicts
+
+
+def _location_values(call) -> list:
+    """Values a literal headers dict of make_response puts in a Location or Refresh header (a redirect)."""
+    parts = _response_parts(call)
+    if not parts:
+        return []
+    return [v for d in parts[1] for k, v in zip(d.keys, d.values) if k.value.lower() in _REDIRECT_HEADERS]
+
+
+_REDIRECT_HEADERS = frozenset({"location", "refresh"})
+# headers a front server (Apache mod_xsendfile, nginx, LiteSpeed, lighttpd) acts on by serving that file
+_FILE_HEADERS = frozenset({"x-sendfile", "x-accel-redirect", "x-litespeed-location", "x-lighttpd-send-file"})
+
+
+def _file_header_values(call) -> list:
+    parts = _response_parts(call)
+    if not parts:
+        return []
+    return [v for d in parts[1] for k, v in zip(d.keys, d.values) if k.value.lower() in _FILE_HEADERS]
+
+
+def _flask_response_tuple(call) -> bool:
+    parts = _response_parts(call)
+    return parts is not None and len(call.args) == 1 and isinstance(call.args[0], ast.Tuple)
+
+
+def _has_replace(node) -> bool:
+    return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "replace"
+               for n in ast.walk(node))
 
 
 def _paths(expr) -> set:
@@ -1755,6 +1860,9 @@ class Project:
         kws = si[9] if len(si) > 9 else ()
         if kws:
             out.extend(k.value for k in call.keywords if k.arg and k.arg.lower() in kws)
+        if si[5] == "CWE-79" and _flask_response_tuple(call):
+            # flask.make_response((body, headers)) / ((body, status, headers)): only the body is the page
+            out = [call.args[0].elts[0] if a is call.args[0] else a for a in out]
         return out
 
     def _list_elem_only(self, mod, cls, arg, env) -> bool:
@@ -1995,6 +2103,238 @@ class Project:
             return None
         return min(origins, key=lambda o: self._ORIGIN_RANK.get(o[0], 9))
 
+    # ------------------------------------------------- string building: where a tainted piece lands
+    def _str_const_of(self, mod, e, env):
+        """The text of an untainted piece when it is known: a literal, a local constant, a module-level CONSTANT
+        (also through `pkg.mod.NAME`)."""
+        if isinstance(e, ast.Constant) and isinstance(e.value, str):
+            return e.value
+        bound = getattr(env, "bound", None)
+        if isinstance(e, ast.Name):
+            v = env.consts.get(e.id, _flow._MISSING)
+            if isinstance(v, str):
+                return v
+            # a module constant only when no local of the function shadows the name (unknown scope: unknown)
+            if v is _flow._MISSING and bound is not None and e.id not in bound and e.id.isupper() \
+                    and e.id not in self._module_deleted(mod) and e.id not in self._attr_stores() and self._consts_static(mod):
+                c = self._module_const(mod, e.id)
+                if isinstance(c, ast.Constant) and isinstance(c.value, str):
+                    return c.value
+            return None
+        if isinstance(e, ast.Attribute) and e.attr.isupper() and _chain(e) and e.attr not in self._attr_stores() \
+                and bound is not None and _chain(e).split(".")[0] not in bound \
+                and _chain(e).split(".")[0] not in self._module_rebound(mod):
+            canon = self._canon(mod, e)
+            modpart, _, name = canon.rpartition(".")
+            if modpart in self.files and self._consts_static(modpart):
+                c = self._module_const(modpart, name)
+                if isinstance(c, ast.Constant) and isinstance(c.value, str):
+                    return c.value
+        return None
+
+    def _module_rebound(self, mod) -> frozenset:
+        """Names the module binds other than by a single import: any module-level assignment, augmented assignment,
+        walrus, for / with / except target, def, class, del or second import, and any name a function declares
+        `global` and assigns. Such a name may not be what the import table says (`from flask import request`, then
+        `global request; request = req` in a setter)."""
+        cache = self.__dict__.setdefault("_module_rebound_cache", {})
+        hit = cache.get(mod)
+        if hit is None:
+            tree = (self.files.get(mod) or {}).get("tree")
+            imports: dict = {}
+            other: set = set()
+            stack = list(getattr(tree, "body", []))
+            funcs = []
+            while stack:
+                n = stack.pop()
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                    if not isinstance(n, ast.Lambda):
+                        other.add(n.name)
+                        stack.extend(n.decorator_list)
+                    funcs.append(n)
+                    continue
+                if isinstance(n, ast.ClassDef):
+                    other.add(n.name)
+                    stack.extend(n.decorator_list + n.bases)
+                    continue
+                if isinstance(n, (ast.Import, ast.ImportFrom)):
+                    for a in n.names:
+                        nm = a.asname or a.name.split(".")[0]
+                        imports[nm] = imports.get(nm, 0) + 1
+                    continue
+                if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                    other.add(n.id)
+                elif isinstance(n, ast.ExceptHandler) and n.name:
+                    other.add(n.name)
+                elif n.__class__.__name__ in ("MatchAs", "MatchStar") and getattr(n, "name", None):
+                    other.add(n.name)
+                stack.extend(ast.iter_child_nodes(n))
+            for f in funcs:
+                declared = {x for g in ast.walk(f) if isinstance(g, ast.Global) for x in g.names}
+                if declared:
+                    other |= {x.id for x in ast.walk(f) if isinstance(x, ast.Name) and x.id in declared
+                              and isinstance(x.ctx, (ast.Store, ast.Del))}
+            hit = cache[mod] = frozenset(other | {k for k, v in imports.items() if v > 1})
+        return hit
+
+    def _module_deleted(self, mod) -> frozenset:
+        """Names `del`eted anywhere in the module (a constant deleted and bound again is not the first value)."""
+        cache = self.__dict__.setdefault("_module_deleted_cache", {})
+        if mod not in cache:
+            tree = (self.files.get(mod) or {}).get("tree")
+            cache[mod] = frozenset(n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Del)) \
+                if tree is not None else frozenset()
+        return cache[mod]
+
+    def _consts_static(self, mod) -> bool:
+        """Are the module-level names of `mod` bound only by its own statements? Not when it star-imports (`from x
+        import *` may rebind any of them, also after the assignment) or writes its namespace dynamically
+        (globals() / vars() / __dict__ / sys.modules)."""
+        cache = self.__dict__.setdefault("_consts_static_cache", {})
+        if mod not in cache:
+            tree = (self.files.get(mod) or {}).get("tree")
+            ok = tree is not None
+            for n in ast.walk(tree) if ok else ():
+                if isinstance(n, ast.ImportFrom) and any(a.name == "*" for a in n.names):
+                    ok = False
+                elif isinstance(n, ast.Name) and n.id in _NAMESPACE_WRITERS:
+                    ok = False                   # globals() / locals() / vars() / exec / eval / compile, called or not
+                elif isinstance(n, ast.Attribute) and n.attr in _NAMESPACE_WRITERS | _NAMESPACE_ATTRS:
+                    ok = False                   # builtins.exec, sys.modules, f_globals, importlib.reload …
+                if not ok:
+                    break
+            cache[mod] = ok
+        return cache[mod]
+
+    def _attr_stores(self) -> frozenset:
+        """Attribute names some project file assigns (`settings.UPLOAD_DIR = …`, `setattr(m, "X", …)`): a module
+        constant of that name may be rebound from outside its module, so its text is not known."""
+        hit = self.__dict__.get("_attr_stores_cache")
+        if hit is None:
+            out = set()
+            for f in self.files.values():
+                for n in ast.walk(f["tree"]):
+                    if isinstance(n, ast.Attribute) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                        out.add(n.attr)
+                    elif isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in ("setattr", "delattr") \
+                            and len(n.args) >= 2:
+                        a = n.args[1]
+                        if isinstance(a, ast.Constant) and isinstance(a.value, str):
+                            out.add(a.value)
+                        else:
+                            out.add("*")
+            hit = self.__dict__["_attr_stores_cache"] = frozenset(out)
+        return hit if "*" not in hit else _AllNames()
+
+    @staticmethod
+    def _str_pieces(node):
+        """A string built by concatenation (f-string, `+`, `"".join([...])`) as its pieces: ("lit", text) or
+        ("val", expr). None for anything else (a conversion like `{x!r}` or a format spec changes the text)."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return [("lit", node.value)]
+        if isinstance(node, ast.JoinedStr):
+            out = []
+            for v in node.values:
+                if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                    out.append(("lit", v.value))
+                elif isinstance(v, ast.FormattedValue) and v.conversion in (-1, ord("s")) and v.format_spec is None:
+                    out.append(("val", v.value))
+                else:
+                    return None
+            return out
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            a, b = Project._str_pieces(node.left), Project._str_pieces(node.right)
+            if a is None and not isinstance(node.left, ast.BinOp):
+                a = [("val", node.left)]
+            if b is None and not isinstance(node.right, ast.BinOp):
+                b = [("val", node.right)]
+            return None if a is None or b is None else a + b
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "join" \
+                and isinstance(node.func.value, ast.Constant) and isinstance(node.func.value.value, str) \
+                and len(node.args) == 1 and not node.keywords and isinstance(node.args[0], (ast.List, ast.Tuple)) \
+                and not any(isinstance(e, ast.Starred) for e in node.args[0].elts):
+            out = []
+            for i, e in enumerate(node.args[0].elts):
+                if i and node.func.value.value:
+                    out.append(("lit", node.func.value.value))
+                out.extend(Project._str_pieces(e) or [("val", e)])
+            return out
+        return None
+
+    def _built_safe_cwes(self, mod, cls, node, env) -> frozenset:
+        """The sinks a built string (f-string, `+`, `"".join([...])) is safe for because of where EVERY tainted piece
+        sits in it. Used only for the string itself or a plain alias of it at the sink (`_sink_arg_ok`, flow fact
+        "safe:<cwe>"): any later transformation (unquote, unescape, b64decode, more concatenation) may undo it.
+
+        * a path: a value with no ".." / "../" (a guard rejected it) that starts a segment after a known directory
+          prefix ("./files/" + name) cannot leave that directory: an absolute value is appended, not substituted,
+          and without ".." it cannot climb (with only "../" rejected, a final ".." names the directory's parent
+          itself, never a file in it);
+        * an XPath string literal: a value with no quote of the kind that delimits it (rejected by a guard, or
+          replaced by `.replace("'", "&apos;")`) cannot close the literal, and XPath literals have no escapes."""
+        if self.m.get("language") != "python":
+            return frozenset()
+        pieces = self._str_pieces(node)
+        if pieces is None or len(pieces) < 2:
+            return frozenset()
+        facts = getattr(env, "facts", None) or {}
+        per = [self._taints(mod, cls, e, env) if k == "val" else [] for k, e in pieces]
+        if not any(per):
+            return frozenset()
+        consts = [e if k == "lit" else (None if per[i] else self._str_const_of(mod, e, env)) for i, (k, e) in enumerate(pieces)]
+        extra = [frozenset()] * len(pieces)
+        # path: the known text before the first tainted piece
+        first = next(i for i, o in enumerate(per) if o)
+        prefix = "".join(c for c in consts[:first]) if all(c is not None for c in consts[:first]) else None
+        if prefix and prefix[-1] in "/\\" and prefix.rstrip("/\\"):
+            for i in range(first, len(pieces)):
+                if not per[i]:
+                    continue
+                k, e = pieces[i]
+                f = frozenset(facts.get(e.id, ())) if isinstance(e, ast.Name) else frozenset()
+                # rejecting ".." covers every separator; "../" alone lets Windows' "..\\" through
+                if "absent:.." not in f and not {"absent:../", "absent:..\\"} <= f:
+                    continue
+                before = consts[i - 1]
+                after = consts[i + 1] if i + 1 < len(pieces) else ""
+                if before is None or before[-1:] not in ("/", "\\") or after is None:
+                    continue
+                if after == "." or after.startswith(("./", ".\\", "..")):
+                    continue
+                if "absent:.." not in f and after[:1] in ("/", "\\"):
+                    continue            # "..", then "/" from the literal
+                extra[i] = extra[i] | _PATH_CWES
+        # XPath: lex the quotes of the known text; a tainted piece must sit inside a literal it cannot close
+        state = None                     # None: outside a literal, "'" / '"': inside one, "?": unknown from here on
+        for i, (k, e) in enumerate(pieces):
+            if state == "?":
+                break
+            c = consts[i]
+            if c is not None:
+                for ch in c:
+                    if state is None and ch in "'\"":
+                        state = ch
+                    elif state == ch:
+                        state = None
+                continue
+            if not per[i]:
+                state = "?"              # an untainted value of unknown text may hold quotes
+                continue
+            if state in ("'", '"') and self._quote_free(e, state, facts):
+                extra[i] = extra[i] | {"CWE-643"}
+            else:
+                state = "?"
+        return frozenset.intersection(*[x for o_list, x in zip(per, extra) if o_list])
+
+    @staticmethod
+    def _quote_free(e, q, facts) -> bool:
+        """The value of `e` contains no `q`: a guard rejected it, or `x.replace(q, r)` removed every one."""
+        if isinstance(e, ast.Name):
+            return "absent:" + q in facts.get(e.id, ())
+        return isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "replace" \
+            and len(e.args) == 2 and not e.keywords and isinstance(e.args[0], ast.Constant) and e.args[0].value == q \
+            and isinstance(e.args[1], ast.Constant) and isinstance(e.args[1].value, str) and q not in e.args[1].value
+
     def _taints(self, mod, cls, node, env) -> list:
         """All taint origins of an expression: a + b carries both a's and b's origins, so a parameter
         concatenated with a field still reaches the sink summary as a parameter flow."""
@@ -2120,6 +2460,10 @@ class Project:
             return ("source", src, trail)
         if isinstance(node, ast.Name):
             return env.tainted.get(node.id)
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in env.dk \
+                and _flow._CFG in env.dk[node.value.id][0]:
+            m, other = env.dk[node.value.id]          # conf["section"]: every option of the section
+            return next((v for k, v in m.items() if k is not _flow._CFG and v), other)
         if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in env.dk:
             m, other = env.dk[node.value.id]
             key = _flow.fold(node.slice, env.consts)
@@ -2175,6 +2519,17 @@ class Project:
                         return (o[0], o[1], _trail(o), _safe_for(o) | skind)
                 return None
             f = node.func
+            if self.m.get("language") == "python" and _callee_bare(node) == "make_response" \
+                    and canon.split(".")[0] in ("flask", "make_response"):
+                # flask.make_response(body, status, headers) / ((body, status, headers)): the response carries the
+                # body's data as its page. Header values are not HTML; a tainted Location is reported at the call
+                # as a redirect (_header_sinks). Headers that are not a literal dict keep the whole call tainted.
+                parts = _response_parts(node)
+                if parts is not None:
+                    return self._taint(mod, cls, parts[0], env)
+            if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in env.dk \
+                    and _flow._CFG in env.dk[f.value.id][0]:
+                return self._config_read(mod, cls, node, env)
             if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in env.dk \
                     and f.attr in _KEYED_READS:
                 m, other = env.dk[f.value.id]
@@ -2242,6 +2597,39 @@ class Project:
                     return o
             return None
         return None
+
+    def _header_sinks(self, mod, call) -> list:
+        """(sink, values) a call feeds besides its own sink, through a literal headers dict of flask.make_response:
+        Location / Refresh is a redirect (DF008); X-Sendfile / X-Accel-Redirect / X-LiteSpeed-Location /
+        X-Lighttpd-Send-File make the front server send that file (DF005)."""
+        if self.m.get("language") != "python" or _callee_bare(call) != "make_response" \
+                or self._canon(mod, call.func).split(".")[0] not in ("flask", "make_response"):
+            return []
+        out = []
+        for vals, rule in ((_location_values(call), "DF008"), (_file_header_values(call), "DF005")):
+            si = next((x for x in self.m["sinks"] if x[0] == rule), None) if vals else None
+            if si:
+                out.append((si, vals))
+        return out
+
+    def _config_read(self, mod, cls, node, env):
+        """`conf.get(section, option)` on a configparser the flow refinement tracks: the value stored in that slot
+        (or in the DEFAULT section, which every section inherits), plus a `fallback=`; any other read sees every
+        slot. A slot written with an unknown option may be any slot (`other`)."""
+        f = node.func
+        m, other = env.dk[f.value.id]
+        live = [v for k, v in m.items() if k is not _flow._CFG and v] + ([other] if other else [])
+        # every keyword value may be the result: vars={...} overrides the stored option, fallback= replaces a
+        # missing one (raw=True only switches interpolation off)
+        kw = next((o for o in (self._taint(mod, cls, k.value, env) for k in node.keywords if k.arg != "raw") if o), None)
+        if f.attr not in ("get", "getint", "getfloat", "getboolean") or len(node.args) != 2 \
+                or not {k.arg for k in node.keywords} <= {"raw", "fallback", "vars"}:
+            return (live[0] if live else None) or kw or self._taint(mod, cls, f.value, env)
+        key = _flow.cfg_key(_flow.fold(node.args[0], env.consts), _flow.fold(node.args[1], env.consts))
+        if key is _flow._MISSING:
+            return (live[0] if live else None) or kw
+        hit = m[key] if key in m else m.get(("DEFAULT", key[1]))
+        return hit or other or kw
 
     # ------------------------------------------------- form / schema validation (Django, DRF, WTForms, pydantic)
     def _class_field_value(self, cq, field):
@@ -2579,11 +2967,19 @@ class Project:
             hit = cache[id(fn)] = (fn, found)
         return hit[1]
 
-    def _sink_arg_ok(self, fn, si, arg, env=None) -> bool:
+    def _sink_arg_ok(self, fn, si, arg, env=None, mod=None, cls=None) -> bool:
         """JavaScript XSS sinks (res.send / res.write / reply.send): an object or array argument is serialised as
         JSON, and a handler that set a non-HTML Content-Type (JSON, event stream, plain text) writes no HTML."""
         if si[5] == "CWE-611" and self._xml_hardened(fn):
             return False                     # the parser was configured without DTDs / external entities
+        if env is not None and getattr(env, "facts", None) and _guard_facts_protect(si, arg, env.facts):
+            return False                     # a guard on the path to this sink proved the value harmless for it
+        if env is not None and mod is not None and (si[5] in _PATH_CWES or si[5] == "CWE-643") \
+                and self.m.get("language") == "python":
+            if isinstance(arg, ast.Name) and "safe:" + si[5] in (getattr(env, "facts", None) or {}).get(arg.id, ()):
+                return False                 # the built string itself, assigned (or aliased) and passed unchanged
+            if isinstance(arg, (ast.JoinedStr, ast.BinOp, ast.Call)) and si[5] in self._built_safe_cwes(mod, cls, arg, env):
+                return False                 # the built string written at the sink
         if self.m.get("language") != "javascript":
             return True
         if si[0] == "DF016" and isinstance(arg, (ast.Dict, ast.List)):
@@ -3488,12 +3884,20 @@ class Project:
         at_path, at_line = getattr(call, "vulnscan_at", None) or (path, call.lineno)
         if si and not self._suppressed(at_path, at_line):
             for arg in self._sink_args(si, call):
-                if not self._sink_arg_ok(fn, si, arg, env):
+                if not self._sink_arg_ok(fn, si, arg, env, mod, cls):
                     continue
                 origins = [o for o in self._taints(mod, cls, arg, env) if _unsafe_for(o, si)]
                 if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
                     for o in origins:
                         record(o, (si, at_path, at_line))
+        for si2, vals in self._header_sinks(mod, call):
+            for arg in vals:
+                if not self._sink_arg_ok(fn, si2, arg, env, mod, cls):
+                    continue
+                origins = [o for o in self._taints(mod, cls, arg, env) if _unsafe_for(o, si2)]
+                if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si2):
+                    for o in origins:
+                        record(o, (si2, path, call.lineno))
         cb_param = self._callback_param(fn, call)
         if cb_param is not None:
             pos = [(i, self._taint(mod, cls, a, env)) for i, a in enumerate(call.args)]
@@ -3614,12 +4018,19 @@ class Project:
                 si = self._sink(mod, cls, call, env)
                 if si:
                     for arg in self._sink_args(si, call):
-                        if not self._sink_arg_ok(fn, si, arg, env):
+                        if not self._sink_arg_ok(fn, si, arg, env, mod, cls):
                             continue
                         o = self._sink_taint(mod, cls, arg, env, si)
                         if o and o[0] in {"source", "retsource"} \
                                 and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
                             self._emit(si, path, call.lineno, o, None, None)
+                            break
+                for si2, vals in self._header_sinks(mod, call):
+                    for arg in vals:
+                        o = self._sink_taint(mod, cls, arg, env, si2) if self._sink_arg_ok(fn, si2, arg, env, mod, cls) else None
+                        if o and o[0] in {"source", "retsource"} \
+                                and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si2):
+                            self._emit(si2, path, call.lineno, o, None, None)
                             break
                 if self._callback_param(fn, call) is not None:
                     continue
