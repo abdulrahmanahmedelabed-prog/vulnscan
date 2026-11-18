@@ -2115,13 +2115,15 @@ class Project:
             if isinstance(v, str):
                 return v
             # a module constant only when no local of the function shadows the name (unknown scope: unknown)
-            if v is _flow._MISSING and bound is not None and e.id not in bound and e.id.isupper() and e.id not in self._attr_stores() and self._consts_static(mod):
+            if v is _flow._MISSING and bound is not None and e.id not in bound and e.id.isupper() \
+                    and e.id not in self._module_deleted(mod) and e.id not in self._attr_stores() and self._consts_static(mod):
                 c = self._module_const(mod, e.id)
                 if isinstance(c, ast.Constant) and isinstance(c.value, str):
                     return c.value
             return None
         if isinstance(e, ast.Attribute) and e.attr.isupper() and _chain(e) and e.attr not in self._attr_stores() \
-                and bound is not None and _chain(e).split(".")[0] not in bound:
+                and bound is not None and _chain(e).split(".")[0] not in bound \
+                and _chain(e).split(".")[0] not in self._module_rebound(mod):
             canon = self._canon(mod, e)
             modpart, _, name = canon.rpartition(".")
             if modpart in self.files and self._consts_static(modpart):
@@ -2129,6 +2131,60 @@ class Project:
                 if isinstance(c, ast.Constant) and isinstance(c.value, str):
                     return c.value
         return None
+
+    def _module_rebound(self, mod) -> frozenset:
+        """Names the module binds other than by a single import: any module-level assignment, augmented assignment,
+        walrus, for / with / except target, def, class, del or second import, and any name a function declares
+        `global` and assigns. Such a name may not be what the import table says (`from flask import request`, then
+        `global request; request = req` in a setter)."""
+        cache = self.__dict__.setdefault("_module_rebound_cache", {})
+        hit = cache.get(mod)
+        if hit is None:
+            tree = (self.files.get(mod) or {}).get("tree")
+            imports: dict = {}
+            other: set = set()
+            stack = list(getattr(tree, "body", []))
+            funcs = []
+            while stack:
+                n = stack.pop()
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                    if not isinstance(n, ast.Lambda):
+                        other.add(n.name)
+                        stack.extend(n.decorator_list)
+                    funcs.append(n)
+                    continue
+                if isinstance(n, ast.ClassDef):
+                    other.add(n.name)
+                    stack.extend(n.decorator_list + n.bases)
+                    continue
+                if isinstance(n, (ast.Import, ast.ImportFrom)):
+                    for a in n.names:
+                        nm = a.asname or a.name.split(".")[0]
+                        imports[nm] = imports.get(nm, 0) + 1
+                    continue
+                if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                    other.add(n.id)
+                elif isinstance(n, ast.ExceptHandler) and n.name:
+                    other.add(n.name)
+                elif n.__class__.__name__ in ("MatchAs", "MatchStar") and getattr(n, "name", None):
+                    other.add(n.name)
+                stack.extend(ast.iter_child_nodes(n))
+            for f in funcs:
+                declared = {x for g in ast.walk(f) if isinstance(g, ast.Global) for x in g.names}
+                if declared:
+                    other |= {x.id for x in ast.walk(f) if isinstance(x, ast.Name) and x.id in declared
+                              and isinstance(x.ctx, (ast.Store, ast.Del))}
+            hit = cache[mod] = frozenset(other | {k for k, v in imports.items() if v > 1})
+        return hit
+
+    def _module_deleted(self, mod) -> frozenset:
+        """Names `del`eted anywhere in the module (a constant deleted and bound again is not the first value)."""
+        cache = self.__dict__.setdefault("_module_deleted_cache", {})
+        if mod not in cache:
+            tree = (self.files.get(mod) or {}).get("tree")
+            cache[mod] = frozenset(n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Del)) \
+                if tree is not None else frozenset()
+        return cache[mod]
 
     def _consts_static(self, mod) -> bool:
         """Are the module-level names of `mod` bound only by its own statements? Not when it star-imports (`from x

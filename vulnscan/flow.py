@@ -583,7 +583,8 @@ class FlowInterpreter:
         root = e
         while isinstance(root, ast.Attribute):
             root = root.value
-        return isinstance(root, ast.Name) and root.id not in self._scope_bound()
+        return isinstance(root, ast.Name) and root.id not in self._scope_bound() \
+            and root.id not in self.proj._module_rebound(self.mod)
 
     def _flask_request(self, e) -> bool:
         """`e` is Flask's / Quart's global request (werkzeug MultiDicts of str), not another framework's request

@@ -908,3 +908,30 @@ def test_a_local_shadowing_a_module_constant_is_not_known_text():
         p = BASE + '/' + name
         return open(p).read()  # VULN
     """, "DF005")
+
+
+# ---------------------------------------------------------------- 13. fifth review round (still reported)
+REBIND_SEARCH = """\
+def search():
+    bar = request.args.get(b"id")
+    if "'" in bar:
+        return []
+    q = f"/E[@id='{bar}']"
+    return lxml.etree.parse("e.xml").xpath(q)
+"""
+REBINDS = {
+    "global": "def set_request(req):\n    global request\n    request = req\n",
+    "assign": "request = None\n",
+    "del": "del request\nrequest = None\n",
+}
+
+
+def test_a_module_rebinding_of_an_imported_name_is_not_the_import():
+    head = "import lxml.etree\nfrom flask import request\n"
+    safe = {f.line for f in analyze("safe.py", head + REBIND_SEARCH) if f.rule_id == "DF015"}
+    assert not safe                                   # the import, never rebound: Flask's request
+    for kind, rebind in REBINDS.items():
+        code = head + rebind + REBIND_SEARCH
+        line = len((head + rebind).splitlines()) + 6
+        got = {f.line for f in analyze(f"{kind}.py", code) if f.rule_id == "DF015"}
+        assert line in got, kind
