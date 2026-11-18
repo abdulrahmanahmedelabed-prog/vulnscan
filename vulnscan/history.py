@@ -265,6 +265,8 @@ _SUPPRESS = getattr(_scanner, "SUPPRESS", re.compile(r"(nosec|vulnscan:\s*ignore
 _SKIP_GLOBS = tuple(getattr(_scanner, "SKIP_FILE_GLOBS", ()))
 _PREV_NAME = getattr(_scanner, "_PREV_NAME", None)
 _PEM_BEGIN = getattr(_scanner, "_PEM_BEGIN", None)
+# Oracle-wrapped PL/SQL: base64-like by design, never a secret (the working-tree scan reports it once as APX022)
+from .plsql_frontend import _WRAPPED_END, _WRAPPED_HEAD, PLSQL_EXTS  # noqa: E402
 _PEM_END = getattr(_scanner, "_PEM_END", None)
 _ENTROPY = getattr(_scanner, "_entropy_findings", None)
 _ENTROPY_RULE = getattr(_scanner, "ENTROPY_RULE", {"id": "SEC011"})
@@ -370,6 +372,13 @@ def _entropy_value(line: str, ctx: str | None) -> str | None:
         pass
     cands = _LONG_TOKEN.findall(line)
     return max(cands, key=len) if cands else None
+
+
+def _wrapped_state(inside: bool, line: str) -> bool:
+    """Whether the next line is inside an Oracle-wrapped unit: from a `create ... wrapped` header to a `/` line."""
+    if inside:
+        return not _WRAPPED_END.match(line)
+    return bool(_WRAPPED_HEAD.match(line))
 
 
 def _detect(line: str, rules: list, ctx: str | None, entropy: bool, suppress: bool) -> list[_Hit]:
@@ -659,12 +668,14 @@ class _Walker:
         old_path = new_path = None
         rules: list = []
         skip = True
+        path_plsql = False
         old_left = new_left = 0
         new_no = 0
         ctx: str | None = None
         in_pem = False
         pending: dict[str, tuple | None] = {"+": None, "-": None}
         in_key = {"+": False, "-": False}            # inside the body of a private key on that side of the diff
+        wrapped = {"+": False, "-": False}           # inside an Oracle-wrapped PL/SQL unit on that side: no SEC011
 
         def flush(sign: str | None = None) -> None:
             for s in ((sign,) if sign else ("+", "-")):
@@ -704,10 +715,12 @@ class _Walker:
                         new_no = int(m.group(3))
                         new_left = int(m.group(4)) if m.group(4) is not None else 1
                         ctx, in_pem = None, False
+                        wrapped["+"] = wrapped["-"] = False
                 elif text.startswith("diff --git "):
                     flush()
                     old_path = new_path = None
                     skip = True
+                    path_plsql = False
                 elif text.startswith("--- "):
                     old_path = _strip_prefix(text[4:], "a/")
                 elif text.startswith("+++ "):
@@ -715,6 +728,7 @@ class _Walker:
                     path = new_path or old_path
                     skip = path is None or self.skipped(path)
                     rules = [] if skip else self.rules_for(path)
+                    path_plsql = bool(path) and path.lower().endswith(PLSQL_EXTS)
                 elif text.startswith("rename from "):
                     old_path = _unquote(text[12:])
                 elif text.startswith("rename to "):
@@ -738,6 +752,9 @@ class _Walker:
                 new_no += 1
                 flush()
                 in_key["+"] = in_key["-"] = False
+                if path_plsql:
+                    for side in wrapped:
+                        wrapped[side] = _wrapped_state(wrapped[side], body)
                 if _PREV_NAME is not None:
                     m = _PREV_NAME.search(body)
                     ctx = (m.group(1) or m.group(2)) if m else None
@@ -781,8 +798,12 @@ class _Walker:
                         pem = True
                         if _PEM_END.search(body):
                             in_pem = False
+                was_wrapped = wrapped[sign]
+                if path_plsql:
+                    wrapped[sign] = _wrapped_state(was_wrapped, body)
                 if not pem:
-                    hits = _detect(body, rules, ctx if sign == "+" else None, self.entropy, self.suppress)
+                    entropy = self.entropy and not (was_wrapped and wrapped[sign])
+                    hits = _detect(body, rules, ctx if sign == "+" else None, entropy, self.suppress)
                     values = [h.value for h in hits if h.value]
                     for hit in hits:
                         if hit.needs_body:

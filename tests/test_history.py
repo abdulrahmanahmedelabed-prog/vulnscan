@@ -444,3 +444,25 @@ def test_cli_output_errors_are_reported_not_raised(repo, tmp_path, capsys):
     assert "Traceback" not in err and "missing-dir" in err
     assert history.main(["--definitely-not-an-option"]) == 2
     assert history.main(["--help"]) == 0
+
+
+def test_oracle_wrapped_plsql_in_history_is_not_a_secret(tmp_path):
+    """Oracle-wrapped units are base64-like by design: history no longer reports their lines as SEC011, while a real
+    token committed in the same file (outside the wrapped unit) is still found."""
+    src = pathlib.Path(__file__).parent / "data" / "plsql_apex_fp" / "hr_wrapped.plb"
+    r = tmp_path / "repo"
+    r.mkdir()
+    git(r, "init", "-q", "-b", "main")
+    tok = gh_token()
+    (r / "deploy").mkdir()
+    (r / "deploy" / "hr_wrapped.plb").write_text(src.read_text(encoding="utf-8") + f"\n-- token: {tok}\n",
+                                                  encoding="utf-8")
+    commit(r, "deploy wrapped HR packages", 1)
+    res = history.scan_history(r)
+    assert not [f for f in res.findings if f.rule_id == "SEC011"]
+    assert [f for f in res.findings if f.extra.get("secret_redacted") == history.redact(tok)]
+    # the same text under a non-PL/SQL name is not treated as wrapped code
+    (r / "deploy" / "hr_wrapped.txt").write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    commit(r, "copy", 2)
+    res2 = history.scan_history(r)
+    assert [f for f in res2.findings if f.rule_id == "SEC011" and f.file.endswith(".txt")]

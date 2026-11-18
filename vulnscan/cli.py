@@ -673,7 +673,8 @@ def build_parser(lang: str = "both") -> argparse.ArgumentParser:
     p.add_argument("--no-color", action="store_true", help=h("لا تلوّن مخرجات الطرفية"))
     p.add_argument("--list-rules", action="store_true", help=h("اعرض القواعد المدمجة واخرج"))
     # Keep "vulnscan X.Y.Z": the in-app updater of every release (0.9.x included) checks a new binary by this exact text.
-    p.add_argument("--version", action="version", version=f"vulnscan {__version__}")
+    # "kashif X" for people; "vulnscan X" is kept in the line because v0.9.x updaters search for exactly that
+    p.add_argument("--version", action="version", version=f"kashif {__version__} (vulnscan {__version__})")
     return p
 
 

@@ -345,7 +345,15 @@ def test_json_and_sarif_escape_c1_controls_from_the_target():
         assert notes == [hostile]                                                   # the parsed value is unchanged
 
 
-def test_reports_without_web_are_byte_identical_to_the_1_0_layout():
+def test_reports_without_web_are_byte_identical_to_the_1_0_layout(monkeypatch):
+    # both renders stamp the current time: freeze it, or a second boundary between them fails the comparison
+    import datetime as _dt
+
+    class _Frozen(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return _dt.datetime(2026, 1, 1, tzinfo=tz)
+    monkeypatch.setattr(report, "datetime", _Frozen)
     f = Finding("PY001", "high", "Command injection", "حقن أوامر", "a.py", 3, "os.system(x)", "لا تمرر المدخلات", "CWE-78")
     for render in (report.render_markdown, report.render_html):
         assert render([f], ".", 1, ["n"], lang="en") == render([f], ".", 1, ["n"], lang="en", web=None)

@@ -55,8 +55,6 @@ CATALOG: dict[str, str] = {
     "تحقّق من الوسيط بقائمة بيضاء، وارفض القيم التي تبدأ بـ -، ولا تمرّر مسارات غير مُطبَّعة.":
         "Validate the argument against an allowlist, reject values that start with -, and never pass non-canonicalized paths.",
     "بيانات غير موثوقة تُعاد في استجابة HTTP (XSS انعكاسي)": "Untrusted data returned in an HTTP response (reflected XSS)",
-    "هرّب المخرجات (html.escape / markupsafe) أو استخدم قوالب تُهرِّب تلقائيًا.":
-        "Escape the output (html.escape / markupsafe) or use a template engine with auto-escaping.",
 
     # ---- taint.py: AI output reaching a sink (DF020/DF021)
     "نص يولّده الذكاء الاصطناعي يُنفَّذ كـ SQL أو كود": "AI-generated text executed as SQL / code",

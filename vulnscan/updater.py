@@ -537,8 +537,8 @@ def reports_version(path: pathlib.Path, version: str) -> bool:
                              env=_child_env(), check=False, stdin=subprocess.DEVNULL)  # nosec B603 - our verified binary
     except (OSError, subprocess.SubprocessError):
         return False
-    # `--version` prints "vulnscan X.Y.Z", the exact form v0.9.x updaters look for, so it must stay that way while such
-    # installs exist. "kashif X.Y.Z" is accepted too, so that a later release may switch without stranding 1.0+ installs.
+    # `--version` prints "kashif X.Y.Z (vulnscan X.Y.Z)" (1.1.1+): v0.9.x updaters search for "vulnscan X.Y.Z" anywhere
+    # in the output, and 1.0+ accept either name, so no installed updater is stranded.
     return bool(re.search(rf"\b(?:vulnscan|kashif)\s+v?{re.escape(version)}(?![\w.+-])", out.stdout + out.stderr))
 
 
