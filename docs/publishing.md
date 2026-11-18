@@ -107,3 +107,19 @@ to the Foundation, from builds made on CI. Requirements include an OSI-approved 
 releases built by GitHub Actions from that repository, and a short application describing the project. After
 approval, signing is a step in the `build` job (SignPath's GitHub Action submits the unsigned `.exe` and returns the
 signed one) placed before the checksums and provenance are computed; that workflow change is not made yet.
+
+## Screenshots
+
+Before every release, regenerate the product screenshots from the release's own code and commit them:
+
+```bash
+python tools/screenshots/make.py
+git add site/img/shots docs/screenshots site/img/og-en.png site/img/og-ar.png
+```
+
+The script scans the demo project `tools/screenshots/acme-shop` (intentionally vulnerable, excluded from the
+self-scan) in a throwaway home, never your `~/.vulnscan`, runs a passive scan of a small storefront it serves on
+`localhost`, and captures 11 screens in English and Arabic, light and dark, with the version the UI reports. It then
+writes `site/img/shots/` (PNG and WebP, 2880x1800), the README copies in `docs/screenshots/` and the Open Graph
+cards. It needs Node.js with the `playwright` package and an installed Chromium (it never downloads one), and Pillow.
+`--only trace,web` redoes some screens; `--keep` keeps the raw captures. Look through a few images before committing.
