@@ -136,34 +136,41 @@ _ID = r"[\w$#.]+"
 PATTERNS: list[tuple[str, str]] = [
     # ---- APX024 (vulnscan/plsql_authz.py): routine, guard, counts and what the routine accesses
     (rf"(?P<r>{_ID}) لا يتحقق من الصلاحية، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة "
-     rf"(?P<g>{_ID}) قبل عملها\. وهو (?P<acc>.+?)\. أضف التحقق نفسه \((?P=g)\) في بدايته كما تفعل الروتينات "
-     r"الشقيقة؛ فأي كود في المخطط نفسه \(صفحة APEX أخرى مثلًا\) يمكنه استدعاؤه مباشرة\.",
+     rf"(?P<g>{_ID}) قبل أول وصول إلى البيانات في نصّها \((?P<m>\d+) منها على كل المسارات\)\. وهو (?P<acc>.+?)\. "
+     r"أضف التحقق نفسه \((?P=g)\) في بدايته كما تفعل الروتينات الشقيقة؛ فأي كود في المخطط نفسه \(صفحة APEX أخرى "
+     r"مثلًا\) يمكنه استدعاؤه مباشرة\.",
      r"\g<r> does not check authorization, while \g<k> of the \g<n> public routines of the package call \g<g> before "
-     r"their work. It \g<acc>. Add the same check (\g<g>) at its start, as the sibling routines do: any code in the "
-     r"same schema (another APEX page, for example) can call it directly."),
+     r"their first data access in the code (\g<m> of them on every path). It \g<acc>. Add the same check (\g<g>) at "
+     r"its start, as the sibling routines do: any code in the same schema (another APEX page, for example) can call it "
+     r"directly."),
     # partial coverage, followed by the APEX export context (1.4.0)
     (rf"(?P<r>{_ID}) يتحقق من الصلاحية في بعض المسارات فقط: يمكن الوصول إلى البيانات في السطر (?P<ln>\d+) دون "
-     rf"المرور بالتحقق، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة (?P<g>{_ID}) قبل عملها\. "
+     rf"المرور بالتحقق، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة (?P<g>{_ID}) قبل أول "
+     rf"وصول إلى البيانات في نصّها \((?P<m>\d+) منها على كل المسارات\)\. "
      rf"وهو (?P<acc>.+?)\. اجعل التحقق \((?P=g)\) قبل كل وصول إلى البيانات، في بدايته أو في شرط يخرج "
      r"من الروتين \(raise أو return\) حين يفشل، لا في فرع واحد أو في معالج استثناء أو بعد الوصول\. (?P<ctx>(?:وفي|ويُستدعى) .+)",
      r"\g<r> checks authorization on some paths only: the data access at line \g<ln> can be reached without passing "
-     r"the check, while \g<k> of the \g<n> public routines of the package call \g<g> before their work. It \g<acc>. "
+     r"the check, while \g<k> of the \g<n> public routines of the package call \g<g> before their first data access "
+     r"in the code (\g<m> of them on every path). It \g<acc>. "
      r"Put the check (\g<g>) before every data access, at its start or in a condition that leaves the routine (raise "
      r"or return) when it fails, not in one branch, an exception handler or after the access. \g<ctx>"),
     (rf"(?P<r>{_ID}) يتحقق من الصلاحية في بعض المسارات فقط: يمكن الوصول إلى البيانات في السطر (?P<ln>\d+) دون "
-     rf"المرور بالتحقق، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة (?P<g>{_ID}) قبل عملها\. "
+     rf"المرور بالتحقق، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة (?P<g>{_ID}) قبل أول "
+     rf"وصول إلى البيانات في نصّها \((?P<m>\d+) منها على كل المسارات\)\. "
      rf"وهو (?P<acc>.+?)\. اجعل التحقق \((?P=g)\) قبل كل وصول إلى البيانات، في بدايته أو في شرط يخرج "
      r"من الروتين \(raise أو return\) حين يفشل، لا في فرع واحد أو في معالج استثناء أو بعد الوصول\.",
      r"\g<r> checks authorization on some paths only: the data access at line \g<ln> can be reached without passing "
-     r"the check, while \g<k> of the \g<n> public routines of the package call \g<g> before their work. It \g<acc>. "
+     r"the check, while \g<k> of the \g<n> public routines of the package call \g<g> before their first data access "
+     r"in the code (\g<m> of them on every path). It \g<acc>. "
      r"Put the check (\g<g>) before every data access, at its start or in a condition that leaves the routine (raise "
      r"or return) when it fails, not in one branch, an exception handler or after the access."),
     # the same, followed by what the scanned APEX export says about the routine's callers (1.4.0)
     (rf"(?P<r>{_ID}) لا يتحقق من الصلاحية، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة "
-     rf"(?P<g>{_ID}) قبل عملها\. وهو (?P<acc>.+?)\. أضف التحقق نفسه \((?P=g)\) في بدايته كما تفعل الروتينات "
+     rf"(?P<g>{_ID}) قبل أول "
+     rf"وصول إلى البيانات في نصّها \((?P<m>\d+) منها على كل المسارات\)\. وهو (?P<acc>.+?)\. أضف التحقق نفسه \((?P=g)\) في بدايته كما تفعل الروتينات "
      r"الشقيقة؛ فأي كود في المخطط نفسه \(صفحة APEX أخرى مثلًا\) يمكنه استدعاؤه مباشرة\. (?P<ctx>(?:وفي|ويُستدعى) .+)",
      r"\g<r> does not check authorization, while \g<k> of the \g<n> public routines of the package call \g<g> before "
-     r"their work. It \g<acc>. Add the same check (\g<g>) at its start, as the sibling routines do: any code in the "
+     r"their first data access in the code (\g<m> of them on every path). It \g<acc>. Add the same check (\g<g>) at its start, as the sibling routines do: any code in the "
      r"same schema (another APEX page, for example) can call it directly. \g<ctx>"),
     (rf"وفي تطبيق APEX المفحوص لا يُستدعى (?P<r>{_ID}) إلا من مكوّنات محمية بمخطط التفويض (?P<s>.+?) "
      r"\(مواضع الاستدعاء: (?P<n>\d+)، أولها «(?P<label>.+?)» في السطر (?P<line>\d+) من (?P<rel>.+?)\)؛ لكن هذه الحماية "
