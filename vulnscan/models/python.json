@@ -686,7 +686,10 @@
         "lxml.etree.fromstring",
         "lxml.etree.XML",
         "lxml.etree.parse",
-        "lxml.etree.iterparse"
+        "lxml.etree.iterparse",
+        "lxml.objectify.fromstring",
+        "lxml.objectify.parse",
+        "lxml.objectify.XML"
       ],
       "title": "Tainted XML parsed with external entities enabled (XXE)",
       "title_ar": "بيانات غير موثوقة تُحلَّل كـ XML مع تفعيل الكيانات الخارجية (XXE)",
@@ -705,11 +708,12 @@
         "parse",
         "feed"
       ],
-      "receiver": "(?i)(^|[._])(\\w*parser|\\w*reader|make_parser\\(\\))$",
+      "receiver": "(^|\\.)(make_parser|create_parser|XMLParser|XMLPullParser|ExpatParser)\\(.*\\)$",
+      "receiver_from": "(^|\\.)(make_parser|create_parser|XMLParser|XMLPullParser|ExpatParser)$",
       "title": "Tainted XML parsed with external entities enabled (XXE)",
       "title_ar": "بيانات غير موثوقة تُحلَّل كـ XML مع تفعيل الكيانات الخارجية (XXE)",
       "advice": "لا تفعّل feature_external_ges / resolve_entities؛ استخدم defusedxml أو محللًا بإعداداته الآمنة الافتراضية لتحليل XML غير موثوق.",
-      "_comment": "xml.sax.make_parser().parse(source) / lxml XMLParser.feed(data), in a function that turns external entities on"
+      "_comment": "xml.sax.make_parser().parse(source) / lxml XMLParser.feed(data): the receiver is a parser the file builds (whatever its name), in a function that turns external entities on"
     },
     {
       "rule": "DF012",

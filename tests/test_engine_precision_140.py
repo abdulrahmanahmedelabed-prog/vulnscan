@@ -431,3 +431,104 @@ def test_a_project_class_built_through_its_module_path_is_resolved(tmp_path):
     got = {(f.file, f.line) for f in scan_path(tmp_path, [], set())[0] if f.rule_id == "DF002"}
     assert ("app.py", 10) in got, got
     assert ("app.py", 12) not in got, got
+
+
+# ---------------------------------------------------------------- 5. review round: XXE kept unless fully traced
+XXE_PROBES = {
+    # a parser whatever its variable name is a DF027 receiver (xml.sax reader, lxml feed parser)
+    "sax1.py": ("import xml.sax\nfrom xml.sax.handler import feature_external_ges\nfrom flask import Flask, request\n"
+                "app = Flask(__name__)\n\n@app.route('/upload', methods=['POST'])\ndef upload():\n"
+                "    src = request.files['doc']\n    p = xml.sax.make_parser()\n    p.setFeature(feature_external_ges, True)\n"
+                "    h = xml.sax.ContentHandler()\n    p.setContentHandler(h)\n    p.parse(src)\n    return 'ok'\n", True),
+    "lx_feed.py": ("from lxml import etree\nfrom flask import Flask, request\napp = Flask(__name__)\n\n"
+                   "@app.route('/feed', methods=['POST'])\ndef feed():\n    data = request.get_data()\n"
+                   "    xp = etree.XMLParser(resolve_entities=True, load_dtd=True)\n    xp.feed(data)\n"
+                   "    root = xp.close()\n    return root.tag\n", True),
+    # lxml.objectify parses like lxml.etree
+    "objectify1.py": ("from lxml import etree, objectify\nfrom flask import Flask, request\napp = Flask(__name__)\n\n"
+                      "@app.route('/o', methods=['POST'])\ndef o():\n    body = request.data\n"
+                      "    parser = etree.XMLParser(resolve_entities=True)\n    obj = objectify.fromstring(body, parser)\n"
+                      "    return str(obj.name)\n", True),
+    # the configured parser goes to a project helper the engine does not model as a parse
+    "app.py": ("from flask import Flask, request\nfrom lxml import etree\nimport xmlutil\napp = Flask(__name__)\n\n"
+               "@app.route('/h', methods=['POST'])\ndef h():\n    raw = request.data\n"
+               "    parser = etree.XMLParser(resolve_entities=True)\n    doc = xmlutil.parse(raw, parser)\n"
+               "    return doc.tag\n", False),
+    "xmlutil.py": ("from lxml import etree\n\ndef parse(data, parser):\n    return etree.fromstring(data, parser)\n", None),
+    # the parser is kept on the object; only a constant schema is parsed where it is configured
+    "cls.py": ("import os\nfrom lxml import etree\n\nclass Importer:\n    def __init__(self):\n"
+               "        self.parser = etree.XMLParser(resolve_entities=True, no_network=False)\n"
+               "        xsd = os.path.join(os.path.dirname(__file__), 'schema.xsd')\n"
+               "        self.schema = etree.XMLSchema(etree.parse(xsd))\n\n    def load(self, data):\n"
+               "        doc = etree.fromstring(data, self.parser)\n        self.schema.assertValid(doc)\n        return doc\n",
+               False),
+    # returned inside a call / captured by a closure
+    "ret_call.py": ("from lxml import etree\n\nclass Cfg:\n    def __init__(self, parser):\n        self.parser = parser\n\n"
+                    "def build():\n    parser = etree.XMLParser(resolve_entities=True)\n"
+                    "    etree.parse('schema.xsd', parser)\n    return Cfg(parser=parser)\n", False),
+    "nested.py": ("from lxml import etree\n\ndef make_loader():\n    parser = etree.XMLParser(resolve_entities=True)\n"
+                  "    etree.fromstring(b'<x/>', parser)\n    def load(data):\n        return etree.fromstring(data, parser)\n"
+                  "    return load\n", False),
+}
+
+
+def test_xxe_pattern_stays_unless_every_use_of_the_parser_is_a_traced_parse(tmp_path):
+    for name, (code, _) in XXE_PROBES.items():
+        (tmp_path / name).write_text(code)
+    findings = scan_path(tmp_path, [], set())[0]
+    xxe = {f.file for f in findings if f.rule_id == "XXE001"}
+    df = {f.file for f in findings if f.rule_id == "DF027"}
+    for name, (_, dataflow) in XXE_PROBES.items():
+        if dataflow is None:
+            continue
+        assert name in xxe, (name, sorted(xxe))
+        if dataflow:
+            assert name in df, (name, sorted(df))
+
+
+def test_dict_slots_equal_keys_share_the_str_fact():
+    _check("""
+    @app.route('/a')
+    def a():
+        m = {}
+        m[1] = request.args.get('id')
+        m[True] = request.args.getlist('id')
+        bar = m[1]
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # VULN
+
+    @app.route('/b')
+    def b():
+        m = {}
+        m[1] = request.args.get('id')
+        m[1.0] = request.args.getlist('id')
+        bar = m[1]
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # VULN
+
+    @app.route('/c')
+    def c():
+        m = {}
+        m[(1, 'a')] = request.args.get('id')
+        m[(True, 'a')] = request.args.getlist('id')
+        bar = m[(1, 'a')]
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # VULN
+
+    @app.route('/d')
+    def d():
+        m = {}
+        m[1] = request.args.get('id')
+        m[2] = request.args.getlist('id')
+        bar = m[1]
+        root = lxml.etree.parse('e.xml')
+        if "'" in bar:
+            return 'no'
+        return str(root.xpath(f"/E[@id='{bar}']"))  # SAFE
+    """, "DF015")

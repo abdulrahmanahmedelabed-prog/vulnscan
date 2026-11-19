@@ -508,7 +508,7 @@ class FlowInterpreter:
                 return True                  # one item of request.args.getlist(k)
             if isinstance(e.value, ast.Name) and e.value.id in st.dk and not isinstance(e.slice, ast.Slice):
                 k = fold(e.slice, st.consts)     # a dict slot last assigned a str under this constant key
-                if k is not _MISSING and _hashable(k) and "strkey:" + repr(k) in st.facts.get(e.value.id, ()):
+                if k is not _MISSING and _hashable(k) and _slot_tag(k) in st.facts.get(e.value.id, ()):
                     return True
             v = e.value                      # one item of s.split(...): a str
             return not isinstance(e.slice, ast.Slice) and isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute) \
@@ -1035,10 +1035,10 @@ class FlowInterpreter:
 
     @staticmethod
     def _slot_str(st: State, name, key, is_str: bool) -> None:
-        """Remember (fact "strkey:<repr(key)>" on the dict) whether the value last stored under a constant key of a
+        """Remember (fact `_slot_tag(key)` on the dict) whether the value last stored under a constant key of a
         tracked dict is certainly a str; key None forgets every slot (a write under an unknown key)."""
         old = st.facts.get(name, frozenset())
-        tag = "strkey:" + repr(key)
+        tag = _slot_tag(key) if key is not None else ""
         keep = frozenset(f for f in old if f.startswith("strkey:") and key is not None and f != tag) | \
             frozenset(f for f in old if not f.startswith("strkey:"))
         new = keep | ({tag} if is_str and key is not None else frozenset())
@@ -1316,6 +1316,17 @@ _SEP_ATTRS = {"os.sep", "os.path.sep", "posixpath.sep"}
 _STR_RESULT_METHODS = {"replace", "strip", "lstrip", "rstrip", "lower", "upper", "casefold", "title", "capitalize",
                        "swapcase", "format", "zfill", "center", "ljust", "rjust", "expandtabs", "translate",
                        "removeprefix", "removesuffix", "join"}
+
+
+def _slot_tag(key) -> str:
+    """The fact naming a dict slot. Keys a dict treats as one (1, 1.0 and True) share it."""
+    if isinstance(key, (bool, int)) or (isinstance(key, float) and key.is_integer()):
+        return "strkey:i" + repr(int(key))
+    if isinstance(key, float):
+        return "strkey:f" + repr(key)
+    if isinstance(key, tuple):                 # (1, "a") == (True, "a")
+        return "strkey:(" + ",".join(_slot_tag(k) for k in key) + ")"
+    return "strkey:" + repr(key)
 
 
 def _dir_prefix(e, nonempty) -> bool:

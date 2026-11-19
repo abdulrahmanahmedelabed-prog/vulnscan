@@ -743,6 +743,7 @@ def apply_audit_profile(findings: list[Finding], projects, audit: bool) -> list[
     reported: its callers control the argument). --audit keeps every hit, marked as an audit lead."""
     analyzed: dict[str, set] = {}
     trees: dict = {}
+    owners: dict = {}               # path -> (project, module) of a Python file the data-flow engine loaded
     param_reach: set = set()        # (path, line) of sinks reachable from a parameter of their function
     for proj in projects or ():
         for summ in (getattr(proj, "summaries", {}) or {}).values():
@@ -757,12 +758,17 @@ def apply_audit_profile(findings: list[Finding], projects, audit: bool) -> list[
                 d = diags.get(path) or {}
                 analyzed[path] = {ln for ln, _ in d.get("lines", [])}     # skipped lines
                 trees[path] = f.get("tree")
+        for mod, f in (getattr(proj, "files", {}) or {}).items():
+            if isinstance(f, dict) and f.get("path") and (getattr(proj, "m", None) or {}).get("language") == "python":
+                owners[f["path"]] = (proj, mod)
     bound_cache: dict = {}
     xxe_lines = {(f.file, f.line) for f in findings if f.cwe == "CWE-611" and f.rule_id.startswith("DF")}
     out = []
     for f in findings:
         if f.rule_id == "XXE001" and f.file.endswith(".py") and f.file in analyzed and f.line not in analyzed[f.file] \
-                and _xxe_parses_untainted(trees.get(f.file), f.file, f.line, xxe_lines, param_reach, bound_cache):
+                and f.file in owners \
+                and _xxe_parses_untainted(trees.get(f.file), f.file, f.line, xxe_lines, param_reach, bound_cache,
+                                          owners[f.file]):
             if not audit:
                 continue
             f.extra["audit"] = True
@@ -831,18 +837,24 @@ def _call_tail(call) -> str:
     return f.id if isinstance(f, _ast.Name) else f.attr if isinstance(f, _ast.Attribute) else ""
 
 
-_XML_PARSE_CALLS = frozenset({"parseString", "parse", "fromstring", "XML", "iterparse", "feed"})
+_PARSER_CTORS = frozenset({"make_parser", "create_parser", "XMLParser", "XMLPullParser", "ExpatParser"})
+# calls on a parser that configure it and hand nothing out (close() returns the parsed root, not the parser)
+_PARSER_SETUP = frozenset({"setFeature", "setProperty", "setContentHandler", "setErrorHandler", "setDTDHandler",
+                           "setEntityResolver", "setLocale", "close", "reset"})
 
 
-def _xxe_parses_untainted(tree, path, line: int, df_lines: set, param_reach: set, cache: dict) -> bool:
+def _xxe_parses_untainted(tree, path, line: int, df_lines: set, param_reach: set, cache: dict, owner) -> bool:
     """XXE001 (a Python parser with external entities turned on) on `line`: True when the data-flow engine decides
-    instead, i.e. the enclosing function parses XML only in calls it fully traced (DF027 models them), none of
-    which an untrusted source (a DF027 finding) or a parameter of the function (a caller's data) reaches. A parser
-    configured at module level, returned or stored for another function, or used through a call the engine cannot
-    place keeps the pattern finding."""
+    instead. That holds only when the line configures a parser held in a local variable of the innermost function
+    (`p = XMLParser(resolve_entities=True)` / `p.setFeature(feature_external_ges, True)`), and every use of that
+    variable is either a configuration call on it or a call the engine models as an XML parse sink (DF027, resolved
+    by its qualified name or by a receiver bound to a parser constructor), none of which an untrusted source (a DF027
+    finding) or a parameter of the function reaches. A parser stored in an attribute, subscript or global, passed to
+    any other call, returned, yielded or captured by a nested function keeps the pattern finding."""
     import ast as _ast
-    if tree is None:
+    if tree is None or owner is None:
         return False
+    proj, mod = owner
     fn = None
     for n in _ast.walk(tree):
         if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and n.lineno <= line <= (n.end_lineno or n.lineno):
@@ -850,40 +862,83 @@ def _xxe_parses_untainted(tree, path, line: int, df_lines: set, param_reach: set
                 fn = n                                 # the innermost function around the configuration
     if fn is None:
         return False
-    parses = []
-    for n in _ast.walk(fn):
-        if isinstance(n, _ast.Return) and n.value is not None and not isinstance(n.value, _ast.Constant):
-            stack = [n.value]
-            while stack:                               # (a parser passed to a call in the return is used, not returned)
-                x = stack.pop()
-                if isinstance(x, _ast.Name) and x.id in _parser_names(fn):
-                    return False                       # the configured parser leaves the function
-                if not isinstance(x, (_ast.Call, _ast.Lambda)):
-                    stack.extend(_ast.iter_child_nodes(x))
-        if isinstance(n, _ast.Call):
-            name = n.func.attr if isinstance(n.func, _ast.Attribute) else n.func.id if isinstance(n.func, _ast.Name) else ""
-            if name in _XML_PARSE_CALLS:
-                parses.append(n)
-    if not parses:
+    own, nested = [], []
+    stack = [(c, False) for c in _ast.iter_child_nodes(fn)]
+    while stack:
+        n, inner = stack.pop()
+        (nested if inner else own).append(n)
+        inner = inner or isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.Lambda, _ast.ClassDef))
+        stack.extend((c, inner) for c in _ast.iter_child_nodes(n))
+    parsers: set = set()
+    for n in own:
+        if isinstance(n, (_ast.Assign, _ast.AnnAssign)) and isinstance(n.value, _ast.Call):
+            f = n.value.func
+            if (f.attr if isinstance(f, _ast.Attribute) else f.id if isinstance(f, _ast.Name) else "") in _PARSER_CTORS:
+                tgts = n.targets if isinstance(n, _ast.Assign) else [n.target]
+                if len(tgts) == 1 and isinstance(tgts[0], _ast.Name):
+                    parsers.add(tgts[0].id)
+    stores: dict = {}
+    for n in own + nested:
+        if isinstance(n, _ast.Name) and not isinstance(n.ctx, _ast.Load):
+            stores[n.id] = stores.get(n.id, 0) + 1
+    if any(stores.get(p, 0) != 1 for p in parsers):
+        return False                                   # the parser name is bound more than once
+    # the flagged line must configure one of those local parsers
+    on_line = [n for n in own if isinstance(n, _ast.stmt) and n.lineno <= line <= (n.end_lineno or n.lineno)]
+    configured = False
+    for st in on_line:
+        if isinstance(st, (_ast.Assign, _ast.AnnAssign)) and isinstance(st.value, _ast.Call):
+            tgts = st.targets if isinstance(st, _ast.Assign) else [st.target]
+            configured = configured or (len(tgts) == 1 and isinstance(tgts[0], _ast.Name) and tgts[0].id in parsers)
+        elif isinstance(st, _ast.Expr) and isinstance(st.value, _ast.Call) and isinstance(st.value.func, _ast.Attribute) \
+                and isinstance(st.value.func.value, _ast.Name) and st.value.func.value.id in parsers \
+                and st.value.func.attr in _PARSER_SETUP:
+            configured = True
+    if not configured:
         return False
-    for c in parses:
+    if any(isinstance(n, _ast.Name) and n.id in parsers for n in nested):
+        return False                                   # captured by a nested function / lambda / class
+    if any(isinstance(n, (_ast.Global, _ast.Nonlocal)) and set(n.names) & parsers for n in own):
+        return False
+    parents = {}
+    for n in own:
+        for c in _ast.iter_child_nodes(n):
+            parents[id(c)] = n
+    sinks = []
+    for n in own:
+        if not (isinstance(n, _ast.Name) and n.id in parsers and isinstance(n.ctx, _ast.Load)):
+            continue
+        p = parents.get(id(n))
+        if isinstance(p, _ast.Attribute) and p.value is n:
+            call = parents.get(id(p))
+            if not (isinstance(call, _ast.Call) and call.func is p):
+                return False                           # p.attr read: something taken out of the parser
+            if p.attr in _PARSER_SETUP:
+                st = parents.get(id(call))
+                if not isinstance(st, _ast.Expr):
+                    if p.attr != "close":
+                        return False
+                continue
+            si = proj._sink_info(mod, call)
+            if not si or si[5] != "CWE-611":
+                return False                           # a method the engine does not model as a parse
+            sinks.append(call)
+            continue
+        if isinstance(p, _ast.Call) and n in list(p.args) or isinstance(p, _ast.keyword):
+            call = parents.get(id(p)) if isinstance(p, _ast.keyword) else p
+            si = proj._sink_info(mod, call) if isinstance(call, _ast.Call) else None
+            if not si or si[5] != "CWE-611":
+                return False                           # handed to a call the engine does not model as a parse
+            sinks.append(call)
+            continue
+        return False                                   # returned, yielded, stored, aliased, compared ...
+    if not sinks:
+        return False
+    for c in sinks:
         ln = c.lineno
         if (path, ln) in df_lines or (path, ln) in param_reach or not _all_names_known(tree, ln, cache):
             return False
     return True
-
-
-def _parser_names(fn) -> set:
-    """Names bound in `fn` to a parser object: `p = xml.sax.make_parser()` / `p = lxml.etree.XMLParser(...)`."""
-    import ast as _ast
-    out = set()
-    for n in _ast.walk(fn):
-        if isinstance(n, _ast.Assign) and isinstance(n.value, _ast.Call):
-            f = n.value.func
-            name = f.attr if isinstance(f, _ast.Attribute) else f.id if isinstance(f, _ast.Name) else ""
-            if name in ("make_parser", "XMLParser", "create_parser", "ExpatParser"):
-                out |= {t.id for t in n.targets if isinstance(t, _ast.Name)}
-    return out
 
 
 def _all_names_known(tree, line: int, cache: dict) -> bool:
