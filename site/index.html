@@ -72,7 +72,7 @@
 {"@type":"Question","name":"Is Kashif free?","acceptedAnswer":{"@type":"Answer","text":"Yes. Kashif is open source under the MIT license: free for personal and commercial use, with no paid tier, no account and no usage limits."}},
 {"@type":"Question","name":"Does Kashif upload my code?","acceptedAnswer":{"@type":"Answer","text":"No. Everything runs locally and the web UI listens on 127.0.0.1 only. The only network call in a code scan is the optional OSV.dev dependency lookup, which sends package names and versions, never source code. Turn it off with --no-deps."}},
 {"@type":"Question","name":"Can it run offline or in an air-gapped network?","acceptedAnswer":{"@type":"Answer","text":"Yes. Copy the single binary (or install the Python package) and run with --no-deps --no-external. No step of a code scan needs the network."}},
-{"@type":"Question","name":"How accurate is it?","acceptedAnswer":{"@type":"Answer","text":"On the OWASP Benchmark it scores 90.2% for Python and 98.3% for Java (mean of TPR minus FPR per category, computed with the project's own scorer), and you can reproduce both with one command. The Benchmark is a synthetic suite, so the score shows how the engine reasons rather than how accurate it is on your code. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review."}},
+{"@type":"Question","name":"How accurate is it?","acceptedAnswer":{"@type":"Answer","text":"On the OWASP Benchmark it scores 93.1% for Python and 98.3% for Java (mean of TPR minus FPR per category, computed with the project's own scorer), and you can reproduce both with one command. The Benchmark is a synthetic suite, so the score shows how the engine reasons rather than how accurate it is on your code. Like every static analyzer it has false positives and misses; treat results as a strong first pass, not a replacement for review."}},
 {"@type":"Question","name":"Which languages and targets are supported?","acceptedAnswer":{"@type":"Answer","text":"Dataflow analysis for Python, JavaScript/TypeScript, Java, Kotlin, C#, Go, PHP, C/C++, Rust, Swift, Ruby and PL/SQL, plus Oracle APEX exports, Android APK/JAR (via jadx), configuration, containers, CI files and passive web scanning."}},
 {"@type":"Question","name":"How do I use it in CI?","acceptedAnswer":{"@type":"Answer","text":"Run kashif with -f sarif and upload the file to GitHub Code Scanning, or use --fail-on high to fail the build. With --baseline, only findings that are new since the baseline fail the build."}},
 {"@type":"Question","name":"How does it compare with Semgrep, SonarQube, Snyk Code or CodeQL?","acceptedAnswer":{"@type":"Answer","text":"Those tools have far more rules and library models and years of real-world tuning. Kashif's strengths are running fully locally with zero dependencies, Oracle APEX and PL/SQL, archives and Android apps, passive web checks and an Arabic interface in one tool. It can also merge Semgrep, Bandit, gitleaks and npm audit results into its dashboard."}},
@@ -791,7 +791,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
 
 <div class="proof" role="region" aria-label="Key facts" data-i18n-attr="aria-label:proof.label">
   <ul>
-    <li><b class="ltr"><span data-bench-suite="python">90.2</span>%</b><span data-i18n="proof.py">OWASP Benchmark score, Python</span></li>
+    <li><b class="ltr"><span data-bench-suite="python">93.1</span>%</b><span data-i18n="proof.py">OWASP Benchmark score, Python</span></li>
     <li><b class="ltr"><span data-bench-suite="java">98.3</span>%</b><span data-i18n="proof.java">OWASP Benchmark score, Java</span></li>
     <li class="hi"><b>184</b><span data-i18n="proof.web">passive web checks</span></li>
     <li><b>12</b><span data-i18n="proof.langs">languages with dataflow analysis</span></li>
@@ -822,7 +822,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
           <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.code.1">Dataflow analysis in 12 languages, plus Oracle APEX and Android apps</span></li>
           <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.code.2">The source-to-sink path behind every dataflow finding</span></li>
           <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.code.3">Secrets, dependencies with reachability, verified autofix</span></li>
-          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.code.4">OWASP Benchmark: 90.2% Python, 98.3% Java</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="lens.code.4">OWASP Benchmark: 93.1% Python, 98.3% Java</span></li>
         </ul>
         <a class="more" href="#how"><span data-i18n="lens.code.more">How dataflow analysis works</span><svg class="ic flip" aria-hidden="true"><use href="#i-arrow"/></svg></a>
       </article>
@@ -1052,7 +1052,7 @@ html[lang="ar"] .foot h2{letter-spacing:0;font-size:14px}
     <div class="stats">
       <div class="stat"><b>153</b><span data-i18n="stat.rules">built-in pattern rules</span></div>
       <div class="stat"><b>48</b><span data-i18n="stat.df">dataflow and APEX rules</span></div>
-      <div class="stat"><b class="ltr">6,357</b><span data-i18n="stat.apis">modelled library APIs</span></div>
+      <div class="stat"><b class="ltr">6,381</b><span data-i18n="stat.apis">modelled library APIs</span></div>
       <div class="stat"><b>19</b><span data-i18n="stat.vql">built-in VQL queries</span></div>
     </div>
     <div class="grid">
@@ -1154,7 +1154,7 @@ kashif . --baseline .vulnscan-baseline.json --fail-on high</div></div>
           <button type="button" role="tab" id="suite-java" aria-controls="bench-panel" data-suite="java" aria-selected="false" tabindex="-1">Java</button>
         </div>
         <div class="k2" data-i18n="acc.overall">Overall score</div>
-        <div class="big"><span data-bench="overall">90.2</span><small>%</small></div>
+        <div class="big"><span data-bench="overall">93.1</span><small>%</small></div>
         <p data-i18n-html="acc.def">OWASP Benchmark · <span data-bench="cases"></span> test cases. Score = mean over categories of true-positive rate minus false-positive rate (Youden's J).</p>
         <div class="term"><span class="pr">$ </span>git clone --depth 1 https://github.com/OWASP-Benchmark/<span data-bench="repo">BenchmarkPython</span>
 <span class="pr">$ </span>python bench/score_owasp.py <span data-bench="repo">BenchmarkPython</span></div>
@@ -1379,15 +1379,15 @@ const BENCH = {
       { id: "deserialization", tpr: 100.0, fpr:  2.8, score:  97.2 },
       { id: "hash",            tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "ldapi",           tpr: 100.0, fpr:  0.0, score: 100.0 },
-      { id: "pathtraver",      tpr:  92.3, fpr: 35.0, score:  57.4 },
+      { id: "pathtraver",      tpr: 100.0, fpr: 35.9, score:  64.1 },
       { id: "redirect",        tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "securecookie",    tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "sqli",            tpr: 100.0, fpr:  0.0, score: 100.0 },
       { id: "trustbound",      tpr: 100.0, fpr: 15.8, score:  84.2 },
       { id: "weakrand",        tpr: 100.0, fpr:  0.0, score: 100.0 },
-      { id: "xpathi",          tpr: 100.0, fpr:  8.1, score:  91.9 },
+      { id: "xpathi",          tpr: 100.0, fpr:  4.4, score:  95.6 },
       { id: "xss",             tpr: 100.0, fpr: 19.0, score:  81.0 },
-      { id: "xxe",             tpr: 100.0, fpr: 35.0, score:  65.0 }
+      { id: "xxe",             tpr: 100.0, fpr:  5.0, score:  95.0 }
     ]
   },
   java: {

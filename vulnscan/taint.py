@@ -821,6 +821,40 @@ _STR_TRANSFORMS = frozenset({"strip", "lstrip", "rstrip", "lower", "upper", "cas
                              "decode", "encode", "toString", "ToString", "intern"})
 
 
+def _isabs_rejected(test) -> set:
+    """Names an exit on `test` rejects when they are absolute paths: `os.path.isabs(x)` (also inside `or`)."""
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or):
+        return set().union(*[_isabs_rejected(v) for v in test.values])
+    if isinstance(test, ast.Call) and _dotted(test.func).split(".")[-1] == "isabs" and len(test.args) == 1:
+        c = _chain(test.args[0])
+        return {c} if c else set()
+    return set()
+
+
+def _joined_names(node) -> set:
+    """Names (chains) a path join places after its first component in `node`: os.path.join(base, x),
+    Path(base, x), base.joinpath(x), base / x. An absolute value there replaces whatever came before."""
+    out: set = set()
+    for n in ast.walk(node):
+        later = []
+        if isinstance(n, ast.Call):
+            tail = _dotted(n.func).split(".")[-1] if _dotted(n.func) else (n.func.attr if isinstance(n.func, ast.Attribute) else "")
+            if tail == "join" and _dotted(n.func).split(".")[-2:-1] == ["path"] or _dotted(n.func) in ("posixpath.join", "ntpath.join"):
+                later = n.args[1:]
+            elif tail in ("Path", "PurePath", "PosixPath", "PurePosixPath", "WindowsPath", "PureWindowsPath"):
+                later = n.args[1:]
+            elif tail == "joinpath" and isinstance(n.func, ast.Attribute):
+                later = n.args
+        elif isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div):
+            later = [n.right]
+        for a in later:
+            for x in ast.walk(a):
+                c = _chain(x) if isinstance(x, (ast.Name, ast.Attribute)) else ""
+                if c:
+                    out.add(c)
+    return out
+
+
 def _path_covered(p: str, validated: set) -> bool:
     return any(p == v or p.startswith(v + ".") for v in validated)
 
@@ -1453,6 +1487,17 @@ class Project:
                     if cq:
                         return self._lookup_method(cq, "__init__"), cq
             name = _dotted(f)
+            if "." in name and self.m.get("language") == "python":
+                # `pkg.mod.wrapper(x)` after `import pkg.mod`: a project class (named in any case) built through
+                # its module's full path
+                hint = name.rsplit(".", 1)[0]
+                al = self.files.get(mod, {}).get("aliases", {})
+                tgt = al.get(hint) or al.get(hint.split(".")[0])
+                if tgt and tgt[0] == "mod" and not self._external_module(tgt[1]):
+                    cq = self._match(self.simple_classes, f.attr, hint, mod)
+                    cm = cq.split("::")[0] if cq else ""
+                    if cq and (cm.endswith(hint) or hint.endswith(cm)):
+                        return self._lookup_method(cq, "__init__"), cq
             if "." in name:
                 q = self._resolve_function(mod, name)
                 if q:
@@ -2949,6 +2994,29 @@ class Project:
                                 r"SUPPORT_DTD['\"]?\s*,\s*(false|Boolean\.FALSE)|IS_SUPPORTING_EXTERNAL_ENTITIES['\"]?\s*,\s*(false|Boolean\.FALSE)|"
                                 r"setEntityResolver\s*\(|load-external-dtd['\"]?\s*,\s*false|DtdProcessing\.Prohibit|XmlResolver\s*=\s*null")
 
+    _PY_XML_ENTITIES_ON = re.compile(r"feature_external_[gp]es['\"]?\s*,\s*(True|1)\b|resolve_entities\s*=\s*True\b|"
+                                     r"load_dtd\s*=\s*True\b|no_network\s*=\s*False\b")
+
+    def _xml_entities_on(self, fn) -> bool:
+        """Python: does the function turn external entities on for an XML parser it builds (sax feature_external_ges
+        / _peds, lxml XMLParser(resolve_entities=True / load_dtd=True / no_network=False))? Without that the stdlib
+        parsers expand no external entity, and lxml >= 5 none either: parsing untrusted XML is no XXE."""
+        cache = self.__dict__.setdefault("_xml_on", {})
+        hit = cache.get(id(fn))
+        if hit is None or hit[0] is not fn:
+            found = False
+            for n in ast.walk(fn) if hasattr(fn, "body") else ():
+                if isinstance(n, ast.Call) and (n.keywords or len(n.args) >= 2):
+                    try:
+                        text = ast.unparse(n)
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if self._PY_XML_ENTITIES_ON.search(text):
+                        found = True
+                        break
+            hit = cache[id(fn)] = (fn, found)
+        return hit[1]
+
     def _xml_hardened(self, fn) -> bool:
         """Does the function configure its XML parser against XXE (a hardening call anywhere in its body)?"""
         cache = self.__dict__.setdefault("_xml_hard", {})
@@ -2972,6 +3040,8 @@ class Project:
         JSON, and a handler that set a non-HTML Content-Type (JSON, event stream, plain text) writes no HTML."""
         if si[5] == "CWE-611" and self._xml_hardened(fn):
             return False                     # the parser was configured without DTDs / external entities
+        if si[5] == "CWE-611" and self.m.get("language") == "python" and not self._xml_entities_on(fn):
+            return False                     # Python parsers resolve no external entity unless told to
         if env is not None and getattr(env, "facts", None) and _guard_facts_protect(si, arg, env.facts):
             return False                     # a guard on the path to this sink proved the value harmless for it
         if env is not None and mod is not None and (si[5] in _PATH_CWES or si[5] == "CWE-643") \
@@ -3567,12 +3637,17 @@ class Project:
             return False
         parents = self._parents(fn)
         validated: set = set()
+        path_sink = bool(si) and si[5] in _PATH_CWES and self.m.get("language") == "python"
+        by_any: set = set()          # validated by a check that is not only a `..` deny-list
+        not_abs: set = set()         # rejected when absolute (`if os.path.isabs(x): return`)
         node = call
         while node in parents:
             parent = parents[node]
             if isinstance(parent, ast.If):
                 in_body = any(node is x for x in parent.body)
                 validated |= self._validated(mod, parent.test, positive=in_body, cwe=si[5] if si else None)
+                if path_sink:
+                    by_any |= self._validated(mod, parent.test, positive=in_body)
             for field in ("body", "orelse", "finalbody"):
                 block = getattr(parent, field, None)
                 if isinstance(block, list) and any(node is x for x in block):
@@ -3581,16 +3656,28 @@ class Project:
                         got: set = set()
                         if isinstance(prev, ast.If) and _exits(prev.body) and not prev.orelse:
                             got = self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
+                            if path_sink:
+                                by_any |= self._validated(mod, prev.test, positive=False)
+                                not_abs |= _isabs_rejected(prev.test)
                         elif isinstance(prev, ast.If) and not prev.orelse:
                             # `if not is_safe(url): url = "/"`: past it the value was either validated or replaced
                             neg = self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
                             got = {n for n in neg if self._rebinds_safely(mod, prev.body, n, si)}
+                            if path_sink:
+                                by_any |= got
                         if got and self.m.get("language") == "plsql":
                             # PL/SQL: `l_pkg := apex_application.g_x02;` (or select … into l_pkg) after the guard
                             # replaces the value that was checked: the guard no longer covers it
                             got = {n for n in got if not _rebound_between(fn, n.split(".")[0], prev, block[k + 1:idx], call)}
                         validated |= got
             node = parent
+        if path_sink:
+            # rejecting ".." does not confine a value that a path join puts after the base: an absolute value
+            # replaces the base (os.path.join("/srv", "/etc/passwd") is "/etc/passwd"), unless it was rejected too
+            dd_only = {v for v in validated if not _path_covered(v, by_any) and not _path_covered(v, not_abs)}
+            if dd_only:
+                joined = _joined_names(call)
+                validated -= {v for v in dd_only if any(_path_covered(j, {v}) or _path_covered(v, {j}) for j in joined)}
         return all(_path_covered(p, validated) or self._derived_from_guarded(mod, fn, call, p, si, depth)
                    for p in names)
 

@@ -34,8 +34,8 @@ from a **local web UI** in English and Arabic.
   context-sensitive (k=2) points-to analysis; context-specific sanitizers (`html.escape` protects HTML only,
   not SQL or a shell); second-order (stored) injection through database tables.
 - **Rules and models** — 153 pattern rules, 48 dataflow and APEX rules and 19 built-in VQL queries (VQL is
-  Kashif's declarative query language over the program database), over 6,357 modelled library APIs
-  (1,044 sources, 4,532 sinks, 781 sanitizers).
+  Kashif's declarative query language over the program database), over 6,381 modelled library APIs
+  (1,044 sources, 4,556 sinks, 781 sanitizers).
 - **Fewer false positives on real code** — test, documentation and example code is recognised by its path: fixture
   noise there is dropped and the rest is lowered to info; vendored bundles are skipped. On the 35 open-source projects
   (of 38) that 0.9 could finish, findings went from 17,228 to 2,607 (critical and high: 4,345 to 783); half of 0.9's
@@ -288,7 +288,7 @@ Measured on the [OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/
 (1,230 test cases) and the [OWASP Benchmark for Java](https://github.com/OWASP-Benchmark/BenchmarkJava) v1.2
 (2,740 test cases). Score = mean over categories of TPR − FPR (Youden's J), the scoring method OWASP uses,
 computed by this project's own scorer (`bench/score_owasp.py`), not by OWASP's scorecard tool.
-**Python: 90.2% · Java: 98.3%.** (Python was 74.0% in 1.1.1; see CHANGELOG v1.2.0.) On the same Python suite, with the same scorer, Bandit 1.9.4 scores 16.5% and Semgrep 1.186.0
+**Python: 93.1% · Java: 98.3%.** (Python was 74.0% in 1.1.1 and 90.2% in 1.2.0; see CHANGELOG v1.2.0 and v1.4.0.) On the same Python suite, with the same scorer, Bandit 1.9.4 scores 16.5% and Semgrep 1.186.0
 (community rules) 15.7%: see [docs/comparison.md](docs/comparison.md) for the per-category table and its limits.
 
 | Category | Py TPR % | Py FPR % | Py score | Java TPR % | Java FPR % | Java score |
@@ -299,16 +299,16 @@ computed by this project's own scorer (`bench/score_owasp.py`), not by OWASP's s
 | deserialization (deserialization) | 100.0 | 2.8 | 97.2 | — | — | — |
 | hash (weak hashing) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
 | ldapi (LDAP injection) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
-| pathtraver (path traversal) | 92.3 | 35.0 | 57.4 | 100.0 | 0.0 | 100.0 |
+| pathtraver (path traversal) | 100.0 | 35.9 | 64.1 | 100.0 | 0.0 | 100.0 |
 | redirect (open redirect) | 100.0 | 0.0 | 100.0 | — | — | — |
 | securecookie (insecure cookie) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
 | sqli (SQL injection) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
 | trustbound (trust boundary) | 100.0 | 15.8 | 84.2 | 100.0 | 0.0 | 100.0 |
 | weakrand (weak randomness) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
-| xpathi (XPath injection) | 100.0 | 8.1 | 91.9 | 100.0 | 0.0 | 100.0 |
+| xpathi (XPath injection) | 100.0 | 4.4 | 95.6 | 100.0 | 0.0 | 100.0 |
 | xss (cross-site scripting) | 100.0 | 19.0 | 81.0 | 100.0 | 18.2 | 81.8 |
-| xxe (XML external entities) | 100.0 | 35.0 | 65.0 | — | — | — |
-| **Overall** | | | **90.2** | | | **98.3** |
+| xxe (XML external entities) | 100.0 | 5.0 | 95.0 | — | — | — |
+| **Overall** | | | **93.1** | | | **98.3** |
 
 Each suite is scanned whole, as one application (the Python repository, the Java `src/main` tree), with the
 default profile. Reproduce either with one command:
@@ -520,7 +520,7 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
   من 17,228 إلى 2,607 (الحرجة والعالية من 4,345 إلى 783)، وكان نصف نتائج 0.9 في كود الاختبارات والتوثيق والأمثلة.
 - **أسرع:** `--jobs N` لتوزيع الفحص على المعالجات، و`--cache DIR` لإعادة فحص مشروع لم يتغير بالنتائج نفسها: Django كاملًا
   (6,973 ملفًا) في 311–411 ثانية أول مرة على 4 معالجات افتراضية (كان 594 ثانية في 0.9)، و3.5 ثوانٍ عند الإعادة.
-- النماذج **6,357** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,532، ومعقّمات 781). التفاصيل في `CHANGELOG.md`.
+- النماذج **6,381** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,556، ومعقّمات 781). التفاصيل في `CHANGELOG.md`.
 
 ### فحص المواقع السلبي
 
@@ -1155,7 +1155,7 @@ Kashif — ./my-project  (156 ملفًا مفحوصًا، 37 نتيجة)
 
 نقيس كاشِف على مجموعتي OWASP Benchmark الرسميتين بطريقة OWASP في الحساب (متوسط معدّل الإيجابيات الصحيحة ناقص معدّل
 الإيجابيات الكاذبة لكل فئة)، بأداة التقييم الخاصة بالمشروع (`bench/score_owasp.py`) لا بأداة Scorecard الرسمية:
-**Python ‏90.2%** (1,230 حالة؛ كانت 74.0% في 1.1.1) و**Java ‏98.3%** (2,740 حالة؛ كانت 76.3% في 0.9). تُفحص كل مجموعة كاملة كتطبيق واحد
+**Python ‏93.1%** (1,230 حالة؛ كانت 74.0% في 1.1.1 و90.2% في 1.2.0) و**Java ‏98.3%** (2,740 حالة؛ كانت 76.3% في 0.9). تُفحص كل مجموعة كاملة كتطبيق واحد
 بالملف الافتراضي، ولا يحوي المحرّك أي اسم أو مسار أو نتيجة من ملفات الاختبار.
 
 قفزة Java سببها إصلاحان عامّان في حلّ الاستدعاءات (استدعاء دالة بلا كائن يُحلّ إلى دالة الصنف نفسه، ودوال المكتبات
