@@ -147,7 +147,10 @@ def test_check_that_does_not_cover_every_path_is_flagged(case):
     found = [f for f in _apx024(text) if f.extra["routine"] == "BIO_PHOTO"]
     assert len(found) == 1, case
     f = found[0]
-    assert f.extra["coverage"] == "partial" and f.extra["guarded_siblings"] == 4 and f.extra["siblings"] == 5
+    assert f.extra["coverage"] == "partial" and f.extra["siblings"] == 5
+    # siblings counted as in 1.3 (a guard call before the first access in the code: bio_photo itself when its check
+    # comes first in the text), of which those whose check covers every path
+    assert f.extra["guarded_siblings"] in (4, 5) and f.extra["covering_siblings"] == 4
     assert f.extra["unguarded_line"] == _line_of(text, "return l_b;")
     assert f"line {f.extra['unguarded_line']}" in to_en(f.advice)
 
@@ -157,12 +160,15 @@ def test_partial_message_is_distinct_and_translated():
     en = to_en(f.advice)
     assert not has_arabic(en), en
     assert en.startswith("HDR_UI.BIO_PHOTO checks authorization on some paths only: the data access at line ")
-    assert "4 of the 5 public routines of the package call HDR_UI.CHECK_ACCESS" in en
+    assert ("5 of the 5 public routines of the package call HDR_UI.CHECK_ACCESS before their first data access in the "
+            "code (4 of them on every path)") in en
     assert "It returns a BLOB value read by a query (hr_photos)." in en
     assert "not in one branch, an exception handler or after the access" in en
     none = _photo(READ)[0]
     assert none.extra["coverage"] == "none" and none.extra["unguarded_line"] is None
-    assert to_en(none.advice).startswith("HDR_UI.BIO_PHOTO does not check authorization, while 4 of the 5")
+    assert to_en(none.advice).startswith("HDR_UI.BIO_PHOTO does not check authorization, while 4 of the 5 public "
+                                         "routines of the package call HDR_UI.CHECK_ACCESS before their first data "
+                                         "access in the code (4 of them on every path).")
 
 
 def test_check_after_the_dml_is_flagged():
@@ -293,7 +299,7 @@ def test_helper_that_calls_the_guard_counts_where_it_is_called():
 
 
 # ------------------------------------------------------------------ sibling counting
-def test_sibling_with_a_conditional_check_is_not_counted_as_checked():
+def test_sibling_with_a_conditional_check_is_reported_but_still_elects_the_guard():
     cond = """  procedure update_mail(p_emp_id in number, p_mail in varchar2) is
   begin
     if p_mail is not null then
@@ -305,12 +311,98 @@ def test_sibling_with_a_conditional_check_is_not_counted_as_checked():
     text = _package(GUARD, SIBLINGS, cond, PHOTO.format(body=READ))
     found = {f.extra["routine"]: f for f in _apx024(text)}
     assert set(found) == {"UPDATE_MAIL", "BIO_PHOTO"}
-    assert {(f.extra["guarded_siblings"], f.extra["siblings"]) for f in found.values()} == {(4, 6)}
+    assert {(f.extra["guarded_siblings"], f.extra["covering_siblings"], f.extra["siblings"]) for f in found.values()} \
+        == {(5, 4, 6)}
     assert (found["UPDATE_MAIL"].extra["coverage"], found["BIO_PHOTO"].extra["coverage"]) == ("partial", "none")
     _specs, bodies = plsql_authz.collect(text, "x.pkb")
     view = plsql_authz._Pkg(bodies[0], {r.name for r in bodies[0].routines})
-    relevant, checked, _s = plsql_authz._evaluate(view, "check_access")
-    assert {r.name for r in checked} == {"employee_name", "update_phone", "salary", "delete_note"}
+    relevant, checked, _s = plsql_authz._evaluate(view, "check_access")   # the election counts as in 1.3
+    assert {r.name for r in checked} == {"employee_name", "update_phone", "salary", "delete_note", "update_mail"}
+
+
+HR_API = """  procedure update_phone(p_emp_id in number, p_phone in varchar2) is
+  begin
+    check_access('HR_EDIT');
+    update hr_employees set phone = p_phone where emp_id = p_emp_id;
+  end update_phone;
+
+  procedure delete_note(p_note_id in number) is
+  begin
+    check_access('HR_EDIT');
+    delete from hr_notes where note_id = p_note_id;
+  end delete_note;
+
+  procedure update_email(p_emp_id in number, p_email in varchar2) is
+  begin
+    check_access('HR_EDIT');
+    update hr_employees set email = p_email where emp_id = p_emp_id;
+  end update_email;
+
+  procedure update_title(p_emp_id in number, p_title in varchar2, p_self in varchar2) is
+  begin
+    {title}
+    update hr_employees set title = p_title where emp_id = p_emp_id;
+  end update_title;
+
+  procedure update_dept(p_emp_id in number, p_dept in number, p_self in varchar2) is
+  begin
+    {dept}
+    update hr_employees set dept_id = p_dept where emp_id = p_emp_id;
+  end update_dept;
+
+  procedure delete_employee(p_emp_id in number) is
+{decl}  begin
+{check}    delete from hr_employees where emp_id = p_emp_id;
+  end delete_employee;
+"""
+COND = "if p_self = 'N' then\n      check_access('HR_EDIT');\n    end if;"
+FIRST = "check_access('HR_EDIT');"
+
+
+def _hr_api(title=FIRST, dept=FIRST, check="", decl="") -> dict:
+    text = _package(GUARD, HR_API.format(title=title, dept=dept, check=check, decl=decl), name="hr_api")
+    return {f.extra["routine"]: f for f in _apx024(text, "hr_api.pkb")}
+
+
+def test_branch_guarded_siblings_do_not_hide_an_unchecked_routine():
+    # 1.4.0 review (R4): 3 routines check first, 2 only when p_self = 'N', delete_employee never. Counted path by path
+    # the guard covered 3 of 6 (< 60%) and nothing was reported; the election counts as in 1.3 again (5 of 6).
+    found = _hr_api(title=COND, dept=COND)
+    assert {r: f.extra["coverage"] for r, f in found.items()} == \
+        {"DELETE_EMPLOYEE": "none", "UPDATE_TITLE": "partial", "UPDATE_DEPT": "partial"}
+    f = found["DELETE_EMPLOYEE"]
+    assert (f.extra["guarded_siblings"], f.extra["covering_siblings"], f.extra["siblings"]) == (5, 3, 6)
+    assert "5 of the 6 public routines of the package call HR_API.CHECK_ACCESS before their first data access in " \
+        "the code (3 of them on every path)" in to_en(f.advice)
+
+
+@pytest.mark.parametrize("check,decl", [
+    ("    $if false $then\n    check_access('HR_EDIT');\n    $end\n", ""),
+    ("    $if dbms_db_version.ver_le_12 $then\n    check_access('HR_EDIT');\n    $end\n", ""),
+    ("    $if false $then\n    null;\n    $else\n    check_access('HR_EDIT');\n    $end\n", ""),
+    ("    l_ok := apex_authorization.is_authorized('HR_EDIT');\n", "    l_ok boolean;\n"),
+    ("    if not apex_authorization.is_authorized('HR_EDIT') then\n      null;\n    end if;\n", ""),
+    ("    if apex_authorization.is_authorized('HR_EDIT') then\n      null;\n    end if;\n", ""),
+    ("    goto do_it;\n    check_access('HR_EDIT');\n    <<do_it>>\n", ""),
+    ("    for r in (select 1 from dual) loop\n      exit;\n      check_access('HR_EDIT');\n    end loop;\n", ""),
+    ("    begin\n      check_access('HR_EDIT');\n    exception\n      when others then null;\n    end;\n", ""),
+], ids=["cc-false", "cc-cond", "cc-else-only", "result-unused", "if-not-null", "if-null", "goto", "exit-before", "others-swallows"])
+def test_check_that_does_not_guard_the_delete_is_partial(check, decl):
+    assert _hr_api(check=check, decl=decl)["DELETE_EMPLOYEE"].extra["coverage"] == "partial"
+
+
+@pytest.mark.parametrize("check,decl", [
+    ("    $if dbms_db_version.ver_le_12 $then\n    check_access('HR_OLD');\n    $else\n    check_access('HR_EDIT');\n"
+     "    $end\n", ""),
+    ("    l_ok := apex_authorization.is_authorized('HR_EDIT');\n    if not l_ok then\n      raise_application_error("
+     "-20001, 'no');\n    end if;\n", "    l_ok boolean;\n"),
+    ("    if apex_authorization.is_authorized('HR_EDIT') then\n      delete from hr_employees where emp_id = 0;\n"
+     "    else\n      raise_application_error(-20001, 'no');\n    end if;\n", ""),
+    ("    goto do_it;\n    null;\n    <<do_it>>\n    check_access('HR_EDIT');\n", ""),
+], ids=["cc-both-branches", "variable-tested", "if-else-raise", "goto-forward-to-check"])
+def test_check_that_guards_the_delete_is_not_reported(check, decl):
+    found = _hr_api(check=check, decl=decl)
+    assert "DELETE_EMPLOYEE" not in found, found["DELETE_EMPLOYEE"].extra
 
 
 def test_siblings_using_the_raise_idiom_are_counted():
@@ -322,8 +414,8 @@ def test_siblings_using_the_raise_idiom_are_counted():
     text = _package(GUARD, idiom, PHOTO.format(body=FLAGGED["guard in one branch of IF"].replace("hdr_ui.check_access",
                                                                                                "can_view")))
     found = _apx024(text)
-    assert [(f.extra["routine"], f.extra["guard"], f.extra["guarded_siblings"], f.extra["coverage"]) for f in found] == \
-        [("BIO_PHOTO", "HDR_UI.CAN_VIEW", 4, "partial")]
+    assert [(f.extra["routine"], f.extra["guard"], f.extra["guarded_siblings"], f.extra["covering_siblings"],
+             f.extra["coverage"]) for f in found] == [("BIO_PHOTO", "HDR_UI.CAN_VIEW", 5, 4, "partial")]
 
 
 # ------------------------------------------------------------------ robustness: unknown structure -> lexical answer

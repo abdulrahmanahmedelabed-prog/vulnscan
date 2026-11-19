@@ -155,3 +155,19 @@ def test_plsql_region_with_a_type_is_still_plsql():
     text = _apex("wwv_flow_imp_page.create_page_plug(\n p_id=>wwv_flow_imp.id(7)\n,p_plug_name=>'Greeting'\n"
                  ",p_plug_source=>'htp.p(:P1_NAME);'\n,p_plug_source_type=>'NATIVE_PLSQL'\n);")
     assert [b.kind for b in apex_export.extract(text, "f1.sql")[0]] == ["plsql"]
+
+
+def test_conditional_compilation_branches_are_alternatives(tmp_path):
+    # 1.4.0 review: the branches used to follow each other, so the last assignment won and hid the tainted one
+    src = _body("  $if dbms_db_version.ver_le_12 $then\n"
+                "    l_sql := 'select count(*) from emp where ename = ''' || v('P1_NAME') || '''';\n"
+                "  $else\n    l_sql := 'select count(*) from emp where ename = :1';\n  $end\n"
+                "  execute immediate l_sql;")
+    assert _skips(src) == []
+    assert _df004(tmp_path, src)
+    from vulnscan.plsql_frontend import CC_COND, tokenize
+    vals = [t.val for t in tokenize("begin $if a $then x := 1; $else x := 2; $end end;", cc_branches=True)]
+    assert vals[:4] == ["begin", "if", CC_COND, "then"] and vals[-6:-1] == ["end", "if", ";", "end", ";"]
+    # inside an expression the directives are dropped as before
+    vals = [t.val for t in tokenize("x := $if a $then 1 $else 2 $end;", cc_branches=True)]
+    assert vals == ["x", ":=", "1", "2", ";", ""]

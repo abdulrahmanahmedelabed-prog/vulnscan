@@ -90,7 +90,7 @@ class Tok:
         return f"Tok({self.kind},{self.val!r},{self.line})"
 
 
-def tokenize(src: str) -> list[Tok]:
+def tokenize(src: str, cc_branches: bool = False) -> list[Tok]:
     toks: list[Tok] = []
     i, n, line, nl = 0, len(src), 1, True
     while i < n:
@@ -143,14 +143,26 @@ def tokenize(src: str) -> list[Tok]:
         nl = False
         i = m.end()
     toks.append(Tok("eof", "", line, True))
-    return _conditional(toks) if any(t.kind == "cc" for t in toks) else toks
+    return _conditional(toks, cc_branches) if any(t.kind == "cc" for t in toks) else toks
 
 
-def _conditional(toks: list[Tok]) -> list[Tok]:
-    """Conditional compilation: drop the directives (`$if cond $then`, `$elsif cond $then`, `$else`, `$end`,
-    `$error … $end`) and keep the code of EVERY branch, since which one is compiled depends on the database, and data
-    flowing through any of them matters. An inquiry directive (`$$plsql_unit`, `$$my_flag`) is a compile-time constant."""
+CC_COND = "__cc__"                       # the unknown condition of a `$if` lowered to an IF (see _conditional)
+_CC_BOUNDARY = {"begin", "then", "else", "loop", "declare", "is", "as"}
+_CC_NOT_FIRST = {"when", "elsif", "else", "exception", "end"}
+
+
+def _conditional(toks: list[Tok], branches: bool = False) -> list[Tok]:
+    """Conditional compilation: which branch is compiled depends on the database, so EVERY branch is kept. An inquiry
+    directive (`$$plsql_unit`, `$$my_flag`) is a compile-time constant; `$error … $end` is dropped.
+
+    By default the directives (`$if cond $then`, `$elsif cond $then`, `$else`, `$end`) are dropped and the branches
+    follow each other. With branches=True a `$if` whose branches are whole statements or declarations (it starts where
+    a statement may start, and each branch ends with `;`) becomes `if __cc__ then … elsif __cc__ then … else … end if;`,
+    so that one branch runs, not all of them in a row (in `$if … $then l_sql := a; $else l_sql := b; $end` the second
+    assignment does not overwrite the first). Any other `$if` (inside an expression, a list) is dropped as by default."""
     out: list[Tok] = []
+    groups: list = []                    # [[(index in out, directive)], structured so far]
+    stack: list = []
     k, n = 0, len(toks)
     while k < n:
         t = toks[k]
@@ -162,14 +174,58 @@ def _conditional(toks: list[Tok]) -> list[Tok]:
             out.append(Tok("str", t.raw[2:], t.line, t.nl))
             k += 1
             continue
-        stop = {"$if": "$then", "$elsif": "$then", "$error": "$end"}.get(t.val)
+        d = t.val
+        stop = {"$if": "$then", "$elsif": "$then", "$error": "$end"}.get(d)
         k += 1
         if stop:
             while k < n and toks[k].kind != "eof" and not (toks[k].kind == "cc" and toks[k].val == stop):
                 k += 1
             if k < n and toks[k].kind == "cc":
                 k += 1
-    return out
+        if not branches or d not in ("$if", "$elsif", "$else", "$end"):
+            continue
+        if d == "$if":
+            prev = out[-1] if out else None
+            ok = prev is None or (prev.kind == "punct" and prev.val == ";") or (prev.kind == "id" and prev.val in _CC_BOUNDARY) \
+                or prev.kind == "ccm"
+            g = [[], ok]
+            groups.append(g)
+            stack.append(g)
+        elif not stack:
+            continue
+        g = stack[-1]
+        if d != "$if":                   # the branch before this directive must end a statement (or be empty)
+            prev = out[-1]
+            if not ((prev.kind == "punct" and prev.val == ";") or (prev.kind == "ccm" and (prev.val == "$end" or
+                                                                                          prev is g[0][-1][1]))):
+                g[1] = False
+        marker = Tok("ccm", d, t.line, t.nl)
+        g[0].append((len(out), marker))
+        out.append(marker)
+        if d == "$end":
+            stack.pop()
+    if not groups:
+        return out
+    for g in groups:                     # a branch starting with `when` / `else` … is part of a larger construct
+        if g[1]:
+            for idx, _m in g[0][:-1]:
+                nxt = out[idx + 1] if idx + 1 < len(out) else None
+                if nxt is not None and nxt.kind == "id" and nxt.val in _CC_NOT_FIRST:
+                    g[1] = False
+        if len(g[0]) < 2 or g[0][-1][1].val != "$end":
+            g[1] = False
+        for _idx, m in g[0]:
+            m.raw = "keep" if g[1] else None
+    res: list[Tok] = []
+    for t in out:
+        if t.kind != "ccm":
+            res.append(t)
+        elif t.raw == "keep":
+            ln, nl = t.line, t.nl
+            words = {"$if": ["if", CC_COND, "then"], "$elsif": ["elsif", CC_COND, "then"], "$else": ["else"],
+                     "$end": ["end", "if", ";"]}[t.val]
+            res.extend(Tok("punct" if w == ";" else "id", w, ln, nl) for w in words)
+    return res
 
 
 class ParseError(Exception):
@@ -209,7 +265,7 @@ class Unit:
 
 class Parser:
     def __init__(self, src: str):
-        self.toks = tokenize(src)
+        self.toks = tokenize(src, cc_branches=True)
         self.i = 0
         self.diagnostics: list = []
         self.n_skipped = 0               # every skipped statement (diagnostics keeps the first 500 of them)
@@ -438,7 +494,8 @@ class Parser:
                 if self.at("("):
                     self.skip_balanced()
                     continue
-            if self.at("end") and (self.peek().val == ";" or (self.peek().kind == "id" and self.peek(2).val == ";")):
+            if self.at("end") and (self.peek().val == ";" or (self.peek().kind == "id" and self.peek().val != "if"
+                                                               and self.peek(2).val == ";")):
                 self.i += 1
                 if self.t.kind == "id":
                     self.i += 1
@@ -543,6 +600,9 @@ class Parser:
             start = self.i
             line = self.t.line
             try:
+                if self.at("if") and self.peek().kind == "id" and self.peek().val == CC_COND:
+                    out.extend(self.parse_cc_decls())
+                    continue
                 if self.at("procedure", "function"):
                     fn = self.parse_subprogram()
                     if fn is not None:
@@ -582,6 +642,32 @@ class Parser:
                     self.i += 1
                 self.skip_to_semicolon()
         return out
+
+    def parse_cc_decls(self) -> list:
+        """Declarations under conditional compilation (`$if … $then <decls> [$elsif …] [$else <decls>] $end`, lowered
+        to `if __cc__ then … end if;` by tokenize): an If over their initialisers, one branch or the other. Sub-programs
+        declared in a branch stay at the level of the declarations (each branch's are kept)."""
+        line = self.t.line
+        self.eat("if")
+        self.eat(CC_COND)
+        self.eat("then")
+        arms = [self.parse_decls({"elsif", "else", "end"})]
+        other: list = []
+        while self.at("elsif"):
+            self.i += 1
+            self.eat(CC_COND)
+            self.eat("then")
+            arms.append(self.parse_decls({"elsif", "else", "end"}))
+        if self.opt("else"):
+            other = self.parse_decls({"end"})
+        self.eat("end")
+        self.eat("if")
+        self.eat(";")
+        if any(isinstance(x, ast.FunctionDef) for arm in arms + [other] for x in arm):
+            return [x for arm in arms + [other] for x in arm]
+        for arm in reversed(arms):
+            other = [_mk(ast.If, line, test=_name(CC_COND, line), body=arm or [_mk(ast.Pass, line)], orelse=other)]
+        return other
 
     def parse_package_body(self, line, type_body=False) -> Unit:
         name = self._qualified_name()
