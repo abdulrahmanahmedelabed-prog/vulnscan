@@ -1008,7 +1008,11 @@ def _all_names_known(tree, line: int, cache: dict) -> bool:
         for n in _ast.walk(tree):
             if isinstance(n, _ast.Name) and isinstance(n.ctx, _ast.Load) and getattr(n, "lineno", None):
                 is_module_receiver = id(n) in receivers and (n.id in imports or n.id[:1].isupper())
-                if not is_module_receiver and not hasattr(builtins, n.id) and n.id not in ("self", "cls", "this"):
+                # a PHP identifier written without `$` names a function or a constant (`system(...)`, `ENT_QUOTES`):
+                # neither can hold data the analysis did not see
+                if getattr(n, "php_bare", False) or getattr(n, "php_out", False):
+                    by_line.setdefault(n.lineno, set())          # `system("ls")`: a call of constants only
+                elif not is_module_receiver and not hasattr(builtins, n.id) and n.id not in ("self", "cls", "this"):
                     by_line.setdefault(n.lineno, set()).add(n.id)
         cache[key] = (sorted(scopes, key=lambda x: x[1] - x[0]), by_line)
     scopes, by_line = cache[key]

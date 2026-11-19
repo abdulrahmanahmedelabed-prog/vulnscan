@@ -172,6 +172,16 @@
         "request.getBodyParam",
         "request.getBodyParams"
       ]
+    },
+    {
+      "kind": "call",
+      "label": "{name}()",
+      "_comment": "the output of a shell command (shell_exec, `backticks`, the last line system() and exec() return, the lines exec() writes into its second argument): text from outside the program, a local source like a file read",
+      "names": [
+        "builtins.shell_exec",
+        "builtins.system",
+        "builtins.exec"
+      ]
     }
   ],
   "entry_points": [
@@ -575,7 +585,8 @@
         "redirectToRoute",
         "wp_redirect",
         "$response->redirect",
-        "location"
+        "location",
+        "http_redirect"
       ],
       "title": "Tainted data reaches a redirect / header",
       "title_ar": "بيانات غير موثوقة تصل إلى تحويل أو ترويسة",
