@@ -184,10 +184,21 @@ PATTERNS: list[tuple[str, str]] = [
      r"inside the routine is still needed."),
     (rf"ويُستدعى (?P<r>{_ID}) في تطبيق APEX المفحوص من مكوّن غير محمي: «(?P<label>.+?)» في السطر (?P<line>\d+) من "
      r"(?P<rel>.+?) \((?P<why>[^()]+)\)؛ المواضع غير المحمية (?P<k>\d+) من (?P<n>\d+)\. فيمكن لأي مستخدم يصل إلى هذا "
+     r"المكوّن تشغيل الروتين دون تحقق، ولذلك رُفعت الخطورة إلى «عالية»\. (?P<btn>ويعمل «.+)",
+     r"\g<r> is called in the scanned APEX application from an unprotected component: «\g<label>» at line "
+     r"\g<line> of \g<rel> (\g<why>); unprotected call sites: \g<k> of \g<n>. Any user who can reach that component "
+     r"can run the routine without a check, so the severity was raised to high. \g<btn>"),
+    (rf"ويُستدعى (?P<r>{_ID}) في تطبيق APEX المفحوص من مكوّن غير محمي: «(?P<label>.+?)» في السطر (?P<line>\d+) من "
+     r"(?P<rel>.+?) \((?P<why>[^()]+)\)؛ المواضع غير المحمية (?P<k>\d+) من (?P<n>\d+)\. فيمكن لأي مستخدم يصل إلى هذا "
      r"المكوّن تشغيل الروتين دون تحقق، ولذلك رُفعت الخطورة إلى «عالية»\.",
      r"\g<r> is called in the scanned APEX application from an unprotected component: «\g<label>» at line "
      r"\g<line> of \g<rel> (\g<why>); unprotected call sites: \g<k> of \g<n>. Any user who can reach that component "
      r"can run the routine without a check, so the severity was raised to high."),
+    # a When Button Pressed is not protection (1.5.0)
+    (rf"ويعمل «(?P<label>.+?)» عند الضغط على الزر (?P<b>[^ ]+) الذي يحميه المخطط (?P<s>.+?)، لكن إخفاء الزر لا يمنع "
+     r"إرسال الصفحة بطلب \(REQUEST\) يحمل اسمه؛ أسند (?P=s) إلى المكوّن نفسه لحمايته\.",
+     r"«\g<label>» runs when the button \g<b> is pressed, and \g<b> has the authorization scheme \g<s>; hiding a "
+     r"button does not stop a crafted submit with that REQUEST: add \g<s> to the component's own scheme to protect it."),
     # a helper of the package that checks on some of its paths only does not count as a check (1.5.0)
     (rf"ولا يُحتسب استدعاؤه (?P<h>{_ID}) تحققًا: (?P=h) نفسه لا يتحقق من الصلاحية إلا في بعض مساراته\. "
      r"(?P<ctx>(?:وفي|ويُستدعى) .+)",

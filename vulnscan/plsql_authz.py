@@ -1208,14 +1208,15 @@ def apex_context(found: list, sites: list, sec: dict, bodies: list = (), syns: d
     scanned SQL (1.5.0), or a constant `execute immediate 'begin pkg.routine; end;'`; comments and other strings are
     not. Since 1.5.0 a component that calls another package routine of the scan which calls PACKAGE.ROUTINE (up to
     3 hops, through callers that do not check authorization first) is a call site too, labelled "indirectly via
-    PKG.CALLER". A component in both the .sql and the readable YAML export of one application counts once.
+    PKG.CALLER". A process that runs When Button Pressed is not protected by the button's scheme (a crafted submit
+    with that REQUEST runs it): the message names the button and its scheme and says to put it on the component. A component in both the .sql and the readable YAML export of one application counts once.
 
     Every call site protected: the finding stays as it is, and says that the protection covers only those callers.
     Some call site unprotected (public page, component without a scheme, application process without one): the
     finding names it and its severity becomes high. No call site in the scan: unchanged.
     sites: [(rel, apex_export.Block, application id[, "sql" | "yaml"])]; sec: application id -> {app_scheme,
     schemes, pages}; bodies: the package bodies of the scan (plsql_authz.collect); syns: synonyms()."""
-    from .apex_export import call_site_protection, call_sites
+    from .apex_export import call_site_protection, call_sites, scheme_name
     if not found or not sites:
         return
     syns = syns or {}
@@ -1245,6 +1246,8 @@ def apex_context(found: list, sites: list, sec: dict, bodies: list = (), syns: d
                          ("scheme" if prot else "reason"): what}
                     if via:
                         c["via"] = via
+                    if b.button and not prot:
+                        c["button"], c["button_scheme"] = b.button[0], scheme_name(b.button[1], sec.get(app, {}).get("schemes", {}))
                     calls.append(c)
         if not calls:
             continue
@@ -1261,6 +1264,15 @@ def apex_context(found: list, sites: list, sec: dict, bodies: list = (), syns: d
             f.advice += (f" ويُستدعى {rname} في تطبيق APEX المفحوص من مكوّن غير محمي: «{u['component']}» في السطر "
                          f"{u['line']} من {u['file']} ({u['reason']})؛ المواضع غير المحمية {len(open_)} من {n}. فيمكن لأي "
                          f"مستخدم يصل إلى هذا المكوّن تشغيل الروتين دون تحقق، ولذلك رُفعت الخطورة إلى «عالية».")
+            btn = next((c for c in open_ if c.get("button")), None)
+            if btn is not None:
+                # a When Button Pressed compares the submitted REQUEST with the button's name: hiding the button
+                # (its authorization scheme) does not stop a crafted submit with that request
+                f.extra["apex_button_not_protection"] = {"component": btn["component"], "button": btn["button"],
+                                                         "scheme": btn["button_scheme"]}
+                f.advice += (f" ويعمل «{btn['component']}» عند الضغط على الزر {btn['button']} الذي يحميه المخطط "
+                             f"{btn['button_scheme']}، لكن إخفاء الزر لا يمنع إرسال الصفحة بطلب (REQUEST) يحمل اسمه؛ "
+                             f"أسند {btn['button_scheme']} إلى المكوّن نفسه لحمايته.")
         else:
             names = []
             for c in calls:

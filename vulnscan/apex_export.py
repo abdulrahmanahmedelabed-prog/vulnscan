@@ -347,6 +347,8 @@ class Block:
     page: str | None = None    # page id of the component (None: application-level / not an APEX component)
     scheme: str = ""           # raw authorization scheme of the component (or of its region / dynamic action event)
     comp: str = ""             # create_… call the code came from (e.g. "create_page_process"); "" for synthetic blocks
+    button: tuple = ()         # (button name, raw scheme) of a When Button Pressed whose button (or its region) has a
+    #                            restricting scheme: NOT protection (a crafted request runs it), named in APX024
 
 
 def is_apex_export(text: str) -> bool:
@@ -767,12 +769,12 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
 
     The scheme of each block (Block.scheme) is the first that restricts users along what APEX itself enforces before
     the code runs (1.5.0): the component's own scheme; the region it belongs to (columns, items, buttons, processes
-    and sub-regions of a region), and that region's parent regions, recursively; the event of a dynamic action; and
-    for a page process / validation / branch with a When Button Pressed (p_process_when_button_id,
-    p_when_button_pressed, p_branch_when_button_id), the button's scheme and the button's region (APEX does not run
-    such a component for a request whose button the user may not see). The page's scheme and the application's are
-    added by call_site_protection. Not modelled: server-side conditions (never evaluated), a request named in a
-    condition rather than linked to a button (REQUEST_EQUALS_CONDITION …), build options, page groups."""
+    and sub-regions of a region), and that region's parent regions, recursively; the event of a dynamic action. The
+    page's scheme and the application's are added by call_site_protection. A When Button Pressed
+    (p_process_when_button_id, p_when_button_pressed, p_branch_when_button_id) is NOT protection: it compares the
+    submitted REQUEST with the button's name, and a user who can reach the page can submit that request although
+    the button was not rendered for them; the button's scheme (or its region's) is kept in Block.button so that
+    APX024 can say so. Not modelled: server-side conditions (never evaluated), build options, page groups."""
     toks = tokenize(text)
     lines = text.split("\n")
     blocks: list[Block] = []
@@ -792,7 +794,7 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
     # a button may come before its parent region)
     region_own: dict = {}            # region id -> its own scheme (raw)
     region_parent: dict = {}         # region id -> parent region id
-    buttons: dict = {}               # button id -> (own scheme, region id)
+    buttons: dict = {}               # button id -> (own scheme, region id, name)
     da_events: dict = {}             # dynamic action event id -> its own scheme
     pending: list = []               # (block, own scheme, region id, dynamic action event id, button id)
     da_last = ""
@@ -874,7 +876,7 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
             region_own[_id_key(raw("p_id"))] = own
             region_parent[_id_key(raw("p_id"))] = region
         elif fname == "create_page_button":
-            buttons[_id_key(raw("p_id"))] = (own, region)
+            buttons[_id_key(raw("p_id"))] = (own, region, name or "")
         elif fname == "create_flow":
             info["app_scheme"] = own
         elif fname == "create_page":
@@ -975,8 +977,8 @@ def _stmt_close(toks: list, j: int) -> int:
 
 def _inherit_schemes(pending, region_own, region_parent, buttons, da_events) -> None:
     """Block.scheme := the first scheme that restricts users along the component, its region and the region's
-    parents, its dynamic action event, the button that must be pressed (and that button's regions); the component's
-    own scheme when none does (see extract_full)."""
+    parents, its dynamic action event; the component's own scheme when none does (see extract_full). Block.button:
+    the button that must be pressed and its restricting scheme (its own or its regions'), which is not protection."""
     def region_chain(rid):
         seen = set()
         while rid and rid not in seen and len(seen) < 64:
@@ -988,10 +990,12 @@ def _inherit_schemes(pending, region_own, region_parent, buttons, da_events) -> 
         chain = [own, *region_chain(region)]
         if da:
             chain.append(da_events.get(da, ""))
-        if button and button in buttons:
-            bown, bregion = buttons[button]
-            chain.extend([bown, *region_chain(bregion)])
         b.scheme = next((x for x in chain if restricts(x)), own)
+        if button and button in buttons:
+            bown, bregion, bname = buttons[button]
+            bscheme = next((x for x in (bown, *region_chain(bregion)) if restricts(x)), "")
+            if bscheme and bname:
+                b.button = (bname, bscheme)
 
 
 def _form_store_blocks(form_items, region_tables, form_tables) -> list[Block]:
@@ -1167,8 +1171,9 @@ def extract_yaml_full(text: str, rel: str) -> tuple[list[Block], list[Finding], 
     {"app": application id (the application file only), "app_scheme", "schemes": {}, "pages": {page: {"public",
     "scheme"}}}. Every block carries its page, its create_… kind and its scheme, inherited as in extract_full: the
     component's own `security: authorization-scheme`, the enclosing component (a region's columns, a dynamic action's
-    actions), the region of an item / button (`layout: region`), parent regions (`layout: parent-region`), and the
-    button of `server-side-condition: when-button-pressed`. Modelled on real exports of APEX 23.2-24.2 (component
+    actions), the region of an item / button (`layout: region`), parent regions (`layout: parent-region`); the
+    button of `server-side-condition: when-button-pressed` is kept in Block.button, not as protection. Modelled on
+    real exports of APEX 23.2-24.2 (component
     headers, `# <id>` references, MODEL.LOV.* values); the names in labels are the full `identification: name`
     (the header truncates long names), so labels match the .sql export of the same application."""
     lines = text.split("\n")
@@ -1348,15 +1353,16 @@ def _yaml_inherit(owned: list, comps: list, info: dict) -> None:
             if c.kind == "page":
                 return
             nxt = ref(c.parent_region, regions_by_id, regions_by_name) or ref(c.region, regions_by_id, regions_by_name)
-            if c.button:
-                b = ref(c.button, buttons_by_id, buttons_by_name)
-                if b is not None:
-                    yield from chain(b, seen)
             c = nxt if nxt is not None else c.parent
 
     for b, c in owned:
         own = c.authz or ""
         b.scheme = next((x for x in chain(c, set()) if restricts(x)), own)
+        btn = ref(c.button, buttons_by_id, buttons_by_name) if c.button else None
+        if btn is not None:                  # when-button-pressed: named, not protection (see extract_full)
+            bscheme = next((x for x in chain(btn, set()) if restricts(x)), "")
+            if bscheme and bscheme != b.scheme:
+                b.button = (btn.name, bscheme)
     for c in comps:
         if c.kind == "page" and c.page:
             info["pages"][c.page] = {"public": c.public, "scheme": c.authz or ""}

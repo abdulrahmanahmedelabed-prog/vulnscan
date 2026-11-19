@@ -2,8 +2,8 @@
 
 1. APX024 call sites through synonyms, schema-qualified names, constant dynamic SQL, Invoke API processes and other
    package routines (indirect callers); strings and comments are not calls.
-2. Authorization inherited from what APEX enforces: parent regions (recursively), the button of a process, the
-   dynamic action event, the page; application processes have only their own scheme and the application's.
+2. Authorization inherited from what APEX enforces: parent regions (recursively), the dynamic action event, the
+   page (a button's scheme does not protect a When Button Pressed process: it is named in the message); application processes have only their own scheme and the application's.
 3. The readable YAML export (APEX 23.2+): page / component schemes and code, deduplicated against the .sql export
    of the same application.
 4. Deinstall and upgrade scripts of the Supporting Objects (and the APEX 24.1+ varchar2 table form).
@@ -231,19 +231,34 @@ def _process(code: str, extra: str) -> str:
 CALL = "begin\n  :P10_X := hdr_ui.bio_photo(:P10_ID);\nend;"
 
 
-def test_button_scheme_gates_its_process(tmp_path):
+def test_button_scheme_does_not_protect_its_process(tmp_path):
+    # When Button Pressed compares the submitted REQUEST with the button's name: a user who can reach the page can
+    # post that request although the button was not rendered for them, so the button's scheme protects nothing
     body = _button(77, "SAVE", scheme=ADMIN) + _process(CALL, ",p_process_when_button_id=>wwv_flow_imp.id(77)\n")
     f = _one(tmp_path, {"hdr_ui.pkb": PKG, "f141.sql": _app(_page_with(10, body))})
-    assert f.extra["apex_protection"] == "all_protected"
-    # through the button's region
+    assert f.severity == "high" and f.extra["apex_protection"] == "unprotected"
+    assert f.extra["apex_button_not_protection"] == {"component": "صفحة 10 › عملية: Save", "button": "SAVE",
+                                                     "scheme": "HR_ADMIN"}
+    assert "عند الضغط على الزر SAVE الذي يحميه المخطط HR_ADMIN" in f.advice
+    en = to_en(f.advice)
+    assert not has_arabic(en), en
+    assert ("«Page 10 › Process: Save» runs when the button SAVE is pressed, and SAVE has the authorization scheme "
+            "HR_ADMIN; hiding a button does not stop a crafted submit with that REQUEST: add HR_ADMIN to the "
+            "component's own scheme to protect it.") in en
+    # the same through the button's region
     body = (_region(5, "Buttons", scheme=ADMIN) + _button(77, "SAVE", region=5)
             + _process(CALL, ",p_process_when_button_id=>wwv_flow_imp.id(77)\n"))
     f = _one(tmp_path / "r", {"hdr_ui.pkb": PKG, "f141.sql": _app(_page_with(10, body))})
-    assert f.extra["apex_protection"] == "all_protected"
+    assert f.severity == "high" and f.extra["apex_button_not_protection"]["scheme"] == "HR_ADMIN"
+    # the scheme on the process itself (or its page) protects it
+    body = _button(77, "SAVE", scheme=ADMIN) + _process(CALL, f",p_process_when_button_id=>wwv_flow_imp.id(77)\n"
+                                                         f",p_security_scheme=>{ADMIN}\n")
+    f = _one(tmp_path / "o", {"hdr_ui.pkb": PKG, "f141.sql": _app(_page_with(10, body))})
+    assert f.extra["apex_protection"] == "all_protected" and "apex_button_not_protection" not in f.extra
 
 
 def test_request_condition_is_not_a_button_link(tmp_path):
-    # twin: the same button, but the process tests REQUEST by name: any request value can be posted
+    # the same button, the process tests REQUEST by name: unprotected too, and not linked to the button
     body = _button(77, "SAVE", scheme=ADMIN) + _process(CALL, ",p_process_when=>'SAVE'\n,p_process_when_type=>'REQUEST_EQUALS_CONDITION'\n")
     f = _one(tmp_path, {"hdr_ui.pkb": PKG, "f141.sql": _app(_page_with(10, body))})
     assert f.severity == "high"
@@ -382,7 +397,7 @@ def test_yaml_components_read_with_their_schemes():
     proc = next(b for b in blocks if b.comp == "create_page_process")
     assert region.label == "صفحة 10 › منطقة: Photo" and region.page == "10" and region.scheme == "HR Admin"
     assert proc.label == "صفحة 10 › عملية: Save Override Info With A Very Long Name That APEX Shortens In The Header"
-    assert proc.scheme == "HR Admin"                      # the button's region, through when-button-pressed
+    assert proc.scheme == "" and proc.button == ("SAVE", "HR Admin")   # when-button-pressed: named, not protection
     assert info["pages"]["10"] == {"public": False, "scheme": ""}
     assert apex_export.yaml_scheme("MODEL.LOV.MUST_NOT_BE_PUBLIC_USER") == "MUST_NOT_BE_PUBLIC_USER"
     assert apex_export.yaml_scheme("MODEL.LOV.NOT_W_ARGUMENT # 46995203801871514425") == "!46995203801871514425"
@@ -392,9 +407,14 @@ def test_yaml_components_read_with_their_schemes():
 
 
 def test_yaml_call_sites_and_protection(tmp_path):
-    f = _one(tmp_path, {"hdr_ui.pkb": PKG, "readable/application/pages/p00010.yaml": _yaml(region_scheme="HR Admin # 5001")})
+    both = _yaml(region_scheme="HR Admin # 5001", proc_scheme="HR Admin # 5001")
+    f = _one(tmp_path, {"hdr_ui.pkb": PKG, "readable/application/pages/p00010.yaml": both})
     assert f.extra["apex_protection"] == "all_protected" and f.extra["apex_schemes"] == ["HR Admin"]
     assert len(f.extra["apex_call_sites"]) == 2
+    # the process only runs When Button Pressed on a button in the protected region: not protection
+    f = _one(tmp_path / "btn", {"hdr_ui.pkb": PKG, "readable/application/pages/p00010.yaml": _yaml(region_scheme="HR Admin # 5001")})
+    assert f.severity == "high" and f.extra["apex_button_not_protection"]["button"] == "SAVE"
+    assert not has_arabic(to_en(f.advice))
     # twins: a scheme that only requires sign-in, a negated scheme, none
     for scheme in ("MODEL.LOV.MUST_NOT_BE_PUBLIC_USER", "'{Not HR Admin}' # 5001", ""):
         f = _one(tmp_path / str(len(scheme)), {"hdr_ui.pkb": PKG,
