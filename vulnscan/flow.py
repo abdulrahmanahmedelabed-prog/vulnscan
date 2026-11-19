@@ -926,6 +926,12 @@ class FlowInterpreter:
         return (o[0], o[1], tuple(trail) + ({"file": self.path, "line": line, "text": text},)) + tuple(o[3:])
 
     def assign(self, tgt, value, st: State) -> State:
+        if isinstance(tgt, ast.Attribute) and self.proj.m.get("language") == "javascript" \
+                and _root_name(tgt) not in (None, "self", "cls"):
+            # JavaScript objects are dictionaries: `query.title = v` is `query["title"] = v`, and the object then
+            # holds v (`Model.find(query)` passes it on)
+            key = ast.copy_location(ast.Constant(value=tgt.attr), tgt)
+            tgt = ast.copy_location(ast.Subscript(value=tgt.value, slice=key, ctx=ast.Store()), tgt)
         if isinstance(tgt, ast.Name):
             name = tgt.id
             is_str = self.proj.m.get("language") == "python" and self._is_str(value, st)

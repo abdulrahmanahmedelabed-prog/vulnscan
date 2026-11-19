@@ -235,6 +235,12 @@ class PointsTo:
     def _nested_qual(self, mod, cls, node):
         if cls:
             return f"{cls}.{node.name}"
+        by_node = self.__dict__.get("_qual_by_node")
+        if by_node is None or len(by_node) != len(self.p.gfuncs):
+            by_node = self.__dict__["_qual_by_node"] = {id(i["node"]): q for q, i in self.p.gfuncs.items()}
+        q = by_node.get(id(node))
+        if q is not None and self.p.gfuncs[q]["node"] is node:
+            return q              # a JavaScript function sharing its name with another one has its own qual
         return f"{mod}::{node.name}"
 
     def _stmts(self, body, mod, cls, chain, path, qual):
