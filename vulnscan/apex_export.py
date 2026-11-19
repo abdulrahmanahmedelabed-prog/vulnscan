@@ -40,7 +40,8 @@ COMPONENT_AR = {"page_process": "عملية", "flow_process": "عملية تطب
                 "region_column": "عمود", "flow_item": "عنصر تطبيق", "ai_config": "إعداد الذكاء الاصطناعي",
                 "ai_config_rag_source": "مصدر RAG", "web_source_module": "مصدر ويب", "page_button": "زر",
                 "plugin_file": "ملف إضافة", "app_static_file": "ملف ثابت للتطبيق", "workspace_static_file": "ملف ثابت لمساحة العمل",
-                "theme_file": "ملف سمة", "install_script": "سكربت كائنات الدعم"}
+                "theme_file": "ملف سمة", "install_script": "سكربت كائنات الدعم",
+                "upgrade_script": "سكربت ترقية كائنات الدعم", "deinstall_script": "سكربت إزالة كائنات الدعم"}
 APEX_RULES = [
     {"id": "APX001", "severity": "high", "cwe": "CWE-89", "title": "Substitution string inside SQL / PL/SQL",
      "title_ar": "سلسلة استبدال &ITEM. داخل SQL أو PL/SQL (حقن)", "advice": "استخدم متغير الربط :ITEM بدل &ITEM."},
@@ -315,14 +316,21 @@ AI_PARAMS = {"p_system_prompt", "p_welcome_message", "p_user_prompt", "p_prompt"
 CODE_PARAMS = {"p_source", "p_item_default", "p_computation", "p_validation", "p_validation2", "p_condition_expression1",
                "p_display_when", "p_plug_source", "p_lov", "p_lov_query", "p_query", "p_query_text", "p_read_only_when",
                "p_plug_display_when_condition", "p_scheme", "p_source_query", "p_rag_source", "p_sql_query", "p_where_clause",
-               "p_order_by_clause", "p_default_value"}
+               "p_order_by_clause", "p_default_value",
+               # server-side conditions of processes, validations, buttons, branches, computations, columns (all
+               # APEX versions: verified on 4.0-26.2 exports)
+               "p_process_when", "p_validation_condition", "p_button_condition", "p_branch_condition",
+               "p_compute_when", "p_display_condition"}
 TYPE_OF = {"p_source": ["p_source_type", "p_source_language"], "p_item_default": ["p_item_default_type"],
            "p_computation": ["p_computation_type"], "p_validation": ["p_validation_type"], "p_validation2": ["p_validation_type"],
            "p_condition_expression1": ["p_condition_type"], "p_display_when": ["p_display_when_type"],
            "p_plug_source": ["p_query_type", "p_plug_source_type", "p_location", "p_function_body_language"],
            "p_read_only_when": ["p_read_only_when_type"], "p_plug_display_when_condition": ["p_plug_display_condition_type"],
            "p_scheme": ["p_scheme_type"], "p_default_value": ["p_default_value_type"], "p_rag_source": ["p_rag_source_type"],
-           "p_source_query": ["p_source_type"], "p_sql_query": ["p_source_type"]}
+           "p_source_query": ["p_source_type"], "p_sql_query": ["p_source_type"],
+           "p_process_when": ["p_process_when_type"], "p_validation_condition": ["p_validation_condition_type"],
+           "p_button_condition": ["p_button_condition_type"], "p_branch_condition": ["p_branch_condition_type"],
+           "p_compute_when": ["p_compute_when_type"], "p_display_condition": ["p_display_condition_type"]}
 ATTR_TYPES = ["p_action", "p_process_type", "p_scheme_type", "p_plug_source_type", "p_item_type", "p_display_as", "p_attribute_01"]
 ESCAPE_OFF = {("p_display_as", "WITHOUT_MODIFICATION"), ("p_display_text_as", "WITHOUT_MODIFICATION"),
               ("p_escape_on_http_output", "N"), ("p_escape_on_http_output", "FALSE"), ("p_escape_on_http_input", "N")}
@@ -345,6 +353,9 @@ def is_apex_export(text: str) -> bool:
     return bool(_DETECT.search(text[:400_000]))
 
 
+_JOIN_PKGS = ("wwv_flow_string", "wwv_flow_utilities")
+
+
 def _value(toks: list) -> tuple:
     """Decode an argument expression -> (string or None, first line, raw upper-case scalar)."""
     if not toks:
@@ -352,8 +363,8 @@ def _value(toks: list) -> tuple:
     raw = " ".join(t.val for t in toks if t.kind in ("id", "num", "str")).upper()
     first = next((t.line for t in toks if t.kind == "str"), toks[0].line)
     vals = [t.val for t in toks]
-    if len(toks) > 4 and vals[0] == "wwv_flow_string" and vals[2] == "join":
-        # wwv_flow_string.join(wwv_flow_t_varchar2('a', 'b' || 'c', …))
+    if len(toks) > 4 and vals[0] in _JOIN_PKGS and vals[2] == "join":
+        # wwv_flow_string.join(wwv_flow_t_varchar2('a', 'b' || 'c', …)); APEX 5.0 wrote wwv_flow_utilities.join
         inner = toks[6:-2] if len(toks) > 8 else []
         elems, cur, depth = [], [], 0
         for t in inner:
@@ -476,7 +487,7 @@ def _script_events(toks: list, ev: list, assigns: dict, depth: int) -> None:
                 pass
         elif len(op) == 3 and a.kind == "id" and a.val.startswith("wwv_flow") and vals[1] == "." and vals[2] in ("lf", "crlf"):
             ev.append(("nl",))
-        elif len(op) > 4 and a.val == "wwv_flow_string" and vals[2] == "join":
+        elif len(op) > 4 and a.val in _JOIN_PKGS and vals[2] == "join":
             k = next((x for x in range(len(op)) if op[x].kind == "id" and op[x].val.startswith("wwv_flow_t_")), -1)
             if k < 0 or k + 1 >= len(op) or op[k + 1].val != "(":
                 continue
@@ -505,6 +516,11 @@ def _script_events(toks: list, ev: list, assigns: dict, depth: int) -> None:
         elif a.kind == "id" and len(op) == 1 and a.val in assigns:
             for chunk in assigns[a.val]:
                 _script_events(chunk, ev, assigns, depth + 1)
+        elif a.kind == "id" and a.val.startswith("wwv_flow") and len(op) > 3 and vals[1] == "." and \
+                vals[2] == "varchar2_to_clob":
+            # APEX 24.1+: `wwv_flow_imp.g_varchar2_table(n) := '…'||wwv_flow.LF||…;` then varchar2_to_clob(…)
+            for chunk in assigns.get("#varchar2_table", ()):
+                _script_events(chunk, ev, assigns, depth + 1)
 
 
 # ------------------------------------------------------------ authorization schemes of APEX components
@@ -520,11 +536,21 @@ def _component_scheme(decoded: dict) -> str:
     return ""
 
 
+def _id_key(raw: str) -> str:
+    """`WWV_FLOW_IMP ID 123` / `123 WWV_FLOW_API G_ID_OFFSET` (decoded raw values of an id argument) -> "123"."""
+    m = re.search(r"\d{3,}", raw or "")
+    return m.group(0) if m else (raw or "").strip()
+
+
 def _scheme_key(raw: str) -> str:
-    """`wwv_flow_imp.id(123)` / `123+wwv_flow_api.g_id_offset` / 'ADMIN' -> "123" / "ADMIN" (a leading '!' dropped)."""
+    """`wwv_flow_imp.id(123)` / `123+wwv_flow_api.g_id_offset` / 'ADMIN' -> "123" / "ADMIN" (a leading '!' dropped).
+    A scheme named in words (an APEX 4 export, the readable YAML export) keeps its name, digits and all."""
     raw = (raw or "").strip().lstrip("!").strip()
-    m = re.search(r"\d{3,}", raw)
-    return m.group(0) if m else raw
+    if re.match(r"(?:WWV_FLOW_\w+ ID |\d)", raw, re.I):
+        m = re.search(r"\d{3,}", raw)
+        if m:
+            return m.group(0)
+    return raw
 
 
 def restricts(raw: str) -> bool:
@@ -541,8 +567,9 @@ def scheme_name(raw: str, schemes: dict) -> str:
 
 def call_site_protection(block: Block, info: dict) -> tuple[bool, str]:
     """(protected, scheme name | reason) for a component of an export, given the merged protection facts of its
-    application (info: app_scheme, schemes, pages). Component, page, then application scheme; the reason when none
-    restricts is an Arabic phrase (public page / application process / no scheme)."""
+    application (info: app_scheme, schemes, pages). The component's scheme (its own, or one it inherits: see
+    extract_full), then the page's, then the application's; the reason when none restricts is an Arabic phrase
+    (public page / application process / no scheme)."""
     page = info.get("pages", {}).get(block.page) if block.page else None
     for raw in (block.scheme, (page or {}).get("scheme", ""), info.get("app_scheme", "")):
         if restricts(raw):
@@ -554,12 +581,31 @@ def call_site_protection(block: Block, info: dict) -> tuple[bool, str]:
     return False, "بلا مخطط تفويض يقيّد المستخدمين"
 
 
-def call_sites(block: Block, package: str, routine: str) -> list[int]:
-    """Export lines where a block's code calls package.routine (comments ignored)."""
-    code = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), block.code, flags=re.S)
-    code = re.sub(r"--[^\n]*", "", code)
-    rx = re.compile(rf"(?<![\w$#]){re.escape(package)}\s*\.\s*{re.escape(routine)}(?![\w$#])", re.I)
-    return [block.line + code.count("\n", 0, m.start()) for m in rx.finditer(code)]
+_CALL_TERMINATORS = {";", "using", "into", "returning", "bulk"}
+
+
+def call_sites(block: Block, package: str, routine: str, aliases=()) -> list[int]:
+    """Export lines where a block's code calls package.routine: `pkg.routine`, schema-qualified `owner.pkg.routine`,
+    or through a synonym of the package (aliases). Comments and string literals are not code; the one string that
+    is, a constant `execute immediate '…'` (the whole statement is the literal), is read as code too."""
+    names = {package.lower(), *(a.lower() for a in aliases)}
+    return [block.line + ln - 1 for ln in _call_lines(block.code, names, routine.lower(), 0)]
+
+
+def _call_lines(code: str, names: set, routine: str, depth: int) -> list[int]:
+    if routine not in code.lower():
+        return []
+    toks = tokenize(code)
+    out = []
+    for k, t in enumerate(toks):
+        if t.kind == "id" and t.val == routine and k >= 2 and toks[k - 1].kind == "punct" and toks[k - 1].val == "." \
+                and toks[k - 2].kind == "id" and toks[k - 2].val in names \
+                and not (toks[k + 1].kind == "punct" and toks[k + 1].val == "."):
+            out.append(t.line)
+        elif t.kind == "str" and depth < 2 and k >= 2 and toks[k - 1].kind == "id" and toks[k - 1].val == "immediate" \
+                and toks[k - 2].kind == "id" and toks[k - 2].val == "execute" and toks[k + 1].val in _CALL_TERMINATORS:
+            out.extend(t.line + x - 1 for x in _call_lines(t.val, names, routine, depth + 1))
+    return out
 
 
 def _args(toks: list, i: int) -> tuple[dict, int]:
@@ -608,7 +654,11 @@ def _classify(fname: str, pname: str, text: str, decoded: dict) -> str | None:
         return "js"
     action = decoded.get("p_action", ("", 0, ""))[2]
     ai_attr = ("_AI" in action or "AI_" in action) and pname.startswith("p_attribute_")
-    if pname in AI_PARAMS or "prompt" in pname or ai_attr or (fname.startswith("create_ai") and "message" in pname):
+    ai_comp = fname.startswith("create_ai") or "_ai_" in fname
+    if pname in ("p_prompt", "p_welcome_message") and not ai_comp:
+        # the label of a page item / plug-in attribute (every APEX version), the Supporting Objects welcome text
+        return "html" if pname == "p_prompt" and fname == "create_page_item" else None
+    if pname in AI_PARAMS or "prompt" in pname or ai_attr or (ai_comp and "message" in pname):
         body = _strip_comments(text).lower()
         if not body.startswith(("select", "with", "begin", "declare", "return")):
             return "ai"
@@ -624,6 +674,8 @@ def _classify(fname: str, pname: str, text: str, decoded: dict) -> str | None:
     typ = " ".join(decoded[p][2] for p in tparams if p in decoded and p != pname)
     if "JAVASCRIPT" in typ or (action == "NATIVE_JAVASCRIPT_CODE" and pname == "p_attribute_01"):
         return "js"
+    if pname == "p_plug_source" and typ.startswith("STATIC_TEXT"):
+        return "html"                                # APEX 4.x static region (STATIC_TEXT[_WITH_SHORTCUTS|_ESCAPE_SC])
     body = _strip_comments(text).lower()
     if "RETURNING_SQL" in typ or "FUNC_BODY_RETURNING" in typ and "SQL" in typ:
         return "plsql_fn_sql"
@@ -709,7 +761,16 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
 def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple[str, str]], dict]:
     """extract(), plus what the export says about protection and its Supporting Objects:
     {"app": application id, "app_scheme": raw scheme of the application, "schemes": {scheme key: name},
-     "pages": {page: {"public": bool, "scheme": raw}}, "scripts": [(export line, script text, label)]}."""
+     "pages": {page: {"public": bool, "scheme": raw}}, "scripts": [(export line, script text, label)]}.
+
+    The scheme of each block (Block.scheme) is the first that restricts users along what APEX itself enforces before
+    the code runs (1.5.0): the component's own scheme; the region it belongs to (columns, items, buttons, processes
+    and sub-regions of a region), and that region's parent regions, recursively; the event of a dynamic action; and
+    for a page process / validation / branch with a When Button Pressed (p_process_when_button_id,
+    p_when_button_pressed, p_branch_when_button_id), the button's scheme and the button's region (APEX does not run
+    such a component for a request whose button the user may not see). The page's scheme and the application's are
+    added by call_site_protection. Not modelled: server-side conditions (never evaluated), a request named in a
+    condition rather than linked to a button (REQUEST_EQUALS_CONDITION …), build options, page groups."""
     toks = tokenize(text)
     lines = text.split("\n")
     blocks: list[Block] = []
@@ -725,20 +786,20 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
     checks = _ConfigChecks(rel, lines)
     info: dict = {"app": application_id(text), "app_scheme": "", "schemes": {}, "pages": {}, "scripts": []}
     assigns: dict = {}               # PL/SQL variable -> [token lists] (`s := s || '…';` before create_install_script)
-    region_schemes: dict = {}        # region id (raw) -> its authorization scheme (raw), inherited by its columns …
-    da_scheme = ""
+    # authorization inherited from the enclosing components (resolved once the whole export is read: a sub-region or
+    # a button may come before its parent region)
+    region_own: dict = {}            # region id -> its own scheme (raw)
+    region_parent: dict = {}         # region id -> parent region id
+    buttons: dict = {}               # button id -> (own scheme, region id)
+    da_events: dict = {}             # dynamic action event id -> its own scheme
+    pending: list = []               # (block, own scheme, region id, dynamic action event id, button id)
+    da_last = ""
     i, n = 0, len(toks)
     while i < n:
         t = toks[i]
         if t.kind == "id" and i + 1 < n and toks[i + 1].kind == "punct" and toks[i + 1].val == ":=" and (
                 i == 0 or toks[i - 1].val in (";", "begin", "then", "else", "loop")):
-            j, depth = i + 2, 0                  # `s := s || '…' || unistr('\000a') || '…';` (APEX 4.x scripts)
-            while j < n and toks[j].kind != "eof" and not (depth <= 0 and toks[j].kind == "punct" and toks[j].val == ";"):
-                if toks[j].kind == "punct" and toks[j].val == "(":
-                    depth += 1
-                elif toks[j].kind == "punct" and toks[j].val == ")":
-                    depth -= 1
-                j += 1
+            j = _stmt_close(toks, i + 2)         # `s := s || '…' || unistr('\000a') || '…';` (APEX 4.x scripts)
             expr = toks[i + 2:j]
             if len(expr) > 1 and expr[0].kind == "id" and expr[0].val == t.val and expr[1].val == "||":
                 assigns.setdefault(t.val, []).append(expr[2:])
@@ -749,10 +810,13 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
         if t.kind == "id" and t.val == "g_varchar2_table" and i + 5 < n and toks[i + 1].val == "(" \
                 and toks[i + 4].val == ":=" and toks[i + 5].kind == "str":     # g_varchar2_table(1) := 'HEX…'
             hexbuf.append(toks[i + 5].val)
-            i += 6
+            j = _stmt_close(toks, i + 5)          # or text: '…'||wwv_flow.LF||'…' (APEX 24.1+ scripts)
+            assigns.setdefault("#varchar2_table", []).append(toks[i + 5:j])
+            i = j + 1 if j > i + 6 else i + 6
             continue
         if t.kind == "id" and t.val == "empty_varchar2_table":
             hexbuf = []
+            assigns["#varchar2_table"] = []
             i += 1
             continue
         if not (t.kind == "id" and t.val.startswith("wwv_flow") and i + 3 < n and toks[i + 1].val == "."
@@ -763,6 +827,12 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
         page_scoped = toks[i].val.endswith("_page") or fname.startswith("create_page")
         params, i = _args(toks, i + 3)
         decoded = {k: _value(v) for k, v in params.items()}
+        for p, v in params.items():
+            # APEX 4.x: `s := s || '…';` statements build a region source / process code, then `p_plug_source=> s`
+            if len(v) == 1 and v[0].kind == "id" and v[0].val in assigns and p not in _SCRIPT_PARAMS:
+                code, sline = _script_text(v, assigns)
+                if code.strip() and sline:
+                    decoded[p] = (code, sline, decoded[p][2])
         comp = fname[len("create_"):]
         if fname == "create_page":
             pid = decoded.get("p_id", (None, 0, ""))[2]
@@ -778,32 +848,48 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
         comp_ar = COMPONENT_AR.get(comp, comp)
         label = (f"صفحة {pg} › " if pg else "") + comp_ar + (f": {name}" if name else "")
         checks.collect(fname, decoded, pg, label, name)
-        # authorization: the component's own scheme, else the one of its region / dynamic action event
+
+        def raw(p):
+            return decoded.get(p, (None, 0, ""))[2]
+        # authorization: the component's own scheme, and what it belongs to (resolved below)
         own = _component_scheme(decoded)
-        if not own and fname != "create_page":
-            parent = next((decoded[p][2] for p in ("p_region_id", "p_plug_id", "p_item_plug_id", "p_button_plug_id",
-                                                   "p_parent_plug_id") if decoded.get(p, (None, 0, ""))[2]), "")
-            own = region_schemes.get(parent, "") or (da_scheme if fname == "create_page_da_action" else "")
+        region = da = button = ""
+        if fname not in ("create_page", "create_flow", "create_flow_process"):
+            region = _id_key(next((raw(p) for p in ("p_region_id", "p_plug_id", "p_item_plug_id", "p_button_plug_id",
+                                                    "p_parent_plug_id") if raw(p)), ""))
         if fname == "create_page_da_event":
-            da_scheme = own
+            da_events[_id_key(raw("p_id"))] = own
+            da_last = _id_key(raw("p_id"))
+        elif fname == "create_page_da_action":
+            da = _id_key(raw("p_event_id")) or da_last
         elif fname == "create_page_plug":
-            region_schemes[decoded.get("p_id", (None, 0, ""))[2]] = own
+            region_own[_id_key(raw("p_id"))] = own
+            region_parent[_id_key(raw("p_id"))] = region
+        elif fname == "create_page_button":
+            buttons[_id_key(raw("p_id"))] = (own, region)
         elif fname == "create_flow":
             info["app_scheme"] = own
         elif fname == "create_page":
-            info["pages"][pg] = {"public": (decoded.get("p_page_is_public_y_n", (None, 0, ""))[2] or "").strip() == "Y",
-                                 "scheme": own}
+            info["pages"][pg] = {"public": (raw("p_page_is_public_y_n") or "").strip() == "Y", "scheme": own}
         elif fname == "create_security_scheme" and decoded.get("p_name", (None,))[0]:
-            info["schemes"][_scheme_key(decoded.get("p_id", (None, 0, ""))[2])] = decoded["p_name"][0]
+            info["schemes"][_scheme_key(raw("p_id"))] = decoded["p_name"][0]
         elif fname == "create_install_script":
-            # Supporting Objects: installation / upgrade scripts carry the application's own packages
+            # Supporting Objects: installation and upgrade scripts carry the application's own packages
+            kind_ar = COMPONENT_AR["upgrade_script"] if (raw("p_script_type") or "").strip() == "UPGRADE" else comp_ar
             for p in ("p_script_clob", "p_sql"):
                 if p not in params:
                     continue
                 script, sline = _script_text(params[p], assigns)
                 if script.strip() and sline:
-                    info["scripts"].append((sline, script, f"{comp_ar}: {name}" if name else comp_ar))
+                    info["scripts"].append((sline, script, f"{kind_ar}: {name}" if name else kind_ar))
                 break
+        elif fname == "create_install" and "p_deinstall_script_clob" in params:
+            script, sline = _script_text(params["p_deinstall_script_clob"], assigns)
+            if script.strip() and sline:
+                info["scripts"].append((sline, script, COMPONENT_AR["deinstall_script"]))
+        if fname in ("create_page_process", "create_page_validation", "create_page_branch"):
+            button = _id_key(next((raw(p) for p in ("p_process_when_button_id", "p_when_button_pressed",
+                                                    "p_branch_when_button_id") if raw(p)), ""))
         # implicit DML: a form region on a table, and page items whose source is one of its columns
         if fname == "create_page_plug" and decoded.get("p_query_table", (None,))[0]:
             region_tables[decoded.get("p_id", (None, 0, ""))[2]] = decoded["p_query_table"][0].upper().split(".")[-1]
@@ -819,8 +905,8 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
                 form_items.append((pg, name, col.strip().upper(), decoded.get("p_item_source_plug_id", (None, 0, ""))[2],
                                    decoded.get("p_source", (None, 0))[1], label))
         # disabled output escaping
-        for p, (val, ln, raw) in decoded.items():
-            if (p, raw.strip()) in ESCAPE_OFF:
+        for p, (val, ln, rv) in decoded.items():
+            if (p, rv.strip()) in ESCAPE_OFF:
                 findings.append(_finding("APX004", "medium", "Output escaping disabled", "تهريب المخرجات معطّل (XSS محتمل)",
                                          rel, ln, lines[ln - 1] if 0 < ln <= len(lines) else p,
                                          "أعد تفعيل Escape special characters، أو هرّب القيمة بـ apex_escape.html في الاستعلام.", "CWE-79", label))
@@ -834,7 +920,17 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
                 except ValueError:
                     pass
             hexbuf = []
-        for p, (val, ln, raw) in decoded.items():
+        new_blocks = []
+        # Invoke API (a page or application process that calls a package routine by name, APEX 22.1+)
+        if "INVOKE_API" in raw("p_process_type") and "PLSQL_PACKAGE" in raw("p_attribute_01"):
+            pkg_name = (decoded.get("p_attribute_03", (None,))[0] or "").strip()
+            proc = (decoded.get("p_attribute_04", (None,))[0] or "").strip()
+            if re.fullmatch(r"[A-Za-z][\w$#]*", pkg_name) and re.fullmatch(r"[A-Za-z][\w$#]*", proc):
+                seq += 1
+                unit = re.sub(r"\W", "_", f"apex_{'p' + str(pg) + '_' if pg else ''}{comp}_{seq}").lower()
+                new_blocks.append(Block("invoke", f"{pkg_name}.{proc};", decoded["p_attribute_04"][1], label, unit, pg,
+                                        own, fname))
+        for p, (val, ln, rv) in decoded.items():
             if not val or len(val.strip()) < 2:
                 continue
             kind = _classify(fname, p, val, decoded)
@@ -843,11 +939,51 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
             seq += 1
             unit = re.sub(r"\W", "_", f"apex_{'p' + str(pg) + '_' if pg else ''}{comp}_{seq}").lower()
             b = Block(kind, val, ln, label, unit, pg, own, fname)
-            blocks.append(b)
+            new_blocks.append(b)
             findings.extend(_subst_findings(b, rel))
+        for b in new_blocks:
+            pending.append((b, own, region, da, button))
+        blocks.extend(new_blocks)
+    _inherit_schemes(pending, region_own, region_parent, buttons, da_events)
     blocks.extend(_form_store_blocks(form_items, region_tables, form_tables))
     findings.extend(checks.finish())
     return blocks, findings, files, info
+
+
+_SCRIPT_PARAMS = {"p_script_clob", "p_deinstall_script_clob", "p_sql"}
+
+
+def _stmt_close(toks: list, j: int) -> int:
+    """Index of the `;` that ends the statement whose expression starts at j (parentheses balanced)."""
+    depth, n = 0, len(toks)
+    while j < n and toks[j].kind != "eof" and not (depth <= 0 and toks[j].kind == "punct" and toks[j].val == ";"):
+        if toks[j].kind == "punct" and toks[j].val == "(":
+            depth += 1
+        elif toks[j].kind == "punct" and toks[j].val == ")":
+            depth -= 1
+        j += 1
+    return j
+
+
+def _inherit_schemes(pending, region_own, region_parent, buttons, da_events) -> None:
+    """Block.scheme := the first scheme that restricts users along the component, its region and the region's
+    parents, its dynamic action event, the button that must be pressed (and that button's regions); the component's
+    own scheme when none does (see extract_full)."""
+    def region_chain(rid):
+        seen = set()
+        while rid and rid not in seen and len(seen) < 64:
+            seen.add(rid)
+            yield region_own.get(rid, "")
+            rid = region_parent.get(rid, "")
+
+    for b, own, region, da, button in pending:
+        chain = [own, *region_chain(region)]
+        if da:
+            chain.append(da_events.get(da, ""))
+        if button and button in buttons:
+            bown, bregion = buttons[button]
+            chain.extend([bown, *region_chain(bregion)])
+        b.scheme = next((x for x in chain if restricts(x)), own)
 
 
 def _form_store_blocks(form_items, region_tables, form_tables) -> list[Block]:
@@ -956,6 +1092,77 @@ def _yaml_classify(key: str, siblings: dict) -> str | None:
 
 def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple[str, str]]]:
     """APEX readable export (YAML): code properties -> blocks at their real lines, labelled by component."""
+    blocks, findings, files, _info = extract_yaml_full(text, rel)
+    return blocks, findings, files
+
+
+# readable YAML component kind -> the create_… call of the same component in a .sql export (Block.comp)
+YAML_COMP = {"page": "create_page", "region": "create_page_plug", "process": "create_page_process",
+             "application process": "create_flow_process", "page item": "create_page_item", "item": "create_page_item",
+             "dynamic action": "create_page_da_event", "action": "create_page_da_action",
+             "validation": "create_page_validation", "computation": "create_page_computation",
+             "button": "create_page_button", "branch": "create_page_branch", "column": "create_region_column",
+             "application computation": "create_flow_computation", "application item": "create_flow_item",
+             "list of values": "create_list_of_values", "authorization": "create_security_scheme",
+             "authentication": "create_authentication", "plugin": "create_plugin", "plug-in": "create_plugin"}
+_YAML_REF = re.compile(r"^(.*?)\s+#\s*(\d+)\s*$")
+
+
+def _yaml_ref(val: str) -> tuple[str, str]:
+    """`Tournament Admin # 55902033226819493948` -> ("Tournament Admin", "55902033226819493948")."""
+    m = _YAML_REF.match(val or "")
+    return (_yaml_scalar(m.group(1)), m.group(2)) if m else (_yaml_scalar(val or ""), "")
+
+
+def yaml_scheme(val: str) -> str:
+    """An authorization-scheme value of the readable export -> the raw form restricts() reads: the scheme's name,
+    "MUST_NOT_BE_PUBLIC_USER" (MODEL.LOV.MUST_NOT_BE_PUBLIC_USER), "!<id>" for a negated scheme
+    (MODEL.LOV.NOT_W_ARGUMENT # id, '{Not Name}'); "" for no scheme or another built-in value."""
+    name, sid = _yaml_ref(val)
+    up = name.strip().upper()
+    if not up or up in ("NONE", "-", "NO AUTHORIZATION REQUIRED"):
+        return ""
+    if up in ("MODEL.LOV.MUST_NOT_BE_PUBLIC_USER", "MUST NOT BE PUBLIC USER"):
+        return "MUST_NOT_BE_PUBLIC_USER"
+    if up.startswith(("MODEL.LOV.NOT_W_ARGUMENT", "{NOT ")):
+        return "!" + (sid or name[5:-1].strip())
+    if up.startswith("MODEL.LOV."):
+        return ""
+    return name.strip()
+
+
+def yaml_application_id(text: str) -> str | None:
+    """The application id of the readable export's application file (readable/application/f<id>.yaml)."""
+    head = text[:20_000]
+    if not re.search(r"^#\s*=+\s*Application\s*:", head, re.M):
+        return None
+    m = re.search(r"^id:\s*(\d+)\s*$", head, re.M)
+    return m.group(1) if m else None
+
+
+class _YComp:
+    """One component of a readable YAML export (a `# ====== Kind: Name ===` header) and what it says about access."""
+    __slots__ = ("ind", "kind", "name", "id", "parent", "authz", "parent_region", "region", "button", "public",
+                 "invoke", "page")
+
+    def __init__(self, ind, kind, name, parent, page):
+        self.ind, self.kind, self.name, self.parent, self.page = ind, kind, name, parent, page
+        self.id = ""
+        self.authz = None            # raw scheme (yaml_scheme) or None when the component has none
+        self.parent_region = self.region = self.button = None    # (name, id) references
+        self.public = False
+        self.invoke = {}
+
+
+def extract_yaml_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple[str, str]], dict]:
+    """extract_yaml(), plus what the readable export says about protection (1.5.0), in the shape extract_full gives:
+    {"app": application id (the application file only), "app_scheme", "schemes": {}, "pages": {page: {"public",
+    "scheme"}}}. Every block carries its page, its create_… kind and its scheme, inherited as in extract_full: the
+    component's own `security: authorization-scheme`, the enclosing component (a region's columns, a dynamic action's
+    actions), the region of an item / button (`layout: region`), parent regions (`layout: parent-region`), and the
+    button of `server-side-condition: when-button-pressed`. Modelled on real exports of APEX 23.2-24.2 (component
+    headers, `# <id>` references, MODEL.LOV.* values); the names in labels are the full `identification: name`
+    (the header truncates long names), so labels match the .sql export of the same application."""
     lines = text.split("\n")
     blocks: list[Block] = []
     findings: list[Finding] = []
@@ -968,12 +1175,22 @@ def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
     region_tables: dict = {}
     form_items: list = []
     ycfg = _YamlConfig(rel, lines)
+    info: dict = {"app": yaml_application_id(text), "app_scheme": "", "schemes": {}, "pages": {}, "scripts": []}
+    stack: list = []                 # enclosing components (_YComp), innermost last
+    comps: list = []
+    owned: list = []                 # (block, component)
     i, n = 0, len(lines)
     while i < n:
         raw = lines[i]
         h = _YAML_HEADER.match(raw)
         if h:
             kind, nm = h.group(2).strip().lower(), h.group(3).strip()
+            ind = len(h.group(1)) if raw.lstrip().startswith("-") else -2        # a file-level component: keys at 0
+            while stack and stack[-1].ind >= ind:
+                stack.pop()
+            c = _YComp(ind, kind, nm, stack[-1] if stack else None, page_id)
+            stack.append(c)
+            comps.append(c)
             if kind == "page":
                 page_name, page_id = nm, None
             elif kind == "dynamic action":
@@ -995,6 +1212,30 @@ def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
         here = scopes[-1][1]
         if key == "id" and comp == "page" and page_id is None and indent == 0:
             page_id = _yaml_scalar(val)
+            if stack and stack[-1].kind == "page":
+                stack[-1].page = page_id
+        cur = stack[-1] if stack else None
+        if cur is not None and val and val[:1] not in ("|", ">"):
+            if key == "id" and indent == cur.ind + 2 and not cur.id:
+                cur.id = _yaml_scalar(val)
+            elif key in ("name", "button-name") and indent == cur.ind + 4 and cur.name == name:
+                cur.name = name = _yaml_scalar(val)  # the header shortens long names
+                if cur.kind == "dynamic action":
+                    da_name = name
+                elif cur.kind == "page":
+                    page_name = name
+            elif key == "authorization-scheme":
+                cur.authz = yaml_scheme(val)
+            elif key == "parent-region":
+                cur.parent_region = _yaml_ref(val)
+            elif key == "region" and indent == cur.ind + 4 and cur.kind in ("page item", "item", "button"):
+                cur.region = _yaml_ref(val)
+            elif key == "when-button-pressed":
+                cur.button = _yaml_ref(val)
+            elif key == "authentication" and cur.kind == "page" and "public" in val.lower():
+                cur.public = True
+            elif key in ("package", "procedure-or-function") and cur.kind in ("process", "application process"):
+                cur.invoke[key] = (_yaml_scalar(val), i + 1)
         code, start = None, i + 1
         if val[:1] in ("|", ">"):             # block scalar
             j = i + 1
@@ -1055,12 +1296,61 @@ def extract_yaml(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
         seq += 1
         label = _yaml_label(page_id, page_name, comp, name, da_name)
         unit = re.sub(r"\W", "_", f"apex_{'p' + str(page_id) + '_' if page_id else ''}{comp or 'component'}_{seq}").lower()
-        b = Block(kind, code, start, label, unit)
+        b = Block(kind, code, start, label, unit, page_id, "", YAML_COMP.get(comp or "", f"yaml_{comp}"))
         blocks.append(b)
+        if cur is not None:
+            owned.append((b, cur))
         findings.extend(_subst_findings(b, rel))
+    # Invoke API processes: the package routine they call is a call site
+    for c in comps:
+        if "package" in c.invoke and "procedure-or-function" in c.invoke:
+            pkg_name, proc = c.invoke["package"][0], c.invoke["procedure-or-function"]
+            if re.fullmatch(r"[A-Za-z][\w$#]*", pkg_name) and re.fullmatch(r"[A-Za-z][\w$#]*", proc[0]):
+                seq += 1
+                b = Block("invoke", f"{pkg_name}.{proc[0]};", proc[1], _yaml_label(c.page, None, c.kind, c.name, None),
+                          f"apex_yaml_invoke_{seq}", c.page, "", YAML_COMP.get(c.kind, f"yaml_{c.kind}"))
+                blocks.append(b)
+                owned.append((b, c))
+    _yaml_inherit(owned, comps, info)
     blocks.extend(_form_store_blocks(form_items, region_tables, {}))
     findings.extend(ycfg.finish())
-    return blocks, findings, []
+    return blocks, findings, [], info
+
+
+def _yaml_inherit(owned: list, comps: list, info: dict) -> None:
+    """Block.scheme from the readable export's components (see extract_yaml_full); page and application facts into
+    info."""
+    regions_by_id = {c.id: c for c in comps if c.kind == "region" and c.id}
+    regions_by_name = {c.name: c for c in comps if c.kind == "region"}
+    buttons_by_id = {c.id: c for c in comps if c.kind == "button" and c.id}
+    buttons_by_name = {c.name: c for c in comps if c.kind == "button"}
+
+    def ref(r, by_id, by_name):
+        if not r:
+            return None
+        return by_id.get(r[1]) if r[1] else by_name.get(r[0])
+
+    def chain(c, seen):
+        while c is not None and id(c) not in seen and len(seen) < 128:
+            seen.add(id(c))
+            yield c.authz or ""
+            if c.kind == "page":
+                return
+            nxt = ref(c.parent_region, regions_by_id, regions_by_name) or ref(c.region, regions_by_id, regions_by_name)
+            if c.button:
+                b = ref(c.button, buttons_by_id, buttons_by_name)
+                if b is not None:
+                    yield from chain(b, seen)
+            c = nxt if nxt is not None else c.parent
+
+    for b, c in owned:
+        own = c.authz or ""
+        b.scheme = next((x for x in chain(c, set()) if restricts(x)), own)
+    for c in comps:
+        if c.kind == "page" and c.page:
+            info["pages"][c.page] = {"public": c.public, "scheme": c.authz or ""}
+        elif c.kind == "application" and c.authz:
+            info["app_scheme"] = c.authz
 
 
 class _YamlConfig:
