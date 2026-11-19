@@ -5686,6 +5686,12 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     apex_sites: list = []        # APX024 context: (rel, block, application id) of every APEX component with code
     apex_sec: dict = {}          # application id -> merged protection facts (app scheme, schemes, pages)
     script_ranges: list = []     # Supporting Objects scripts: (rel, first line, last line, label)
+    synonyms: dict = {}          # APX024 call sites: synonym (lower case) -> what it names (`create synonym s for o.pkg`)
+    export_of: dict = {}         # APEX export file -> (application id, "sql" | "yaml"): one application in both forms
+    # the readable YAML export: its application id is in readable/application/f<id>.yaml, beside the pages
+    yaml_apps = {rel.lower().rsplit("readable/application/", 1)[0]: apex_export.yaml_application_id(text)
+                 for rel, text in files.items() if rel.lower().endswith((".yaml", ".yml"))
+                 and "readable/application/" in rel.lower() and apex_export.yaml_application_id(text)}
 
     def add_blocks(rel, blocks, diag):
         """Extracted code blocks (APEX export / readable YAML / ORDS handlers) -> units at their real lines."""
@@ -5723,6 +5729,7 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
         diag["lines"].extend((ln + delta, msg) for ln, msg in d["lines"])
         findings.extend(apex_export.password_findings(text, rel, 1 + delta))   # custom authentication in packages
         specs, bodies = plsql_authz.collect(text, rel, delta)
+        synonyms.update(plsql_authz.synonyms(text))
         for name, routines in specs.items():
             authz_specs.setdefault(name, set()).update(routines)
         authz_bodies.extend(bodies)
@@ -5745,9 +5752,17 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             if not apex_export.is_apex_yaml(text, rel):
                 continue
             diag["language"] = "apex-yaml"
-            blocks, afind, _ = apex_export.extract_yaml(text, rel)
+            blocks, afind, _, yinfo = apex_export.extract_yaml_full(text, rel)
             findings.extend(afind)
             add_blocks(rel, blocks, diag)
+            app_id = yinfo["app"] or (yaml_apps.get(low.rsplit("readable/application/", 1)[0])
+                                      if "readable/application/" in low else None)
+            export_of[rel] = (app_id, "yaml")
+            sec = apex_sec.setdefault(app_id, {"app_scheme": "", "schemes": {}, "pages": {}})
+            sec["app_scheme"] = sec["app_scheme"] or yinfo["app_scheme"]
+            for pg, pinfo in yinfo["pages"].items():
+                sec["pages"].setdefault(pg, pinfo)
+            apex_sites.extend((rel, b, app_id, "yaml") for b in blocks if b.comp)
         elif low.endswith(".xml"):
             diag["language"] = "xml"
             for start, script in apex_export.xml_scripts(text):
@@ -5771,7 +5786,8 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             sec["app_scheme"] = sec["app_scheme"] or ainfo["app_scheme"]
             sec["schemes"].update(ainfo["schemes"])
             sec["pages"].update(ainfo["pages"])
-            apex_sites.extend((rel, b, ainfo["app"]) for b in blocks if b.comp)
+            apex_sites.extend((rel, b, ainfo["app"], "sql") for b in blocks if b.comp)
+            export_of[rel] = (ainfo["app"], "sql")
             # Supporting Objects: packages / procedures in installation scripts, analysed as plain PL/SQL at their
             # export lines (data flow, APX024, password checks)
             for sline, script, label in ainfo["scripts"]:
@@ -5812,9 +5828,33 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             _mark_unused_components(findings, app["defs"], app["refs"], shared_lines)
     authz = plsql_authz.findings(authz_specs, authz_bodies, shared_lines)
     _label_findings(authz, script_ranges)
-    plsql_authz.apex_context(authz, apex_sites, apex_sec)
+    plsql_authz.apex_context(authz, apex_sites, apex_sec, authz_bodies, synonyms)
     findings.extend(authz)
-    return projects, findings
+    return projects, _dedupe_export_forms(findings, export_of)
+
+
+def _dedupe_export_forms(findings: list, export_of: dict) -> list:
+    """One application scanned as both a .sql export and a readable YAML export (APEX 23.2+ writes both): a finding
+    of the YAML form is dropped when the .sql form of the same application has one of the same rule in the same
+    component (the labels are built alike); a YAML export whose application id is not in the scan matches any .sql
+    export. Everything else of both forms is kept."""
+    if not any(fmt == "yaml" for _a, fmt in export_of.values()) or not any(fmt == "sql" for _a, fmt in export_of.values()):
+        return findings
+    seen, seen_any = set(), set()
+    for f in findings:
+        app, fmt = export_of.get(f.file, (None, ""))
+        label = f.extra.get("apex_component")
+        if fmt == "sql" and label:
+            seen.add((app, label, f.rule_id))
+            seen_any.add((label, f.rule_id))
+    out = []
+    for f in findings:
+        app, fmt = export_of.get(f.file, (None, ""))
+        label = f.extra.get("apex_component")
+        if fmt == "yaml" and label and ((app, label, f.rule_id) in seen or (app is None and (label, f.rule_id) in seen_any)):
+            continue
+        out.append(f)
+    return out
 
 
 def _mark_unused_components(findings: list, plugin_defs: dict, plugin_refs: set, lines: dict) -> None:
