@@ -58,10 +58,11 @@ _TOKEN = re.compile(r"""
     (?P<nl>\n) | (?P<ws>[ \t\r\f\v]+) | (?P<lc>--[^\n]*) | (?P<bc>/\*.*?\*/) |
     (?P<qstr>[nN]?[qQ]'.) |
     (?P<str>[nN]?'(?:''|[^'])*') |
-    (?P<num>\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[fFdD]?\b) |
+    (?P<num>(?:\d+(?:\.\d+)?|(?<![\w$#)\]"])\.\d+)(?:[eE][+-]?\d+)?[fFdD]?\b) |
     (?P<qid>"[^"\n]+") |
     (?P<punct>:=|=>|\|\||\.\.|<>|!=|\^=|~=|<=|>=|\*\*|<<|>>) |
-    (?P<bind>:[A-Za-z_][\w$#]*) |
+    (?P<bind>:[A-Za-z_][\w$#]*|:"[^"\n]+") |
+    (?P<cc>\$\$?[A-Za-z_][\w$#]*) |
     (?P<id>[A-Za-z_][\w$#]*) |
     (?P<one>[-+*/%(),;.=<>@:&|\[\]{}!?^~])
 """, re.S | re.X)
@@ -130,8 +131,11 @@ def tokenize(src: str) -> list[Tok]:
             toks.append(Tok("num", text, line, nl))
         elif kind == "qid":
             toks.append(Tok("id", text[1:-1].lower(), line, nl, text[1:-1]))
-        elif kind == "bind":
-            toks.append(Tok("bind", text[1:].lower(), line, nl, text[1:]))
+        elif kind == "bind":                 # :P1_X, or quoted :"P1_X"
+            name = text[1:].strip('"')
+            toks.append(Tok("bind", name.lower(), line, nl, name))
+        elif kind == "cc":
+            toks.append(Tok("cc", text.lower(), line, nl, text))
         elif kind == "id":
             toks.append(Tok("id", text.lower(), line, nl, text))
         else:
@@ -139,7 +143,33 @@ def tokenize(src: str) -> list[Tok]:
         nl = False
         i = m.end()
     toks.append(Tok("eof", "", line, True))
-    return toks
+    return _conditional(toks) if any(t.kind == "cc" for t in toks) else toks
+
+
+def _conditional(toks: list[Tok]) -> list[Tok]:
+    """Conditional compilation: drop the directives (`$if cond $then`, `$elsif cond $then`, `$else`, `$end`,
+    `$error … $end`) and keep the code of EVERY branch, since which one is compiled depends on the database, and data
+    flowing through any of them matters. An inquiry directive (`$$plsql_unit`, `$$my_flag`) is a compile-time constant."""
+    out: list[Tok] = []
+    k, n = 0, len(toks)
+    while k < n:
+        t = toks[k]
+        if t.kind != "cc":
+            out.append(t)
+            k += 1
+            continue
+        if t.val.startswith("$$"):
+            out.append(Tok("str", t.raw[2:], t.line, t.nl))
+            k += 1
+            continue
+        stop = {"$if": "$then", "$elsif": "$then", "$error": "$end"}.get(t.val)
+        k += 1
+        if stop:
+            while k < n and toks[k].kind != "eof" and not (toks[k].kind == "cc" and toks[k].val == stop):
+                k += 1
+            if k < n and toks[k].kind == "cc":
+                k += 1
+    return out
 
 
 class ParseError(Exception):
@@ -182,6 +212,7 @@ class Parser:
         self.toks = tokenize(src)
         self.i = 0
         self.diagnostics: list = []
+        self.n_skipped = 0               # every skipped statement (diagnostics keeps the first 500 of them)
         self.n_statements = 0
         self.anon = 0
         self.pending_pre: list = []
@@ -244,6 +275,7 @@ class Parser:
 
     def record(self, line, msg, start=None, where="body"):
         """A skipped statement: (line, "{kind} message"), the kind of the statement that starts at token `start`."""
+        self.n_skipped += 1
         if len(self.diagnostics) < 500:
             kind = self.stmt_kind(start, where) if start is not None else ""
             self.diagnostics.append((line, f"{{{kind}}} {msg}" if kind else msg))
@@ -335,6 +367,9 @@ class Parser:
         if t.kind == "punct" and t.val in ("@", "<<"):
             self._skip_line()
             return None
+        if t.kind == "punct" and t.val == "." and t.nl and self.peek().nl:
+            self.i += 1                                         # SQL*Plus: `.` alone on a line ends the buffer
+            return None
         if t.kind != "id":
             raise ParseError(f"unexpected {t.raw or t.val!r}")
         v = t.val
@@ -344,9 +379,15 @@ class Parser:
         if v in ("exec", "execute") and t.nl and self.peek().val != "immediate":
             self.i += 1
             line = self.t.line
-            e = self.parse_expr()
+            if self.at("begin", "declare"):                     # exec begin … end;
+                return Unit("anonymous", f"exec_{line}", self.parse_anonymous(), line)
+            target = self.parse_postfix()
+            if self.opt(":="):                                  # exec :bind := f(…);
+                body = self.assign(target, self.parse_expr(), line)
+            else:
+                body = [_mk(ast.Expr, line, value=self._as_call(target, line))]
             self.opt(";")
-            return Unit("anonymous", f"exec_{line}", [_mk(ast.Expr, line, value=self._as_call(e, line))], line)
+            return Unit("anonymous", f"exec_{line}", body, line)
         if v in ("declare", "begin"):
             line = t.line
             self.header_open = False
@@ -438,6 +479,13 @@ class Parser:
             if self.at("relies_on"):
                 self.i += 1
                 self.skip_balanced()
+            if self.at("cluster", "order") and self.peek(2).val == "by":   # parallel_enable(…) cluster c by (col)
+                self.i += 3
+                if self.at("("):
+                    self.skip_balanced()
+        if self.at("using") and self.peek().kind == "id":
+            self.skip_to_semicolon()                  # pipelined / aggregate `using impl_type`: implemented by a type
+            return None
         if self.opt(";"):
             return None                               # forward declaration / spec
         if not self.opt("is", "as"):
@@ -678,7 +726,7 @@ class Parser:
                 val = None if self.at(";") else self.parse_expr()
                 self.eat(";")
                 return [_mk(ast.Return, line, value=val)]
-            if v == "raise" and self.peek().val in (";",) or (v == "raise" and self.peek().kind == "id" and self.peek(2).val == ";"):
+            if v == "raise" and self._raise_name_end():
                 self.skip_to_semicolon()
                 return [_mk(ast.Raise, line, exc=None, cause=None)]
             if v in SQL_DML:
@@ -691,10 +739,10 @@ class Parser:
                 start = self.i
                 self.skip_to_semicolon()
                 return self.fetch_effects(start, self.i)
-            if v in SKIP_STMTS:
+            if v in SKIP_STMTS or (v == "pragma" and self.peek().kind == "id"):   # pragma inline(f, 'YES');
                 self.skip_to_semicolon()
                 return []
-        if t.kind not in ("id", "bind"):
+        if t.kind not in ("id", "bind") and not (t.kind == "punct" and t.val == "("):   # (self as t).m(…);
             raise ParseError(f"unexpected {t.raw or t.val!r}")
         target = self.parse_postfix()
         if self.opt(":="):
@@ -714,6 +762,15 @@ class Parser:
             hdr.func = _name(HEADER_WRITE, line)
             return [_mk(ast.Expr, line, value=hdr), _mk(ast.Expr, line, value=call)]
         return [_mk(ast.Expr, line, value=call)]
+
+    def _raise_name_end(self) -> bool:
+        """At `raise`: re-raise (`raise;`) or a [qualified] exception name (`raise pkg.e_failed;`)."""
+        k = 1
+        if self.peek(k).kind == "id":
+            k += 1
+            while self.peek(k).val == "." and self.peek(k + 1).kind == "id":
+                k += 2
+        return self.peek(k).val == ";"
 
     def _merge_header(self, *states) -> None:
         """The header state after branches that ended in `states`: the same on every path, or "maybe"."""
@@ -1159,10 +1216,10 @@ class Parser:
             neg = self.opt("not")
             if self.at("a"):
                 self.i += 2
-            else:
-                self.i += 1                      # null / empty / json / of …
-            if self.at("of"):
-                self.i += 1
+            elif not self.at("of"):
+                self.i += 1                      # null / empty / json / dangling / infinite / nan …
+            if self.opt("of"):                   # x is [not] of [type] (t1, only t2)
+                self.opt("type")
                 if self.at("("):
                     self.skip_balanced()
             return _mk(ast.Compare, line, left=left, ops=[ast.IsNot() if neg else ast.Is()], comparators=[_const(None, line)])
@@ -1202,8 +1259,11 @@ class Parser:
 
     def parse_concat(self):
         left = self.parse_mul()
-        while self.t.kind == "punct" and self.t.val in ("||", "+", "-"):
+        while (self.t.kind == "punct" and self.t.val in ("||", "+", "-")) or (
+                self.at("multiset") and self.peek().val in ("union", "intersect", "except")):
             line = self.eat().line
+            if self.opt("union", "intersect", "except"):       # a multiset b: elements of both
+                self.opt("all", "distinct")
             left = _mk(ast.BinOp, line, left=left, op=ast.Add(), right=self.parse_mul())
         return left
 
@@ -1241,6 +1301,14 @@ class Parser:
                 self.i += 1
                 attr = self.eat().val
                 e = _mk(ast.Attribute, t.line, value=e, attr=attr, ctx=ast.Load()) if attr == "rowtype" else _const(0, t.line)
+            elif self.at("at") and self.peek().val in ("time", "local"):
+                self.i += 1                           # ts at local / ts at time zone tz: the same value, in another zone
+                if self.opt("time"):
+                    self.eat("zone")
+                    zone = self.parse_unary()
+                    e = _mk(ast.BinOp, t.line, left=e, op=ast.Add(), right=zone)
+                else:
+                    self.i += 1
             elif t.kind == "punct" and t.val == "@" and self.peek().kind == "id":
                 self.i += 2                           # remote call over a db link
             elif self.at("within", "over", "keep") and self.peek().val in ("group", "(", "dense_rank"):
@@ -1325,6 +1393,8 @@ class Parser:
                 return _const("", line)
             self.i += 1
             first = self.parse_expr()
+            if self.opt("as"):                        # (self as supertype): the same object, seen as its supertype
+                self.skip_type({")"})
             elts = [first]
             while self.opt(","):
                 elts.append(self.parse_expr())
@@ -1451,7 +1521,7 @@ def parse_plsql(text: str):
         p = Parser(blank_wrapped(blank_java_sources(text)) if diag["wrapped"] else blank_java_sources(text))
         units = p.parse_program()
         diag["statements"] = p.n_statements
-        diag["skipped"] = len(p.diagnostics)
+        diag["skipped"] = p.n_skipped
         diag["lines"] = list(p.diagnostics)
         return units, diag
     except Exception as e:  # noqa: BLE001 - never abort a scan on a frontend bug

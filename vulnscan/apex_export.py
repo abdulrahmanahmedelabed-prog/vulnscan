@@ -633,10 +633,14 @@ def _classify(fname: str, pname: str, text: str, decoded: dict) -> str | None:
         return "sql"
     if any(w in typ for w in ("FUNCTION_BODY", "FUNC_BODY", "FUNC_BOOLEAN", "FUNCTION_RETURNING", "FUNC_RETURN")):
         return "plsql_fn"
+    if "REGULAR_EXPRESSION" in typ:
+        return None                                  # a regex the value must match, not code
     if "EXPRESSION" in typ:
         return "plsql_expr"
     if "PLSQL" in typ or "EXECUTE_PLSQL" in action:
         return "plsql"
+    if pname == "p_plug_source" and "p_plug_source_type" not in decoded:
+        return "html"                                # no region type: static content (code shown in it is text)
     if re.search(r":=|\bbegin\b.*\bend\b|;\s*$", body, re.S):
         return "plsql_fn" if re.search(r"\breturn\b", body) and not re.search(r"\bbegin\b", body) else "plsql"
     if pname == "p_plug_source":
