@@ -642,6 +642,76 @@
       "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل أي عملية حذف أو نسخ أو إنشاء."
     },
     {
+      "rule": "DF011",
+      "severity": "medium",
+      "cwe": "CWE-22",
+      "label": "file existence / metadata probe",
+      "args": [
+        0
+      ],
+      "names": [
+        "os.path.exists",
+        "os.path.lexists",
+        "os.path.isfile",
+        "os.path.isdir",
+        "os.path.islink",
+        "os.path.getsize",
+        "os.path.getmtime",
+        "os.path.getatime",
+        "os.path.getctime",
+        "os.stat",
+        "os.lstat",
+        "os.access"
+      ],
+      "title": "Tainted path reaches a filesystem operation",
+      "title_ar": "مسار ملوّث يصل إلى عملية على نظام الملفات",
+      "advice": "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل فحص وجوده أو خصائصه: الجواب يكشف ملفات خارج ذلك المجلد.",
+      "_comment": "os.path.exists / isfile / getsize ... (CWE-22 probing): the answer tells the client whether any file on the host exists, like pathlib's Path(x).exists() above"
+    },
+    {
+      "rule": "DF027",
+      "severity": "high",
+      "cwe": "CWE-611",
+      "label": "XML parser",
+      "args": [
+        0
+      ],
+      "names": [
+        "xml.dom.minidom.parseString",
+        "xml.dom.minidom.parse",
+        "xml.dom.pulldom.parseString",
+        "xml.dom.pulldom.parse",
+        "xml.sax.parseString",
+        "xml.sax.parse",
+        "lxml.etree.fromstring",
+        "lxml.etree.XML",
+        "lxml.etree.parse",
+        "lxml.etree.iterparse"
+      ],
+      "title": "Tainted XML parsed with external entities enabled (XXE)",
+      "title_ar": "بيانات غير موثوقة تُحلَّل كـ XML مع تفعيل الكيانات الخارجية (XXE)",
+      "advice": "لا تفعّل feature_external_ges / resolve_entities؛ استخدم defusedxml أو محللًا بإعداداته الآمنة الافتراضية لتحليل XML غير موثوق.",
+      "_comment": "applies only in a function that turns external entities on (sax feature_external_ges / _peds, lxml resolve_entities=True / no_network=False / load_dtd=True): the stdlib parsers resolve none by default (Python >= 3.7.1)"
+    },
+    {
+      "rule": "DF027",
+      "severity": "high",
+      "cwe": "CWE-611",
+      "label": "XML parser (SAX reader / lxml parser)",
+      "args": [
+        0
+      ],
+      "names": [
+        "parse",
+        "feed"
+      ],
+      "receiver": "(?i)(^|[._])(\\w*parser|\\w*reader|make_parser\\(\\))$",
+      "title": "Tainted XML parsed with external entities enabled (XXE)",
+      "title_ar": "بيانات غير موثوقة تُحلَّل كـ XML مع تفعيل الكيانات الخارجية (XXE)",
+      "advice": "لا تفعّل feature_external_ges / resolve_entities؛ استخدم defusedxml أو محللًا بإعداداته الآمنة الافتراضية لتحليل XML غير موثوق.",
+      "_comment": "xml.sax.make_parser().parse(source) / lxml XMLParser.feed(data), in a function that turns external entities on"
+    },
+    {
       "rule": "DF012",
       "severity": "critical",
       "cwe": "CWE-94",

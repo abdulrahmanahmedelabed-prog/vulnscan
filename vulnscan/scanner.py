@@ -758,8 +758,15 @@ def apply_audit_profile(findings: list[Finding], projects, audit: bool) -> list[
                 analyzed[path] = {ln for ln, _ in d.get("lines", [])}     # skipped lines
                 trees[path] = f.get("tree")
     bound_cache: dict = {}
+    xxe_lines = {(f.file, f.line) for f in findings if f.cwe == "CWE-611" and f.rule_id.startswith("DF")}
     out = []
     for f in findings:
+        if f.rule_id == "XXE001" and f.file.endswith(".py") and f.file in analyzed and f.line not in analyzed[f.file] \
+                and _xxe_parses_untainted(trees.get(f.file), f.file, f.line, xxe_lines, param_reach, bound_cache):
+            if not audit:
+                continue
+            f.extra["audit"] = True
+            f.extra["audit_note"] = "audit lead: every XML document this parser reads is proven free of untrusted data"
         if f.rule_id in AUDIT_ONLY:
             if audit:
                 f.extra["audit"] = True
@@ -822,6 +829,61 @@ def _call_tail(call) -> str:
     import ast as _ast
     f = call.func
     return f.id if isinstance(f, _ast.Name) else f.attr if isinstance(f, _ast.Attribute) else ""
+
+
+_XML_PARSE_CALLS = frozenset({"parseString", "parse", "fromstring", "XML", "iterparse", "feed"})
+
+
+def _xxe_parses_untainted(tree, path, line: int, df_lines: set, param_reach: set, cache: dict) -> bool:
+    """XXE001 (a Python parser with external entities turned on) on `line`: True when the data-flow engine decides
+    instead, i.e. the enclosing function parses XML only in calls it fully traced (DF027 models them), none of
+    which an untrusted source (a DF027 finding) or a parameter of the function (a caller's data) reaches. A parser
+    configured at module level, returned or stored for another function, or used through a call the engine cannot
+    place keeps the pattern finding."""
+    import ast as _ast
+    if tree is None:
+        return False
+    fn = None
+    for n in _ast.walk(tree):
+        if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and n.lineno <= line <= (n.end_lineno or n.lineno):
+            if fn is None or n.lineno >= fn.lineno:
+                fn = n                                 # the innermost function around the configuration
+    if fn is None:
+        return False
+    parses = []
+    for n in _ast.walk(fn):
+        if isinstance(n, _ast.Return) and n.value is not None and not isinstance(n.value, _ast.Constant):
+            stack = [n.value]
+            while stack:                               # (a parser passed to a call in the return is used, not returned)
+                x = stack.pop()
+                if isinstance(x, _ast.Name) and x.id in _parser_names(fn):
+                    return False                       # the configured parser leaves the function
+                if not isinstance(x, (_ast.Call, _ast.Lambda)):
+                    stack.extend(_ast.iter_child_nodes(x))
+        if isinstance(n, _ast.Call):
+            name = n.func.attr if isinstance(n.func, _ast.Attribute) else n.func.id if isinstance(n.func, _ast.Name) else ""
+            if name in _XML_PARSE_CALLS:
+                parses.append(n)
+    if not parses:
+        return False
+    for c in parses:
+        ln = c.lineno
+        if (path, ln) in df_lines or (path, ln) in param_reach or not _all_names_known(tree, ln, cache):
+            return False
+    return True
+
+
+def _parser_names(fn) -> set:
+    """Names bound in `fn` to a parser object: `p = xml.sax.make_parser()` / `p = lxml.etree.XMLParser(...)`."""
+    import ast as _ast
+    out = set()
+    for n in _ast.walk(fn):
+        if isinstance(n, _ast.Assign) and isinstance(n.value, _ast.Call):
+            f = n.value.func
+            name = f.attr if isinstance(f, _ast.Attribute) else f.id if isinstance(f, _ast.Name) else ""
+            if name in ("make_parser", "XMLParser", "create_parser", "ExpatParser"):
+                out |= {t.id for t in n.targets if isinstance(t, _ast.Name)}
+    return out
 
 
 def _all_names_known(tree, line: int, cache: dict) -> bool:
