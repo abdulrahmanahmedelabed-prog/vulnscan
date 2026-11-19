@@ -9,16 +9,32 @@ The rule is about inconsistency, not a guess that every routine needs a check, a
 
 1. Public routines: the ones the package spec declares when the scan holds it (any file); without a spec, the body's
    routines minus those other routines of the package call (private helpers) and those declared forward in the body.
-2. The guard: a call whose name looks like an authorization / access check, reached (directly or through routines
-   of the same package) before the first data access by at least 3 public routines and by at least 60% of the public
-   routines that access data or call it. No guard: no finding.
+2. The guard: a call whose name looks like an authorization / access check, called (directly or through routines
+   of the same package) before the first data access in the code by at least 3 public routines and by at least 60%
+   of the public routines that access data or call it (the 1.3 criterion: a sibling that checks on some paths only
+   still shows which check the package uses, and is reported itself). No guard: no finding. The message gives that
+   count and how many of those siblings the guard covers on every path.
 3. Flagged: a public routine that reads data with a query and can return it, changes data (DML, dynamic SQL) or
    writes to the browser (htp, wpg_docload), itself or through a routine of the package that does so unchecked, and
-   that reaches no authorization-like call at all (so a guard on any path, or a different check, keeps it quiet).
-   Pure computation (no SQL, no output) is never flagged.
+   where some path reaches that access without passing an authorization-like call (the package's guard or another):
+   no such call at all ("none"), or one only in a branch of IF / ELSIF / CASE or of a `$if` (conditional
+   compilation), in a loop, in an exception handler, after the access, skipped by a GOTO ("partial", with the line).
+   A check called as a statement (`check_access('X');`) covers what follows; a check whose answer is a value
+   (`can_view(…)`, `apex_authorization.is_authorized(…)`) covers the statement it is in and, through a condition,
+   either the branch it guards (`if can_view(…) then <access>`) or what follows when the failing branch leaves the
+   routine (`if not can_view(…) then raise_application_error(…); end if;`, also through a variable that holds the
+   answer); an answer nobody acts on covers nothing. RETURN / RAISE / raise_application_error end their path. A read
+   counts where what was read can leave the routine (each RETURN of a non-constant after it, the end of a
+   procedure), so querying the row's owner before the check is fine. Pure computation is never flagged.
 
-The analysis is lexical (tokens of plain PL/SQL: .pkb/.pks/.sql files and scripts inside XML changelogs); code inside
-APEX export strings is not read here.
+The analysis reads tokens of plain PL/SQL (.pkb/.pks/.sql files, scripts inside XML changelogs and, since
+1.4.0, the Supporting Objects installation scripts of APEX exports, at their export lines) and follows the
+statements of each routine (_flow). apex_context() then adds what the export says about the APEX components that
+call the routine and their authorization schemes. A body it cannot follow (an unexpected construct, a check or
+access inside a nested sub-program, a GOTO backwards) gets the lexical answer: any authorization-like call anywhere
+keeps the routine quiet. Not modelled: which way a test of the answer goes beyond NOT (`if can_view(…) = false`
+reads as the passing branch), the paths inside a helper of the package that calls the guard (a call to it counts as
+a check), an exception raised before the check that a handler other than WHEN OTHERS catches is assumed possible.
 """
 
 from __future__ import annotations
@@ -59,6 +75,8 @@ class Routine:
     reads: list = field(default_factory=list)      # [(token index, object)]
     return_pos: list = field(default_factory=list)  # token indexes of RETURN statements
     end: int = 0
+    lines: dict = field(default_factory=dict)       # token index of each fact above (and of `end`) -> absolute line
+    flow: tuple | None = None   # statement tree of the body for the path check (see _flow); None: lexical answer only
 
 
 @dataclass
@@ -203,7 +221,7 @@ def _parse_spec(toks, j) -> tuple[set, int]:
         elif depth == 0 and t.kind == "id" and t.val in ("procedure", "function") and toks[j + 1].kind == "id":
             names.add(toks[j + 1].val)
         elif depth == 0 and t.kind == "id" and t.val == "end" and (
-                (toks[j + 1].kind == "punct" and toks[j + 1].val == ";") or toks[j + 2].val == ";"):
+                (toks[j + 1].kind == "punct" and toks[j + 1].val == ";") or (toks[j + 2].val == ";" and toks[j + 1].val != "if")):
             return names, j + 1
         j += 1
     return names, j
@@ -254,7 +272,9 @@ def _analyse_body(toks, b, e, r: Routine, local_names: set, pkg: str):
         elif v == "execute" and nxt.kind == "id" and nxt.val == "immediate":
             r.own_sinks.append((j, "dynamic", ""))
         elif v == "return" and (prev.kind != "id" or prev.val in _STMT_START):
-            r.return_pos.append(j)
+            if not (toks[j + 2].kind == "punct" and toks[j + 2].val == ";" and (
+                    nxt.kind in ("num", "str") or (nxt.kind == "id" and nxt.val in ("null", "true", "false")))):
+                r.return_pos.append(j)                   # `return null;` / `return 0;` gives nothing away
         if v in _KEYWORDS:
             j += 1
             continue
@@ -295,6 +315,356 @@ def _analyse_body(toks, b, e, r: Routine, local_names: set, pkg: str):
         j = k
 
 
+# ------------------------------------------------------------------------------------------------ statement tree
+# The body of a routine as a small tree over token ranges, enough to ask "can this token be reached on a path that
+# passes no guard call?":
+#   ("s", lo, hi, leaves, var)   a statement or declaration over tokens [lo, hi); leaves: RETURN / RAISE /
+#                                raise_application_error, nothing runs after it on that path; var: the variable it
+#                                assigns (`l_ok := can_view(…)`, `l_ok boolean := …`), or None
+#   ("c", lo, hi, negated, names)   an IF / ELSIF / WHEN condition or a loop header: negated = token positions right
+#                                after NOT; names = {identifier: written after NOT}
+#   ("x",)                       an unconditional EXIT / CONTINUE: the rest of the loop body is not reached that way
+#   ("lbl", name) / ("goto", name)
+#   ("seq", [nodes])
+#   ("br", head, [(cond, body)], else_body | None, falls_through)   IF / ELSIF / ELSE and CASE (a CASE without ELSE
+#                                raises CASE_NOT_FOUND when no WHEN matches, so it does not fall through); a `$if`
+#                                of conditional compilation is an IF whose condition is unknown (plsql_frontend)
+#   ("loop", head, body)         LOOP / WHILE / FOR: the body may run zero times (or leave early)
+#   ("blk", body, [(others, handler)])   BEGIN … EXCEPTION: a handler starts from any statement of the body that
+#                                raises; a guard that fails raises too, but only WHEN OTHERS catches that
+class _Bad(Exception):
+    pass
+
+
+_STOPS = {"end", "exception", "elsif", "else", "when"}
+
+
+def _is(t, *vals) -> bool:
+    return t.kind == "id" and t.val in vals
+
+
+def _stmt_end(toks, j, e):
+    """Index just after the `;` that ends the simple statement at j."""
+    depth = 0
+    while j < e:
+        t = toks[j]
+        if t.kind == "punct" and t.val == "(":
+            depth += 1
+        elif t.kind == "punct" and t.val == ")":
+            depth -= 1
+        elif depth <= 0 and t.kind == "punct" and t.val == ";":
+            return j + 1
+        j += 1
+    raise _Bad
+
+
+def _until(toks, j, e, word):
+    """Index of the keyword `word` that ends the condition / header starting at j (CASE expressions skipped)."""
+    depth = cases = 0
+    while j < e:
+        t = toks[j]
+        if t.kind == "punct" and t.val == "(":
+            depth += 1
+        elif t.kind == "punct" and t.val == ")":
+            depth -= 1
+        elif t.kind == "punct" and t.val == ";" and depth <= 0:
+            raise _Bad
+        elif t.kind == "id" and depth <= 0:
+            if t.val == "case":
+                cases += 1
+            elif t.val == "end" and cases:
+                cases -= 1
+            elif t.val == word and not cases:
+                return j
+        j += 1
+    raise _Bad
+
+
+def _close(toks, j, e, *words):
+    """At `end [words]`: expect them, an optional label and `;` -> index after it."""
+    if not _is(toks[j], "end"):
+        raise _Bad
+    j += 1
+    for w in words:
+        if not _is(toks[j], w):
+            raise _Bad
+        j += 1
+    if toks[j].kind == "id" and toks[j + 1].kind == "punct" and toks[j + 1].val == ";":
+        j += 1
+    if not (toks[j].kind == "punct" and toks[j].val == ";"):
+        raise _Bad
+    if j >= e:
+        raise _Bad
+    return j + 1
+
+
+def _simple(toks, lo, hi, leaves=False, decl=False):
+    """A statement node; var: what `var := …` (or a declaration `var type := …`) assigns."""
+    var = None
+    if toks[lo].kind == "id":
+        if toks[lo + 1].kind == "punct" and toks[lo + 1].val == ":=":
+            var = toks[lo].val
+        elif decl and any((t.kind == "punct" and t.val == ":=") or _is(t, "default") for t in toks[lo + 1:hi]):
+            var = toks[lo].val
+    return ("s", lo, hi, leaves, var)
+
+
+def _cond(toks, lo, hi):
+    negated, names = set(), {}
+    for p in range(lo, hi):
+        t = toks[p]
+        if t.kind != "id":
+            continue
+        neg = p > lo and _is(toks[p - 1], "not")
+        if neg:
+            negated.add(p)
+        names.setdefault(t.val, neg)
+    return ("c", lo, hi, frozenset(negated), names)
+
+
+def _decl(toks, j, e, nested):
+    """Declarations up to the BEGIN of their block -> ([statement nodes], index of BEGIN)."""
+    out = []
+    while j < e:
+        t = toks[j]
+        if _is(t, "begin"):
+            return out, j
+        if _is(t, "procedure", "function"):
+            k = _skip_subprogram(toks, j)
+            nested.append((j, k))
+            j = k
+            continue
+        if _is(t, "if"):                                 # `$if` of conditional compilation around declarations
+            node, j = _stmt(toks, j, e, nested, decl=True)
+            out.append(node)
+            continue
+        if _is(t, "end"):
+            raise _Bad
+        k = _stmt_end(toks, j, e)
+        out.append(_simple(toks, j, k, decl=True))
+        j = k
+    raise _Bad
+
+
+def _stmts(toks, j, e, nested, decl=False):
+    out = []
+    while True:
+        if j >= e:
+            raise _Bad
+        if _is(toks[j], *_STOPS):
+            return ("seq", out), j
+        node, j = _stmt(toks, j, e, nested, decl)
+        out.append(node)
+
+
+def _block(toks, j, e, nested):
+    """At BEGIN -> (("blk", body, handlers), index of its END)."""
+    body, j = _stmts(toks, j + 1, e, nested)
+    handlers = []
+    if _is(toks[j], "exception"):
+        j += 1
+        while _is(toks[j], "when"):
+            k = _until(toks, j + 1, e, "then")
+            others = any(_is(toks[x], "others") for x in range(j + 1, k))
+            h, j = _stmts(toks, k + 1, e, nested)
+            handlers.append((others, h))
+    if not _is(toks[j], "end"):
+        raise _Bad
+    return ("blk", body, handlers), j
+
+
+def _stmt(toks, j, e, nested, decl=False):
+    t = toks[j]
+    if t.kind == "punct" and t.val == "<<":                  # <<label>>
+        name = toks[j + 1].val
+        while j < e and not (toks[j].kind == "punct" and toks[j].val == ">>"):
+            j += 1
+        return ("lbl", name), j + 1
+    if t.kind == "punct" and t.val == ";":
+        return ("seq", []), j + 1
+    v = t.val if t.kind == "id" else ""
+    if v in ("begin", "declare"):
+        decls = []
+        if v == "declare":
+            decls, j = _decl(toks, j + 1, e, nested)
+        blk, j = _block(toks, j, e, nested)
+        return ("seq", decls + [blk]), _close(toks, j, e)
+    if v == "if":
+        arms, other = [], None
+        while True:
+            k = _until(toks, j + 1, e, "then")
+            cond = _cond(toks, j, k + 1)
+            body, j = _stmts(toks, k + 1, e, nested, decl)
+            arms.append((cond, body))
+            if _is(toks[j], "elsif"):
+                continue
+            if _is(toks[j], "else"):
+                other, j = _stmts(toks, j + 1, e, nested, decl)
+            return ("br", None, arms, other, True), _close(toks, j, e, "if")
+    if decl:
+        k = _stmt_end(toks, j, e)
+        return _simple(toks, j, k, decl=True), k
+    if v == "case":
+        head = None
+        if not _is(toks[j + 1], "when"):
+            k = _until(toks, j + 1, e, "when")
+            head, j = _simple(toks, j, k), k
+        else:
+            j += 1
+        arms, other = [], None
+        while _is(toks[j], "when"):
+            k = _until(toks, j + 1, e, "then")
+            body, nj = _stmts(toks, k + 1, e, nested)
+            arms.append((_cond(toks, j, k + 1), body))
+            j = nj
+        if not arms:
+            raise _Bad
+        if _is(toks[j], "else"):
+            other, j = _stmts(toks, j + 1, e, nested)
+        return ("br", head, arms, other, False), _close(toks, j, e, "case")
+    if v in ("loop", "while", "for"):
+        k = j if v == "loop" else _until(toks, j + 1, e, "loop")
+        body, nj = _stmts(toks, k + 1, e, nested)
+        return ("loop", _cond(toks, j, k + 1), body), _close(toks, nj, e, "loop")
+    k = _stmt_end(toks, j, e)
+    if v in ("exit", "continue") and (k == j + 2 or (k == j + 3 and toks[j + 1].kind == "id" and toks[j + 1].val != "when")):
+        return ("x",), k
+    if v == "goto" and k == j + 3 and toks[j + 1].kind == "id":
+        return ("goto", toks[j + 1].val), k
+    name, n = v, j + 1
+    while toks[n].kind == "punct" and toks[n].val == "." and toks[n + 1].kind == "id":
+        name, n = toks[n + 1].val, n + 2
+    return _simple(toks, j, k, leaves=v in ("return", "raise") or name == "raise_application_error"), k
+
+
+def _flow(toks, b, e):
+    """Statement tree of a routine body (tokens [b, e) after its IS / AS) -> (tree, index of the END of its main
+    block, [(lo, hi)] of nested sub-programs); None when the body does not parse (the check is lexical then)."""
+    try:
+        nested: list = []
+        decl, j = _decl(toks, b, e, nested)
+        blk, j = _block(toks, j, e, nested)
+        return ("seq", decl + [blk]), j, nested
+    except (_Bad, IndexError, RecursionError):
+        return None
+
+
+def _unguarded(r: Routine, guards, accesses):
+    """Token positions in accesses that some path from the start of r reaches without passing a check; [] when
+    every path passes one first; None when that is not known (the body did not parse, a position is inside a nested
+    sub-program, a GOTO goes back).
+
+    guards are positions of calls to a check. A call that is a statement of its own (`check_access('X');`, a
+    procedure that raises when it fails) covers what follows. A call inside an expression (a function returning the
+    answer) covers the statement it is in, and through a condition: `if not can_view(…) then <leaves> end if;` covers
+    what follows (the failing branch leaves the routine), `if can_view(…) then <access> end if;` covers its branch.
+    Its result in a variable (`l_ok := can_view(…)`) counts where a condition tests the variable. A result nobody
+    tests (`l_ok := can_view(…);` alone, `if not can_view(…) then null; end if;`) covers nothing after it."""
+    if r.flow is None:
+        return None
+    tree, main_end, nested = r.flow
+    guards, accesses = set(guards), set(accesses)
+    events = guards | accesses
+    if any(lo <= p < hi for p in events for lo, hi in nested):
+        return None
+    seen, hits = set(), []
+    raising: list = []                  # per enclosing BEGIN … EXCEPTION: [a free statement may raise, a free
+    #                                     non-guard statement may raise]
+    guard_vars: set = set()             # variables holding the answer of a check
+    pending: dict = {}                  # label -> some GOTO reaches it without a check
+    labels: set = set()
+
+    def visit(lo, hi, free):
+        here = [p for p in events if lo <= p < hi]
+        seen.update(here)
+        gs = [p for p in here if p in guards]
+        if free:
+            for flags in raising:
+                flags[0] = True
+                flags[1] = flags[1] or not gs
+            if not gs:
+                hits.extend(p for p in here if p in accesses)
+        return gs
+
+    def cond(node, free):
+        """-> "pos" (the branch runs when the check passes), "neg" (it runs when the check fails) or None."""
+        _t, lo, hi, negated, names = node
+        gs = visit(lo, hi, free)
+        if gs:
+            return "neg" if any(p in negated for p in gs) else "pos"
+        v = next((n for n in names if n in guard_vars), None)
+        if v is not None:
+            return "neg" if names[v] else "pos"
+        return None
+
+    def run(node, free):                 # free: some path reaches this point without having passed a check
+        tag = node[0]
+        if tag == "s":
+            _t, lo, hi, leaves, var = node
+            gs = visit(lo, hi, free)
+            if gs and var:
+                guard_vars.add(var)
+            if lo in gs:                 # a statement of its own: the call raises when the check fails
+                free = False
+            return False if leaves else free
+        if tag == "x":
+            return False
+        if tag == "lbl":
+            labels.add(node[1])
+            return free or pending.pop(node[1], False)
+        if tag == "goto":
+            if node[1] in labels:
+                raise _Bad
+            pending[node[1]] = pending.get(node[1], False) or free
+            return False
+        if tag == "seq":
+            for n in node[1]:
+                free = run(n, free)
+            return free
+        if tag == "br":
+            _t, head, arms, other, falls = node
+            if head is not None:
+                free = run(head, free)
+            outs = []
+            for c, body in arms:
+                pol = cond(c, free)
+                if pol == "pos":
+                    outs.append(run(body, False))
+                elif pol == "neg":
+                    outs.append(run(body, free))
+                    free = False
+                else:
+                    outs.append(run(body, free))
+            if other is not None:
+                outs.append(run(other, free))
+            elif falls:
+                outs.append(free)
+            return any(outs)
+        if tag == "loop":
+            pol = cond(node[1], free)
+            return run(node[2], False if pol == "pos" else free) or free
+        if tag == "blk":
+            flags = [False, False]
+            raising.append(flags)
+            try:
+                outs = [run(node[1], free)]
+            finally:
+                raising.pop()
+            outs.extend(run(h, flags[0] if others else flags[1]) for others, h in node[2])
+            return any(outs)
+        raise _Bad
+
+    try:
+        end_free = run(tree, True)
+    except (_Bad, RecursionError):
+        return None
+    if pending or any(p not in seen and p < main_end for p in events):
+        return None
+    if end_free:
+        hits.extend(p for p in accesses if p >= main_end)
+    return sorted(set(hits))
+
+
 def _parse_body(toks, j, pkg: str, rel: str, line: int, delta: int) -> tuple[Package, int]:
     p = Package(pkg, rel, line + delta)
     spans = []
@@ -323,6 +693,10 @@ def _parse_body(toks, j, pkg: str, rel: str, line: int, delta: int) -> tuple[Pac
     names = {r.name for r, _b, _e in spans}
     for r, b, e in spans:
         _analyse_body(toks, b, e, r, names, pkg)
+        r.flow = _flow(toks, b, e)
+        for pos in [x[0] for x in r.refs + r.own_sinks + r.reads] + r.return_pos:
+            r.lines[pos] = toks[pos].line + delta
+        r.lines[e] = toks[max(b, e - 1)].line + delta
         p.routines.append(r)
     return p, j
 
@@ -337,7 +711,7 @@ def collect(text: str, rel: str, delta: int = 0) -> tuple[dict, list]:
         src = blank_java_sources(text)
         if wrapped_units(src):
             src = blank_wrapped(src)
-        toks = tokenize(src)
+        toks = tokenize(src, cc_branches=True)
         i = 0
         while toks[i].kind != "eof":
             t = toks[i]
@@ -377,10 +751,6 @@ def collect(text: str, rel: str, delta: int = 0) -> tuple[dict, list]:
 
 
 # ------------------------------------------------------------------------------------------------ the check
-def _first(positions):
-    return min(positions) if positions else None
-
-
 class _Pkg:
     """One package body with the guard-dependent facts of its routines."""
 
@@ -395,11 +765,13 @@ class _Pkg:
         self.own: dict = {}                              # id(routine) -> its own sinks (see sinks())
         for r in pkg.routines:
             s = list(r.own_sinks)
-            if r.reads:
-                first_read = min(p for p, _o in r.reads)
-                ret = _first([p for p in r.return_pos if p > first_read])
+            if r.reads:                                  # where what was read can leave: each RETURN after the
+                first_read = min(p for p, _o in r.reads)  # first read, and the end of a procedure (OUT parameters)
+                rets = [p for p in r.return_pos if p > first_read]
                 obj = next((o for _p, o in r.reads if o), "")
-                s.append((ret if ret is not None else r.end, "read", obj))
+                if r.kind != "function" or not rets:
+                    rets.append(r.end)
+                s.extend((p, "read", obj) for p in rets)
             self.own[id(r)] = s
 
     def _closure(self, seeds: set, stop: set = frozenset()) -> set:
@@ -438,6 +810,15 @@ def _guard_candidates(pkg: Package) -> set:
     return out
 
 
+def _covered(r: Routine, guards: list, sinks: list) -> bool:
+    """Every path to every data access of r passes a guard position first (lexically: the first guard comes before
+    the first access, when the body cannot be followed path by path)."""
+    left = _unguarded(r, guards, [p for p, _k, _o in sinks])
+    if left is None:
+        return min(guards) < min(p for p, _k, _o in sinks)
+    return not left
+
+
 def _evaluate(view: _Pkg, guard: str):
     def is_guard(c):
         return c == guard
@@ -453,7 +834,7 @@ def _evaluate(view: _Pkg, guard: str):
             continue
         relevant.append(r)
         if gp and (not s or min(gp) < min(p for p, _k, _o in s)):
-            checked.append(r)
+            checked.append(r)                            # 1.3 criterion: a guard call comes first in the code
     return relevant, checked, sinks
 
 
@@ -512,30 +893,112 @@ def findings(specs: dict, bodies: list, lines_by_file: dict) -> list:
         if best is None:
             continue
         _score, guard, relevant, checked, sinks = best
+        # the guard is elected as in 1.3 (siblings whose first call to it comes before their first data access in the
+        # code); whether it covers every path decides what is reported, and how many siblings it covers is stated
+        reached = view.reach(lambda c: c == guard)
+        covering = sum(1 for x in checked if not sinks[id(x)] or _covered(
+            x, view.guard_positions(x, lambda c: c == guard, reached), sinks[id(x)]))
         any_auth = view.reach(_looks_auth)
-        done = {id(x) for x in checked}
         for r in view.public:
-            if id(r) in done or r.name == guard or _looks_auth(r.name) or r.name in any_auth:
-                continue
-            if any(_looks_auth(c) for _p, c, _loc in r.refs):
+            if r.name == guard or _looks_auth(r.name):
                 continue
             s = sinks[id(r)]
             if not s:
                 continue                                 # pure computation: nothing to protect
+            # any authorization-like call, of the package's guard or another, directly or through a package routine
+            own_checks = [p for p, c, loc in r.refs if _looks_auth(c) or (loc is not None and loc in any_auth and loc != r.name)]
+            gap = None
+            if own_checks:
+                left = _unguarded(r, own_checks, [p for p, _k, _o in s])
+                if not left:                             # every path is checked, or not known: the lexical answer
+                    continue
+                gap = r.lines.get(left[0], r.line)
+                s = [x for x in s if x[0] in left]
             ar, en, objs = _describe(r, s)
             where_ar = ar + (f" ({', '.join(objs)})" if objs else "")
             where_en = en + (f" ({', '.join(objs)})" if objs else "")
             rname = f"{pkg.name}.{r.name}".upper()
             gname = guard.upper() if "." in guard else f"{pkg.name}.{guard}".upper()
             k, n = len(checked), len(relevant)
-            advice = (f"{rname} لا يتحقق من الصلاحية، بينما تستدعي {k} من {n} من الروتينات العامة في الحزمة "
-                      f"{gname} قبل عملها. وهو {where_ar}. أضف التحقق نفسه ({gname}) في بدايته كما تفعل الروتينات "
-                      f"الشقيقة؛ فأي كود في المخطط نفسه (صفحة APEX أخرى مثلًا) يمكنه استدعاؤه مباشرة.")
+            siblings = (f"تستدعي {k} من {n} من الروتينات العامة في الحزمة {gname} قبل أول وصول إلى البيانات في "
+                        f"نصّها ({covering} منها على كل المسارات)")
+            if gap is None:
+                advice = (f"{rname} لا يتحقق من الصلاحية، بينما {siblings}. وهو {where_ar}. أضف التحقق نفسه ({gname}) "
+                          f"في بدايته كما تفعل الروتينات الشقيقة؛ فأي كود في المخطط نفسه (صفحة APEX أخرى مثلًا) يمكنه "
+                          f"استدعاؤه مباشرة.")
+            else:
+                advice = (f"{rname} يتحقق من الصلاحية في بعض المسارات فقط: يمكن الوصول إلى البيانات في السطر {gap} دون "
+                          f"المرور بالتحقق، بينما {siblings}. وهو {where_ar}. اجعل التحقق ({gname}) قبل كل وصول إلى "
+                          f"البيانات، في بدايته أو في شرط يخرج من الروتين (raise أو return) حين يفشل، لا في فرع واحد "
+                          f"أو في معالج استثناء أو بعد الوصول.")
             lines = lines_by_file.get(pkg.rel) or []
             snippet = lines[r.line - 1] if 0 < r.line <= len(lines) else f"{r.kind} {r.name}"
             f = _finding(RULE, sev, title, title_ar, pkg.rel, r.line, snippet, advice, cwe, "")
             f.extra.update({"confidence": "tentative", "package": pkg.name.upper(), "routine": r.name.upper(),
-                            "guard": gname, "guarded_siblings": k, "siblings": n, "accesses": where_en,
-                            "spec_seen": pkg.name in specs})
+                            "guard": gname, "guarded_siblings": k, "covering_siblings": covering, "siblings": n,
+                            "accesses": where_en,
+                            "spec_seen": pkg.name in specs, "coverage": "none" if gap is None else "partial",
+                            "unguarded_line": gap})
             out.append(f)
     return out
+
+
+# ------------------------------------------------------------------------- what APEX itself enforces (1.4.0)
+_CODE_KINDS = ("plsql", "plsql_decls", "plsql_fn", "plsql_fn_sql", "plsql_fn_html", "plsql_expr", "sql")
+
+
+def apex_context(found: list, sites: list, sec: dict) -> None:
+    """Add to each APX024 finding what the scanned APEX export(s) say about the routine's callers: the components
+    (page processes, region sources, AJAX callbacks / application processes, dynamic action server code, …) that
+    call PACKAGE.ROUTINE and whether an authorization scheme protects each (component, page or application scheme;
+    MUST_NOT_BE_PUBLIC_USER and negated schemes do not count).
+
+    Every call site protected: the finding stays as it is, and says that the protection covers only those callers.
+    Some call site unprotected (public page, component without a scheme, application process without one): the
+    finding names it and its severity becomes high. No call site in the scan: unchanged.
+    sites: [(rel, apex_export.Block, application id)]; sec: application id -> {app_scheme, schemes, pages}."""
+    from .apex_export import call_site_protection, call_sites
+    if not found or not sites:
+        return
+    for f in found:
+        pkg, routine = str(f.extra.get("package") or ""), str(f.extra.get("routine") or "")
+        if not pkg or not routine:
+            continue
+        calls = []
+        for rel, b, app in sites:
+            if b.kind not in _CODE_KINDS or routine.lower() not in b.code.lower():
+                continue
+            lines = call_sites(b, pkg, routine)
+            if not lines:
+                continue
+            prot, what = call_site_protection(b, sec.get(app, {}))
+            for ln in lines:
+                calls.append({"component": b.label, "file": rel, "line": ln, "protected": prot,
+                              ("scheme" if prot else "reason"): what})
+        if not calls:
+            continue
+        calls.sort(key=lambda c: (c["file"], c["line"]))
+        rname = f"{pkg}.{routine}"
+        n = len(calls)
+        open_ = [c for c in calls if not c["protected"]]
+        f.extra["apex_call_sites"] = calls
+        if open_:
+            u = open_[0]
+            f.extra["apex_protection"] = "unprotected"
+            f.extra["severity_before_apex"] = f.severity
+            f.severity = "high"
+            f.advice += (f" ويُستدعى {rname} في تطبيق APEX المفحوص من مكوّن غير محمي: «{u['component']}» في السطر "
+                         f"{u['line']} من {u['file']} ({u['reason']})؛ المواضع غير المحمية {len(open_)} من {n}. فيمكن لأي "
+                         f"مستخدم يصل إلى هذا المكوّن تشغيل الروتين دون تحقق، ولذلك رُفعت الخطورة إلى «عالية».")
+        else:
+            names = []
+            for c in calls:
+                if c["scheme"] not in names:
+                    names.append(c["scheme"])
+            first = calls[0]
+            f.extra["apex_protection"] = "all_protected"
+            f.extra["apex_schemes"] = names
+            f.advice += (f" وفي تطبيق APEX المفحوص لا يُستدعى {rname} إلا من مكوّنات محمية بمخطط التفويض "
+                         f"{', '.join(names)} (مواضع الاستدعاء: {n}، أولها «{first['component']}» في السطر "
+                         f"{first['line']} من {first['file']})؛ لكن هذه الحماية لا تشمل أي مستدعٍ آخر للحزمة (صفحة "
+                         f"أخرى أو تطبيق آخر أو صلاحية EXECUTE ممنوحة مباشرة)، فيبقى التحقق داخل الروتين لازمًا.")

@@ -506,6 +506,10 @@ class FlowInterpreter:
             if ((isinstance(e.value, ast.Name) and "strlist" in st.facts.get(e.value.id, ()))
                     or self._request_getlist(e.value)) and not isinstance(e.slice, ast.Slice):
                 return True                  # one item of request.args.getlist(k)
+            if isinstance(e.value, ast.Name) and e.value.id in st.dk and not isinstance(e.slice, ast.Slice):
+                k = fold(e.slice, st.consts)     # a dict slot last assigned a str under this constant key
+                if k is not _MISSING and _hashable(k) and _slot_tag(k) in st.facts.get(e.value.id, ()):
+                    return True
             v = e.value                      # one item of s.split(...): a str
             return not isinstance(e.slice, ast.Slice) and isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute) \
                 and v.func.attr in ("split", "rsplit", "splitlines", "partition", "rpartition") \
@@ -528,10 +532,81 @@ class FlowInterpreter:
                 and not e.keywords and (len(e.args) == 1 or (isinstance(e.args[1], ast.Constant)
                                                             and (e.args[1].value is None or isinstance(e.args[1].value, str)))):
             return True                      # werkzeug MultiDict / Headers .get(k[, str default])
+        if self._request_str_method(e, st):
+            return True
         if f.attr == "get_data" and self._flask_request(f.value) and any(
                 k.arg == "as_text" and isinstance(k.value, ast.Constant) and k.value.value is True for k in e.keywords):
             return True
         return False
+
+    _REQUEST_TYPES = ("flask.Request", "flask.wrappers.Request", "werkzeug.wrappers.Request",
+                      "werkzeug.wrappers.request.Request", "quart.Request", "quart.wrappers.Request")
+
+    def _request_str_method(self, call, st: State) -> bool:
+        """`w.get_form(k)` where `w` is known to be an instance of a project class whose method (not overridden by a
+        subclass) only returns str literals, f-strings or `self.<f>.args / form / cookies / headers / values.get(k)`
+        with the field annotated as Flask's / werkzeug's Request (a wrapper around the request)."""
+        f = call.func
+        proj = self.proj
+        if not isinstance(f.value, (ast.Name, ast.Attribute, ast.Call)):
+            return False
+        try:
+            rtype = proj._type_of(self.mod, self.cls, f.value, self.env_for(st))
+        except RecursionError:
+            return False
+        if not rtype or rtype not in proj.classes:
+            return False
+        quals = proj._lookup_method(rtype, f.attr)
+        if len(quals) != 1 or quals[0] not in proj.gfuncs:
+            return False
+        if any(f.attr in proj.classes[c]["methods"] for c in proj._all_subclasses(rtype) if c in proj.classes):
+            return False                     # a subclass may return something else
+        info = proj.gfuncs[quals[0]]
+        fn, fmod, owner = info["node"], info["mod"], info["cls"]
+        params = fn.args.posonlyargs + fn.args.args
+        if not owner or not params or params[0].arg != "self" or fn.decorator_list:
+            return False
+        fields = {}
+        for c in proj._mro(owner):
+            node = proj.classes.get(c, {}).get("node")
+            for st_ in getattr(node, "body", []):
+                if isinstance(st_, ast.AnnAssign) and isinstance(st_.target, ast.Name):
+                    fields.setdefault(st_.target.id, st_.annotation)
+        rets = []
+        stack = list(fn.body)
+        while stack:
+            x = stack.pop()
+            if isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+                continue
+            if isinstance(x, (ast.Yield, ast.YieldFrom)):
+                return False
+            if isinstance(x, ast.Return):
+                rets.append(x.value)
+            stack.extend(ast.iter_child_nodes(x))
+        if not rets:
+            return False
+
+        def request_typed(ann) -> bool:
+            return isinstance(ann, (ast.Name, ast.Attribute)) and proj._canon(fmod, ann) in self._REQUEST_TYPES
+
+        def str_value(v) -> bool:
+            if isinstance(v, ast.Constant):
+                return isinstance(v.value, str)
+            if isinstance(v, ast.JoinedStr):
+                return True
+            if not (isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute) and v.func.attr == "get"
+                    and not v.keywords and len(v.args) in (1, 2)):
+                return False
+            if len(v.args) == 2 and not (isinstance(v.args[1], ast.Constant)
+                                         and (v.args[1].value is None or isinstance(v.args[1].value, str))):
+                return False
+            m = v.func.value
+            if not (isinstance(m, ast.Attribute) and m.attr in ("args", "form", "cookies", "headers", "values")):
+                return False
+            r = m.value
+            return isinstance(r, ast.Attribute) and isinstance(r.value, ast.Name) and r.value.id == "self" \
+                and request_typed(fields.get(r.attr))
+        return all(v is not None and str_value(v) for v in rets)
 
     def _safe_built(self, value, st: State) -> frozenset:
         """"safe:<cwe>" facts for a name assigned a built string whose tainted pieces all sit where they cannot
@@ -799,7 +874,21 @@ class FlowInterpreter:
         for n in ast.walk(tgt):
             if isinstance(n, ast.Name):
                 _set(st, n.id, self.stepped(o, n.id, it) if o else None, _MISSING)
+        if isinstance(tgt, ast.Name) and tgt.id not in self.volatile and self.proj.m.get("language") == "python" \
+                and self._request_keys(it):
+            st.facts[tgt.id] = st.facts.get(tgt.id, frozenset()) | {"str"}
         return st
+
+    def _request_keys(self, e) -> bool:
+        """Iterating Flask's request.args / form / cookies / values / files (werkzeug MultiDicts), or the .keys()
+        of those or of request.headers, yields the field names: str."""
+        if isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "keys" \
+                and not e.args and not e.keywords:
+            e = e.func.value
+            names = ("args", "form", "cookies", "values", "files", "headers")
+        else:
+            names = ("args", "form", "cookies", "values", "files")   # (iterating headers yields (name, value) pairs)
+        return isinstance(e, ast.Attribute) and e.attr in names and self._flask_request(e.value)
 
     def widen(self, st: State, names) -> State:
         st = st.copy()
@@ -912,9 +1001,12 @@ class FlowInterpreter:
                 m, other = st.dk[name]
                 if key is not _MISSING and _hashable(key):
                     m[key] = o                       # strong update of one known key
-                elif o:
-                    st.dk[name] = (m, o)             # unknown key: may be any key
-                    m, other = st.dk[name]
+                    self._slot_str(st, name, key, self.proj.m.get("language") == "python" and self._is_str(value, st))
+                else:
+                    self._slot_str(st, name, None, False)
+                    if o:
+                        st.dk[name] = (m, o)         # unknown key: may be any key
+                        m, other = st.dk[name]
             else:
                 self.taint_group(st, name, o)        # weak update of an untracked container
             self._retaint(st, name)
@@ -940,6 +1032,20 @@ class FlowInterpreter:
             st.dk.pop(tgt.value.id, None)
             return st
         return st                                     # attribute targets: handled by the main engine
+
+    @staticmethod
+    def _slot_str(st: State, name, key, is_str: bool) -> None:
+        """Remember (fact `_slot_tag(key)` on the dict) whether the value last stored under a constant key of a
+        tracked dict is certainly a str; key None forgets every slot (a write under an unknown key)."""
+        old = st.facts.get(name, frozenset())
+        tag = _slot_tag(key) if key is not None else ""
+        keep = frozenset(f for f in old if f.startswith("strkey:") and key is not None and f != tag) | \
+            frozenset(f for f in old if not f.startswith("strkey:"))
+        new = keep | ({tag} if is_str and key is not None else frozenset())
+        if new:
+            st.facts[name] = new
+        else:
+            st.facts.pop(name, None)
 
     def _retaint(self, st: State, name) -> None:
         """Name-level taint of a container with a known layout = any tainted slot (never dropped in a try body)."""
@@ -1018,6 +1124,8 @@ class FlowInterpreter:
             for name in passed:                      # the callee may store the other arguments in the container
                 st.lk.pop(name, None)
                 st.dk.pop(name, None)
+                if name in st.facts:
+                    self._slot_str(st, name, None, False)
                 if o:
                     self.taint_group(st, name, o)
         return st
@@ -1032,6 +1140,8 @@ class FlowInterpreter:
         if f.attr in _READ_ONLY:
             return st
         st = st.copy()
+        if name in st.facts:
+            self._slot_str(st, name, None, False)   # any method call on the container may replace a slot
         if name in st.lk:
             elems = st.lk[name]
             idx_of = (lambda a: (lambda v: int(v) if isinstance(v, float) and v.is_integer() else v)(fold(a, st.consts)))
@@ -1206,6 +1316,17 @@ _SEP_ATTRS = {"os.sep", "os.path.sep", "posixpath.sep"}
 _STR_RESULT_METHODS = {"replace", "strip", "lstrip", "rstrip", "lower", "upper", "casefold", "title", "capitalize",
                        "swapcase", "format", "zfill", "center", "ljust", "rjust", "expandtabs", "translate",
                        "removeprefix", "removesuffix", "join"}
+
+
+def _slot_tag(key) -> str:
+    """The fact naming a dict slot. Keys a dict treats as one (1, 1.0 and True) share it."""
+    if isinstance(key, (bool, int)) or (isinstance(key, float) and key.is_integer()):
+        return "strkey:i" + repr(int(key))
+    if isinstance(key, float):
+        return "strkey:f" + repr(key)
+    if isinstance(key, tuple):                 # (1, "a") == (True, "a")
+        return "strkey:(" + ",".join(_slot_tag(k) for k in key) + ")"
+    return "strkey:" + repr(key)
 
 
 def _dir_prefix(e, nonempty) -> bool:

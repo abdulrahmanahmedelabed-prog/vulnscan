@@ -39,7 +39,7 @@ def wait_done(base, sid):
         if s["status"] != "running":
             return s
         time.sleep(0.05)
-    raise AssertionError("scan did not finish")
+    raise AssertionError(f"scan {sid} did not finish: {s}")
 
 
 def test_static_and_meta(server):

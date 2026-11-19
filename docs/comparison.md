@@ -9,6 +9,9 @@ Every number below can be reproduced with the commands at the end.
 | Bandit | 1.9.4 | default set | 16.5% |
 | Semgrep (Community Edition) | 1.186.0 | `semgrep-rules/python` at commit `a5ad171` (2026-11-10) | 15.7% |
 
+Kashif 1.4.0, measured later with the same scorer on the same checkout, scores 93.1% (pathtraver 64.1, xpathi 95.6,
+xxe 95.0; the other categories as below); the tables here keep the 1.2.0 measurement that was compared side by side.
+
 Benchmark: OWASP BenchmarkPython at commit `f129148` (1,230 test cases, 14 categories). Score = mean over categories
 of TPR − FPR (Youden's J), the method OWASP uses; 0 is what random guessing gets, 100% is perfect.
 

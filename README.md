@@ -34,8 +34,8 @@ from a **local web UI** in English and Arabic.
   context-sensitive (k=2) points-to analysis; context-specific sanitizers (`html.escape` protects HTML only,
   not SQL or a shell); second-order (stored) injection through database tables.
 - **Rules and models** — 153 pattern rules, 48 dataflow and APEX rules and 19 built-in VQL queries (VQL is
-  Kashif's declarative query language over the program database), over 6,357 modelled library APIs
-  (1,044 sources, 4,532 sinks, 781 sanitizers).
+  Kashif's declarative query language over the program database), over 6,384 modelled library APIs
+  (1,044 sources, 4,559 sinks, 781 sanitizers).
 - **Fewer false positives on real code** — test, documentation and example code is recognised by its path: fixture
   noise there is dropped and the rest is lowered to info; vendored bundles are skipped. On the 35 open-source projects
   (of 38) that 0.9 could finish, findings went from 17,228 to 2,607 (critical and high: 4,345 to 783); half of 0.9's
@@ -250,7 +250,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.3.1`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.4.0`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `kashif . --diff-base origin/main` reports only what the branch introduces
@@ -288,7 +288,7 @@ Measured on the [OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/
 (1,230 test cases) and the [OWASP Benchmark for Java](https://github.com/OWASP-Benchmark/BenchmarkJava) v1.2
 (2,740 test cases). Score = mean over categories of TPR − FPR (Youden's J), the scoring method OWASP uses,
 computed by this project's own scorer (`bench/score_owasp.py`), not by OWASP's scorecard tool.
-**Python: 90.2% · Java: 98.3%.** (Python was 74.0% in 1.1.1; see CHANGELOG v1.2.0.) On the same Python suite, with the same scorer, Bandit 1.9.4 scores 16.5% and Semgrep 1.186.0
+**Python: 93.1% · Java: 98.3%.** (Python was 74.0% in 1.1.1 and 90.2% in 1.2.0; see CHANGELOG v1.2.0 and v1.4.0.) On the same Python suite, with the same scorer, Bandit 1.9.4 scores 16.5% and Semgrep 1.186.0
 (community rules) 15.7%: see [docs/comparison.md](docs/comparison.md) for the per-category table and its limits.
 
 | Category | Py TPR % | Py FPR % | Py score | Java TPR % | Java FPR % | Java score |
@@ -299,16 +299,16 @@ computed by this project's own scorer (`bench/score_owasp.py`), not by OWASP's s
 | deserialization (deserialization) | 100.0 | 2.8 | 97.2 | — | — | — |
 | hash (weak hashing) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
 | ldapi (LDAP injection) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
-| pathtraver (path traversal) | 92.3 | 35.0 | 57.4 | 100.0 | 0.0 | 100.0 |
+| pathtraver (path traversal) | 100.0 | 35.9 | 64.1 | 100.0 | 0.0 | 100.0 |
 | redirect (open redirect) | 100.0 | 0.0 | 100.0 | — | — | — |
 | securecookie (insecure cookie) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
 | sqli (SQL injection) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
 | trustbound (trust boundary) | 100.0 | 15.8 | 84.2 | 100.0 | 0.0 | 100.0 |
 | weakrand (weak randomness) | 100.0 | 0.0 | 100.0 | 100.0 | 0.0 | 100.0 |
-| xpathi (XPath injection) | 100.0 | 8.1 | 91.9 | 100.0 | 0.0 | 100.0 |
+| xpathi (XPath injection) | 100.0 | 4.4 | 95.6 | 100.0 | 0.0 | 100.0 |
 | xss (cross-site scripting) | 100.0 | 19.0 | 81.0 | 100.0 | 18.2 | 81.8 |
-| xxe (XML external entities) | 100.0 | 35.0 | 65.0 | — | — | — |
-| **Overall** | | | **90.2** | | | **98.3** |
+| xxe (XML external entities) | 100.0 | 5.0 | 95.0 | — | — | — |
+| **Overall** | | | **93.1** | | | **98.3** |
 
 Each suite is scanned whole, as one application (the Python repository, the Java `src/main` tree), with the
 default profile. Reproduce either with one command:
@@ -520,7 +520,7 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
   من 17,228 إلى 2,607 (الحرجة والعالية من 4,345 إلى 783)، وكان نصف نتائج 0.9 في كود الاختبارات والتوثيق والأمثلة.
 - **أسرع:** `--jobs N` لتوزيع الفحص على المعالجات، و`--cache DIR` لإعادة فحص مشروع لم يتغير بالنتائج نفسها: Django كاملًا
   (6,973 ملفًا) في 311–411 ثانية أول مرة على 4 معالجات افتراضية (كان 594 ثانية في 0.9)، و3.5 ثوانٍ عند الإعادة.
-- النماذج **6,357** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,532، ومعقّمات 781). التفاصيل في `CHANGELOG.md`.
+- النماذج **6,384** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,559، ومعقّمات 781). التفاصيل في `CHANGELOG.md`.
 
 ### فحص المواقع السلبي
 
@@ -698,7 +698,7 @@ kashif ./my-apex-app        # f100.sql أو application/pages/*.sql، وملفا
 | ما يُحلَّل | كيف |
 |---|---|
 | **PL/SQL** (`.sql` `.pkb` `.pks` `.pls` `.prc` `.fnc` `.trg` …) | الحزم والإجراءات والدوال والمشغّلات والكتل المجهولة، بتحليل تدفق البيانات نفسه عبر الحزم والملفات، مع الوسائط المسمّاة `p_x => v`. |
-| **ملف تصدير APEX** (تطبيق كامل أو صفحة أو إضافة) | يُستخرج كل كود من داخل استدعاءات `wwv_flow_imp_page.create_…`: العمليات، ومناطق PL/SQL، و"دالة تُعيد استعلام SQL"، والتحققات والحسابات والشروط، والإجراءات الديناميكية، ورمز الإضافات، وملفات JavaScript المضمّنة بالترميز الست عشري. كل نتيجة تشير إلى سطرها في ملف التصدير وإلى مكوّنها: «صفحة 10 › عملية: Save». |
+| **ملف تصدير APEX** (تطبيق كامل أو صفحة أو إضافة) | يُستخرج كل كود من داخل استدعاءات `wwv_flow_imp_page.create_…`: العمليات، ومناطق PL/SQL، و"دالة تُعيد استعلام SQL"، والتحققات والحسابات والشروط، والإجراءات الديناميكية، ورمز الإضافات، وملفات JavaScript المضمّنة بالترميز الست عشري. كل نتيجة تشير إلى سطرها في ملف التصدير وإلى مكوّنها: «صفحة 10 › عملية: Save». وسكربتات التثبيت والترقية في كائنات الدعم (Supporting Objects، `create_install_script`) تُستخرج كذلك (صيغة `wwv_flow_string.join` والصيغ الأقدم: نص واحد بهروب `''`، و`unistr('\000a')`، و`s := s || …`)، فتُحلَّل الحزم والإجراءات التي فيها بتحليل تدفق البيانات و`APX024` كأي ملف `.pkb`، وتشير نتائجها إلى سطرها في ملف التصدير: «سكربت كائنات الدعم: hr_pkg». |
 | **تصدير APEX المقروء (YAML)** | مجلد `readable/` (APEX 23.2+): تُقرأ الخصائص النصية (`pl/sql-code`، `sql-query`، `pl/sql-function-body-returning-sql-query`، كود JavaScript، تعليمات الذكاء الاصطناعي) من سطرها، وتُنسب إلى المكوّن من عناوين `# ====== Region: …`، ويُكشف `escape-special-characters: false`. |
 | **معالجات ORDS** | `ORDS.DEFINE_HANDLER` / `DEFINE_SERVICE` حيثما وُجدت: في `.sql`، وداخل سجلات Liquibase/SQLcl بصيغة XML (`runOracleScript` و CDATA)، وفي تعريفات REST بصيغة JSON. معالجات PL/SQL تُحلَّل ككود، ومعالجات الاستعلام كـ SQL، ومتغيرات الربط (`:id` و`:body_text`…) مصادر، و`:forward_location` نقطة تحويل. |
 | **دوال داخل SQL الثابت** | الاستعلامات الثابتة في التقارير وقوائم القيم ومعالجات ORDS، وجمل `SELECT/INSERT/UPDATE/DELETE/MERGE` والمؤشرات داخل PL/SQL: متغير الربط آمن لـ SQL، لكن الدالة التي تستقبله تُتتبَّع، فإن بنت به SQL ديناميكيًا يُبلَّغ عنه. |
@@ -740,7 +740,7 @@ kashif ./my-apex-app        # f100.sql أو application/pages/*.sql، وملفا
 | `APX021` | الاستبدال دون النقطة الختامية |
 | `APX022` | وحدة PL/SQL ملفوفة (wrapped): تُذكر مرة واحدة ولا يُفحص نصّها (معلوماتية) |
 | `APX023` | إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق؛ وتُخفَّض خطورة ما يوجد داخلها درجة واحدة |
-| `APX024` | روتين عام في حزمة PL/SQL يصل إلى البيانات دون تحقق من الصلاحية بينما تتحقق منها معظم الروتينات الشقيقة بالاستدعاء نفسه (CWE-862، ثقة محتملة)؛ يعمل على ملفات `.pkb`/`.pks`/`.sql` لا على ملفات التصدير وحدها |
+| `APX024` | روتين عام في حزمة PL/SQL يصل إلى البيانات دون تحقق من الصلاحية بينما تتحقق منها معظم الروتينات الشقيقة بالاستدعاء نفسه (CWE-862، ثقة محتملة). يتتبّع المسارات داخل الروتين: يُبلَّغ أيضًا عن تحقق لا يسبق كل مسار إلى البيانات (في فرع واحد من IF/CASE أو من `$if` للترجمة الشرطية، أو داخل حلقة، أو في معالج استثناء، أو بعد الوصول، أو دالة تحقق لا يُختبر جوابها)، أما `if not can_view(…) then raise_application_error(…); end if;` قبل الوصول فيكفي. ويُعدّ الحارس كما في 1.3 (استدعاؤه قبل أول وصول إلى البيانات في النص)، وتذكر الرسالة كم من الروتينات الشقيقة يغطي كل المسارات؛ يعمل على ملفات `.pkb`/`.pks`/`.sql` وعلى الحزم في كائنات الدعم داخل ملف التصدير. وإن كان في الفحص تصدير APEX يستدعي الروتين (عملية صفحة، مصدر منطقة، عملية AJAX أو عملية تطبيق، كود خادم لإجراء ديناميكي…) تذكر النتيجة مواضع الاستدعاء ومخططات التفويض (على المكوّن أو الصفحة أو التطبيق؛ لا يُحسب `MUST_NOT_BE_PUBLIC_USER` ولا المخطط المنفي `!`): إن كانت كلها محمية تبقى النتيجة بخطورتها وتذكر أن الحماية لا تشمل أي مستدعٍ آخر للحزمة (صفحة أو تطبيق آخر أو صلاحية EXECUTE مباشرة)، وإن كان أحدها غير محمي (صفحة عامة، أو مكوّن أو عملية تطبيق بلا مخطط) تسمّيه بسطره وتُرفع الخطورة إلى عالية |
 
 أسماء الخصائص ومعانيها مأخوذة من ملفات تصدير أوراكل الرسمية نفسها، وقد جُرّبت الفحوص عليها.
 
@@ -1155,7 +1155,7 @@ Kashif — ./my-project  (156 ملفًا مفحوصًا، 37 نتيجة)
 
 نقيس كاشِف على مجموعتي OWASP Benchmark الرسميتين بطريقة OWASP في الحساب (متوسط معدّل الإيجابيات الصحيحة ناقص معدّل
 الإيجابيات الكاذبة لكل فئة)، بأداة التقييم الخاصة بالمشروع (`bench/score_owasp.py`) لا بأداة Scorecard الرسمية:
-**Python ‏90.2%** (1,230 حالة؛ كانت 74.0% في 1.1.1) و**Java ‏98.3%** (2,740 حالة؛ كانت 76.3% في 0.9). تُفحص كل مجموعة كاملة كتطبيق واحد
+**Python ‏93.1%** (1,230 حالة؛ كانت 74.0% في 1.1.1 و90.2% في 1.2.0) و**Java ‏98.3%** (2,740 حالة؛ كانت 76.3% في 0.9). تُفحص كل مجموعة كاملة كتطبيق واحد
 بالملف الافتراضي، ولا يحوي المحرّك أي اسم أو مسار أو نتيجة من ملفات الاختبار.
 
 قفزة Java سببها إصلاحان عامّان في حلّ الاستدعاءات (استدعاء دالة بلا كائن يُحلّ إلى دالة الصنف نفسه، ودوال المكتبات
