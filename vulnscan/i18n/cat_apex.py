@@ -135,6 +135,14 @@ PATTERNS: list[tuple[str, str]] = [
      r"\g<r> does not check authorization, while \g<k> of the \g<n> public routines of the package call \g<g> before "
      r"their work. It \g<acc>. Add the same check (\g<g>) at its start, as the sibling routines do: any code in the "
      r"same schema (another APEX page, for example) can call it directly."),
+    (rf"(?P<r>{_ID}) يتحقق من الصلاحية في بعض المسارات فقط: يمكن الوصول إلى البيانات في السطر (?P<ln>\d+) دون "
+     rf"المرور بالتحقق، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة (?P<g>{_ID}) قبل عملها\. "
+     rf"وهو (?P<acc>.+?)\. اجعل التحقق \((?P=g)\) قبل كل وصول إلى البيانات، في بدايته أو في شرط يخرج "
+     r"من الروتين \(raise أو return\) حين يفشل، لا في فرع واحد أو في معالج استثناء أو بعد الوصول\.",
+     r"\g<r> checks authorization on some paths only: the data access at line \g<ln> can be reached without passing "
+     r"the check, while \g<k> of the \g<n> public routines of the package call \g<g> before their work. It \g<acc>. "
+     r"Put the check (\g<g>) before every data access, at its start or in a condition that leaves the routine (raise "
+     r"or return) when it fails, not in one branch, an exception handler or after the access."),
     (rf"يُعيد قيمة (?P<t>[A-Z]+) مقروءة باستعلام(?P<o> \({_ID}(?:, {_ID})*\))?",
      r"returns a \g<t> value read by a query\g<o>"),
     (rf"يُعيد بيانات مقروءة باستعلام(?P<o> \({_ID}(?:, {_ID})*\))?", r"returns data read by a query\g<o>"),
