@@ -45,7 +45,8 @@ from a **local web UI** in English and Arabic.
   and 3.5 s warm.
 - **Autofix** — `--fix` / `--fix-dry-run` apply verified, deterministic fixes for 39 rules (38 automatically), shown as
   diffs in the UI, the reports, SARIF and the editor.
-- **Oracle APEX & ORDS** — APEX application exports, plug-ins and PL/SQL packages.
+- **Oracle APEX & ORDS** — APEX application exports (including their Supporting Objects scripts), plug-ins and PL/SQL
+  packages, with authorization checks followed path by path and mapped to the app's authorization schemes.
 - **Secrets** — provider-specific patterns plus entropy-based detection, and `kashif history` for every secret ever
   committed to git, even if a later commit deleted it.
 - **Dependencies (SCA) with reachability** — 23 manifest and lockfile types; known vulnerabilities from
@@ -63,6 +64,25 @@ from a **local web UI** in English and Arabic.
 - **Outputs** — console, Markdown, JSON, HTML and SARIF 2.1.0 (validated against the OASIS schema; works with
   GitHub Code Scanning and the VS Code SARIF viewer), with stable fingerprints; plus DefectDojo, SonarQube,
   GitLab SAST, Code Climate, JUnit XML, CSV, Jira, GitHub Issues, AWS Security Hub (ASFF) and OCSF.
+
+## What's new in 1.4
+
+- **Oracle APEX depth** — packages in an APEX export's Supporting Objects scripts are analysed (dataflow and APX024),
+  with findings at their line in the export file. APX024 (a package routine that skips the authorization check its
+  sibling routines use) now follows the paths inside the routine: a check in one branch, in a loop, in an exception
+  handler, after the data access, under `$if`, or whose answer is never tested is reported with the line it leaves
+  open. It also lists the APEX components that call the routine and the authorization scheme protecting each one, and
+  raises the finding to high when one of them is unprotected (a public page, or an application process without a scheme).
+- **PL/SQL parser coverage** — on a 1.6-million-line public corpus (Logger, utPLSQL, Alexandria, pljson, OOS-Utils,
+  Oracle samples and the APEX 24.2 sample apps), skipped statements fell from 0.78% to 0.08%, and to zero in the APEX
+  exports (`bench/plsql_skips.py`). Conditional compilation, `json_object('k' : v)`, `is of (type)`, `multiset`,
+  `at time zone` and more now parse, with data flow kept through them.
+- **Python precision** — OWASP Benchmark for Python 90.2% → 93.1% (XXE 65% → 95%, path traversal 57% → 64%): file
+  existence checks are path sinks, a `..`-only check before `os.path.join` is no longer taken as safe, and XXE is
+  decided by dataflow (new rule DF027).
+- **Earlier in 1.x** — 1.1 rebuilt the passive web scanner from scratch; 1.2 raised the Python
+  Benchmark from 74.0% to 90.2%; 1.3 added APX024 and a measured comparison with Bandit and Semgrep; 1.3.1 parsed
+  `json_object` key/value syntax. Every release is described in `CHANGELOG.md`.
 
 ## Install
 
@@ -503,7 +523,26 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
 تشفير ضعيف وتعطيل TLS، إعدادات خطرة (debug، CORS، 0.0.0.0)، أمان الموبايل، أمان الحاويات و CI،
 سلامة الذاكرة في C، تسجيل بيانات حساسة، وملفات لا يجوز شحنها (.env، مفاتيح SSH، قواعد بيانات).
 
-### الجديد في 1.0
+### الجديد في 1.4
+
+- **عمق أكبر في Oracle APEX:** تُحلَّل الحزم في سكربتات كائنات الدعم (Supporting Objects) داخل ملف التصدير بتدفق
+  البيانات وبالقاعدة APX024، وتشير النتائج إلى سطرها في الملف. وصارت APX024 (روتين في حزمة لا يتحقق من الصلاحية بينما
+  تتحقق منها الروتينات الشقيقة) تتتبّع المسارات داخل الروتين: يُبلَّغ عن تحقق في فرع واحد، أو داخل حلقة، أو في معالج
+  استثناء، أو بعد الوصول إلى البيانات، أو تحت `$if`، أو دالة تحقق لا يُختبر جوابها، مع السطر الذي يبقى مكشوفًا. وتذكر
+  مكوّنات APEX التي تستدعي الروتين ومخطط التفويض الذي يحمي كلًّا منها، وترفع الخطورة إلى «عالية» إن كان أحدها غير محمي
+  (صفحة عامة، أو عملية تطبيق بلا مخطط).
+- **تغطية محلّل PL/SQL:** على مدوّنة عامة من 1.6 مليون سطر (Logger وutPLSQL وAlexandria وpljson وOOS-Utils وأمثلة
+  Oracle وتطبيقات APEX 24.2 النموذجية) انخفضت العبارات المتخطّاة من 0.78% إلى 0.08%، وإلى صفر في تصديرات APEX
+  (`bench/plsql_skips.py`). صارت تُحلَّل الترجمة الشرطية و`json_object('k' : v)` و`is of (type)` و`multiset` و`at time zone`
+  وغيرها، مع بقاء تدفق البيانات عبرها.
+- **دقة Python:** ارتفعت نتيجة OWASP Benchmark لـ Python من 90.2% إلى 93.1% (XXE من 65% إلى 95%، واجتياز المسار من 57%
+  إلى 64%): فحص وجود الملف نقطة خطر، ورفض «..» وحده قبل `os.path.join` لم يعد يُعدّ حماية، وXXE يُحسم بتدفق البيانات
+  (قاعدة جديدة DF027).
+- **قبل ذلك في 1.x:** أعاد 1.1 بناء فاحص المواقع السلبي من جديد، ورفع 1.2 نتيجة Python في Benchmark من 74.0%
+  إلى 90.2%، وأضاف 1.3 القاعدة APX024 ومقارنة مقيسة مع Bandit وSemgrep، وفهم 1.3.1 صيغة المفتاح والقيمة في
+  `json_object`. تفاصيل كل إصدار في `CHANGELOG.md`.
+
+### ما أضافه 1.0
 
 - **إصلاح تلقائي** (`--fix` و`--fix-dry-run`) لـ 39 قاعدة (38 تلقائيًا)، لا يُعرض إلا بعد التأكد أن الملف المعدَّل سليم
   وأن القاعدة لم تعد تنطبق؛ ويظهر الفرق في الواجهة والتقارير وSARIF والمحرر.
