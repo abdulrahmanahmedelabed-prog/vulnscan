@@ -34,6 +34,8 @@ _COMPONENTS = {
     "ملف ثابت لمساحة العمل": "Static Workspace File",
     "ملف سمة": "Theme File",
     "سكربت كائنات الدعم": "Supporting Objects Script",
+    "سكربت ترقية كائنات الدعم": "Supporting Objects Upgrade Script",
+    "سكربت إزالة كائنات الدعم": "Supporting Objects Deinstallation Script",
 }
 
 CATALOG: dict[str, str] = {
@@ -148,7 +150,7 @@ PATTERNS: list[tuple[str, str]] = [
      rf"المرور بالتحقق، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة (?P<g>{_ID}) قبل أول "
      rf"وصول إلى البيانات في نصّها \((?P<m>\d+) منها على كل المسارات\)\. "
      rf"وهو (?P<acc>.+?)\. اجعل التحقق \((?P=g)\) قبل كل وصول إلى البيانات، في بدايته أو في شرط يخرج "
-     r"من الروتين \(raise أو return\) حين يفشل، لا في فرع واحد أو في معالج استثناء أو بعد الوصول\. (?P<ctx>(?:وفي|ويُستدعى) .+)",
+     r"من الروتين \(raise أو return\) حين يفشل، لا في فرع واحد أو في معالج استثناء أو بعد الوصول\. (?P<ctx>(?:وفي|ويُستدعى|ولا يُحتسب) .+)",
      r"\g<r> checks authorization on some paths only: the data access at line \g<ln> can be reached without passing "
      r"the check, while \g<k> of the \g<n> public routines of the package call \g<g> before their first data access "
      r"in the code (\g<m> of them on every path). It \g<acc>. "
@@ -168,7 +170,7 @@ PATTERNS: list[tuple[str, str]] = [
     (rf"(?P<r>{_ID}) لا يتحقق من الصلاحية، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة "
      rf"(?P<g>{_ID}) قبل أول "
      rf"وصول إلى البيانات في نصّها \((?P<m>\d+) منها على كل المسارات\)\. وهو (?P<acc>.+?)\. أضف التحقق نفسه \((?P=g)\) في بدايته كما تفعل الروتينات "
-     r"الشقيقة؛ فأي كود في المخطط نفسه \(صفحة APEX أخرى مثلًا\) يمكنه استدعاؤه مباشرة\. (?P<ctx>(?:وفي|ويُستدعى) .+)",
+     r"الشقيقة؛ فأي كود في المخطط نفسه \(صفحة APEX أخرى مثلًا\) يمكنه استدعاؤه مباشرة\. (?P<ctx>(?:وفي|ويُستدعى|ولا يُحتسب) .+)",
      r"\g<r> does not check authorization, while \g<k> of the \g<n> public routines of the package call \g<g> before "
      r"their first data access in the code (\g<m> of them on every path). It \g<acc>. Add the same check (\g<g>) at its start, as the sibling routines do: any code in the "
      r"same schema (another APEX page, for example) can call it directly. \g<ctx>"),
@@ -186,6 +188,13 @@ PATTERNS: list[tuple[str, str]] = [
      r"\g<r> is called in the scanned APEX application from an unprotected component: «\g<label>» at line "
      r"\g<line> of \g<rel> (\g<why>); unprotected call sites: \g<k> of \g<n>. Any user who can reach that component "
      r"can run the routine without a check, so the severity was raised to high."),
+    # a helper of the package that checks on some of its paths only does not count as a check (1.5.0)
+    (rf"ولا يُحتسب استدعاؤه (?P<h>{_ID}) تحققًا: (?P=h) نفسه لا يتحقق من الصلاحية إلا في بعض مساراته\. "
+     r"(?P<ctx>(?:وفي|ويُستدعى) .+)",
+     r"Its call to \g<h> does not count as a check: \g<h> itself checks authorization on some of its paths only. "
+     r"\g<ctx>"),
+    (rf"ولا يُحتسب استدعاؤه (?P<h>{_ID}) تحققًا: (?P=h) نفسه لا يتحقق من الصلاحية إلا في بعض مساراته\.",
+     r"Its call to \g<h> does not count as a check: \g<h> itself checks authorization on some of its paths only."),
     (rf"يُعيد قيمة (?P<t>[A-Z]+) مقروءة باستعلام(?P<o> \({_ID}(?:, {_ID})*\))?",
      r"returns a \g<t> value read by a query\g<o>"),
     (rf"يُعيد بيانات مقروءة باستعلام(?P<o> \({_ID}(?:, {_ID})*\))?", r"returns data read by a query\g<o>"),
@@ -216,6 +225,7 @@ PATTERNS: list[tuple[str, str]] = [
     (rf"\[(?P<label>{_LABEL})\]", r"[\g<label>]"),
 
     # ---- component labels
+    (rf"(?P<label>.+) \(بشكل غير مباشر عبر (?P<via>{_ID})\)", r"\g<label> (indirectly via \g<via>)"),
     (r"(?P<label>.+) \(يُحفظ في (?P<col>[\w$#]+\.[\w$#]+)\)", r"\g<label> (stored in \g<col>)"),
     (rf"صفحة (?P<pg>{_PAGE}) › (?P<comp>{_COMP_RX}): (?P<name>.+)", r"Page \g<pg> › \g<comp>: \g<name>"),
     (rf"صفحة (?P<pg>{_PAGE}) › (?P<comp>{_COMP_RX})", r"Page \g<pg> › \g<comp>"),
