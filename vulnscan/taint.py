@@ -41,6 +41,7 @@ import time
 
 from . import flow as _flow
 from . import php_include as _php_include
+from . import php_semantics as _php
 from .i18n.cat_dynamic import sink_label_ar as _sink_label_ar
 from .model import Finding
 
@@ -926,7 +927,9 @@ _LOCAL_SOURCE_NAMES = frozenset({
     "sys.stdin.readline", "getpass.getpass", "click.prompt", "argparse.ArgumentParser.parse_args",
     "process.argv", "process.env", "System.getenv", "System.getProperty", "os.Args", "Environment.GetCommandLineArgs",
     "Environment.GetEnvironmentVariable", "CommandLine.arguments", "ProcessInfo.processInfo.arguments",
-    "ProcessInfo.processInfo.environment", "ARGV", "ENV", "STDIN", "$argv", "argv", "environ", "std.cin", "cin"})
+    "ProcessInfo.processInfo.environment", "ARGV", "ENV", "STDIN", "$argv", "argv", "environ", "std.cin", "cin",
+    # PHP: what a shell command printed (shell_exec / backticks, system's and exec's last line, exec's lines)
+    "shell_exec", "system", "exec", "_exec_output"})
 
 
 # What a context-specific sanitizer neutralizes, recognised by naming conventions shared across languages.
@@ -955,6 +958,7 @@ _SANITIZER_CONTEXTS = [
 ]
 
 
+_XSS_CWES = frozenset(_XSS)
 _JS_CTX = ("CWE-94", "CWE-95") + _XSS
 _REGEX_CTX = ("CWE-625", "CWE-730", "CWE-1333")
 # Exact names whose meaning the naming conventions would get wrong. "none" = not a sanitizer at all.
@@ -2383,6 +2387,10 @@ class Project:
     def _taints(self, mod, cls, node, env) -> list:
         """All taint origins of an expression: a + b carries both a's and b's origins, so a parameter
         concatenated with a field still reaches the sink summary as a parameter flow."""
+        if self.m.get("language") == "php":
+            hit = self._php_taints(mod, cls, node, env)
+            if hit is not None:
+                return hit
         if isinstance(node, ast.BinOp):
             return self._taints(mod, cls, node.left, env) + self._taints(mod, cls, node.right, env)
         if isinstance(node, ast.BoolOp):
@@ -2428,6 +2436,60 @@ class Project:
             return out
         o = self._taint_one(mod, cls, node, env)
         return [o] if o else []
+
+    def _php_taints(self, mod, cls, node, env):
+        """PHP: arithmetic yields a number; a string built by `.` / interpolation / sprintf keeps each piece's
+        origins, with what a PHP escaper guarantees (php_semantics markers) re-judged where the piece sits: inside
+        a quoted literal or bare, and, for an echo, at its place in the page. None: the generic rules apply."""
+        if isinstance(node, ast.BinOp) and getattr(node, "php_numeric", False):
+            return []
+        html = getattr(node, "php_html", None)
+        busy = self.__dict__.setdefault("_php_busy", set())
+        if html is not None and id(node) in busy:
+            html = None
+        ps = _php.pieces(node) if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call)) else None
+        if html is None and (ps is None or (len(ps) < 2 and not isinstance(node, ast.Call))):
+            return None
+        if ps is None:
+            ps = [("val", node)]
+        per = []
+        for k, e in ps:
+            if k != "val":
+                per.append([])
+            elif e is node:
+                busy.add(id(node))
+                try:
+                    per.append(self._taints(mod, cls, node, env))
+                finally:
+                    busy.discard(id(node))
+            else:
+                per.append(self._taints(mod, cls, e, env))
+        if not any(per):
+            return []
+        single = sum(1 for p in per if p) == 1
+
+        def known(i):
+            k, e = ps[i]
+            return e if k == "lit" else (None if per[i] else self._str_const_of(mod, e, env))
+        states = _php.quote_states(ps, known) if len(ps) > 1 else [None]
+        hstate = html
+        out = []
+        for i, origins in enumerate(per):
+            if hstate is not None and not origins:
+                text = known(i)
+                hstate = _php.html_advance(hstate, text) if text is not None else None
+                continue
+            for o in origins:
+                sf = _safe_for(o)
+                nsf = _php.adjust(sf, states[i], single) if _php.is_marked(sf) and len(ps) > 1 else sf
+                if hstate is not None:
+                    ok = _php.html_safe(hstate, sf, single)
+                    if ok is True:
+                        nsf = nsf | _XSS_CWES
+                    elif ok is False:
+                        nsf = nsf - _XSS_CWES
+                out.append(o if nsf == sf else (o[0], o[1], _trail(o), nsf) + tuple(o[4:]))
+        return out
 
     def _comprehension_taints(self, mod, cls, node, env) -> list:
         """`[dict(r) for r in rows]` / `{k: v for k, v in pairs}`: the element expression, with each loop variable
@@ -2553,6 +2615,10 @@ class Project:
         if isinstance(node, ast.Call):
             canon = self._canon(mod, node.func)
             skind = self._sanitizer_kind(canon)
+            if self.m.get("language") == "php":
+                skind = _php.call_kind(node, canon, skind, lambda e: self._module_const(mod, e.id))
+                if skind == "none":
+                    skind = None
             if skind == "all":
                 return None
             if skind:
@@ -3044,6 +3110,10 @@ class Project:
             return False                     # Python parsers resolve no external entity unless told to
         if env is not None and getattr(env, "facts", None) and _guard_facts_protect(si, arg, env.facts):
             return False                     # a guard on the path to this sink proved the value harmless for it
+        if env is not None and mod is not None and self.m.get("language") == "php" and _php.pieces(arg) is None:
+            o = self._taint(mod, cls, arg, env)
+            if o and _php.is_marked(_safe_for(o)) and _php.whole_value_safe(si[5], _safe_for(o)):
+                return False                 # what the PHP escaper left of the value is inert for this sink
         if env is not None and mod is not None and (si[5] in _PATH_CWES or si[5] == "CWE-643") \
                 and self.m.get("language") == "python":
             if isinstance(arg, ast.Name) and "safe:" + si[5] in (getattr(env, "facts", None) or {}).get(arg.id, ()):
@@ -3627,9 +3697,88 @@ class Project:
                 if chars is None or not _chars_safe_for(chars, cwe):
                     return set()
                 return _paths(test.args[0])
+            if self.m.get("language") == "php" and fname.lower() in ("preg_match", "filter_var", "in_array", "array_search"):
+                return self._php_validated(mod, test, fname.lower(), cwe)
             if fname in self.m["validators"] or any(v in fname for v in ("valid", "safe", "allowed", "check", "verify")):
                 return names
         return set()
+
+    def _php_resolve(self, mod, e):
+        """A literal, or the literal a top-level PHP variable is bound to once."""
+        if isinstance(e, ast.Name):
+            v = self._module_const(mod, e.id)
+            return v if v is not None else e
+        return e
+
+    def _php_validated(self, mod, test: ast.Call, fname: str, cwe) -> set:
+        """PHP checks whose meaning depends on their arguments:
+
+        * preg_match(P, $x): only a pattern anchored at both ends (no `m` flag) whose character classes let through
+          nothing the sink cares about (`$` also accepts one trailing newline unless the `D` flag is set);
+        * filter_var($x, FILTER_VALIDATE_INT / FLOAT / BOOLEAN / IP / MAC): the value is that kind of thing;
+          FILTER_VALIDATE_EMAIL / URL accept quotes, `<`, `javascript:` …: no validation;
+        * in_array($x, T) / array_search: an allow-list, except a loose (non-strict) comparison with a table holding
+          numbers or booleans, which PHP 7 lets "1 OR 1=1" pass (and `true` matches any non-empty text)."""
+        args = test.args
+        if fname == "preg_match":
+            if len(args) < 2:
+                return set()
+            pat = self._php_resolve(mod, args[0])
+            sp = _php._split_regex(pat.value) if isinstance(pat, ast.Constant) and isinstance(pat.value, str) else None
+            if sp is None or "m" in sp[1] or "x" in sp[1]:
+                return set()
+            body, flags = sp
+            body = re.sub(r"^\\A", "^", re.sub(r"\\[zZ]$", "$", body))
+            chars = _regex_chars(body)
+            if chars is None:
+                return set()
+            if "i" in flags:
+                chars = frozenset(chars | {c.swapcase() for c in chars if c.isalpha()})
+            if "D" not in flags and not body.endswith("\\z") and cwe in _CRLF_CWES | {"CWE-78", "CWE-88", "CWE-90"}:
+                chars = chars | {"\n"}               # `$` also matches before a final newline
+            ok = _php.piece_safe(cwe, None, _php.only(chars), True) if cwe else None
+            if ok is None:
+                ok = _chars_safe_for(chars, cwe) if cwe else chars <= _PLSQL_ID_CHARS
+            return _paths(args[1]) if ok else set()
+        if fname == "filter_var":
+            kind = _php._FILTERS.get(args[1].id) if len(args) > 1 and isinstance(args[1], ast.Name) else None
+            if kind is None or (kind != "all" and not (cwe and _php.piece_safe(cwe, None, kind, True))):
+                return set()
+            return _paths(args[0])
+        if not args:
+            return set()
+        table = self._php_resolve(mod, args[1]) if len(args) > 1 else None
+        strict = len(args) > 2 and isinstance(args[2], ast.Constant) and args[2].value is True
+        if isinstance(table, (ast.List, ast.Tuple, ast.Dict)) and not strict:
+            vals = table.values if isinstance(table, ast.Dict) else table.elts
+            if any(not (isinstance(v, ast.Constant) and isinstance(v.value, str)) for v in vals):
+                return set()
+        return _paths(args[0])
+
+    def _php_branch_leaves_safe(self, mod, body, test, positive: bool, name: str, si) -> bool:
+        """Where `body` (the branch on which `test` is `positive`) ends, `name` holds a value the test validated,
+        a constant, or an entry of a constant table."""
+        cwe = si[5] if si else None
+        last = None
+        for st in body:
+            if not any(isinstance(x, ast.Name) and x.id == name and isinstance(x.ctx, ast.Store) for x in ast.walk(st)):
+                continue
+            if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name):
+                last = st.value
+            else:
+                return False                 # rebound in a way this does not read (a loop, a nested if, a call …)
+        validated = self._validated(mod, test, positive, cwe)
+        if last is None or (isinstance(last, ast.Name) and last.id == name):
+            return name in validated
+        if isinstance(last, ast.Name) and last.id in validated:
+            return True
+        if isinstance(last, ast.Constant):
+            return True
+        if isinstance(last, ast.Subscript) and isinstance(last.slice, ast.Constant):
+            table = self._php_resolve(mod, last.value)
+            vals = table.values if isinstance(table, ast.Dict) else getattr(table, "elts", None)
+            return vals is not None and all(isinstance(v, ast.Constant) for v in vals)
+        return False
 
     def _guarded(self, mod, fn, call, names: set, si=None, depth: int = 0) -> bool:
         """True when every tainted name feeding the sink was validated on the path to it."""
@@ -3659,6 +3808,12 @@ class Project:
                             if path_sink:
                                 by_any |= self._validated(mod, prev.test, positive=False)
                                 not_abs |= _isabs_rejected(prev.test)
+                        elif isinstance(prev, ast.If) and prev.orelse and self.m.get("language") == "php":
+                            # `if (in_array($x, $ok, true)) { … } else { $x = $ok[0]; }`: past it the value was
+                            # validated on one branch and replaced by a constant on the other
+                            got = {n for n in names if "." not in n
+                                   and self._php_branch_leaves_safe(mod, prev.body, prev.test, True, n, si)
+                                   and self._php_branch_leaves_safe(mod, prev.orelse, prev.test, False, n, si)}
                         elif isinstance(prev, ast.If) and not prev.orelse:
                             # `if not is_safe(url): url = "/"`: past it the value was either validated or replaced
                             neg = self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
@@ -3684,13 +3839,14 @@ class Project:
     def _derived_from_guarded(self, mod, fn, call, name: str, si, depth: int) -> bool:
         """`nt = translate(next_url, code)` assigned once, before the sink, from values that were all validated at
         that assignment: `nt` is derived from validated data, as `next_url + "?x"` written at the sink would be."""
-        if depth >= 3 or "." in name or not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        script = isinstance(fn, ast.Module) and self.m.get("language") == "php"    # a PHP script's top-level code
+        if depth >= 3 or "." in name or not (isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or script):
             return False
         line = getattr(call, "lineno", 0)
         stores = [x for x in ast.walk(fn) if isinstance(x, ast.Name) and x.id == name and not isinstance(x.ctx, ast.Load)]
         assigns = [st for st in ast.walk(fn) if isinstance(st, ast.Assign) and len(st.targets) == 1
                    and isinstance(st.targets[0], ast.Name) and st.targets[0].id == name]
-        if len(stores) != 1 or len(assigns) != 1 or name in {a.arg for a in fn.args.args + fn.args.kwonlyargs}:
+        if len(stores) != 1 or len(assigns) != 1 or (not script and name in {a.arg for a in fn.args.args + fn.args.kwonlyargs}):
             return False                          # rebound elsewhere (loop target, augmented, a parameter): unknown
         st = assigns[0]
         if not (0 < st.lineno < line):
