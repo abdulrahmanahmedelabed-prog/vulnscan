@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0
+
+- Released with Kashif 1.4.0 (the extension follows the Kashif version). The extension itself is unchanged; Kashif 1.4.0
+  deepens PL/SQL and Oracle APEX analysis and makes Python results more precise, so editor diagnostics follow.
+
 ## 1.3.1
 
 - Released with Kashif 1.3.1 (the extension follows the Kashif version). The extension itself is unchanged.
