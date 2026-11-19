@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+# A newer push to the same branch supersedes a CI run that is still queued or running there, so its macOS jobs give
+# their runners back (the account runs only a few macOS jobs at a time; 1.3.1's installers jobs waited ~30 min for one
+# and failed). Never on main, never across branches or events: each pull request and each branch keeps its own group.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 # Least privilege: jobs get read-only access unless they ask for more.
 permissions:
   contents: read

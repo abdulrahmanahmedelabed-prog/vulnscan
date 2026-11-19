@@ -50,6 +50,7 @@ DEFAULT_SETTINGS = {
 }
 
 SEVERITIES = ("critical", "high", "medium", "low", "info")
+REPLACE_RETRIES = (0.02, 0.05, 0.1, 0.2, 0.4, 0.8)  # seconds between os.replace attempts refused on Windows (~1.6 s)
 INDEX_VERSION = 2          # 2: per-scan legacy keys, occurrence-numbered keys (older indexes are rebuilt).
 # 1.1.0 web scans are indexed without their inventory and snapshot; scans saved by 1.0.x carry neither, so an index
 # of version 2 needs no rebuild for them.
@@ -175,6 +176,20 @@ def _brief(f: dict) -> dict:
     return {k: f.get(k) for k in ("rule_id", "severity", "title", "title_ar", "file", "line", "fingerprint", "cwe")}
 
 
+def replace_file(src: os.PathLike | str, dst: os.PathLike | str, *, sleep=time.sleep) -> None:
+    """``os.replace`` that waits out a transient refusal. On Windows the rename fails with ``PermissionError``
+    (WinError 5 "Access is denied" / 32 "being used by another process") while any other handle to ``dst`` is open
+    without delete sharing, e.g. an antivirus or the search indexer reading the file just written; the handle goes
+    away within milliseconds, so the rename is retried a few times before the error is raised."""
+    for delay in REPLACE_RETRIES:
+        try:
+            os.replace(src, dst)  # nosec: callers pass paths under the operator-configured home.
+            return
+        except PermissionError:
+            sleep(delay)
+    os.replace(src, dst)  # nosec: last attempt; its error goes to the caller.
+
+
 class Store:
     def __init__(self, home: pathlib.Path | None = None):
         # nosec: VULNSCAN_HOME is the operator's own install location, not untrusted input; the store only ever writes under it.
@@ -219,7 +234,7 @@ class Store:
             final = self.scans_dir / f"{scan['id']}.json"
             tmp = final.with_suffix(".tmp")
             tmp.write_text(json.dumps(scan, ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, final)  # nosec: final is derived from the operator-configured home, not from scanned input.
+            replace_file(tmp, final)  # final is derived from the operator-configured home, not from scanned input.
         self._prune()
 
     def get_scan(self, scan_id: str) -> dict | None:
@@ -297,7 +312,7 @@ class Store:
                 try:
                     tmp = self.index_path.with_suffix(".tmp")
                     tmp.write_text(json.dumps({"version": INDEX_VERSION, "scans": idx}, ensure_ascii=False), encoding="utf-8")
-                    os.replace(tmp, self.index_path)  # nosec: index_path is under the operator-configured home.
+                    replace_file(tmp, self.index_path)   # index_path is under the operator-configured home.
                 except OSError:
                     pass                               # read-only home: the in-memory index still serves this process
             return dict(idx)
