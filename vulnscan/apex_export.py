@@ -386,7 +386,7 @@ def _concat(toks: list) -> str:
         elif t.kind == "id" and t.val == "chr" and i + 2 < len(toks) and toks[i + 2].kind == "num":
             try:
                 out.append(chr(int(float(toks[i + 2].val))))
-            except ValueError:
+            except (ValueError, OverflowError):
                 pass
             i += 3
         elif t.kind == "id" and t.val in ("lf", "crlf") and i and toks[i - 1].val == ".":
