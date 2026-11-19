@@ -109,12 +109,21 @@ def _call(base, path, method="GET", data=None):
 
 def _wait(ui, scan_id, until=lambda s: s["status"] != "running", timeout=60.0):
     end = time.time() + timeout
+    gone = None
     while time.time() < end:
         s = _call(ui, f"/api/scans/{scan_id}")[1]
         if until(s):
             return s
+        # the worker has ended (run_scan always calls JOBS.end) but the stored scan still says running: its final
+        # save failed (Windows refused the rename, 1.3.1 CI); say so at once instead of polling out the timeout
+        if s.get("status") == "running" and scan_id not in srv.JOBS.cancel:
+            gone = gone or time.time()
+            if time.time() - gone > 2.0:
+                raise AssertionError(f"scan {scan_id}: the worker thread ended but the stored scan is still running "
+                                     f"(the final save failed? see the thread exception warning): {s}")
         time.sleep(0.05)
-    raise AssertionError(f"scan {scan_id} did not reach the state in {timeout} s: {s}")
+    raise AssertionError(f"scan {scan_id} did not reach the state in {timeout} s (worker still registered: "
+                         f"{scan_id in srv.JOBS.cancel}): {s}")
 
 
 # ------------------------------------------------------------------------------------------- kind of a target
@@ -261,3 +270,69 @@ def test_not_retested_rows_are_filled_when_web_view_lacks_them():
     # web_view's own keys win
     kept = srv._ui_web_view({"diff": {"not_retested": []}, "facts": {"budget": 1}, "compare": {"asked": True}}, web, {}, "en")
     assert kept["diff"]["not_retested"] == [] and "not_retested_rows" not in kept["diff"] and kept["facts"]["budget"] == 1 and kept["compare"] == {"asked": True}
+
+
+# ------------------------------------------------------------- Windows: a rename refused while another handle is open
+
+def test_replace_file_waits_out_a_transient_permission_error(tmp_path, monkeypatch):
+    from vulnscan import store as st
+    src, dst = tmp_path / "a.tmp", tmp_path / "a.json"
+    src.write_text("new", encoding="utf-8")
+    dst.write_text("old", encoding="utf-8")
+    real, calls, slept = st.os.replace, [], []
+
+    def flaky(a, b):
+        calls.append(1)
+        if len(calls) <= 3:                          # WinError 5 while an antivirus / the indexer reads dst
+            raise PermissionError(13, "Access is denied")
+        real(a, b)
+    monkeypatch.setattr(st.os, "replace", flaky)
+    st.replace_file(src, dst, sleep=slept.append)
+    assert dst.read_text(encoding="utf-8") == "new" and not src.exists() and len(calls) == 4 and len(slept) == 3
+
+
+def test_replace_file_gives_up_with_the_error(tmp_path, monkeypatch):
+    from vulnscan import store as st
+    calls = []
+
+    def refused(a, b):
+        calls.append(1)
+        raise PermissionError(13, "Access is denied")
+    monkeypatch.setattr(st.os, "replace", refused)
+    with pytest.raises(PermissionError):
+        st.replace_file(tmp_path / "a", tmp_path / "b", sleep=lambda s: None)
+    assert len(calls) == len(st.REPLACE_RETRIES) + 1
+
+
+def test_a_scan_whose_final_save_is_refused_once_still_ends_done(tmp_path, monkeypatch, site):
+    # 1.3.1 CI (windows-latest, py3.10): os.replace of the scan file raised PermissionError in run_scan's final save,
+    # the worker died and the stored scan said "running" for ever (its target was also never released)
+    from vulnscan import store as st
+    store = Store(tmp_path / "h")
+    scan = store.new_scan(site, "url")
+    real, refused = st.os.replace, []
+
+    def once(a, b):
+        if str(b).endswith(f"{scan['id']}.json") and not refused and scan.get("status") == "done":
+            refused.append(1)
+            raise PermissionError(13, "Access is denied")
+        real(a, b)
+    monkeypatch.setattr(st.os, "replace", once)
+    settings = dict(store.settings(), web_delay=0.2)
+    assert srv.JOBS.begin(scan)
+    srv.run_scan(store, scan, settings, authorized=True)
+    assert refused and store.get_scan(scan["id"])["status"] == "done"
+    assert srv.JOBS.running_target(site) is None and scan["id"] not in srv.JOBS.cancel
+
+
+def test_the_target_is_released_even_when_the_final_save_fails(tmp_path, monkeypatch):
+    store = Store(tmp_path / "h")
+    scan = store.new_scan("ftp://example.org/", "url")
+    assert srv.JOBS.begin(scan)
+
+    def broken(_scan):
+        raise PermissionError(13, "Access is denied")
+    monkeypatch.setattr(store, "save_scan", broken)
+    with pytest.raises(PermissionError):
+        srv.run_scan(store, scan, store.settings(), authorized=True)
+    assert srv.JOBS.running_target("ftp://example.org/") is None and scan["id"] not in srv.JOBS.cancel

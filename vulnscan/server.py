@@ -26,7 +26,7 @@ from .model import SEVERITY_RANK, Finding, assign_fingerprints, sort_findings
 from .report import render_html, render_json, render_markdown, render_sarif, summary_counts, web_view
 from .rules import RULES
 from .scanner import ARCHIVE_EXTS, JADX_EXTS, jadx_available, scan_path
-from .store import Store
+from .store import Store, replace_file
 from .web import scan_site  # noqa: F401 - kept for callers and tests of 1.0.x (server.scan_site)
 
 # When frozen by PyInstaller the UI files are unpacked under sys._MEIPASS.
@@ -172,7 +172,7 @@ class _SurfaceJobs:
             out.mkdir(parents=True, exist_ok=True)
             tmp = out / f"{scan['id']}.tmp"
             tmp.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, out / f"{scan['id']}.json")
+            replace_file(tmp, out / f"{scan['id']}.json")
         except Exception as e:  # noqa: BLE001 - reported to the UI by GET .../surface
             with self.lock:
                 self.errors[scan["id"]] = f"{type(e).__name__}: {e}"[:500]
@@ -605,8 +605,10 @@ def run_scan(store: Store, scan: dict, settings: dict, authorized: bool) -> None
     finally:
         if scan.get("kind") == "upload" and scan.get("tmp_root"):
             shutil.rmtree(scan["tmp_root"], ignore_errors=True)  # nosec - operates on the user's own scan target / our temp dir by design
-        store.save_scan(scan)
-        JOBS.end(scan)
+        try:
+            store.save_scan(scan)              # retried while Windows refuses the rename (store.replace_file)
+        finally:
+            JOBS.end(scan)                     # the target can be scanned again even if the result could not be saved
 
 
 def parse_multipart(body: bytes, content_type: str) -> list[tuple[str, bytes]]:
