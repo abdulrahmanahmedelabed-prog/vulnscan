@@ -34,8 +34,8 @@ from a **local web UI** in English and Arabic.
   context-sensitive (k=2) points-to analysis; context-specific sanitizers (`html.escape` protects HTML only,
   not SQL or a shell); second-order (stored) injection through database tables.
 - **Rules and models** — 153 pattern rules, 48 dataflow and APEX rules and 19 built-in VQL queries (VQL is
-  Kashif's declarative query language over the program database), over 6,384 modelled library APIs
-  (1,044 sources, 4,559 sinks, 781 sanitizers).
+  Kashif's declarative query language over the program database), over 6,443 modelled library APIs
+  (1,044 sources, 4,617 sinks, 782 sanitizers).
 - **Fewer false positives on real code** — test, documentation and example code is recognised by its path: fixture
   noise there is dropped and the rest is lowered to info; vendored bundles are skipped. On the 35 open-source projects
   (of 38) that 0.9 could finish, findings went from 17,228 to 2,607 (critical and high: 4,345 to 783); half of 0.9's
@@ -354,6 +354,63 @@ same audit found engine limitations that show on real code and do not affect thi
 positives remain (FPR 18.2%) because HTML escaping is not credited when the escaped value is the format string of
 `format`/`printf`.
 
+### JavaScript and TypeScript: CodeQL's labelled security tests
+
+There is no OWASP Benchmark for JavaScript, so JavaScript/TypeScript is measured on the security query tests of
+[GitHub CodeQL](https://github.com/github/codeql) (`javascript/ql/test/query-tests/Security`, commit `12a0e51`,
+MIT licence): small Express, Koa, Next.js, Node and browser programs that the CodeQL team labels line by line as
+vulnerable (`// $ Alert`, including `MISSING: Alert`, which CodeQL itself misses) or safe (`// OK …` comments and
+`SPURIOUS: Alert`, which CodeQL wrongly reports). Kashif's own scorer `bench/score_js.py` scans the whole directory as
+one project with the default profile and counts a case as found when a finding of the category's CWE is on the
+labelled line. It covers the 21 CodeQL queries whose CWE Kashif reports for JavaScript: **1,238 vulnerable and 267
+safe cases**. **All cases pooled: TPR 48.6% → 59.0%, FPR 23.2% → 18.7%** from 1.4 to 1.5. The OWASP-style mean of
+TPR − FPR over the 21 categories is **23.5%** (23.2% in 1.4).
+
+| Category | Vulnerable / safe cases | TPR % (1.4 → 1.5) | FPR % (1.4 → 1.5) | Score (1.4 → 1.5) |
+|---|---:|---:|---:|---:|
+| cmdi (command injection) | 120 / 1 | 30.0 → 54.2 | 0.0 → 100.0 | 30.0 → -45.8 |
+| codeinj (code and template injection) | 94 / 5 | 59.6 → 60.6 | 20.0 → 20.0 | 39.6 → 40.6 |
+| crypto (weak cipher) | 3 / 18 | 0.0 → 0.0 | 0.0 → 0.0 | 0.0 → 0.0 |
+| deserialization | 8 / 0 | 75.0 → 75.0 | — | 75.0 → 75.0 |
+| hash (password hashing) | 3 / 0 | 0.0 → 0.0 | — | 0.0 → 0.0 |
+| httponlycookie (cookie without HttpOnly) | 20 / 20 | 20.0 → 20.0 | 0.0 → 0.0 | 20.0 → 20.0 |
+| loginj (log injection) | 23 / 1 | 60.9 → 60.9 | 0.0 → 0.0 | 60.9 → 60.9 |
+| pathtraver (path traversal) | 253 / 38 | 59.7 → 84.2 | 55.3 → 47.4 | 4.4 → 36.8 |
+| redirect-client (open redirect, browser) | 70 / 9 | 48.6 → 48.6 | 55.6 → 44.4 | -7.0 → 4.1 |
+| redirect-server (open redirect, server) | 30 / 57 | 76.7 → 76.7 | 22.8 → 5.3 | 53.9 → 71.4 |
+| securecookie (cookie without Secure) | 16 / 5 | 18.8 → 18.8 | 0.0 → 0.0 | 18.8 → 18.8 |
+| sqli-nosqli (SQL, NoSQL and LDAP injection) | 164 / 36 | 31.1 → 43.9 | 8.3 → 8.3 | 22.8 → 35.6 |
+| ssrf (server-side request forgery) | 43 / 4 | 32.6 → 34.9 | 25.0 → 25.0 | 7.6 → 9.9 |
+| weakrand (weak randomness) | 24 / 3 | 54.2 → 54.2 | 33.3 → 33.3 | 20.8 → 20.8 |
+| xpathi (XPath injection) | 7 / 6 | 71.4 → 71.4 | 0.0 → 0.0 | 71.4 → 71.4 |
+| xss-dom (DOM XSS) | 243 / 15 | 61.3 → 64.2 | 73.3 → 80.0 | -12.0 → -15.8 |
+| xss-exception (XSS through exception messages) | 19 / 4 | 0.0 → 0.0 | 0.0 → 0.0 | 0.0 → 0.0 |
+| xss-reflected (reflected XSS) | 75 / 28 | 52.0 → 61.3 | 21.4 → 21.4 | 30.6 → 39.9 |
+| xss-stored (stored XSS) | 5 / 0 | 0.0 → 0.0 | — | 0.0 → 0.0 |
+| xxe (XML external entities) | 8 / 17 | 50.0 → 50.0 | 0.0 → 0.0 | 50.0 → 50.0 |
+| zipslip (archive path traversal) | 10 / 0 | 0.0 → 0.0 | — | 0.0 → 0.0 |
+| **All cases pooled** | **1,238 / 267** | **48.6 → 59.0** | **23.2 → 18.7** | |
+| **Mean over categories** | | | | **23.2 → 23.5** |
+
+```bash
+git clone --filter=blob:none --sparse https://github.com/github/codeql
+git -C codeql sparse-checkout set javascript/ql/test/query-tests/Security
+python bench/score_js.py codeql
+```
+
+What it measures and its limits: these are CodeQL's unit tests, written to exercise CodeQL's own models, so they
+favour what CodeQL models (many npm packages, framework conventions, CodeQL's location rules) and the labels are
+CodeQL's opinion, not ground truth (one `SPURIOUS: Alert` line in cmdi says it "should be fine to flag it"; it is the
+category's only safe case, so that one finding is an FPR of 100% for the category). Safe cases are few (267) and
+unevenly spread: cmdi has 1, xss-dom 15, ssrf 4, so the per-category mean moves a lot with single findings; the
+pooled rates are the steadier number. Some categories test things Kashif does not model: exception messages that
+carry their argument (xss-exception), sensitive-data flows into weak ciphers and hashes (crypto, hash; Kashif reports
+the weak algorithm where the cipher is created, CodeQL where data is written into it), cookies whose secure or
+HttpOnly flag is missing rather than set to false, archive entry names as sources (zipslip), and data read from files
+(xss-stored). Lines with no label are not counted (CodeQL asserts no alert there, but most are not sinks); the scorer
+prints how many findings land on them (159). The suite is not real code: read the numbers as how the engine reasons
+about common JavaScript constructs, not as its accuracy on your project.
+
 ## Languages and targets
 
 | Target | Coverage |
@@ -559,7 +616,7 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
   من 17,228 إلى 2,607 (الحرجة والعالية من 4,345 إلى 783)، وكان نصف نتائج 0.9 في كود الاختبارات والتوثيق والأمثلة.
 - **أسرع:** `--jobs N` لتوزيع الفحص على المعالجات، و`--cache DIR` لإعادة فحص مشروع لم يتغير بالنتائج نفسها: Django كاملًا
   (6,973 ملفًا) في 311–411 ثانية أول مرة على 4 معالجات افتراضية (كان 594 ثانية في 0.9)، و3.5 ثوانٍ عند الإعادة.
-- النماذج **6,384** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,559، ومعقّمات 781). التفاصيل في `CHANGELOG.md`.
+- النماذج **6,443** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,617، ومعقّمات 782). التفاصيل في `CHANGELOG.md`.
 
 ### فحص المواقع السلبي
 
@@ -1205,6 +1262,35 @@ Kashif — ./my-project  (156 ملفًا مفحوصًا، 37 نتيجة)
 
 ```bash
 git clone --depth 1 https://github.com/OWASP-Benchmark/BenchmarkJava && python bench/score_owasp.py BenchmarkJava
+```
+
+### JavaScript وTypeScript: اختبارات CodeQL المُعلَّمة
+
+لا توجد نسخة JavaScript من OWASP Benchmark، فنقيس JavaScript/TypeScript على اختبارات استعلامات الأمان في
+[GitHub CodeQL](https://github.com/github/codeql) (المجلد `javascript/ql/test/query-tests/Security`، الإيداع `12a0e51`،
+برخصة MIT): برامج صغيرة بـ Express وKoa وNext.js وNode والمتصفح، يُعلِّم فريق CodeQL كل سطر فيها بأنه ثغرة
+(`// $ Alert`، ومنها `MISSING: Alert` التي يفوّتها CodeQL نفسه) أو آمن (تعليقات `// OK …` و`SPURIOUS: Alert` التي يبلّغ
+عنها CodeQL خطأً). تفحص أداة التقييم `bench/score_js.py` المجلد كاملًا كمشروع واحد بالملف الافتراضي، وتَعُدّ الحالة مكتشفة
+إذا وقعت على سطرها نتيجة من CWE فئتها. تشمل 21 استعلامًا من CodeQL يبلّغ Kashif عن CWE كلٍّ منها في JavaScript:
+**1,238 حالة ثغرة و267 حالة آمنة**. **على كل الحالات مجتمعة: ارتفع معدّل الإيجابيات الصحيحة من 48.6% إلى 59.0% وانخفض
+معدّل الإيجابيات الكاذبة من 23.2% إلى 18.7%** بين 1.4 و1.5. ومتوسط (TPR − FPR) على الفئات الـ 21 بطريقة OWASP
+**23.5%** (كان 23.2% في 1.4). الجدول لكل فئة في القسم الإنجليزي أعلاه.
+
+ما يقيسه وحدوده: هذه اختبارات وحدة كتبها فريق CodeQL لنماذجه، فهي تميل إلى ما يُنمذجه CodeQL (حزم npm كثيرة وأعراف الأطر
+وقواعد الموضع عنده)، وتصنيفها رأي CodeQL لا حقيقة مطلقة (سطر `SPURIOUS: Alert` الوحيد الآمن في فئة cmdi يقول إن الإبلاغ عنه
+«لا بأس به»، فنتيجة واحدة عليه تجعل FPR الفئة 100%). والحالات الآمنة قليلة (267) وموزعة بتفاوت (واحدة في cmdi و15 في
+xss-dom و4 في ssrf)، فيتحرك متوسط الفئات كثيرًا بنتيجة واحدة، والمعدّلات المجمّعة أثبت. وبعض الفئات تختبر ما لا يُنمذجه
+Kashif: رسائل الاستثناءات التي تحمل وسائطها (xss-exception)، وتدفّق البيانات الحساسة إلى تشفير أو تجزئة ضعيفة (crypto
+وhash: يبلّغ Kashif عن الخوارزمية الضعيفة حيث يُنشأ المُشفِّر، وCodeQL حيث تُكتب البيانات فيه)، والكوكيز التي تغيب عنها
+خاصية secure أو HttpOnly لا التي تُعطَّل صراحة، وأسماء ملفات الأرشيف كمصدر (zipslip)، والبيانات المقروءة من الملفات
+(xss-stored). والأسطر غير المُعلَّمة لا تُحسب (يؤكد CodeQL ألا تنبيه عليها لكن أغلبها ليس نقطة خطر)، وتطبع الأداة عدد
+النتائج الواقعة عليها (159). وهذه المجموعة ليست كودًا حقيقيًا: اقرأ الأرقام دليلًا على طريقة استدلال المحرّك في بنى
+JavaScript الشائعة، لا دقةً على الكود في مشروعك.
+
+```bash
+git clone --filter=blob:none --sparse https://github.com/github/codeql
+git -C codeql sparse-checkout set javascript/ql/test/query-tests/Security
+python bench/score_js.py codeql
 ```
 
 ## مقارنة مع الأدوات العالمية

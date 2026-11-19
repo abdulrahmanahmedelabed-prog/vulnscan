@@ -635,7 +635,7 @@ _NOT_VALIDATION = {"startswith", "endswith", "starts_with", "ends_with", "str_st
                    "fileexists", "file_exists", "isset", "empty", "isempty", "isnullorempty", "isnullorwhitespace", "is_dir",
                    "is_file", "strpos", "str_contains", "isascii", "isblank", "notempty", "notnull", "isnotempty"}
 _MEMBERSHIP = {"contains", "includes", "containskey", "containsvalue", "has", "haskey", "in_array", "array_key_exists",
-               "array_search", "key?", "include?", "member?", "issubset"}
+               "array_search", "key?", "include?", "member?", "issubset", "hasownproperty", "hasown"}
 _SHAPE_CHECKS = {"isalnum", "isalpha", "isdigit", "isdecimal", "isnumeric", "isidentifier", "fullmatch", "matches"}
 
 
@@ -879,6 +879,63 @@ _SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "cmd", "cmd.exe", "powers
 _SHELL_FLAGS = {"-c", "-lc", "-ec", "-xc", "/c", "/C", "/k", "/K", "-Command", "-command"}
 
 
+# Node modules that expose the `fs` API under their own name (drop-in replacements and promise flavours).
+_JS_FS_MODULES = ("fs-extra", "graceful-fs", "original-fs", "fs/promises", "node:fs/promises", "node:fs", "mz/fs",
+                  "fs.promises")
+
+
+def _js_alt_names(canon: str, imported: bool) -> list:
+    """Other model names a JavaScript call also answers to: `fse.rmSync` on `require('fs-extra')` (or graceful-fs,
+    fs/promises, ...) is fs.rmSync, and bluebird's promisifyAll adds an `...Async` twin of every method of a module
+    (`cpAsync.execAsync(cmd)` runs child_process.exec; only for a receiver that resolves to an imported module)."""
+    out = []
+    for m in sorted(_JS_FS_MODULES, key=len, reverse=True):
+        if canon.startswith(m + ".") and canon != "fs." + canon[len(m) + 1:]:
+            out.append("fs." + canon[len(m) + 1:])
+            break
+    for c in [canon] + out if imported else ():
+        head, _, last = c.rpartition(".")
+        if head and last.endswith("Async") and len(last) > 5:
+            out.append(f"{head}.{last[:-5]}")
+    return out
+
+
+def _fn_parents(fn) -> dict:
+    """id(node) -> parent node, for every node of a function body."""
+    out = {}
+    for parent in ast.walk(fn):
+        for child in ast.iter_child_nodes(parent):
+            out[id(child)] = parent
+    return out
+
+
+def _stmt_of(parents, node):
+    """The statement that directly holds `node` (itself when it is one); `parents` from _fn_parents."""
+    while node is not None and not isinstance(node, ast.stmt):
+        node = parents.get(id(node))
+    return node
+
+
+def _blocks_before(parents, fn, node):
+    """Statements that run before `node` on every path through the function: those ahead of it in its own block
+    and in each enclosing block (None when the node is not in the function)."""
+    out = set()
+    cur = _stmt_of(parents, node)
+    while cur is not None and cur is not fn:
+        parent = parents.get(id(cur))
+        if parent is None:
+            return None
+        for field in ("body", "orelse", "finalbody"):
+            block = getattr(parent, field, None)
+            if isinstance(block, list) and any(st is cur for st in block):
+                for st in block:
+                    if st is cur:
+                        break
+                    out.add(st)
+        cur = parent if isinstance(parent, ast.stmt) else _stmt_of(parents, parent)
+    return out
+
+
 def _shell_launcher(elts) -> bool:
     """["sh", "-c", script] / ["cmd", "/c", line]: the third element is a whole command line, not one argument."""
     if len(elts) < 3 or not all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in elts[:2]):
@@ -949,7 +1006,7 @@ _SANITIZER_CONTEXTS = [
     (re.compile(r"(?i)(^|[._])(url|uri)|url_?(en|de)code|encodeuri|urlescape|^quote$|\.quote$|percent|http_build_query"),
      ("CWE-113", "CWE-93") + _XSS),
     (re.compile(r"(?i)basename|secure_filename|getname$|filepath\.base|path\.base|^base$|lastpathcomponent|"
-                r"(^|\.)filename$|(^|\.)stem$"), ("CWE-22", "CWE-23", "CWE-36", "CWE-73")),
+                r"(^|\.)filename$|(^|\.)stem$|(^|\.)extname$"), ("CWE-22", "CWE-23", "CWE-36", "CWE-73")),
     (re.compile(r"(?i)html|xml|escape|sanitize|purify|bleach|strip_tags|markup|he\.encode|forhtml|encode_text|"
                 r"encode_safe|askama"), _XSS),
 ]
@@ -1059,6 +1116,8 @@ class Project:
                     modpart, _, name = full.rpartition(".")
                     file["aliases"][local] = ("from", modpart, name) if modpart else ("mod", full)
 
+        js = self.m.get("language") == "javascript"
+
         def visit(node, cls_qual, parent_func=None):
             for child in ast.iter_child_nodes(node):
                 if isinstance(child, ast.ClassDef):
@@ -1079,6 +1138,11 @@ class Project:
                         self.simple_methods.setdefault(child.name, []).append(q)
                     else:
                         q = f"{mod}::{child.name}"
+                        if js and q in self.gfuncs:
+                            # JavaScript: a second function of the same name in the file (`function run` nested in two
+                            # handlers, or declared twice) is a different function; each one is analysed, and calls
+                            # find the one in scope (_js_scope_funcs). The bare name keeps meaning the last one.
+                            q = f"{q}@{child.lineno}.{getattr(child, 'col_offset', 0)}"
                         file["funcs"][child.name] = q
                         self.simple_funcs.setdefault(child.name, []).append(q)
                         self._by_mod.setdefault((id(self.simple_funcs), child.name, mod), []).append(q)
@@ -1134,7 +1198,48 @@ class Project:
         if tgt:
             base = tgt[1] if tgt[0] == "mod" else (f"{tgt[1]}.{tgt[2]}" if tgt[1] else tgt[2])
             return f"{base}.{rest}" if rest else base
+        if self.m.get("language") == "javascript":
+            local = self._js_local_aliases(mod).get(first)
+            if local is not None:
+                base = self._canon(mod, local)
+                if base and base != _dotted(local):
+                    return f"{base}.{rest}" if rest else base
         return name
+
+    def _js_local_aliases(self, mod: str) -> dict:
+        """JavaScript names that every binding in the whole file, each inside a function, sets to the same member of
+        an imported module (`const run = cp.exec` / `const execP = util.promisify(cp.exec)`, lowered to `cp.exec`,
+        in one handler or in several): the name can only ever mean that library function (top-level bindings are
+        import aliases already)."""
+        cache = self.__dict__.setdefault("_js_local_alias_cache", {})
+        hit = cache.get(mod)
+        if hit is not None:
+            return hit
+        out: dict = {}
+        tree = (self.files.get(mod) or {}).get("tree")
+        aliases = (self.files.get(mod) or {}).get("aliases", {})
+        stores: dict = {}            # name -> number of bindings of any kind
+        assigns: dict = {}           # name -> {id(assignment): value} for `name = <imported member>` inside functions
+        for n in ast.walk(tree) if tree is not None else ():
+            if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                stores[n.id] = stores.get(n.id, 0) + 1
+            elif isinstance(n, ast.arg):
+                stores[n.arg] = stores.get(n.arg, 0) + 1000
+            elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                stores[n.name] = stores.get(n.name, 0) + 1000
+            elif isinstance(n, ast.alias):
+                local = n.asname or n.name
+                stores[local] = stores.get(local, 0) + 1000
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for st in ast.walk(n):
+                    if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name) \
+                            and isinstance(st.value, (ast.Name, ast.Attribute)) and _dotted(st.value).split(".")[0] in aliases:
+                        assigns.setdefault(st.targets[0].id, {})[id(st)] = st.value
+        for local, vals in assigns.items():
+            if local not in aliases and stores.get(local) == len(vals) and len({_dotted(v) for v in vals.values()}) == 1:
+                out[local] = next(iter(vals.values()))
+        cache[mod] = out
+        return out
 
     def _match(self, index: dict, name: str, modhint: str, caller: str | None = None) -> str | None:
         cands = index.get(name)
@@ -1791,6 +1896,16 @@ class Project:
         # `getattr(logger, level)(msg, *args)` calls what getattr RETURNED: the outer call is not getattr itself
         canon = "" if isinstance(call.func, ast.Call) else self._canon(mod, call.func)
         res = None
+        alts = _js_alt_names(canon, canon != _dotted(call.func)) if canon and self.m.get("language") == "javascript" else []
+        for canon in [canon] + alts:
+            res = self._sink_lookup(mod, call, canon)
+            if res is not None:
+                break
+        self._sink_cache[key] = (call, res)
+        return res
+
+    def _sink_lookup(self, mod: str, call: ast.Call, canon: str):
+        res = None
         if canon:
             # sinks constrained by a receiver pattern are more specific than bare method names: try them first
             ordered = self.__dict__.get("_sinks_ordered")
@@ -1832,7 +1947,6 @@ class Project:
                         continue                        # yaml.load(x, Loader=SafeLoader): the safe variant of the API
                     res = entry[:9] + entry[10:11]      # drop the name list, keep the named-argument set at index 9
                     break
-        self._sink_cache[key] = (call, res)
         return res
 
     def _receiver_bound(self, mod: str, recv, rx) -> bool:
@@ -1960,9 +2074,42 @@ class Project:
             # obj[name](...): the caller picks which method runs. The extra field names the table, so a key checked
             # against that same table (`t[k] ? k : 'home'`, see _key_guard) is safe here and only here.
             return DYNAMIC_DISPATCH + ((), "DF026@" + table) if table else DYNAMIC_DISPATCH
+        if si and si[0] == "DF003" and self.m.get("language") == "javascript":
+            shell = self._js_shell_spawn(mod, call, env)
+            if shell is not None:
+                return shell
         if si and si[0] == "DF003" and not si[8] and self._subprocess_elem_only(mod, cls, call, env):
             return ARG_INJECTION
         return si
+
+    _JS_SPAWNS = frozenset({"spawn", "spawnSync", "execFile", "execFileSync", "cross-spawn", "cross-spawn.sync"})
+
+    def _js_shell_spawn(self, mod, call, env):
+        """Node's spawn / execFile run the program with an argument array, unless a shell is involved: with the
+        `shell` option set (anything but false) the program and its arguments are joined into one command line, and
+        a shell program given `-c` / `/c` runs the next argument as a command line. Either way the argument array is
+        a shell command: the DF002 sink over both the program and its arguments."""
+        canon = self._canon(mod, call.func)
+        if canon.split(".")[-1] not in self._JS_SPAWNS and canon not in self._JS_SPAWNS:
+            return None
+        shell = False
+        for a in call.args[1:]:
+            if isinstance(a, ast.Dict):
+                for k, v in zip(a.keys, a.values):
+                    if isinstance(k, ast.Constant) and k.value == "shell" and not (
+                            isinstance(v, ast.Constant) and v.value in (False, None, 0, "")):
+                        shell = True
+        if not shell and len(call.args) > 1 and isinstance(call.args[1], (ast.List, ast.Tuple)) and call.args[1].elts:
+            prog = self._str_const_of(mod, call.args[0], env)
+            flag = self._str_const_of(mod, call.args[1].elts[0], env)
+            shell = prog is not None and flag in _SHELL_FLAGS and \
+                prog.replace("\\", "/").rsplit("/", 1)[-1] in _SHELLS
+        if not shell:
+            return None
+        base = next((e for e in self.m["sinks"] if e[0] == "DF002" and e[8]), None)
+        if base is None:
+            return None
+        return base[:7] + ([0, 1], True) + base[10:11]
 
     # ---------------------------------------------------------------- taint
     def _map_args(self, call: ast.Call, qual: str) -> dict:
@@ -2298,13 +2445,45 @@ class Project:
                 and isinstance(node.func.value, ast.Constant) and isinstance(node.func.value.value, str) \
                 and len(node.args) == 1 and not node.keywords and isinstance(node.args[0], (ast.List, ast.Tuple)) \
                 and not any(isinstance(e, ast.Starred) for e in node.args[0].elts):
-            out = []
-            for i, e in enumerate(node.args[0].elts):
-                if i and node.func.value.value:
-                    out.append(("lit", node.func.value.value))
-                out.extend(Project._str_pieces(e) or [("val", e)])
-            return out
+            return Project._joined_pieces(node.args[0].elts, node.func.value.value)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "join" \
+                and isinstance(node.func.value, ast.List) and not node.keywords and len(node.args) <= 1 \
+                and (not node.args or (isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str))) \
+                and not any(isinstance(e, ast.Starred) for e in node.func.value.elts):
+            # JavaScript: ['index.html?section=', x].join('') (the separator defaults to ",")
+            return Project._joined_pieces(node.func.value.elts, node.args[0].value if node.args else ",")
         return None
+
+    @staticmethod
+    def _joined_pieces(elts, sep):
+        out = []
+        for i, e in enumerate(elts):
+            if i and sep:
+                out.append(("lit", sep))
+            out.extend(Project._str_pieces(e) or [("val", e)])
+        return out
+
+    def _after_query_delimiter(self, mod, cls, node, env) -> bool:
+        """Where a built URL leads is fixed by its known start: every tainted piece comes after a literal "?" or "#"
+        (it can only change the query string or the fragment), or the URL starts with a literal path ("/account/"
+        + x: same site; "//" + x or "/" + x could name another host) or with a scheme and host ("https://app/" + x)."""
+        pieces = self._str_pieces(node)
+        if not pieces or len(pieces) < 2:
+            return False
+        if pieces[0][0] == "lit" and re.match(r"(?i)^(/[^/\\]|[a-z][a-z0-9+.-]*://[^/?#@\\]+[/?#])", pieces[0][1]):
+            return any(k == "val" and self._taint(mod, cls, e, env) is not None for k, e in pieces)
+        seen = tainted = False
+        for kind, e in pieces:
+            if kind == "lit":
+                seen = seen or "?" in e or "#" in e
+            elif self._taint(mod, cls, e, env) is not None:
+                if not seen:
+                    return False
+                tainted = True
+            else:
+                text = self._str_const_of(mod, e, env)
+                seen = seen or (text is not None and ("?" in text or "#" in text))
+        return tainted
 
     def _built_safe_cwes(self, mod, cls, node, env) -> frozenset:
         """The sinks a built string (f-string, `+`, `"".join([...])) is safe for because of where EVERY tainted piece
@@ -3035,7 +3214,39 @@ class Project:
             hit = cache[id(fn)] = (fn, found)
         return hit[1]
 
-    def _sink_arg_ok(self, fn, si, arg, env=None, mod=None, cls=None) -> bool:
+    def _attr_value_ok(self, mod, cls, si, value, env) -> bool:
+        """`location.href = "/help?topic=" + t`: the value assigned to a location attribute leads to a fixed place."""
+        return not (si[5] == "CWE-601" and self.m.get("language") == "javascript"
+                    and self._after_query_delimiter(mod, cls, value, env))
+
+    def _express_send_confined(self, mod, cls, call, arg, env) -> bool:
+        """Express's res.sendFile / res.download serve through the `send` module, which answers 403 to any path with
+        a ".." segment and, given the `root` option, to any path that leaves root; without root the path must be
+        absolute. So the request can choose which file only when it supplies the whole path and no root is set:
+        `res.sendFile(dir + "/data/" + name)` and `res.sendFile(name, {root: dir})` stay inside the directory.
+        (The deprecated lowercase res.sendfile is not covered.)"""
+        f = call.func
+        if not (isinstance(f, ast.Attribute) and f.attr in ("sendFile", "download")
+                and re.match(r"^(res|response|resp)$", _receiver_text(f.value) or "")):
+            return False
+        if not call.args or arg is not call.args[0]:
+            return False
+        for a in call.args[1:]:
+            if isinstance(a, ast.Dict) and any(isinstance(k, ast.Constant) and k.value == "root" for k in a.keys):
+                return True
+        pieces = self._str_pieces(arg)
+        if not pieces or len(pieces) < 2:
+            return False
+        known = ""
+        for kind, e in pieces:
+            if kind == "val" and self._taint(mod, cls, e, env) is not None:
+                return bool(known.strip("/\\"))   # "/" + name is any absolute path; "/srv/files/" + name is not
+            if kind == "val":
+                return True                     # dir + "/" + name: an untainted directory value comes first
+            known += e
+        return False
+
+    def _sink_arg_ok(self, fn, si, arg, env=None, mod=None, cls=None, call=None) -> bool:
         """JavaScript XSS sinks (res.send / res.write / reply.send): an object or array argument is serialised as
         JSON, and a handler that set a non-HTML Content-Type (JSON, event stream, plain text) writes no HTML."""
         if si[5] == "CWE-611" and self._xml_hardened(fn):
@@ -3052,6 +3263,10 @@ class Project:
                 return False                 # the built string written at the sink
         if self.m.get("language") != "javascript":
             return True
+        if si[5] == "CWE-601" and self._after_query_delimiter(mod, cls, arg, env):
+            return False                     # res.redirect("/search?q=" + q): only the query string is chosen
+        if si[5] in _PATH_CWES and call is not None and self._express_send_confined(mod, cls, call, arg, env):
+            return False
         if si[0] == "DF016" and isinstance(arg, (ast.Dict, ast.List)):
             return False                     # structured logging (pino / bunyan objects) is serialised as JSON
         if si[0] == "DF004" and isinstance(arg, ast.Dict):
@@ -3069,7 +3284,7 @@ class Project:
         cache = self.__dict__.setdefault("_non_html_fns", {})
         hit = cache.get(id(fn))
         if hit is None or hit[0] is not fn:
-            found = False
+            found = []
             for n in _scope_nodes(fn):
                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and \
                         n.func.attr in ("setHeader", "set", "type", "header", "writeHead", "contentType", "json"):
@@ -3078,9 +3293,16 @@ class Project:
                     for a in n.args:
                         for c in ast.walk(a):
                             if isinstance(c, ast.Constant) and isinstance(c.value, str) and self._NON_HTML_TYPE.search(c.value):
-                                found = True
-            hit = cache[id(fn)] = (fn, found)
-        return not hit[1]
+                                found.append(n)
+            hit = cache[id(fn)] = (fn, found, _fn_parents(fn) if found else {})
+        if not hit[1]:
+            return True
+        if call is None:
+            return False
+        # only a Content-Type set on every path to the sink counts: by a statement before it in the same block or in
+        # a block around it (`if (json) { res.type('json'); res.send(a) } else { res.send(b) }`: b may be HTML)
+        before = _blocks_before(hit[2], fn, call)
+        return before is not None and not any(_stmt_of(hit[2], n) in before for n in hit[1])
 
     def _html_return(self, mod, fn, v) -> bool:
         """Can `return v` from this entry point be an HTML response body? Not for a task / CLI / message handler
@@ -3237,8 +3459,42 @@ class Project:
         return names[0]
 
     # --------------------------------------------------------- environment
+    def _js_dup_funcs(self, mod) -> list:
+        """(qual, info) of the functions of a JavaScript module that share a name with another one of the module."""
+        cache = self.__dict__.setdefault("_js_dup_cache", {})
+        hit = cache.get(mod)
+        if hit is None or hit[0] != len(self.gfuncs):
+            prefix = f"{mod}::"
+            dups = [(q, i) for q, i in self.gfuncs.items() if q.startswith(prefix) and "@" in q[len(prefix):]]
+            hit = cache[mod] = (len(self.gfuncs), dups)
+        return hit[1]
+
+    def _js_scope_funcs(self, fn) -> dict:
+        """JavaScript: name -> qual of the functions declared in `fn` and in the functions around it (the nearest
+        declaration wins), so `run(x)` calls the `run` of its own handler, not one of the same name elsewhere."""
+        cache = self.__dict__.setdefault("_js_scope_funcs_cache", {})
+        hit = cache.get(id(fn))
+        if hit is not None and hit[0] is fn:
+            return hit[1]
+        idx = self.__dict__.get("_fn_qual")
+        if idx is None or len(idx) != len(self.gfuncs):
+            idx = self.__dict__["_fn_qual"] = {id(i["node"]): q for q, i in self.gfuncs.items()}
+        out: dict = {}
+        q = idx.get(id(fn))
+        chain = [fn] + [self.gfuncs[e]["node"] for e in (self.gfuncs[q]["enclosing"] if q in self.gfuncs else ())
+                        if e in self.gfuncs]
+        for scope in chain:
+            for n in _scope_nodes(scope):
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and id(n) in idx:
+                    out.setdefault(n.name, idx[id(n)])
+        cache[id(fn)] = (fn, out)
+        return out
+
     def _env(self, mod, cls, fn, path, seed_params: bool, entry: bool = False) -> _Env:
         env = _Env()
+        if self.m.get("language") == "javascript" and isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and any(i["mod"] == mod and "@" in q for q, i in self._js_dup_funcs(mod)):
+            env.funcs.update(self._js_scope_funcs(fn))
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             entry_params = set(self._entry_params(mod, cls, fn)) if entry else set()
             gated = self._gated_language()
@@ -3528,6 +3784,12 @@ class Project:
         self._parents_cache[key] = parents
         return parents
 
+    @staticmethod
+    def _fixed_operand(e) -> bool:
+        """A literal, or a CONSTANT-named value: the side of a comparison that is not the checked data."""
+        return (isinstance(e, ast.Constant) and e.value is not None) or \
+            (isinstance(e, (ast.Name, ast.Attribute)) and bool(re.match(r"^[A-Z][A-Z0-9_]*$", (_chain(e) or "").split(".")[-1])))
+
     def _validated(self, mod, test, positive: bool, cwe: str | None = None) -> set:
         """Names a condition validates on the path where it is `positive` (True) or not.
 
@@ -3559,6 +3821,8 @@ class Project:
                     return {_chain(test.left)} if _chain(test.left) else set()   # x not in ALLOWED -> exit
                 if isinstance(op, ast.NotEq) and _chain(test.left) and isinstance(test.comparators[0], ast.Constant):
                     return {_chain(test.left)}
+                if isinstance(op, ast.NotEq) and _chain(test.comparators[0]) and self._fixed_operand(test.left):
+                    return {_chain(test.comparators[0])}         # `if (EXPECTED !== x) return`
                 if path_sink and isinstance(op, (ast.Gt, ast.GtE, ast.NotEq)) and isinstance(test.left, ast.Call) \
                         and isinstance(test.left.func, ast.Attribute) and test.left.func.attr in ("find", "index", "count", "indexOf") \
                         and test.left.args and isinstance(test.left.args[0], ast.Constant) and ".." in str(test.left.args[0].value):
@@ -3578,6 +3842,9 @@ class Project:
             out = set()
             if _chain(test.left) and any(isinstance(op, (ast.In, ast.Eq)) for op in test.ops):
                 out.add(_chain(test.left))
+            if len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq) and _chain(test.comparators[0]) \
+                    and self._fixed_operand(test.left):
+                out.add(_chain(test.comparators[0]))         # `ALLOWED_URL === target` (constant written first)
             return out
         if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and test.func.attr in _CONFINEMENT \
                 and cwe in _PATH_CWES:
@@ -3601,6 +3868,11 @@ class Project:
             return _paths(test.func.value)                      # x.isalnum() / x.isdigit() …
         if isinstance(test, ast.Call):
             fname = self._canon(mod, test.func).split(".")[-1]
+            if fname.lower() in ("startswith", "starts_with") and cwe in ("CWE-601", "CWE-918") \
+                    and isinstance(test.func, ast.Attribute) and _chain(test.func.value) and test.args \
+                    and isinstance(test.args[0], ast.Constant) and isinstance(test.args[0].value, str) \
+                    and re.match(r"(?i)^[a-z][a-z0-9+.-]*://[^/?#@\\]+/", test.args[0].value):
+                return {_chain(test.func.value)}  # url.startsWith("https://app.example/"): scheme and host are fixed
             if fname.lower().rstrip("?") in _NOT_VALIDATION:
                 return set()                 # prefix / suffix / existence / emptiness checks confine nothing
             if not test.args and isinstance(test.func, ast.Attribute) and (fname in ("is_valid", "validate_on_submit") or (
@@ -3934,7 +4206,7 @@ class Project:
             if hit:
                 si, value = hit
                 aenv = self._flow_at(mod, cls, fn, env, node)
-                for o in (self._taints(mod, cls, value, aenv) if aenv is not None else []):
+                for o in (self._taints(mod, cls, value, aenv) if aenv is not None and self._attr_value_ok(mod, cls, si, value, aenv) else []):
                     if not _unsafe_for(o, si):
                         continue
                     if o[0] in {"param", "field"} and not self._suppressed(path, node.lineno):
@@ -3971,7 +4243,7 @@ class Project:
         at_path, at_line = getattr(call, "vulnscan_at", None) or (path, call.lineno)
         if si and not self._suppressed(at_path, at_line):
             for arg in self._sink_args(si, call):
-                if not self._sink_arg_ok(fn, si, arg, env, mod, cls):
+                if not self._sink_arg_ok(fn, si, arg, env, mod, cls, call):
                     continue
                 origins = [o for o in self._taints(mod, cls, arg, env) if _unsafe_for(o, si)]
                 if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
@@ -4105,7 +4377,7 @@ class Project:
                 si = self._sink(mod, cls, call, env)
                 if si:
                     for arg in self._sink_args(si, call):
-                        if not self._sink_arg_ok(fn, si, arg, env, mod, cls):
+                        if not self._sink_arg_ok(fn, si, arg, env, mod, cls, call):
                             continue
                         o = self._sink_taint(mod, cls, arg, env, si)
                         if o and o[0] in {"source", "retsource"} \
@@ -4166,7 +4438,7 @@ class Project:
                 if hit:
                     si, value = hit
                     env = self._flow_at(mod, cls, fn, fenv, node)
-                    o = self._sink_taint(mod, cls, value, env, si) if env is not None else None
+                    o = self._sink_taint(mod, cls, value, env, si) if env is not None and self._attr_value_ok(mod, cls, si, value, env) else None
                     if o and o[0] in {"source", "retsource"} and not self._guarded(mod, fn, node, self._tainted_names_in(value, env), si):
                         self._emit(si, path, node.lineno, o, None, None)
             # server-side templates: render_template("t.html", var=tainted) where t.html prints {{ var|safe }}
