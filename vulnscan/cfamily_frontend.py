@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 import re
 
+from . import php_semantics as _php_semantics
 from .js_frontend import Tok, _args, _const, _ends, _mk, _name, _strip_switch_breaks  # reuse node helpers
 
 LANG_EXTS = {".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".cs": "csharp", ".go": "go", ".php": "php", ".phtml": "php",
@@ -87,6 +88,34 @@ STMT_START = {"return", "if", "for", "while", "do", "try", "throw", "switch", "b
 
 
 PHP_HEREDOC_RE = re.compile(r"<<<[ \t]*([\"']?)([A-Za-z_]\w*)\1[ \t]*\r?\n(.*?)\r?\n[ \t]*\2\b", re.S)
+
+
+_PHP_DQ_ESC = {"n": "\n", "t": "\t", "r": "\r", "v": "\v", "e": "\x1b", "f": "\f", "\\": "\\", "$": "$", '"': '"'}
+
+
+def _php_unescape(body: str, quote: str) -> str:
+    r"""The value of a PHP string literal's body: in '…' only \\ and \' are escapes; in "…" also \n \t \$ \"
+    \x41 \101 \u{41} … An unknown escape keeps its backslash, as PHP does."""
+    if "\\" not in body:
+        return body
+    if quote == "'":
+        return re.sub(r"\\([\\'])", r"\1", body)
+
+    def one(m):
+        e = m.group(1)
+        if e in _PHP_DQ_ESC:
+            return _PHP_DQ_ESC[e]
+        if e[0] == "x":
+            return chr(int(e[1:], 16))
+        if e[0] == "u":
+            try:
+                return chr(int(e[2:-1], 16))
+            except (ValueError, OverflowError):
+                return m.group(0)
+        if e[0] in "01234567":
+            return chr(int(e, 8) & 0xFF)
+        return m.group(0)
+    return re.sub(r"\\(x[0-9A-Fa-f]{1,2}|u\{[0-9A-Fa-f]+\}|[0-7]{1,3}|.)", one, body, flags=re.S)
 
 
 def _php_heredoc_token(m) -> str:
@@ -278,6 +307,43 @@ def _num_value(text: str):
 
 _AUG = {"+=": ast.Add, "-=": ast.Sub, "*=": ast.Mult, "/=": ast.Div, "%=": ast.Mod, "**=": ast.Pow, "&=": ast.BitAnd,
         "|=": ast.BitOr, "^=": ast.BitXor, "<<=": ast.LShift, ">>=": ast.RShift, ">>>=": ast.RShift}
+
+
+# settype() type names that leave no text an attacker shapes, and the conversion each one performs
+_PHP_SETTYPE = {"int": "intval", "integer": "intval", "float": "floatval", "double": "floatval", "bool": "boolval",
+                "boolean": "boolval"}
+# PHP functions' by-reference result parameters (0-based)
+_PHP_OUT_ARGS = {"system": (1,), "passthru": (1,), "exec": (1, 2), "proc_open": (2,), "preg_match": (2,),
+                 "preg_match_all": (2,), "parse_str": (1,), "openssl_sign": (1,), "getimagesize": (1,)}
+# PHP functions that answer yes / no (preg_match returns 1 or 0, the others true or false): `f(...) == 1` is f(...)
+_PHP_BOOL_CALLS = frozenset({"preg_match", "in_array", "array_key_exists", "is_numeric", "is_int", "ctype_digit",
+                             "ctype_alpha", "ctype_alnum", "ctype_xdigit", "ctype_upper", "ctype_lower"})
+
+
+def _php_bool_test(left, op: str, right):
+    """`preg_match($re, $x) == 1` / `in_array($x, $t, true) === true` / `… != 0` -> the call itself, and
+    `… == 0` / `=== false` -> not(call), so a guard reads the same however the result is compared; None otherwise."""
+    if isinstance(right, ast.Call) and not isinstance(left, ast.Call):
+        left, right = right, left
+    if not (isinstance(left, ast.Call) and isinstance(left.func, ast.Name) and left.func.id.lower() in _PHP_BOOL_CALLS
+            and isinstance(right, ast.Constant) and op in ("==", "===", "!=", "!==")):
+        return None
+    v = right.value
+    if v is True or v == 1 and not isinstance(v, bool) and isinstance(v, int):
+        truth = True
+    elif v is False or (isinstance(v, int) and not isinstance(v, bool) and v == 0):
+        truth = False
+    else:
+        return None
+    if op in ("!=", "!=="):
+        truth = not truth
+    return left if truth else _mk(ast.UnaryOp, left.lineno, op=ast.Not(), operand=left)
+
+
+def _php_number_literal(e) -> bool:
+    if isinstance(e, ast.UnaryOp) and isinstance(e.op, (ast.USub, ast.UAdd)):
+        e = e.operand
+    return isinstance(e, ast.Constant) and isinstance(e.value, (int, float)) and not isinstance(e.value, bool)
 
 
 def _aug_op(op):
@@ -1612,6 +1678,11 @@ class Parser:
         line = self.t.line
         self.eat("if")
         test = self.parse_cond()
+        pre = []
+        if self.lang == "php":
+            # `if (($line = fgets($fp)) === false)`: the assignment runs before the test, on both branches; left in
+            # self.hoisted it would land inside the branch's first statement
+            pre, self.hoisted = self.hoisted, []
         body = self.body_or_stmt()
         orelse = []
         if self.at_kw("else"):
@@ -1623,6 +1694,8 @@ class Parser:
         elif self.lang == "php" and self.at_kw("elseif"):
             self.toks[self.i].val = "if"
             orelse = [self.parse_if()]
+        if pre:
+            self.hoisted = pre + self.hoisted
         return _mk(ast.If, line, test=test, body=body, orelse=orelse)
 
     def parse_for(self, kw):
@@ -1974,6 +2047,12 @@ class Parser:
 
     def make_assign(self, target, op, value, line) -> list:
         value = self.untuple(value)
+        if isinstance(target, ast.Name) and self.lang == "php" and (op in ("-=", "*=", "/=", "%=", "**=") or (
+                op == "+=" and _php_number_literal(value))):
+            # `$x += 0` / `$x *= 1`: $x now holds a number (see the arithmetic in parse_binary)
+            arith = _mk(ast.BinOp, line, left=_name(target.id, line), op=_aug_op(op), right=value)
+            arith.php_numeric = True
+            return self.field_or_local(target.id, arith, line)
         if isinstance(target, ast.Name):
             self.ruby_locals.add(target.id)
             return self.field_or_local(target.id, value, line) if op == "=" else [_mk(ast.AugAssign, line, target=_name(target.id, line, store=True), op=_aug_op(op), value=value)]
@@ -2156,13 +2235,22 @@ class Parser:
             elif op in ("==", "!=", "===", "!==", "<", ">", "<=", ">=", "in"):
                 pyop = {"==": ast.Eq(), "===": ast.Eq(), "!=": ast.NotEq(), "!==": ast.NotEq(), "<": ast.Lt(), ">": ast.Gt(),
                         "<=": ast.LtE(), ">=": ast.GtE(), "in": ast.In()}[op]
+                bool_test = _php_bool_test(left, op, right) if self.lang == "php" else None
                 left = _mk(ast.Compare, line, left=left, ops=[pyop], comparators=[right])
-                if self.lang == "php":
+                if bool_test is not None:
+                    left = bool_test
+                elif self.lang == "php":
                     left.eq_mode = "strict" if op in ("===", "!==") else "loose"
                 elif self.lang == "java" or (self.lang == "kotlin" and op in ("===", "!==")):
                     left.eq_mode = "ref"           # Java `==` compares string identity, not contents
             else:
+                numeric = self.lang == "php" and (op in ("-", "*", "/", "%", "**") or (
+                    op == "+" and (_php_number_literal(left) or _php_number_literal(right))))
                 left = _mk(ast.BinOp, line, left=left, op=_BINOP.get(op, ast.BitOr)(), right=right)
+                if numeric:
+                    # PHP arithmetic yields an int or a float (or throws): no text survives it. `+` with a number
+                    # literal is arithmetic too; `$a + $b` may be an array union, which keeps both arrays' values
+                    left.php_numeric = True
                 if op in ("/", "%") and not (self.lang == "php" and op == "/"):
                     # integer / and % truncate toward zero in C-family languages (PHP %), floor in Ruby
                     left.int_div = "floor" if self.lang == "ruby" else "trunc"
@@ -2635,6 +2723,24 @@ class Parser:
                 break
         self.eat(")")
         call = _mk(ast.Call, line, func=func, args=args, keywords=kws)
+        if self.lang == "php" and isinstance(func, ast.Name):
+            for k in _PHP_OUT_ARGS.get(func.id.lower(), ()):
+                if k < len(args) and isinstance(args[k], ast.Name):
+                    args[k].php_out = True   # a by-reference result (`system($c, $status)`): written, not read
+        if self.lang == "php" and isinstance(func, ast.Name) and func.id.lower() == "exec" and len(args) >= 2 \
+                and isinstance(args[1], ast.Name):
+            # exec($cmd, $lines): the command's output lines are written into $lines (modelled as the output of
+            # a command whose text is not the attacker's: the command itself is checked at the exec() call)
+            self.hoisted.append(_mk(ast.Assign, line, targets=[_name(args[1].id, line, store=True)],
+                                    value=_mk(ast.Call, line, func=_name("shell_exec", line), args=[_const("", line)],
+                                              keywords=[])))
+        if self.lang == "php" and isinstance(func, ast.Name) and func.id.lower() == "settype" and len(args) == 2 \
+                and isinstance(args[0], ast.Name) and isinstance(args[1], ast.Constant) and isinstance(args[1].value, str):
+            # settype($x, "int") converts $x in place: from here on it holds a number, as `$x = intval($x)` would
+            conv = _PHP_SETTYPE.get(args[1].value.lower())
+            if conv:
+                self.hoisted.append(_mk(ast.Assign, line, targets=[_name(args[0].id, line, store=True)],
+                                        value=_mk(ast.Call, line, func=_name(conv, line), args=[_name(args[0].id, line)], keywords=[])))
         if self.lang in BRACE_LAMBDA_LANGS and self.at("{") and not self.t.nl_before and self.no_brace_call == 0:
             lam = self.parse_kotlin_lambda()
             args.append(lam)
@@ -2721,7 +2827,7 @@ class Parser:
                 i += 1
                 continue
             if buf:
-                values.append(_const(buf, tok.line))
+                values.append(_const(_php_unescape(buf, '"') if lang == "php" else buf, tok.line))
                 buf = ""
             sub = Parser(("<?php " + expr_src) if lang == "php" else expr_src, "inline", lang)   # PHP code starts at <?php
             sub.mod = self.mod
@@ -2733,7 +2839,9 @@ class Parser:
             self.hoisted.extend(sub.hoisted)
             values.append(_mk(ast.FormattedValue, tok.line, value=e, conversion=-1, format_spec=None))
         if buf:
-            values.append(_const(buf, tok.line))
+            values.append(_const(_php_unescape(buf, '"') if lang == "php" else buf, tok.line))
+        if lang == "php" and all(isinstance(v, ast.Constant) for v in values):
+            return _const("".join(v.value for v in values), tok.line)   # "/^[0-9]*$/": a `$` that starts no variable
         return _mk(ast.JoinedStr, tok.line, values=values)
 
     # ----------------------------------------------------------------- Ruby
@@ -3268,10 +3376,16 @@ class Parser:
                     inner = Tok("str", '"' + raw[1:-1].replace('"', "'") + '"', line)
                     arg = self.parse_interpolated(inner) if "#{" in raw else _const(raw[1:-1], line)
                     return _mk(ast.Call, line, func=_name("system", line), args=[arg], keywords=[])
+                if self.lang == "php":   # `cat $f` runs a shell command (shell_exec), interpolating like "…"
+                    inner = Tok("str", '"' + raw[1:-1].replace('"', '\\"') + '"', line)
+                    arg = self.parse_interpolated(inner) if "$" in raw else _const(_php_unescape(raw[1:-1], '"'), line)
+                    return _mk(ast.Call, line, func=_name("shell_exec", line), args=[arg], keywords=[])
                 return _const(raw[1:-1], line)
             if raw.startswith('"') and ((self.lang in ("kotlin", "php") and "$" in raw) or (self.lang == "ruby" and "#{" in raw)
                                         or (self.lang == "swift" and "\\(" in raw) or (self.lang == "rust" and re.search(r"\{[A-Za-z_]", raw))):
                 return self.parse_interpolated(t)
+            if self.lang == "php":
+                return _const(_php_unescape(raw[1:-1], raw[0]), line)
             return _const(raw[1:-1], line)
         if t.kind == "ivar":        # Ruby @x / @@x -> self.x
             self.i += 1
@@ -3409,7 +3523,10 @@ class Parser:
                 return _name("_object", line)
             self.i += 1
             name = v.lstrip("$") if (v.startswith("$") and v not in ("$_GET", "$_POST", "$_REQUEST", "$_COOKIE", "$_SERVER", "$_FILES", "$_ENV", "$argv", "$HTTP_RAW_POST_DATA", "$GLOBALS", "$_SESSION")) else v
-            return _name(name, line)
+            node = _name(name, line)
+            if self.lang == "php" and not v.startswith("$"):
+                node.php_bare = True      # a function or constant name (`system(...)`, `ENT_QUOTES`), never a variable
+            return node
         raise ParseError(f"unexpected {t.val!r} line {line}")
 
 
@@ -3756,6 +3873,8 @@ def parse_cfamily_ex(text: str, rel: str, lang: str):
                     cls.body = [_mk(ast.Pass, 1)]
         if lang in ("java", "kotlin") and ("${" in text or "Provider" in text):
             _mybatis_annotated(mod)
+        if lang == "php":
+            _php_semantics.annotate_echoes(mod, text)    # where in the page each top-level echo writes
         diag["statements"] = p.n_statements
         diag["skipped"] = len(p.diagnostics)
         diag["lines"] = list(p.diagnostics)

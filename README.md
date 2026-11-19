@@ -34,8 +34,8 @@ from a **local web UI** in English and Arabic.
   context-sensitive (k=2) points-to analysis; context-specific sanitizers (`html.escape` protects HTML only,
   not SQL or a shell); second-order (stored) injection through database tables.
 - **Rules and models** — 153 pattern rules, 48 dataflow and APEX rules and 19 built-in VQL queries (VQL is
-  Kashif's declarative query language over the program database), over 6,443 modelled library APIs
-  (1,044 sources, 4,617 sinks, 782 sanitizers).
+  Kashif's declarative query language over the program database), over 6,447 modelled library APIs
+  (1,047 sources, 4,618 sinks, 782 sanitizers).
 - **Fewer false positives on real code** — test, documentation and example code is recognised by its path: fixture
   noise there is dropped and the rest is lowered to info; vendored bundles are skipped. On the 35 open-source projects
   (of 38) that 0.9 could finish, findings went from 17,228 to 2,607 (critical and high: 4,345 to 783); half of 0.9's
@@ -411,6 +411,40 @@ HttpOnly flag is missing rather than set to false, archive entry names as source
 prints how many findings land on them (159). The suite is not real code: read the numbers as how the engine reasons
 about common JavaScript constructs, not as its accuracy on your project.
 
+### PHP: NIST SARD PHP Vulnerability Test Suite
+
+Measured on the [PHP Vulnerability Test Suite](https://github.com/stivalet/PHP-Vulnerability-test-suite) (Stivalet &
+Delaitre, NIST SARD test suite 103; commit `6ebd7e0`), with labels taken from the suite's own manifests. Every test
+case of the eight data-flow categories is scored, 41,712 of the suite's 42,212 (left out: 480 missing-authorization
+cases, CWE-862, and 20 crypto / error-message cases). Same scoring as above, by `bench/score_php.py`.
+**PHP: 44.6%** (6.0% before 1.5.0).
+
+| Category | TPR % | FPR % | score (1.4) | score (1.5) |
+|---|---:|---:|---:|---:|
+| cmdi (CWE-78) | 48.1 | 16.0 | 0.0 | 32.1 |
+| codeinj (CWE-95, eval) | 53.6 | 3.6 | 9.6 | 49.9 |
+| fileinc (CWE-98, include) | 62.5 | 19.7 | 9.6 | 42.8 |
+| ldapi (CWE-90) | 76.7 | 41.7 | 1.3 | 35.0 |
+| redirect (CWE-601) | 62.8 | 0.0 | 9.9 | 62.8 |
+| sqli (CWE-89) | 64.1 | 1.0 | 16.6 | 63.1 |
+| xpathi (CWE-91 in the suite: XPath) | 51.0 | 16.0 | 5.9 | 35.0 |
+| xss (CWE-79) | 44.4 | 8.1 | -5.3 | 36.3 |
+| **Overall** | | | **6.0** | **44.6** |
+
+```bash
+git clone --depth 1 https://github.com/stivalet/PHP-Vulnerability-test-suite && python bench/score_php.py PHP-Vulnerability-test-suite
+```
+
+What it measures: one source, one sanitizer and one sink per generated script, over 16 kinds of input and 21 HTML
+output contexts, so it tests the per-function and per-context rules (which escaper is enough where), not
+whole-application reasoning. Read it with its limits: the code is synthetic, and many of its labels disagree with
+how PHP behaves, where Kashif follows PHP (for example `addslashes` or `escapeshellarg` inside a single-quoted shell
+argument are labelled safe and are injectable; `htmlspecialchars` inside a quoted `onclick` handler is labelled safe
+and is not, because the browser decodes `&#039;` before running it; an XPath literal has no backslash escape; a few
+cases do not parse or read an undefined variable). `$_SESSION` is not treated as user input (one input kind of 16),
+and the output of shell commands is a local source, not reported for XSS or redirects. No file names, paths or
+generator-specific helper names are encoded in the engine.
+
 ## Languages and targets
 
 | Target | Coverage |
@@ -616,7 +650,7 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
   من 17,228 إلى 2,607 (الحرجة والعالية من 4,345 إلى 783)، وكان نصف نتائج 0.9 في كود الاختبارات والتوثيق والأمثلة.
 - **أسرع:** `--jobs N` لتوزيع الفحص على المعالجات، و`--cache DIR` لإعادة فحص مشروع لم يتغير بالنتائج نفسها: Django كاملًا
   (6,973 ملفًا) في 311–411 ثانية أول مرة على 4 معالجات افتراضية (كان 594 ثانية في 0.9)، و3.5 ثوانٍ عند الإعادة.
-- النماذج **6,443** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,617، ومعقّمات 782). التفاصيل في `CHANGELOG.md`.
+- النماذج **6,447** واجهة مكتبة (مصادر 1,047، ونقاط خطر 4,618، ومعقّمات 782). التفاصيل في `CHANGELOG.md`.
 
 ### فحص المواقع السلبي
 
@@ -1291,6 +1325,20 @@ JavaScript الشائعة، لا دقةً على الكود في مشروعك.
 git clone --filter=blob:none --sparse https://github.com/github/codeql
 git -C codeql sparse-checkout set javascript/ql/test/query-tests/Security
 python bench/score_js.py codeql
+
+### PHP: مجموعة NIST SARD لثغرات PHP
+
+قسنا Kashif أيضًا على [PHP Vulnerability Test Suite](https://github.com/stivalet/PHP-Vulnerability-test-suite)
+(مجموعة SARD رقم 103، الإيداع `6ebd7e0`) بتصنيفات ملفات manifest الخاصة بها، وبالطريقة نفسها (`bench/score_php.py`):
+**PHP ‏44.6%** (كانت 6.0% قبل 1.5.0) على كل حالات فئات تدفق البيانات الثماني، أي 41,712 من 42,212 حالة (استُبعدت 480
+حالة تخويل CWE-862 و20 حالة تشفير ورسائل خطأ). تقيس المجموعة قواعد كل دالة تعقيم وكل سياق إخراج HTML في سكربتات مولَّدة
+صغيرة، لا تحليل تطبيق كامل؛ وكثير من تصنيفاتها يخالف سلوك PHP الفعلي (مثل `addslashes` أو `escapeshellarg` داخل
+وسيط shell بين علامتي اقتباس مفردتين، و`htmlspecialchars` داخل معالج `onclick`)، وKashif يتبع سلوك PHP. لا يُعدّ
+`$_SESSION` مدخلًا من المستخدم، ومخرجات أوامر shell مصدر محلي لا يُبلَّغ عنه في XSS وإعادة التوجيه. الجدول لكل فئة في
+القسم الإنجليزي أعلاه، ويعيد إنتاج النتيجة أمر واحد:
+
+```bash
+git clone --depth 1 https://github.com/stivalet/PHP-Vulnerability-test-suite && python bench/score_php.py PHP-Vulnerability-test-suite
 ```
 
 ## مقارنة مع الأدوات العالمية
