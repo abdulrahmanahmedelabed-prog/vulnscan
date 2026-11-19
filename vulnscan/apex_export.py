@@ -40,7 +40,7 @@ COMPONENT_AR = {"page_process": "عملية", "flow_process": "عملية تطب
                 "region_column": "عمود", "flow_item": "عنصر تطبيق", "ai_config": "إعداد الذكاء الاصطناعي",
                 "ai_config_rag_source": "مصدر RAG", "web_source_module": "مصدر ويب", "page_button": "زر",
                 "plugin_file": "ملف إضافة", "app_static_file": "ملف ثابت للتطبيق", "workspace_static_file": "ملف ثابت لمساحة العمل",
-                "theme_file": "ملف سمة"}
+                "theme_file": "ملف سمة", "install_script": "سكربت كائنات الدعم"}
 APEX_RULES = [
     {"id": "APX001", "severity": "high", "cwe": "CWE-89", "title": "Substitution string inside SQL / PL/SQL",
      "title_ar": "سلسلة استبدال &ITEM. داخل SQL أو PL/SQL (حقن)", "advice": "استخدم متغير الربط :ITEM بدل &ITEM."},
@@ -336,6 +336,9 @@ class Block:
     line: int          # export line of the first code line
     label: str         # "صفحة 10 › عملية: Save"
     unit: str          # identifier used for the lowered unit
+    page: str | None = None    # page id of the component (None: application-level / not an APEX component)
+    scheme: str = ""           # raw authorization scheme of the component (or of its region / dynamic action event)
+    comp: str = ""             # create_… call the code came from (e.g. "create_page_process"); "" for synthetic blocks
 
 
 def is_apex_export(text: str) -> bool:
@@ -390,6 +393,173 @@ def _concat(toks: list) -> str:
             out.append("\n")
         i += 1
     return "".join(out)
+
+
+# ------------------------------------------------------------ Supporting Objects scripts (exact export lines)
+def _script_text(toks: list, assigns: dict | None = None) -> tuple[str, int]:
+    """Decode a script argument (`wwv_flow_string.join(wwv_flow_t_varchar2('…', …))`, `'…'||unistr('\\000a')||'…'`
+    concatenations, one multi-line literal with '' escapes, or a variable built by `s := s || …;`) keeping every
+    piece on its own export line: -> (text, export line of the text's first line); ("", 0) when it holds no text.
+    Blank lines are inserted where a piece starts further down the export (a long line split over two string
+    literals), so line k of the text is export line first + k - 1 (pieces that share one export line shift it)."""
+    events: list = []
+    _script_events(toks, events, assigns or {}, 0)
+    first = next((e[2] for e in events if e[0] == "s"), 0)
+    if not first:
+        return "", 0
+    lead = 0
+    for e in events:
+        if e[0] == "s":
+            break
+        lead += 1
+    start = max(1, first - lead)
+    out, cur, bol = [], start, True
+    for e in events:
+        if e[0] == "nl":
+            out.append("\n")
+            cur += 1
+            bol = True
+            continue
+        _k, piece, line = e
+        if not piece:
+            continue
+        if bol and line > cur:
+            out.append("\n" * (line - cur))
+            cur = line
+        out.append(piece)
+        cur += piece.count("\n")
+        bol = piece.endswith("\n")
+    return "".join(out), start
+
+
+def _script_events(toks: list, ev: list, assigns: dict, depth: int) -> None:
+    """Operands of a `||` concatenation -> [("s", text, export line) | ("nl",)] (a decoded newline is an "nl")."""
+    if depth > 12 or not toks:
+        return
+    ops, cur, d = [], [], 0
+    for t in toks:
+        if t.kind == "punct" and t.val == "(":
+            d += 1
+        elif t.kind == "punct" and t.val == ")":
+            d -= 1
+        if d == 0 and t.kind == "punct" and t.val == "||":
+            ops.append(cur)
+            cur = []
+            continue
+        cur.append(t)
+    ops.append(cur)
+
+    def text(s: str, line: int) -> None:
+        parts = s.replace("\r", "").split("\n")
+        for k, part in enumerate(parts):
+            if k:
+                ev.append(("nl",))
+            ev.append(("s", part, line))
+
+    for op in ops:
+        if not op:
+            continue
+        a = op[0]
+        vals = [t.val for t in op]
+        if a.kind == "str" and len(op) == 1:
+            ev.append(("s", a.val.replace("\r", ""), a.line))            # real newlines: the export's own lines
+        elif a.kind == "id" and a.val == "unistr" and len(op) >= 3 and op[2].kind == "str":
+            text(re.sub(r"\\([0-9A-Fa-f]{4})", lambda m: chr(int(m.group(1), 16)), op[2].val), op[2].line)
+        elif a.kind == "id" and a.val == "chr" and len(op) >= 3 and op[2].kind == "num":
+            try:
+                code = int(float(op[2].val))
+                if code == 10:
+                    ev.append(("nl",))
+                elif code != 13:
+                    ev.append(("s", chr(code), op[2].line))
+            except (ValueError, OverflowError):
+                pass
+        elif len(op) == 3 and a.kind == "id" and a.val.startswith("wwv_flow") and vals[1] == "." and vals[2] in ("lf", "crlf"):
+            ev.append(("nl",))
+        elif len(op) > 4 and a.val == "wwv_flow_string" and vals[2] == "join":
+            k = next((x for x in range(len(op)) if op[x].kind == "id" and op[x].val.startswith("wwv_flow_t_")), -1)
+            if k < 0 or k + 1 >= len(op) or op[k + 1].val != "(":
+                continue
+            elems, cur, d = [], [], 0
+            for t in op[k + 2:]:
+                if t.kind == "punct" and t.val == "(":
+                    d += 1
+                elif t.kind == "punct" and t.val == ")":
+                    d -= 1
+                    if d < 0:
+                        break
+                if d == 0 and t.kind == "punct" and t.val == ",":
+                    elems.append(cur)
+                    cur = []
+                    continue
+                cur.append(t)
+            elems.append(cur)
+            for x, e in enumerate(elems):
+                if x:
+                    ev.append(("nl",))
+                _script_events(e, ev, assigns, depth + 1)
+        elif a.kind == "punct" and a.val == "(" and op[-1].val == ")":
+            _script_events(op[1:-1], ev, assigns, depth + 1)
+        elif a.kind == "id" and a.val in ("to_clob", "to_nclob") and len(op) > 3 and op[1].val == "(" and op[-1].val == ")":
+            _script_events(op[2:-1], ev, assigns, depth + 1)
+        elif a.kind == "id" and len(op) == 1 and a.val in assigns:
+            for chunk in assigns[a.val]:
+                _script_events(chunk, ev, assigns, depth + 1)
+
+
+# ------------------------------------------------------------ authorization schemes of APEX components
+_NOT_AUTHZ = {"MUST_NOT_BE_PUBLIC_USER", "NOBODY_NOT_PUBLIC", ""}
+
+
+def _component_scheme(decoded: dict) -> str:
+    """Raw authorization scheme of a component: p_security_scheme / p_authorization_scheme / p_required_role (any
+    prefixed variant such as p_plug_required_role)."""
+    for p, (_v, _ln, raw) in decoded.items():
+        if re.fullmatch(r"p_(?:\w+_)?(?:security_scheme|authorization_scheme|required_role)", p) and raw.strip():
+            return raw.strip()
+    return ""
+
+
+def _scheme_key(raw: str) -> str:
+    """`wwv_flow_imp.id(123)` / `123+wwv_flow_api.g_id_offset` / 'ADMIN' -> "123" / "ADMIN" (a leading '!' dropped)."""
+    raw = (raw or "").strip().lstrip("!").strip()
+    m = re.search(r"\d{3,}", raw)
+    return m.group(0) if m else raw
+
+
+def restricts(raw: str) -> bool:
+    """A scheme that limits who may run the component: not empty, not negated ('!' — everyone but …), not
+    MUST_NOT_BE_PUBLIC_USER (it only requires a signed-in user, which authentication already does)."""
+    raw = (raw or "").strip()
+    return bool(raw) and not raw.startswith("!") and raw.upper() not in _NOT_AUTHZ
+
+
+def scheme_name(raw: str, schemes: dict) -> str:
+    key = _scheme_key(raw)
+    return schemes.get(key) or key
+
+
+def call_site_protection(block: Block, info: dict) -> tuple[bool, str]:
+    """(protected, scheme name | reason) for a component of an export, given the merged protection facts of its
+    application (info: app_scheme, schemes, pages). Component, page, then application scheme; the reason when none
+    restricts is an Arabic phrase (public page / application process / no scheme)."""
+    page = info.get("pages", {}).get(block.page) if block.page else None
+    for raw in (block.scheme, (page or {}).get("scheme", ""), info.get("app_scheme", "")):
+        if restricts(raw):
+            return True, scheme_name(raw, info.get("schemes", {}))
+    if page and page.get("public"):
+        return False, "صفحة عامة بلا تسجيل دخول"
+    if block.comp == "create_flow_process":
+        return False, "عملية تطبيق بلا مخطط تفويض"
+    return False, "بلا مخطط تفويض يقيّد المستخدمين"
+
+
+def call_sites(block: Block, package: str, routine: str) -> list[int]:
+    """Export lines where a block's code calls package.routine (comments ignored)."""
+    code = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), block.code, flags=re.S)
+    code = re.sub(r"--[^\n]*", "", code)
+    rx = re.compile(rf"(?<![\w$#]){re.escape(package)}\s*\.\s*{re.escape(routine)}(?![\w$#])", re.I)
+    return [block.line + code.count("\n", 0, m.start()) for m in rx.finditer(code)]
 
 
 def _args(toks: list, i: int) -> tuple[dict, int]:
@@ -528,6 +698,14 @@ def _subst_findings(block: Block, rel: str) -> list[Finding]:
 
 def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple[str, str]]]:
     """Returns (code blocks, APEX findings, decoded static files [(virtual path, text)])."""
+    blocks, findings, files, _info = extract_full(text, rel)
+    return blocks, findings, files
+
+
+def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple[str, str]], dict]:
+    """extract(), plus what the export says about protection and its Supporting Objects:
+    {"app": application id, "app_scheme": raw scheme of the application, "schemes": {scheme key: name},
+     "pages": {page: {"public": bool, "scheme": raw}}, "scripts": [(export line, script text, label)]}."""
     toks = tokenize(text)
     lines = text.split("\n")
     blocks: list[Block] = []
@@ -541,9 +719,29 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
     form_tables: dict = {}           # page -> table of a legacy automatic row processing (DML) process
     form_items: list = []            # (page, item, column, region id raw, line, label)
     checks = _ConfigChecks(rel, lines)
+    info: dict = {"app": application_id(text), "app_scheme": "", "schemes": {}, "pages": {}, "scripts": []}
+    assigns: dict = {}               # PL/SQL variable -> [token lists] (`s := s || '…';` before create_install_script)
+    region_schemes: dict = {}        # region id (raw) -> its authorization scheme (raw), inherited by its columns …
+    da_scheme = ""
     i, n = 0, len(toks)
     while i < n:
         t = toks[i]
+        if t.kind == "id" and i + 1 < n and toks[i + 1].kind == "punct" and toks[i + 1].val == ":=" and (
+                i == 0 or toks[i - 1].val in (";", "begin", "then", "else", "loop")):
+            j, depth = i + 2, 0                  # `s := s || '…' || unistr('\000a') || '…';` (APEX 4.x scripts)
+            while j < n and toks[j].kind != "eof" and not (depth <= 0 and toks[j].kind == "punct" and toks[j].val == ";"):
+                if toks[j].kind == "punct" and toks[j].val == "(":
+                    depth += 1
+                elif toks[j].kind == "punct" and toks[j].val == ")":
+                    depth -= 1
+                j += 1
+            expr = toks[i + 2:j]
+            if len(expr) > 1 and expr[0].kind == "id" and expr[0].val == t.val and expr[1].val == "||":
+                assigns.setdefault(t.val, []).append(expr[2:])
+            else:
+                assigns[t.val] = [expr]
+            i = j + 1
+            continue
         if t.kind == "id" and t.val == "g_varchar2_table" and i + 5 < n and toks[i + 1].val == "(" \
                 and toks[i + 4].val == ":=" and toks[i + 5].kind == "str":     # g_varchar2_table(1) := 'HEX…'
             hexbuf.append(toks[i + 5].val)
@@ -576,6 +774,32 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
         comp_ar = COMPONENT_AR.get(comp, comp)
         label = (f"صفحة {pg} › " if pg else "") + comp_ar + (f": {name}" if name else "")
         checks.collect(fname, decoded, pg, label, name)
+        # authorization: the component's own scheme, else the one of its region / dynamic action event
+        own = _component_scheme(decoded)
+        if not own and fname != "create_page":
+            parent = next((decoded[p][2] for p in ("p_region_id", "p_plug_id", "p_item_plug_id", "p_button_plug_id",
+                                                   "p_parent_plug_id") if decoded.get(p, (None, 0, ""))[2]), "")
+            own = region_schemes.get(parent, "") or (da_scheme if fname == "create_page_da_action" else "")
+        if fname == "create_page_da_event":
+            da_scheme = own
+        elif fname == "create_page_plug":
+            region_schemes[decoded.get("p_id", (None, 0, ""))[2]] = own
+        elif fname == "create_flow":
+            info["app_scheme"] = own
+        elif fname == "create_page":
+            info["pages"][pg] = {"public": (decoded.get("p_page_is_public_y_n", (None, 0, ""))[2] or "").strip() == "Y",
+                                 "scheme": own}
+        elif fname == "create_security_scheme" and decoded.get("p_name", (None,))[0]:
+            info["schemes"][_scheme_key(decoded.get("p_id", (None, 0, ""))[2])] = decoded["p_name"][0]
+        elif fname == "create_install_script":
+            # Supporting Objects: installation / upgrade scripts carry the application's own packages
+            for p in ("p_script_clob", "p_sql"):
+                if p not in params:
+                    continue
+                script, sline = _script_text(params[p], assigns)
+                if script.strip() and sline:
+                    info["scripts"].append((sline, script, f"{comp_ar}: {name}" if name else comp_ar))
+                break
         # implicit DML: a form region on a table, and page items whose source is one of its columns
         if fname == "create_page_plug" and decoded.get("p_query_table", (None,))[0]:
             region_tables[decoded.get("p_id", (None, 0, ""))[2]] = decoded["p_query_table"][0].upper().split(".")[-1]
@@ -614,12 +838,12 @@ def extract(text: str, rel: str) -> tuple[list[Block], list[Finding], list[tuple
                 continue
             seq += 1
             unit = re.sub(r"\W", "_", f"apex_{'p' + str(pg) + '_' if pg else ''}{comp}_{seq}").lower()
-            b = Block(kind, val, ln, label, unit)
+            b = Block(kind, val, ln, label, unit, pg, own, fname)
             blocks.append(b)
             findings.extend(_subst_findings(b, rel))
     blocks.extend(_form_store_blocks(form_items, region_tables, form_tables))
     findings.extend(checks.finish())
-    return blocks, findings, files
+    return blocks, findings, files, info
 
 
 def _form_store_blocks(form_items, region_tables, form_tables) -> list[Block]:

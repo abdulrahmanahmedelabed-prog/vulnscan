@@ -5140,6 +5140,9 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     apps: dict = {}
     authz_specs: dict = {}       # APX024: package specs (name -> routine names) and bodies, from every plain PL/SQL file
     authz_bodies: list = []
+    apex_sites: list = []        # APX024 context: (rel, block, application id) of every APEX component with code
+    apex_sec: dict = {}          # application id -> merged protection facts (app scheme, schemes, pages)
+    script_ranges: list = []     # Supporting Objects scripts: (rel, first line, last line, label)
 
     def add_blocks(rel, blocks, diag):
         """Extracted code blocks (APEX export / readable YAML / ORDS handlers) -> units at their real lines."""
@@ -5217,10 +5220,20 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
                 app["defs"][rel] = pdefs
             app["refs"].update(prefs)
             app["parts"].update(holds)
-            blocks, afind, sfiles = apex_export.extract(text, rel)
+            blocks, afind, sfiles, ainfo = apex_export.extract_full(text, rel)
             findings.extend(afind)
             js_files.update(sfiles)
             add_blocks(rel, blocks + apex_export.extract_ords(text, rel), diag)
+            sec = apex_sec.setdefault(ainfo["app"], {"app_scheme": "", "schemes": {}, "pages": {}})
+            sec["app_scheme"] = sec["app_scheme"] or ainfo["app_scheme"]
+            sec["schemes"].update(ainfo["schemes"])
+            sec["pages"].update(ainfo["pages"])
+            apex_sites.extend((rel, b, ainfo["app"]) for b in blocks if b.comp)
+            # Supporting Objects: packages / procedures in installation scripts, analysed as plain PL/SQL at their
+            # export lines (data flow, APX024, password checks)
+            for sline, script, label in ainfo["scripts"]:
+                script_ranges.append((rel, sline, sline + script.count("\n"), label))
+                add_plsql_text(rel, script, sline - 1, diag)
         else:
             add_plsql_text(rel, text, 0, diag)
         diags[rel] = diag
@@ -5250,11 +5263,14 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
         jproj.build()
         findings.extend(jproj.report())
         projects.append(jproj)
-    _label_findings(findings, ranges)
+    _label_findings(findings, ranges + script_ranges)
     for app in apps.values():
         if app["defs"] and app["parts"] >= {"flow", "page"}:
             _mark_unused_components(findings, app["defs"], app["refs"], shared_lines)
-    findings.extend(plsql_authz.findings(authz_specs, authz_bodies, shared_lines))
+    authz = plsql_authz.findings(authz_specs, authz_bodies, shared_lines)
+    _label_findings(authz, script_ranges)
+    plsql_authz.apex_context(authz, apex_sites, apex_sec)
+    findings.extend(authz)
     return projects, findings
 
 

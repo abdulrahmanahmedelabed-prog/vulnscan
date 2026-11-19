@@ -33,6 +33,7 @@ _COMPONENTS = {
     "ملف ثابت للتطبيق": "Static Application File",
     "ملف ثابت لمساحة العمل": "Static Workspace File",
     "ملف سمة": "Theme File",
+    "سكربت كائنات الدعم": "Supporting Objects Script",
 }
 
 CATALOG: dict[str, str] = {
@@ -66,6 +67,11 @@ CATALOG: dict[str, str] = {
     "إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق": "Plug-in defined but not used by any component of the application",
     "روتين في حزمة PL/SQL لا يتحقق من الصلاحية بينما تتحقق منها الروتينات الشقيقة":
         "PL/SQL package routine does not check authorization while its sibling routines do",
+
+    # ---- APX024 context (plsql_authz.apex_context): why an APEX component calling the routine is not protected
+    "صفحة عامة بلا تسجيل دخول": "public page, no sign-in",
+    "عملية تطبيق بلا مخطط تفويض": "application process without an authorization scheme",
+    "بلا مخطط تفويض يقيّد المستخدمين": "no authorization scheme that restricts users",
 
     # ---- remediation advice
     "استخدم متغير الربط :ITEM بدل &ITEM.": "Use the bind variable :ITEM instead of &ITEM.",
@@ -135,6 +141,27 @@ PATTERNS: list[tuple[str, str]] = [
      r"\g<r> does not check authorization, while \g<k> of the \g<n> public routines of the package call \g<g> before "
      r"their work. It \g<acc>. Add the same check (\g<g>) at its start, as the sibling routines do: any code in the "
      r"same schema (another APEX page, for example) can call it directly."),
+    # the same, followed by what the scanned APEX export says about the routine's callers (1.4.0)
+    (rf"(?P<r>{_ID}) لا يتحقق من الصلاحية، بينما تستدعي (?P<k>\d+) من (?P<n>\d+) من الروتينات العامة في الحزمة "
+     rf"(?P<g>{_ID}) قبل عملها\. وهو (?P<acc>.+?)\. أضف التحقق نفسه \((?P=g)\) في بدايته كما تفعل الروتينات "
+     r"الشقيقة؛ فأي كود في المخطط نفسه \(صفحة APEX أخرى مثلًا\) يمكنه استدعاؤه مباشرة\. (?P<ctx>(?:وفي|ويُستدعى) .+)",
+     r"\g<r> does not check authorization, while \g<k> of the \g<n> public routines of the package call \g<g> before "
+     r"their work. It \g<acc>. Add the same check (\g<g>) at its start, as the sibling routines do: any code in the "
+     r"same schema (another APEX page, for example) can call it directly. \g<ctx>"),
+    (rf"وفي تطبيق APEX المفحوص لا يُستدعى (?P<r>{_ID}) إلا من مكوّنات محمية بمخطط التفويض (?P<s>.+?) "
+     r"\(مواضع الاستدعاء: (?P<n>\d+)، أولها «(?P<label>.+?)» في السطر (?P<line>\d+) من (?P<rel>.+?)\)؛ لكن هذه الحماية "
+     r"لا تشمل أي مستدعٍ آخر للحزمة \(صفحة أخرى أو تطبيق آخر أو صلاحية EXECUTE ممنوحة مباشرة\)، فيبقى التحقق داخل "
+     r"الروتين لازمًا\.",
+     r"In the scanned APEX application, \g<r> is called only from components protected by the authorization scheme "
+     r"\g<s> (call sites: \g<n>; the first is «\g<label>» at line \g<line> of \g<rel>); this protection does not cover "
+     r"any other caller of the package (another page, another application, or a direct EXECUTE grant), so the check "
+     r"inside the routine is still needed."),
+    (rf"ويُستدعى (?P<r>{_ID}) في تطبيق APEX المفحوص من مكوّن غير محمي: «(?P<label>.+?)» في السطر (?P<line>\d+) من "
+     r"(?P<rel>.+?) \((?P<why>[^()]+)\)؛ المواضع غير المحمية (?P<k>\d+) من (?P<n>\d+)\. فيمكن لأي مستخدم يصل إلى هذا "
+     r"المكوّن تشغيل الروتين دون تحقق، ولذلك رُفعت الخطورة إلى «عالية»\.",
+     r"\g<r> is called in the scanned APEX application from an unprotected component: «\g<label>» at line "
+     r"\g<line> of \g<rel> (\g<why>); unprotected call sites: \g<k> of \g<n>. Any user who can reach that component "
+     r"can run the routine without a check, so the severity was raised to high."),
     (rf"يُعيد قيمة (?P<t>[A-Z]+) مقروءة باستعلام(?P<o> \({_ID}(?:, {_ID})*\))?",
      r"returns a \g<t> value read by a query\g<o>"),
     (rf"يُعيد بيانات مقروءة باستعلام(?P<o> \({_ID}(?:, {_ID})*\))?", r"returns data read by a query\g<o>"),

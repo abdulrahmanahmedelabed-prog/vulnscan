@@ -17,8 +17,9 @@ The rule is about inconsistency, not a guess that every routine needs a check, a
    that reaches no authorization-like call at all (so a guard on any path, or a different check, keeps it quiet).
    Pure computation (no SQL, no output) is never flagged.
 
-The analysis is lexical (tokens of plain PL/SQL: .pkb/.pks/.sql files and scripts inside XML changelogs); code inside
-APEX export strings is not read here.
+The analysis is lexical (tokens of plain PL/SQL: .pkb/.pks/.sql files, scripts inside XML changelogs and, since
+1.4.0, the Supporting Objects installation scripts of APEX exports, at their export lines). apex_context() then adds
+what the export says about the APEX components that call the routine and their authorization schemes.
 """
 
 from __future__ import annotations
@@ -539,3 +540,64 @@ def findings(specs: dict, bodies: list, lines_by_file: dict) -> list:
                             "spec_seen": pkg.name in specs})
             out.append(f)
     return out
+
+
+# ------------------------------------------------------------------------- what APEX itself enforces (1.4.0)
+_CODE_KINDS = ("plsql", "plsql_decls", "plsql_fn", "plsql_fn_sql", "plsql_fn_html", "plsql_expr", "sql")
+
+
+def apex_context(found: list, sites: list, sec: dict) -> None:
+    """Add to each APX024 finding what the scanned APEX export(s) say about the routine's callers: the components
+    (page processes, region sources, AJAX callbacks / application processes, dynamic action server code, …) that
+    call PACKAGE.ROUTINE and whether an authorization scheme protects each (component, page or application scheme;
+    MUST_NOT_BE_PUBLIC_USER and negated schemes do not count).
+
+    Every call site protected: the finding stays as it is, and says that the protection covers only those callers.
+    Some call site unprotected (public page, component without a scheme, application process without one): the
+    finding names it and its severity becomes high. No call site in the scan: unchanged.
+    sites: [(rel, apex_export.Block, application id)]; sec: application id -> {app_scheme, schemes, pages}."""
+    from .apex_export import call_site_protection, call_sites
+    if not found or not sites:
+        return
+    for f in found:
+        pkg, routine = str(f.extra.get("package") or ""), str(f.extra.get("routine") or "")
+        if not pkg or not routine:
+            continue
+        calls = []
+        for rel, b, app in sites:
+            if b.kind not in _CODE_KINDS or routine.lower() not in b.code.lower():
+                continue
+            lines = call_sites(b, pkg, routine)
+            if not lines:
+                continue
+            prot, what = call_site_protection(b, sec.get(app, {}))
+            for ln in lines:
+                calls.append({"component": b.label, "file": rel, "line": ln, "protected": prot,
+                              ("scheme" if prot else "reason"): what})
+        if not calls:
+            continue
+        calls.sort(key=lambda c: (c["file"], c["line"]))
+        rname = f"{pkg}.{routine}"
+        n = len(calls)
+        open_ = [c for c in calls if not c["protected"]]
+        f.extra["apex_call_sites"] = calls
+        if open_:
+            u = open_[0]
+            f.extra["apex_protection"] = "unprotected"
+            f.extra["severity_before_apex"] = f.severity
+            f.severity = "high"
+            f.advice += (f" ويُستدعى {rname} في تطبيق APEX المفحوص من مكوّن غير محمي: «{u['component']}» في السطر "
+                         f"{u['line']} من {u['file']} ({u['reason']})؛ المواضع غير المحمية {len(open_)} من {n}. فيمكن لأي "
+                         f"مستخدم يصل إلى هذا المكوّن تشغيل الروتين دون تحقق، ولذلك رُفعت الخطورة إلى «عالية».")
+        else:
+            names = []
+            for c in calls:
+                if c["scheme"] not in names:
+                    names.append(c["scheme"])
+            first = calls[0]
+            f.extra["apex_protection"] = "all_protected"
+            f.extra["apex_schemes"] = names
+            f.advice += (f" وفي تطبيق APEX المفحوص لا يُستدعى {rname} إلا من مكوّنات محمية بمخطط التفويض "
+                         f"{', '.join(names)} (مواضع الاستدعاء: {n}، أولها «{first['component']}» في السطر "
+                         f"{first['line']} من {first['file']})؛ لكن هذه الحماية لا تشمل أي مستدعٍ آخر للحزمة (صفحة "
+                         f"أخرى أو تطبيق آخر أو صلاحية EXECUTE ممنوحة مباشرة)، فيبقى التحقق داخل الروتين لازمًا.")
