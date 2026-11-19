@@ -200,3 +200,24 @@ def test_installer_workflow_tests_powershell_like_the_shell_installer():
             pinned |= set(re.findall(r"uses: (\S+@[0-9a-f]{40})", other.read_text(encoding="utf-8")))
     assert used and used <= pinned, used - pinned
     assert not re.search(r"uses: \S+@(?![0-9a-f]{40}\b)", wf)
+
+
+def test_workflow_concurrency_never_cancels_installers_or_main():
+    # 1.3.1: the installers' macOS jobs waited ~30 min for a runner and failed; the fix serialises duplicate runs of a
+    # commit (never cancels them) and lets a newer push give back the macOS runners of a superseded CI run
+    wfs = ROOT / ".github" / "workflows"
+    inst = (wfs / "installers.yml").read_text(encoding="utf-8")
+    block = inst[inst.index("\nconcurrency:"):inst.index("\npermissions:")]
+    assert "group: installers-${{ github.sha }}" in block and "cancel-in-progress: false" in block
+    head = inst[:inst.index("\njobs:")]
+    assert "github.ref" not in head and "github.event_name" not in head      # push and dispatch of a commit: one group
+    for job in ("install-sh", "install-ps1", "homebrew"):
+        body = inst[inst.index(f"\n  {job}:"):]
+        body = body[:body.index("    steps:")]
+        assert re.search(r"timeout-minutes: \d+", body), job
+    ci = (wfs / "ci.yml").read_text(encoding="utf-8")
+    block = ci[ci.index("\nconcurrency:"):ci.index("\npermissions:")]
+    assert "group: ci-${{ github.event_name }}-${{ github.ref }}" in block
+    assert "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}" in block
+    rel = (wfs / "release.yml").read_text(encoding="utf-8")
+    assert "cancel-in-progress: true" not in rel                             # a release build is never cancelled

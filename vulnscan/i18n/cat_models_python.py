@@ -28,6 +28,12 @@ CATALOG: dict[str, str] = {
     "لا تبنِ نص القالب من مدخلات المستخدم؛ خزّن المحتوى بيانات ومرّره متغيرًا إلى قالب ثابت.":
         "Do not build template source from user input; store the content as data and pass it as a variable to a "
         "fixed template.",
+    "طبّع المسار وتحقق أنه داخل المجلد المسموح قبل فحص وجوده أو خصائصه: الجواب يكشف ملفات خارج ذلك المجلد.":
+        "Canonicalize the path and verify it stays inside the allowed directory before checking whether it exists or "
+        "reading its metadata: the answer reveals files outside that directory.",
+    "لا تفعّل feature_external_ges / resolve_entities؛ استخدم defusedxml أو محللًا بإعداداته الآمنة الافتراضية لتحليل XML غير موثوق.":
+        "Do not turn on feature_external_ges / resolve_entities; parse untrusted XML with defusedxml or a parser left "
+        "at its safe defaults.",
 }
 
 PATTERNS: list[tuple[str, str]] = []
