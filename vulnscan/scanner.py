@@ -941,6 +941,18 @@ def _xxe_parses_untainted(tree, path, line: int, df_lines: set, param_reach: set
     return True
 
 
+# PHP functions that return no outside input: the dangerous calls the pattern rules match, and pure conversions
+_PHP_NO_INPUT_CALLS = frozenset({
+    "eval", "assert", "system", "exec", "shell_exec", "passthru", "popen", "proc_open", "pcntl_exec", "unserialize",
+    "create_function", "preg_replace", "call_user_func", "call_user_func_array", "include", "require", "include_once",
+    "require_once", "echo", "print", "printf", "sprintf", "vsprintf", "implode", "join", "explode", "trim", "ltrim",
+    "rtrim", "strtolower", "strtoupper", "ucfirst", "ucwords", "substr", "str_replace", "str_pad", "str_repeat",
+    "strlen", "count", "intval", "floatval", "boolval", "strval", "settype", "is_numeric", "is_string", "is_array",
+    "escapeshellarg", "escapeshellcmd", "htmlspecialchars", "htmlentities", "addslashes", "urlencode",
+    "rawurlencode", "base64_encode", "json_encode", "md5", "sha1", "hash", "basename", "dirname", "array_map",
+    "array_merge", "array_keys", "array_values", "in_array", "isset", "empty", "date", "time", "number_format"})
+
+
 def _all_names_known(tree, line: int, cache: dict) -> bool:
     """True only when every value read on `line` comes from a plain assignment or a parameter of the enclosing
     function, i.e. a definition the flow-sensitive dataflow analysis actually evaluates. Globals, imported values,
@@ -1005,13 +1017,19 @@ def _all_names_known(tree, line: int, cache: dict) -> bool:
         for n in _ast.walk(tree):
             if isinstance(n, _ast.Attribute) and isinstance(n.value, _ast.Name):
                 receivers.add(id(n.value))
+        called = {id(n.func) for n in _ast.walk(tree) if isinstance(n, _ast.Call)}
         for n in _ast.walk(tree):
             if isinstance(n, _ast.Name) and isinstance(n.ctx, _ast.Load) and getattr(n, "lineno", None):
                 is_module_receiver = id(n) in receivers and (n.id in imports or n.id[:1].isupper())
-                # a PHP identifier written without `$` names a function or a constant (`system(...)`, `ENT_QUOTES`):
-                # neither can hold data the analysis did not see
-                if getattr(n, "php_bare", False) or getattr(n, "php_out", False):
-                    by_line.setdefault(n.lineno, set())          # `system("ls")`: a call of constants only
+                # a PHP identifier written without `$` names a constant (`ENT_QUOTES`) or a function: a constant,
+                # a function that reads no input (`trim`, `intval`) or the dangerous call itself (`system("ls")`)
+                # holds no data the analysis did not see; any other function (`file_get_contents('php://input')`)
+                # may return input, so the line keeps its pattern hit
+                if getattr(n, "php_out", False) or (getattr(n, "php_bare", False) and (
+                        id(n) not in called or n.id.lower() in _PHP_NO_INPUT_CALLS)):
+                    by_line.setdefault(n.lineno, set())
+                elif getattr(n, "php_bare", False):
+                    by_line.setdefault(n.lineno, set()).add("<php-call>")
                 elif not is_module_receiver and not hasattr(builtins, n.id) and n.id not in ("self", "cls", "this"):
                     by_line.setdefault(n.lineno, set()).add(n.id)
         cache[key] = (sorted(scopes, key=lambda x: x[1] - x[0]), by_line)

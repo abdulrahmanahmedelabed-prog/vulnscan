@@ -22,6 +22,7 @@ Type annotations, generics and visibility modifiers are skipped.
 from __future__ import annotations
 
 import ast
+import copy
 import re
 
 from . import php_semantics as _php_semantics
@@ -329,6 +330,8 @@ def _php_bool_test(left, op: str, right):
             and isinstance(right, ast.Constant) and op in ("==", "===", "!=", "!==")):
         return None
     v = right.value
+    if isinstance(v, bool) and op in ("===", "!==") and left.func.id.lower() == "preg_match":
+        return None                        # preg_match returns 1 / 0, and false only on an error: `=== false` is no test
     if v is True or v == 1 and not isinstance(v, bool) and isinstance(v, int):
         truth = True
     elif v is False or (isinstance(v, int) and not isinstance(v, bool) and v == 0):
@@ -2053,6 +2056,10 @@ class Parser:
             arith = _mk(ast.BinOp, line, left=_name(target.id, line), op=_aug_op(op), right=value)
             arith.php_numeric = True
             return self.field_or_local(target.id, arith, line)
+        if isinstance(target, ast.Name) and self.lang == "php" and op == ".=":
+            # `$sql .= " ORDER BY " . $x`: the appended pieces are judged where they land in the whole string
+            return self.field_or_local(target.id, _mk(ast.BinOp, line, left=_name(target.id, line), op=ast.Add(),
+                                                      right=value), line)
         if isinstance(target, ast.Name):
             self.ruby_locals.add(target.id)
             return self.field_or_local(target.id, value, line) if op == "=" else [_mk(ast.AugAssign, line, target=_name(target.id, line, store=True), op=_aug_op(op), value=value)]
@@ -2731,9 +2738,11 @@ class Parser:
                 and isinstance(args[1], ast.Name):
             # exec($cmd, $lines): the command's output lines are written into $lines (modelled as the output of
             # a command whose text is not the attacker's: the command itself is checked at the exec() call)
-            self.hoisted.append(_mk(ast.Assign, line, targets=[_name(args[1].id, line, store=True)],
-                                    value=_mk(ast.Call, line, func=_name("shell_exec", line), args=[_const("", line)],
-                                              keywords=[])))
+            # (modelled as `shell_exec("") . <command>`: the local output plus whatever the command line carries;
+            # the command itself is checked at the exec() call)
+            out = _mk(ast.BinOp, line, left=_mk(ast.Call, line, func=_name("shell_exec", line), args=[_const("", line)],
+                                                keywords=[]), op=ast.Add(), right=copy.deepcopy(args[0]))
+            self.hoisted.append(_mk(ast.Assign, line, targets=[_name(args[1].id, line, store=True)], value=out))
         if self.lang == "php" and isinstance(func, ast.Name) and func.id.lower() == "settype" and len(args) == 2 \
                 and isinstance(args[0], ast.Name) and isinstance(args[1], ast.Constant) and isinstance(args[1].value, str):
             # settype($x, "int") converts $x in place: from here on it holds a number, as `$x = intval($x)` would
