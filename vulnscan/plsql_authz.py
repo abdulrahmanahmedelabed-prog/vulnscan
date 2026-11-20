@@ -25,11 +25,15 @@ The rule is about inconsistency, not a guess that every routine needs a check, a
    what follows when the branch that runs whenever it failed leaves the routine (`if not can_view(…) then raise…`,
    `= FALSE`, `!= TRUE`, `NOT (…)`, `NVL(…, FALSE) = FALSE`, `= 'N'`, `… OR x`, `CASE WHEN NOT …`), also through a
    variable that holds the answer (1.5.0: the condition is parsed with AND / OR / NOT / comparisons; `not can_view(…)
-   and x`, `can_view(…) or x`, `NVL(…, TRUE)` and a comparison with another expression guard nothing); an answer
+   and x`, `can_view(…) or x` and a comparison with another expression guard nothing; only the call itself, a
+   variable holding its answer, or NVL / COALESCE of one with a failing default (FALSE / 0 / 'N') carries the
+   answer, not NVL(…, 'Y'), GREATEST, arithmetic or DECODE; of the orderings only > 0 / >= 1 pass and <= 0 / < 1
+   fail); an answer
    nobody acts on covers nothing. RETURN / RAISE / raise_application_error end their path. A read
    counts where what was read can leave the routine (each RETURN of a non-constant after it, the end of a
    procedure), so querying the row's owner before the check is fine. Pure computation is never flagged.
-4. A routine of the package is a check itself (a call to it covers like a guard call) only when every path to its
+4. A routine of the package is a check itself (a call to it covers like a guard call; an authorization-like name
+   that calls an authorization check on some of its paths only does not count either) only when every path to its
    normal exit (the end of a procedure, a RETURN of anything but FALSE / NULL / 0 / 'N') passes the guard (1.5.0,
    _Pkg.covering); a helper that calls it on some paths only covers nothing, and the message says so.
 
@@ -443,7 +447,8 @@ def _cond(toks, lo, hi):
 
 # A condition as a tree: ("or", [e…]) / ("and", [e…]) / ("not", e) / ("cmp", e, op, e, lit_left, lit_right) /
 # ("atom", lo, hi, names, flags). lit_*: "T" / "F" for a literal TRUE / FALSE / 'Y' / 'N' / 1 / 0, "X" for another
-# literal, None for an expression. flags: "nvl_true" for nvl(…, true) / coalesce(…, true) (a NULL answer passes).
+# literal, None for an expression. shape: see _shape (only a bare call / name, or nvl of one with a failing
+# default, can carry the check's answer).
 def _parse_or(toks, j, e):
     a, j = _parse_and(toks, j, e)
     items = [a]
@@ -504,11 +509,44 @@ def _parse_primary(toks, j, e):
     if j == lo:
         raise _Bad
     names = frozenset(toks[x].val for x in range(lo, j) if toks[x].kind == "id")
-    flags = ""
-    if toks[lo].kind == "id" and toks[lo].val in ("nvl", "coalesce") and j - lo >= 4 and \
-            _is(toks[j - 2], "true") and toks[j - 3].kind == "punct" and toks[j - 3].val == ",":
-        flags = "nvl_true"
-    return ("atom", lo, j, names, flags), j
+    return ("atom", lo, j, names, _shape(toks, lo, j)), j
+
+
+def _call_end(toks, lo, hi):
+    """`name[.name…][(balanced args)]` starting at lo -> index after it (≤ hi), or None."""
+    if toks[lo].kind != "id":
+        return None
+    k = lo + 1
+    while k + 1 < hi and toks[k].kind == "punct" and toks[k].val == "." and toks[k + 1].kind == "id":
+        k += 2
+    if k < hi and toks[k].kind == "punct" and toks[k].val == "(":
+        depth = 0
+        while k < hi:
+            if toks[k].kind == "punct" and toks[k].val == "(":
+                depth += 1
+            elif toks[k].kind == "punct" and toks[k].val == ")":
+                depth -= 1
+                if depth == 0:
+                    return k + 1
+            k += 1
+        return None
+    return k
+
+
+def _shape(toks, lo, hi):
+    """What an atom of a condition is, for the check's polarity (1.5.0): ("call", lo) a call or a name alone (the
+    check itself, or a variable holding its answer, when that is what lo is), ("nvl", lo) nvl / coalesce of such a
+    call or name with a default that counts as FAILING (FALSE / 0 / 'N'), or None: anything else (nvl(…, 'Y'),
+    greatest(…), arithmetic, decode(…), nvl(x, <expression>)) says nothing about which way the check went."""
+    if _call_end(toks, lo, hi) == hi:
+        if toks[lo].val in ("nvl", "coalesce") and hi - lo >= 6 and toks[lo + 1].val == "(":
+            inner = _call_end(toks, lo + 2, hi - 1)
+            if inner is not None and inner + 2 == hi - 1 and toks[inner].kind == "punct" and toks[inner].val == "," \
+                    and _literal(("atom", inner + 1, inner + 2), toks) in ("F", "0"):
+                return ("nvl", lo + 2, toks[lo + 2].val if inner == lo + 3 else None)
+            return None
+        return ("call", lo, toks[lo].val if hi == lo + 1 else None)
+    return None
 
 
 def _literal(node, toks):
@@ -517,6 +555,8 @@ def _literal(node, toks):
     t = toks[node[1]]
     if t.kind == "id" and t.val in ("true", "false"):
         return "T" if t.val == "true" else "F"
+    if t.kind == "num" and t.val.strip() in ("0", "1"):
+        return t.val.strip()                         # "0" / "1": a number of the check (see polarity)
     if t.kind in ("num", "str"):
         v = t.val.strip().lower()
         return "T" if v in _TRUTHY else "F" if v in _FALSY else "X"
@@ -702,9 +742,13 @@ def _unguarded(r: Routine, guards, accesses):
         """(x true implies the check passed, the check failing implies x true)."""
         tag = x[0]
         if tag == "atom":
-            if not holds(x):
+            # only the check itself, a variable holding its answer, or nvl(either, FALSE / 0 / 'N')
+            if not holds(x) or x[4] is None:
                 return False, False
-            return (x[4] != "nvl_true"), False
+            _kind, at, name = x[4]
+            if at in guards or (name is not None and name in guard_vars):
+                return True, False
+            return False, False
         if tag == "not":
             a, b = polarity(x[1])
             return b, a
@@ -725,11 +769,13 @@ def _unguarded(r: Routine, guards, accesses):
         if lit is None:
             return False, False                         # compared with another expression: not known
         if op in ("=", "!=", "<>", "^=", "~="):
-            same = (op == "=") != (lit == "F")          # = TRUE / 'Y' / 'ADMIN', != FALSE / 'N' / 0
+            same = (op == "=") != (lit in ("F", "0"))   # = TRUE / 'Y' / 'ADMIN' / 1, != FALSE / 'N' / 0
             return base if same else (base[1], base[0])
-        if lit in ("F", "T") and op in (">", ">="):     # `can_x(…) > 0`, `>= 1`
+        # an ordering compares a count / level: > 0 and >= 1 pass, <= 0 and < 1 fail; anything else (>= 0, < 0,
+        # > 1, <= 1, an ordering of TRUE / 'Y') says nothing
+        if (lit, op) in (("0", ">"), ("1", ">=")):
             return base
-        if lit in ("F", "T") and op in ("<", "<="):     # `can_x(…) < 1`, `<= 0`
+        if (lit, op) in (("0", "<="), ("1", "<")):
             return base[1], base[0]
         return False, False
 
@@ -1085,7 +1131,12 @@ def findings(specs: dict, bodies: list, lines_by_file: dict) -> list:
             if not s:
                 continue                                 # pure computation: nothing to protect
             # any authorization-like call, of the package's guard or another, directly or through a package routine
-            own_checks = [p for p, c, loc in r.refs if _looks_auth(c) or (loc is not None and loc in any_auth and loc != r.name)]
+            # a routine of the package counts when it is a check on every path to its normal exit; one that calls
+            # an authorization check on some paths only does not, whatever its name (`can_view` that returns TRUE
+            # without asking in one branch); a check with no authorization call of its own counts by its name
+            own_checks = [p for p, c, loc in r.refs
+                          if (loc is not None and loc != r.name and loc in any_auth)
+                          or (_looks_auth(c) and not (loc is not None and loc in loose_auth and loc not in any_auth))]
             gap = None
             if own_checks:
                 left = _unguarded(r, own_checks, [p for p, _k, _o in s])
@@ -1208,8 +1259,10 @@ def apex_context(found: list, sites: list, sec: dict, bodies: list = (), syns: d
     scanned SQL (1.5.0), or a constant `execute immediate 'begin pkg.routine; end;'`; comments and other strings are
     not. Since 1.5.0 a component that calls another package routine of the scan which calls PACKAGE.ROUTINE (up to
     3 hops, through callers that do not check authorization first) is a call site too, labelled "indirectly via
-    PKG.CALLER". A process that runs When Button Pressed is not protected by the button's scheme (a crafted submit
-    with that REQUEST runs it): the message names the button and its scheme and says to put it on the component. A component in both the .sql and the readable YAML export of one application counts once.
+    PKG.CALLER". A component in both the .sql and the YAML export of one application counts once (the YAML
+    export's application id from the nearest f<id>.yaml; unknown, it matches only a scan of one .sql application).
+    A process that runs When Button Pressed is not protected by the button's scheme (a crafted submit
+    with that REQUEST runs it): the message names the button and its scheme and says to put it on the component.
 
     Every call site protected: the finding stays as it is, and says that the protection covers only those callers.
     Some call site unprotected (public page, component without a scheme, application process without one): the
@@ -1222,8 +1275,9 @@ def apex_context(found: list, sites: list, sec: dict, bodies: list = (), syns: d
     syns = syns or {}
     sites = [(x + ("sql",))[:4] for x in sites]
     sql_labels = {(app, b.label) for _r, b, app, fmt in sites if fmt == "sql"}
-    sql_any = {b.label for _r, b, _a, fmt in sites if fmt == "sql"}
-    sites = [x for x in sites if x[3] != "yaml" or not ((x[2], x[1].label) in sql_labels or (x[2] is None and x[1].label in sql_any))]
+    sql_apps = {app for _r, _b, app, fmt in sites if fmt == "sql"}
+    only = next(iter(sql_apps)) if len(sql_apps) == 1 else None      # a YAML export of unknown application
+    sites = [x for x in sites if x[3] != "yaml" or (x[2] if x[2] is not None else only, x[1].label) not in sql_labels]
     for f in found:
         pkg, routine = str(f.extra.get("package") or ""), str(f.extra.get("routine") or "")
         if not pkg or not routine:

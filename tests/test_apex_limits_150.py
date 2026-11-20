@@ -818,3 +818,99 @@ def test_yaml_plugin_code_is_declarations():
     assert [b.kind for b in blocks] == ["plsql_decls"]
     _u, d = pf.parse_plsql(apex_export.wrapped_plsql(blocks[0]))
     assert d["skipped"] == 0
+
+
+# =================================================================== review fixes (1.5.0)
+@pytest.mark.parametrize("cond,covered", [
+    # R1: an ordering only says which way the check went for > 0 / >= 1 (passed) and <= 0 / < 1 (failed)
+    ("can_view_n(p_emp_id) < 0", False), ("can_view_n(p_emp_id) <= 0", True),
+    ("can_view_n(p_emp_id) = 0", True), ("can_view_n(p_emp_id) < 1", True),
+    ("can_view_n(p_emp_id) <= 1", False), ("can_view_n(p_emp_id) >= 0", False),
+    ("0 > can_view_n(p_emp_id)", False), ("0 >= can_view_n(p_emp_id)", True),
+    # R2: only the check itself, a variable holding it, or nvl(check, failing default) carries the answer
+    ("nvl(can_view_c(p_emp_id), 'Y') = 'N'", False), ("nvl(can_view_c(p_emp_id), 'N') = 'N'", True),
+    ("nvl(can_view_n(p_emp_id), 1) = 0", False), ("nvl(can_view_n(p_emp_id), 0) = 0", True),
+    ("greatest(can_view_n(p_emp_id), to_number(p_flag)) = 0", False),
+    ("can_view_n(p_emp_id) + to_number(p_flag) = 0", False),
+    ("decode(can_view_c(p_emp_id), 'Y', 'N', 'Y') = 'N'", False),
+    ("nvl(can_view(p_emp_id), p_flag = 'Y') = false", False), ("nvl(can_view(p_emp_id), false) = false", True),
+])
+def test_failing_branch_needs_the_check_itself_and_a_known_comparison(cond, covered):
+    found = _flagged(f"    if {cond} then\n{RAISE}    end if;\n")
+    assert (not found) == covered, (cond, [f.extra["coverage"] for f in found])
+
+
+@pytest.mark.parametrize("cond,covered", [("can_view_n(p_emp_id) > 0", True), ("can_view_n(p_emp_id) >= 1", True),
+                                          ("can_view_n(p_emp_id) = 1", True), ("can_view_n(p_emp_id) >= 0", False),
+                                          ("can_view_n(p_emp_id) > 1", False)])
+def test_passing_branch_orderings(cond, covered):
+    body = (f"    if {cond} then\n      select photo into l_photo from hr_photos where emp_id = p_emp_id;\n"
+            "      return l_photo;\n    end if;\n    return null;\n")
+    text = _package(GUARD, SIBLINGS, PHOTO.format(check="").replace(
+        "    select photo into l_photo from hr_photos where emp_id = p_emp_id;\n    return l_photo;\n", body))
+    specs, bodies = plsql_authz.collect(text, "x.pkb")
+    found = [f for f in plsql_authz.findings(specs, bodies, {"x.pkb": text.split("\n")}) if f.extra["routine"] == "BIO_PHOTO"]
+    assert (not found) == covered, cond
+
+
+def test_auth_named_package_function_that_answers_without_asking_is_no_check():
+    # R3: can_view asks apex_authorization on one path and answers TRUE without asking on another
+    partial = """  function can_view(p_emp_id in number) return boolean is
+  begin
+    if p_emp_id < 0 then
+      return true;
+    end if;
+    return apex_authorization.is_authorized('PHOTO');
+  end can_view;
+"""
+    call = "if not can_view(p_emp_id) then raise_application_error(-20001, 'no'); end if"
+    found = _with_helper(partial, call)
+    assert len(found) == 1 and found[0].extra["partial_helpers"] == ["HDR_UI.CAN_VIEW"]
+    # twin: it asks on every path to an answer other than FALSE
+    full = partial.replace("      return true;\n", "      return false;\n")
+    assert not _with_helper(full, call)
+
+
+def test_region_scheme_does_not_protect_a_page_process(tmp_path):
+    # S1: a page process / validation / branch runs on submit whatever its region showed
+    body = _region(5, "Form", scheme=ADMIN) + _process(CALL, ",p_region_id=>wwv_flow_imp.id(5)\n")
+    f = _one(tmp_path, {"hdr_ui.pkb": PKG, "f141.sql": _app(_page_with(10, body))})
+    assert f.severity == "high" and f.extra["apex_protection"] == "unprotected"
+    # twin: code rendered inside the region (a sub-region's source) is protected by it
+    body = _region(5, "Form", scheme=ADMIN) + _region(6, "Photo", parent=5, source=PLSQL_REGION, typ="NATIVE_PLSQL")
+    f = _one(tmp_path / "r", {"hdr_ui.pkb": PKG, "f141.sql": _app(_page_with(10, body))})
+    assert f.extra["apex_protection"] == "all_protected"
+
+
+DF_YAML = ("---\n# ====== Page: Page 10 ====\nid: 10\nidentification: \n  name: Page 10\n\nprocesses: \n"
+           "- # ====== Process: Proc 10 ====\n  id: 1\n  identification: \n    name: Proc 10\n    type: Execute Code\n\n"
+           "  source: \n    language: PL/SQL\n    pl/sql-code: |\n      begin\n"
+           "        execute immediate '{sql}' || :P10_ID;\n      end;\n")
+DF_SQL = "begin\n  execute immediate '{sql}' || :P10_ID;\nend;"
+
+
+def _df(tmp_path, files) -> list:
+    return sorted(f.file for f in _scan(tmp_path, files) if f.rule_id == "DF004")
+
+
+def test_yaml_dedupe_by_nearest_application_file_and_sink(tmp_path):
+    # R4: app/yaml/f141.yaml (not readable/application/) names the application of app/yaml/pages/…
+    same = {"f141.sql": _app(_proc_page(10, DF_SQL.format(sql="delete from t where id = "))),
+            "app/yaml/f141.yaml": APP_YAML.format(scheme=""),
+            "app/yaml/pages/p00010.yaml": DF_YAML.format(sql="delete from t where id = ")}
+    assert _df(tmp_path / "a", same) == ["f141.sql"]
+    # twins: another application (nearest f200.yaml) …
+    other = dict(same, **{"app/yaml/f141.yaml": APP_YAML.format(scheme="").replace("id: 141", "id: 200")})
+    assert _df(tmp_path / "b", other) == ["app/yaml/pages/p00010.yaml", "f141.sql"]
+    # … the same component reporting other code …
+    code = dict(same, **{"app/yaml/pages/p00010.yaml": DF_YAML.format(sql="update orders set s = 1 where c = ")})
+    assert _df(tmp_path / "c", code) == ["app/yaml/pages/p00010.yaml", "f141.sql"]
+    # … and a YAML export of unknown application when the scan holds two .sql applications
+    two = {"hr/f141.sql": _app(_proc_page(10, DF_SQL.format(sql="delete from t where id = "))),
+           "shop/f200.sql": _app(_proc_page(10, DF_SQL.format(sql="delete from t where id = "))).replace(
+               "p_default_application_id=>141", "p_default_application_id=>200"),
+           "x/pages/p00010.yaml": DF_YAML.format(sql="delete from t where id = ")}
+    assert len(_df(tmp_path / "d", two)) == 3
+    # unknown application, one .sql application in the scan: the same code is a duplicate
+    one = {"f141.sql": same["f141.sql"], "x/pages/p00010.yaml": same["app/yaml/pages/p00010.yaml"]}
+    assert _df(tmp_path / "e", one) == ["f141.sql"]

@@ -5768,10 +5768,22 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     script_ranges: list = []     # Supporting Objects scripts: (rel, first line, last line, label)
     synonyms: dict = {}          # APX024 call sites: synonym (lower case) -> what it names (`create synonym s for o.pkg`)
     export_of: dict = {}         # APEX export file -> (application id, "sql" | "yaml"): one application in both forms
-    # the readable YAML export: its application id is in readable/application/f<id>.yaml, beside the pages
-    yaml_apps = {rel.lower().rsplit("readable/application/", 1)[0]: apex_export.yaml_application_id(text)
-                 for rel, text in files.items() if rel.lower().endswith((".yaml", ".yml"))
-                 and "readable/application/" in rel.lower() and apex_export.yaml_application_id(text)}
+    # the YAML export: its application id is in the application file f<id>.yaml of the nearest folder above the page
+    # (readable/application/f141.yaml, app/yaml/f347.yaml …)
+    yaml_apps: dict = {}
+    for rel, text in files.items():
+        if rel.lower().endswith((".yaml", ".yml")) and re.fullmatch(r"f\d+\.ya?ml", rel.replace("\\", "/").rsplit("/", 1)[-1].lower()):
+            aid = apex_export.yaml_application_id(text)
+            if aid:
+                yaml_apps[rel.replace("\\", "/").rsplit("/", 1)[0] if "/" in rel.replace("\\", "/") else ""] = aid
+
+    def yaml_app(rel):
+        parts = rel.replace("\\", "/").split("/")[:-1]
+        for k in range(len(parts), -1, -1):
+            aid = yaml_apps.get("/".join(parts[:k]))
+            if aid:
+                return aid
+        return None
 
     def add_blocks(rel, blocks, diag):
         """Extracted code blocks (APEX export / readable YAML / ORDS handlers) -> units at their real lines."""
@@ -5835,8 +5847,7 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             blocks, afind, _, yinfo = apex_export.extract_yaml_full(text, rel)
             findings.extend(afind)
             add_blocks(rel, blocks, diag)
-            app_id = yinfo["app"] or (yaml_apps.get(low.rsplit("readable/application/", 1)[0])
-                                      if "readable/application/" in low else None)
+            app_id = yinfo["app"] or yaml_app(rel)
             export_of[rel] = (app_id, "yaml")
             sec = apex_sec.setdefault(app_id, {"app_scheme": "", "schemes": {}, "pages": {}})
             sec["app_scheme"] = sec["app_scheme"] or yinfo["app_scheme"]
@@ -5910,31 +5921,59 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     _label_findings(authz, script_ranges)
     plsql_authz.apex_context(authz, apex_sites, apex_sec, authz_bodies, synonyms)
     findings.extend(authz)
-    return projects, _dedupe_export_forms(findings, export_of)
+    return projects, _dedupe_export_forms(findings, export_of, shared_lines)
 
 
-def _dedupe_export_forms(findings: list, export_of: dict) -> list:
-    """One application scanned as both a .sql export and a readable YAML export (APEX 23.2+ writes both): a finding
-    of the YAML form is dropped when the .sql form of the same application has one of the same rule in the same
-    component (the labels are built alike); a YAML export whose application id is not in the scan matches any .sql
-    export. Everything else of both forms is kept."""
-    if not any(fmt == "yaml" for _a, fmt in export_of.values()) or not any(fmt == "sql" for _a, fmt in export_of.values()):
+def _dedupe_export_forms(findings: list, export_of: dict, lines: dict | None = None) -> list:
+    """One application scanned as both a .sql export and a YAML export (APEX 23.2+ writes both): a finding of the
+    YAML form is dropped when the .sql form of the same application has one of the same rule, in the same component
+    (the labels are built alike), on the same code (the reported line, unquoted and normalised; for the
+    configuration checks APX006-APX023, whose line is the attribute and differs between the forms, the component
+    is enough). The YAML export's
+    application id comes from the nearest f<id>.yaml above it; when the scan does not hold it, the YAML export
+    matches only if the scan holds exactly one .sql application. Everything else of both forms is kept."""
+    sql_apps = {a for a, fmt in export_of.values() if fmt == "sql"}
+    if not sql_apps or not any(fmt == "yaml" for _a, fmt in export_of.values()):
         return findings
-    seen, seen_any = set(), set()
+    seen = set()
     for f in findings:
         app, fmt = export_of.get(f.file, (None, ""))
         label = f.extra.get("apex_component")
         if fmt == "sql" and label:
-            seen.add((app, label, f.rule_id))
-            seen_any.add((label, f.rule_id))
+            seen.add((app, label, f.rule_id, _sink_key(f, lines)))
     out = []
     for f in findings:
         app, fmt = export_of.get(f.file, (None, ""))
         label = f.extra.get("apex_component")
-        if fmt == "yaml" and label and ((app, label, f.rule_id) in seen or (app is None and (label, f.rule_id) in seen_any)):
-            continue
+        if fmt == "yaml" and label:
+            if app is None and len(sql_apps) == 1:
+                app = next(iter(sql_apps))
+            if app is not None and (app, label, f.rule_id, _sink_key(f, lines)) in seen:
+                continue
         out.append(f)
     return out
+
+
+_CONFIG_RULES_DEDUPE = {f"APX0{n:02d}" for n in range(6, 24)}
+
+
+def _sink_key(f, lines) -> str:
+    """The code a finding of an APEX export reports: its line in the file, normalised (_sink_text)."""
+    if f.rule_id in _CONFIG_RULES_DEDUPE:
+        return ""
+    rows = (lines or {}).get(f.file) or []
+    text = rows[f.line - 1] if 0 < f.line <= len(rows) else str(f.snippet or "")
+    return _sink_text(text)
+
+
+def _sink_text(snippet) -> str:
+    """`[label] '  execute immediate ''x'' || :P1;',` (a .sql export line) and `[label] execute immediate 'x' ||
+    :P1;` (a YAML line) -> the same text: label, string quoting of the export, doubled quotes and spacing removed."""
+    s = re.sub(r"^\[[^\]]*\]\s*", "", str(snippet or "")).strip()
+    s = re.sub(r"[,)\s]+$", "", s) if s.startswith("'") else s
+    if len(s) >= 2 and s[0] == "'" and s[-1] == "'":
+        s = s[1:-1].replace("''", "'")
+    return " ".join(s.split()).lower()
 
 
 def _mark_unused_components(findings: list, plugin_defs: dict, plugin_refs: set, lines: dict) -> None:
