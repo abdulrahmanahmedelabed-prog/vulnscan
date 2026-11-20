@@ -287,6 +287,7 @@ class Parser:
         self.hoisted: list = []       # statements to prepend to the current statement
         self.imports: list = []       # module-level imports produced by require()
         self.req_counter = 0
+        self.req_mods: dict = {}      # local name -> module it was bound to by require() / import
         self.cls_stack: list = []
         self.anon = 0
 
@@ -641,10 +642,13 @@ class Parser:
                 and value.args and isinstance(value.args[0], ast.Constant) and isinstance(value.args[0].value, str):
             modname = resolve_specifier(value.args[0].value, self.mod)
             if isinstance(target, ast.Name):
+                self.req_mods[target.id] = modname
                 return [_mk(ast.Import, line, names=[ast.alias(name=modname, asname=target.id)])]
             if isinstance(target, tuple) and target[0] == "obj":
                 names = [ast.alias(name=k, asname=v) for k, v in target[1]]
                 return [_mk(ast.ImportFrom, line, module=modname, names=names, level=0)]
+        if isinstance(target, ast.Name) and isinstance(value, ast.Name) and value.id in self.req_mods:
+            self.req_mods[target.id] = self.req_mods[value.id]      # const pify = require('pify')
         if isinstance(target, ast.Name) and isinstance(value, ast.Name) and value.id.startswith("_fn_"):
             fn = self.pop_hoisted_function(value.id)
             if fn is not None:
@@ -758,6 +762,7 @@ class Parser:
         modname = resolve_specifier(spec, self.mod)
         out = []
         if default:
+            self.req_mods[default] = modname
             out.append(_mk(ast.Import, line, names=[ast.alias(name=modname, asname=default)]))
         if ns:
             out.append(_mk(ast.Import, line, names=[ast.alias(name=modname, asname=ns)]))
@@ -1351,8 +1356,13 @@ class Parser:
             modname = resolve_specifier(args[0].value, self.mod)
             alias = f"__req{self.req_counter}"
             self.req_counter += 1
+            self.req_mods[alias] = modname
             self.imports.append(_mk(ast.Import, line, names=[ast.alias(name=modname, asname=alias)]))
             return _name(alias, line)
+        if args and isinstance(args[0], (ast.Name, ast.Attribute)) and self._promisifier(func):
+            # util.promisify(cp.exec) / pify(fs) / bluebird.promisifyAll(cp): the same function (or module), now
+            # returning a promise; data reaches the same place
+            return args[0]
         # route registrations: callbacks become entry points
         member = func.attr if isinstance(func, ast.Attribute) else (func.id if isinstance(func, ast.Name) else "")
         if member in ROUTE_METHODS and fn_args:
@@ -1366,6 +1376,19 @@ class Parser:
                         st.decorator_list.append(_name(kind, line))
                         st.decorator_list.extend(mws)
         return _mk(ast.Call, line, func=func, args=args, keywords=[])
+
+    _PROMISIFY_MODS = frozenset({"pify", "thenify", "thenify-all", "util.promisify", "util.promisify-all", "es6-promisify",
+                                 "promisify-node", "@gar/promisify"})
+    _PROMISIFY_FNS = frozenset({"promisify", "promisifyAll", "thenify", "thenifyAll", "pify"})
+
+    def _promisifier(self, func) -> bool:
+        """A callee that wraps a callback-style function or module into a promise-returning one."""
+        if isinstance(func, ast.Attribute):
+            return func.attr in ("promisify", "promisifyAll", "thenifyAll")
+        if isinstance(func, ast.Name):
+            mod = self.req_mods.get(func.id)
+            return mod in self._PROMISIFY_MODS if mod is not None else func.id in self._PROMISIFY_FNS
+        return False
 
     def parse_template(self, tok) -> ast.AST:
         values = []

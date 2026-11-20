@@ -21,20 +21,32 @@ The rule is about inconsistency, not a guess that every routine needs a check, a
    compilation), in a loop, in an exception handler, after the access, skipped by a GOTO ("partial", with the line).
    A check called as a statement (`check_access('X');`) covers what follows; a check whose answer is a value
    (`can_view(…)`, `apex_authorization.is_authorized(…)`) covers the statement it is in and, through a condition,
-   either the branch it guards (`if can_view(…) then <access>`) or what follows when the failing branch leaves the
-   routine (`if not can_view(…) then raise_application_error(…); end if;`, also through a variable that holds the
-   answer); an answer nobody acts on covers nothing. RETURN / RAISE / raise_application_error end their path. A read
+   either the branch that runs only when it passed (`if can_view(…) then`, `= TRUE`, `!= FALSE`, `= 'Y'`, `> 0`) or
+   what follows when the branch that runs whenever it failed leaves the routine (`if not can_view(…) then raise…`,
+   `= FALSE`, `!= TRUE`, `NOT (…)`, `NVL(…, FALSE) = FALSE`, `= 'N'`, `… OR x`, `CASE WHEN NOT …`), also through a
+   variable that holds the answer (1.5.0: the condition is parsed with AND / OR / NOT / comparisons; `not can_view(…)
+   and x`, `can_view(…) or x` and a comparison with another expression guard nothing; only the call itself, a
+   variable holding its answer, or NVL / COALESCE of one with a failing default (FALSE / 0 / 'N') carries the
+   answer, not NVL(…, 'Y'), GREATEST, arithmetic or DECODE; of the orderings only > 0 / >= 1 pass and <= 0 / < 1
+   fail); an answer
+   nobody acts on covers nothing. RETURN / RAISE / raise_application_error end their path. A read
    counts where what was read can leave the routine (each RETURN of a non-constant after it, the end of a
    procedure), so querying the row's owner before the check is fine. Pure computation is never flagged.
+4. A routine of the package is a check itself (a call to it covers like a guard call; an authorization-like name
+   that calls an authorization check on some of its paths only does not count either) only when every path to its
+   normal exit (the end of a procedure, a RETURN of anything but FALSE / NULL / 0 / 'N') passes the guard (1.5.0,
+   _Pkg.covering); a helper that calls it on some paths only covers nothing, and the message says so.
 
-The analysis reads tokens of plain PL/SQL (.pkb/.pks/.sql files, scripts inside XML changelogs and, since
-1.4.0, the Supporting Objects installation scripts of APEX exports, at their export lines) and follows the
+The analysis reads tokens of plain PL/SQL (.pkb/.pks/.sql files, scripts inside XML changelogs and the Supporting
+Objects installation, upgrade and deinstallation scripts of APEX exports, at their export lines) and follows the
 statements of each routine (_flow). apex_context() then adds what the export says about the APEX components that
-call the routine and their authorization schemes. A body it cannot follow (an unexpected construct, a check or
-access inside a nested sub-program, a GOTO backwards) gets the lexical answer: any authorization-like call anywhere
-keeps the routine quiet. Not modelled: which way a test of the answer goes beyond NOT (`if can_view(…) = false`
-reads as the passing branch), the paths inside a helper of the package that calls the guard (a call to it counts as
-a check), an exception raised before the check that a handler other than WHEN OTHERS catches is assumed possible.
+call the routine and their authorization schemes (through synonyms, schema-qualified names, constant dynamic SQL,
+Invoke API processes and other package routines; see there). A body it cannot follow (an unexpected construct, a
+check or access inside a nested sub-program, a GOTO backwards) gets the lexical answer: any authorization-like call
+anywhere keeps the routine quiet. Not modelled: SQL NULL answers (`if not can_view(…)` with a NULL answer skips the
+branch), an exception raised before the check that a handler other than WHEN OTHERS catches is assumed possible;
+the guard is still elected as in 1.3 (a sibling counts when its first call to the guard, or to a helper reaching
+it on any path, comes before its first data access in the code).
 """
 
 from __future__ import annotations
@@ -74,6 +86,8 @@ class Routine:
     own_sinks: list = field(default_factory=list)  # [(token index, kind, object)]
     reads: list = field(default_factory=list)      # [(token index, object)]
     return_pos: list = field(default_factory=list)  # token indexes of RETURN statements
+    exits: list = field(default_factory=list)       # RETURN statements that can report success (all but
+    #                                                 `return false / null / 0 / 'N';`): the helper check (_Pkg.covering)
     end: int = 0
     lines: dict = field(default_factory=dict)       # token index of each fact above (and of `end`) -> absolute line
     flow: tuple | None = None   # statement tree of the body for the path check (see _flow); None: lexical answer only
@@ -272,9 +286,12 @@ def _analyse_body(toks, b, e, r: Routine, local_names: set, pkg: str):
         elif v == "execute" and nxt.kind == "id" and nxt.val == "immediate":
             r.own_sinks.append((j, "dynamic", ""))
         elif v == "return" and (prev.kind != "id" or prev.val in _STMT_START):
-            if not (toks[j + 2].kind == "punct" and toks[j + 2].val == ";" and (
-                    nxt.kind in ("num", "str") or (nxt.kind == "id" and nxt.val in ("null", "true", "false")))):
+            const = toks[j + 2].kind == "punct" and toks[j + 2].val == ";" and (
+                nxt.kind in ("num", "str") or (nxt.kind == "id" and nxt.val in ("null", "true", "false")))
+            if not const:
                 r.return_pos.append(j)                   # `return null;` / `return 0;` gives nothing away
+            if not (const and (nxt.val in ("null", "false") or nxt.val.strip().lower() in _FALSY)):
+                r.exits.append(j)
         if v in _KEYWORDS:
             j += 1
             continue
@@ -321,8 +338,8 @@ def _analyse_body(toks, b, e, r: Routine, local_names: set, pkg: str):
 #   ("s", lo, hi, leaves, var)   a statement or declaration over tokens [lo, hi); leaves: RETURN / RAISE /
 #                                raise_application_error, nothing runs after it on that path; var: the variable it
 #                                assigns (`l_ok := can_view(…)`, `l_ok boolean := …`), or None
-#   ("c", lo, hi, negated, names)   an IF / ELSIF / WHEN condition or a loop header: negated = token positions right
-#                                after NOT; names = {identifier: written after NOT}
+#   ("c", lo, hi, expr)          an IF / ELSIF / WHEN condition or a loop header; expr its boolean structure
+#                                (_parse_or), None when it does not parse
 #   ("x",)                       an unconditional EXIT / CONTINUE: the rest of the loop body is not reached that way
 #   ("lbl", name) / ("goto", name)
 #   ("seq", [nodes])
@@ -409,17 +426,141 @@ def _simple(toks, lo, hi, leaves=False, decl=False):
     return ("s", lo, hi, leaves, var)
 
 
+_CMP_OPS = {"=", "!=", "<>", "^=", "~=", "<", ">", "<=", ">="}
+_TRUTHY = {"true", "y", "yes", "t", "1"}
+_FALSY = {"false", "n", "no", "f", "0"}
+
+
 def _cond(toks, lo, hi):
-    negated, names = set(), {}
-    for p in range(lo, hi):
-        t = toks[p]
-        if t.kind != "id":
-            continue
-        neg = p > lo and _is(toks[p - 1], "not")
-        if neg:
-            negated.add(p)
-        names.setdefault(t.val, neg)
-    return ("c", lo, hi, frozenset(negated), names)
+    """An IF / ELSIF / WHEN condition or a loop header over tokens [lo, hi) (its keyword .. THEN / LOOP) -> ("c",
+    lo, hi, expr), expr the boolean structure the path check needs (see _parse_cond); None when it does not parse."""
+    try:
+        k = lo + 1 if toks[lo].kind == "id" and toks[lo].val in ("if", "elsif", "when", "while") else lo
+        end = hi - 1 if hi - 1 > k and toks[hi - 1].kind == "id" and toks[hi - 1].val in ("then", "loop") else hi
+        expr, j = _parse_or(toks, k, end)
+        if j != end:
+            expr = None
+    except (_Bad, IndexError, RecursionError):
+        expr = None
+    return ("c", lo, hi, expr)
+
+
+# A condition as a tree: ("or", [e…]) / ("and", [e…]) / ("not", e) / ("cmp", e, op, e, lit_left, lit_right) /
+# ("atom", lo, hi, names, flags). lit_*: "T" / "F" for a literal TRUE / FALSE / 'Y' / 'N' / 1 / 0, "X" for another
+# literal, None for an expression. shape: see _shape (only a bare call / name, or nvl of one with a failing
+# default, can carry the check's answer).
+def _parse_or(toks, j, e):
+    a, j = _parse_and(toks, j, e)
+    items = [a]
+    while j < e and _is(toks[j], "or"):
+        b, j = _parse_and(toks, j + 1, e)
+        items.append(b)
+    return (items[0] if len(items) == 1 else ("or", items)), j
+
+
+def _parse_and(toks, j, e):
+    a, j = _parse_not(toks, j, e)
+    items = [a]
+    while j < e and _is(toks[j], "and"):
+        b, j = _parse_not(toks, j + 1, e)
+        items.append(b)
+    return (items[0] if len(items) == 1 else ("and", items)), j
+
+
+def _parse_not(toks, j, e):
+    if j < e and _is(toks[j], "not"):
+        x, j = _parse_not(toks, j + 1, e)
+        return ("not", x), j
+    left, j = _parse_primary(toks, j, e)
+    if j < e and toks[j].kind == "punct" and toks[j].val in _CMP_OPS:
+        op = toks[j].val
+        right, j = _parse_primary(toks, j + 1, e)
+        return ("cmp", left, op, right, _literal(left, toks), _literal(right, toks)), j
+    return left, j
+
+
+def _parse_primary(toks, j, e):
+    if j >= e:
+        raise _Bad
+    if toks[j].kind == "punct" and toks[j].val == "(":
+        inner, k = _parse_or(toks, j + 1, e)
+        if k < e and toks[k].kind == "punct" and toks[k].val == ")":
+            return inner, k + 1
+        # not a parenthesised condition (a row constructor, `(a, b) in …`): an atom from here
+    lo, depth, between = j, 0, False
+    while j < e:
+        t = toks[j]
+        if t.kind == "punct" and t.val == "(":
+            depth += 1
+        elif t.kind == "punct" and t.val == ")":
+            if depth == 0:
+                break
+            depth -= 1
+        elif depth == 0:
+            if t.kind == "punct" and t.val in _CMP_OPS:
+                break
+            if t.kind == "id" and t.val == "between":
+                between = True
+            elif t.kind == "id" and t.val == "and" and between:
+                between = False
+            elif t.kind == "id" and t.val in ("and", "or"):
+                break
+        j += 1
+    if j == lo:
+        raise _Bad
+    names = frozenset(toks[x].val for x in range(lo, j) if toks[x].kind == "id")
+    return ("atom", lo, j, names, _shape(toks, lo, j)), j
+
+
+def _call_end(toks, lo, hi):
+    """`name[.name…][(balanced args)]` starting at lo -> index after it (≤ hi), or None."""
+    if toks[lo].kind != "id":
+        return None
+    k = lo + 1
+    while k + 1 < hi and toks[k].kind == "punct" and toks[k].val == "." and toks[k + 1].kind == "id":
+        k += 2
+    if k < hi and toks[k].kind == "punct" and toks[k].val == "(":
+        depth = 0
+        while k < hi:
+            if toks[k].kind == "punct" and toks[k].val == "(":
+                depth += 1
+            elif toks[k].kind == "punct" and toks[k].val == ")":
+                depth -= 1
+                if depth == 0:
+                    return k + 1
+            k += 1
+        return None
+    return k
+
+
+def _shape(toks, lo, hi):
+    """What an atom of a condition is, for the check's polarity (1.5.0): ("call", lo) a call or a name alone (the
+    check itself, or a variable holding its answer, when that is what lo is), ("nvl", lo) nvl / coalesce of such a
+    call or name with a default that counts as FAILING (FALSE / 0 / 'N'), or None: anything else (nvl(…, 'Y'),
+    greatest(…), arithmetic, decode(…), nvl(x, <expression>)) says nothing about which way the check went."""
+    if _call_end(toks, lo, hi) == hi:
+        if toks[lo].val in ("nvl", "coalesce") and hi - lo >= 6 and toks[lo + 1].val == "(":
+            inner = _call_end(toks, lo + 2, hi - 1)
+            if inner is not None and inner + 2 == hi - 1 and toks[inner].kind == "punct" and toks[inner].val == "," \
+                    and _literal(("atom", inner + 1, inner + 2), toks) in ("F", "0"):
+                return ("nvl", lo + 2, toks[lo + 2].val if inner == lo + 3 else None)
+            return None
+        return ("call", lo, toks[lo].val if hi == lo + 1 else None)
+    return None
+
+
+def _literal(node, toks):
+    if node[0] != "atom" or node[2] - node[1] != 1:
+        return None
+    t = toks[node[1]]
+    if t.kind == "id" and t.val in ("true", "false"):
+        return "T" if t.val == "true" else "F"
+    if t.kind == "num" and t.val.strip() in ("0", "1"):
+        return t.val.strip()                         # "0" / "1": a number of the check (see polarity)
+    if t.kind in ("num", "str"):
+        v = t.val.strip().lower()
+        return "T" if v in _TRUTHY else "F" if v in _FALSY else "X"
+    return None
 
 
 def _decl(toks, j, e, nested):
@@ -586,15 +727,72 @@ def _unguarded(r: Routine, guards, accesses):
                 hits.extend(p for p in here if p in accesses)
         return gs
 
+    def holds(x) -> bool:
+        """The sub-condition contains a check (a call to it, or a variable holding its answer)."""
+        tag = x[0]
+        if tag == "atom":
+            return any(x[1] <= p < x[2] for p in guards) or bool(x[3] & guard_vars)
+        if tag == "not":
+            return holds(x[1])
+        if tag == "cmp":
+            return holds(x[1]) or holds(x[3])
+        return any(holds(y) for y in x[1])
+
+    def polarity(x):
+        """(x true implies the check passed, the check failing implies x true)."""
+        tag = x[0]
+        if tag == "atom":
+            # only the check itself, a variable holding its answer, or nvl(either, FALSE / 0 / 'N')
+            if not holds(x) or x[4] is None:
+                return False, False
+            _kind, at, name = x[4]
+            if at in guards or (name is not None and name in guard_vars):
+                return True, False
+            return False, False
+        if tag == "not":
+            a, b = polarity(x[1])
+            return b, a
+        if tag == "and":
+            ps = [polarity(y) for y in x[1]]
+            return any(a for a, _b in ps), all(b for _a, b in ps)
+        if tag == "or":
+            ps = [polarity(y) for y in x[1]]
+            return all(a for a, _b in ps), any(b for _a, b in ps)
+        _t, left, op, right, lit_l, lit_r = x
+        if holds(left) and not holds(right):
+            base, lit = polarity(left), lit_r
+        elif holds(right) and not holds(left):
+            base, lit = polarity(right), lit_l
+            op = {"<": ">", ">": "<", "<=": ">=", ">=": "<="}.get(op, op)      # `0 < can_x(…)`
+        else:
+            return False, False
+        if lit is None:
+            return False, False                         # compared with another expression: not known
+        if op in ("=", "!=", "<>", "^=", "~="):
+            same = (op == "=") != (lit in ("F", "0"))   # = TRUE / 'Y' / 'ADMIN' / 1, != FALSE / 'N' / 0
+            return base if same else (base[1], base[0])
+        # an ordering compares a count / level: > 0 and >= 1 pass, <= 0 and < 1 fail; anything else (>= 0, < 0,
+        # > 1, <= 1, an ordering of TRUE / 'Y') says nothing
+        if (lit, op) in (("0", ">"), ("1", ">=")):
+            return base
+        if (lit, op) in (("0", "<="), ("1", "<")):
+            return base[1], base[0]
+        return False, False
+
     def cond(node, free):
-        """-> "pos" (the branch runs when the check passes), "neg" (it runs when the check fails) or None."""
-        _t, lo, hi, negated, names = node
+        """-> "pos" (the branch runs only when the check passed), "neg" (it runs whenever the check fails) or
+        None (the condition says neither: `if can_view(…) or p_public then`, `if not can_view(…) and p_x then`)."""
+        _t, lo, hi, expr = node
         gs = visit(lo, hi, free)
-        if gs:
-            return "neg" if any(p in negated for p in gs) else "pos"
-        v = next((n for n in names if n in guard_vars), None)
-        if v is not None:
-            return "neg" if names[v] else "pos"
+        if expr is None:
+            return "pos" if gs else None               # a condition that does not parse: as in 1.4
+        if not holds(expr):
+            return None
+        implies, failing = polarity(expr)
+        if implies:
+            return "pos"
+        if failing:
+            return "neg"
         return None
 
     def run(node, free):                 # free: some path reaches this point without having passed a check
@@ -694,7 +892,7 @@ def _parse_body(toks, j, pkg: str, rel: str, line: int, delta: int) -> tuple[Pac
     for r, b, e in spans:
         _analyse_body(toks, b, e, r, names, pkg)
         r.flow = _flow(toks, b, e)
-        for pos in [x[0] for x in r.refs + r.own_sinks + r.reads] + r.return_pos:
+        for pos in [x[0] for x in r.refs + r.own_sinks + r.reads] + r.return_pos + r.exits:
             r.lines[pos] = toks[pos].line + delta
         r.lines[e] = toks[max(b, e - 1)].line + delta
         p.routines.append(r)
@@ -787,6 +985,29 @@ class _Pkg:
     def reach(self, is_guard) -> set:
         """Names of the package's routines that call a guard (is_guard(canonical name)), directly or transitively."""
         return self._closure({r.name for r in self.pkg.routines if any(is_guard(c) for _p, c, _l in r.refs)})
+
+    def covering(self, is_guard) -> set:
+        """Names of the package's routines that are checks themselves: every path to their normal exit (the end of
+        a procedure, a RETURN of anything but FALSE / NULL / 0 / 'N') passes a guard call or a call to another such
+        routine (1.5.0). A helper that calls the guard on some paths only (`if p_strict then check_access; end if;`)
+        is not one: calling it covers nothing. Unknown paths (a body that does not parse): the lexical answer, a
+        guard call before the first exit."""
+        out: set = set()
+        changed = True
+        while changed:
+            changed = False
+            for r in self.pkg.routines:
+                if r.name in out:
+                    continue
+                gp = [p for p, c, loc in r.refs if is_guard(c) or (loc is not None and loc in out and loc != r.name)]
+                if not gp:
+                    continue
+                exits = list(r.exits) + [r.end]
+                left = _unguarded(r, gp, exits)
+                if (min(gp) < min(exits)) if left is None else not left:
+                    out.add(r.name)
+                    changed = True
+        return out
 
     def guard_positions(self, r: Routine, is_guard, reached: set) -> list:
         return [p for p, c, loc in r.refs if is_guard(c) or (loc is not None and loc in reached and loc != r.name)]
@@ -895,10 +1116,14 @@ def findings(specs: dict, bodies: list, lines_by_file: dict) -> list:
         _score, guard, relevant, checked, sinks = best
         # the guard is elected as in 1.3 (siblings whose first call to it comes before their first data access in the
         # code); whether it covers every path decides what is reported, and how many siblings it covers is stated
-        reached = view.reach(lambda c: c == guard)
+        # what covers a path (1.5.0): a call to the guard, or to a routine of the package that is a check itself on
+        # every path to its normal exit (_Pkg.covering); a helper that calls it on some paths only covers nothing
+        reached = view.covering(lambda c: c == guard)
+        sinks = view.sinks(reached)
         covering = sum(1 for x in checked if not sinks[id(x)] or _covered(
             x, view.guard_positions(x, lambda c: c == guard, reached), sinks[id(x)]))
-        any_auth = view.reach(_looks_auth)
+        any_auth = view.covering(_looks_auth)
+        loose_auth = view.reach(_looks_auth)
         for r in view.public:
             if r.name == guard or _looks_auth(r.name):
                 continue
@@ -906,7 +1131,12 @@ def findings(specs: dict, bodies: list, lines_by_file: dict) -> list:
             if not s:
                 continue                                 # pure computation: nothing to protect
             # any authorization-like call, of the package's guard or another, directly or through a package routine
-            own_checks = [p for p, c, loc in r.refs if _looks_auth(c) or (loc is not None and loc in any_auth and loc != r.name)]
+            # a routine of the package counts when it is a check on every path to its normal exit; one that calls
+            # an authorization check on some paths only does not, whatever its name (`can_view` that returns TRUE
+            # without asking in one branch); a check with no authorization call of its own counts by its name
+            own_checks = [p for p, c, loc in r.refs
+                          if (loc is not None and loc != r.name and loc in any_auth)
+                          or (_looks_auth(c) and not (loc is not None and loc in loose_auth and loc not in any_auth))]
             gap = None
             if own_checks:
                 left = _unguarded(r, own_checks, [p for p, _k, _o in s])
@@ -919,6 +1149,9 @@ def findings(specs: dict, bodies: list, lines_by_file: dict) -> list:
             where_en = en + (f" ({', '.join(objs)})" if objs else "")
             rname = f"{pkg.name}.{r.name}".upper()
             gname = guard.upper() if "." in guard else f"{pkg.name}.{guard}".upper()
+            # helpers it calls that reach a check on some of their paths only (1.4 counted such a call as a check)
+            partial = sorted({loc for _p, _c, loc in r.refs if loc is not None and loc != r.name and loc in loose_auth
+                              and loc not in any_auth})
             k, n = len(checked), len(relevant)
             siblings = (f"تستدعي {k} من {n} من الروتينات العامة في الحزمة {gname} قبل أول وصول إلى البيانات في "
                         f"نصّها ({covering} منها على كل المسارات)")
@@ -931,6 +1164,9 @@ def findings(specs: dict, bodies: list, lines_by_file: dict) -> list:
                           f"المرور بالتحقق، بينما {siblings}. وهو {where_ar}. اجعل التحقق ({gname}) قبل كل وصول إلى "
                           f"البيانات، في بدايته أو في شرط يخرج من الروتين (raise أو return) حين يفشل، لا في فرع واحد "
                           f"أو في معالج استثناء أو بعد الوصول.")
+            if partial:
+                h = f"{pkg.name}.{partial[0]}".upper()
+                advice += f" ولا يُحتسب استدعاؤه {h} تحققًا: {h} نفسه لا يتحقق من الصلاحية إلا في بعض مساراته."
             lines = lines_by_file.get(pkg.rel) or []
             snippet = lines[r.line - 1] if 0 < r.line <= len(lines) else f"{r.kind} {r.name}"
             f = _finding(RULE, sev, title, title_ar, pkg.rel, r.line, snippet, advice, cwe, "")
@@ -939,42 +1175,134 @@ def findings(specs: dict, bodies: list, lines_by_file: dict) -> list:
                             "accesses": where_en,
                             "spec_seen": pkg.name in specs, "coverage": "none" if gap is None else "partial",
                             "unguarded_line": gap})
+            if partial:
+                f.extra["partial_helpers"] = [f"{pkg.name}.{x}".upper() for x in partial]
             out.append(f)
     return out
 
 
 # ------------------------------------------------------------------------- what APEX itself enforces (1.4.0)
-_CODE_KINDS = ("plsql", "plsql_decls", "plsql_fn", "plsql_fn_sql", "plsql_fn_html", "plsql_expr", "sql")
+_CODE_KINDS = ("plsql", "plsql_decls", "plsql_fn", "plsql_fn_sql", "plsql_fn_html", "plsql_expr", "sql", "invoke")
 
 
-def apex_context(found: list, sites: list, sec: dict) -> None:
+_SYNONYM = re.compile(r"\bcreate\s+(?:or\s+replace\s+)?(?:(?:editionable|noneditionable)\s+)?(?:public\s+)?synonym\s+"
+                      r"(?:\"?[\w$#]+\"?\s*\.\s*)?\"?([\w$#]+)\"?\s+for\s+(?:\"?[\w$#]+\"?\s*\.\s*)?\"?([\w$#]+)\"?", re.I)
+
+
+def synonyms(text: str) -> dict:
+    """`create [or replace] [public] synonym [owner.]s for [owner.]target[@link]` in plain SQL -> {s: target} (lower
+    case). Comments and string literals are blanked first, so a synonym in a comment or a dynamic SQL string is
+    not one."""
+    if "synonym" not in text.lower():
+        return {}
+    code = re.sub(r"--[^\n]*|/\*.*?\*/|'(?:[^']|'')*'", " ", text, flags=re.S)
+    return {m.group(1).lower(): m.group(2).lower() for m in _SYNONYM.finditer(code)}
+
+
+def _aliases(pkg: str, syns: dict) -> set:
+    """Names that refer to package pkg: synonyms of it, and synonyms of those."""
+    out, todo = set(), [pkg.lower()]
+    while todo:
+        target = todo.pop()
+        for s, t in syns.items():
+            if t == target and s not in out and s != pkg.lower():
+                out.add(s)
+                todo.append(s)
+    return out
+
+
+def _callers(pkg: str, routine: str, bodies: list, syns: dict, depth: int = 3) -> list:
+    """Package routines of the scan that call pkg.routine (directly, or through such callers up to depth hops) on a
+    path that passes no authorization-like check of their own first: [(caller package, caller routine, hops)]. A
+    caller that checks before the call protects pkg.routine on that path itself, so its callers are not added."""
+    pkg, routine = pkg.lower(), routine.lower()
+    names = {pkg} | _aliases(pkg, syns)
+    out, seen, frontier = [], {(pkg, routine)}, [(pkg, routine, names)]
+    for hop in range(1, depth + 1):
+        nxt = []
+        for tpkg, troutine, tnames in frontier:
+            for body in bodies:
+                local = body.name.lower() == tpkg
+                view = None
+                for r in body.routines:
+                    if (body.name.lower(), r.name) in seen:
+                        continue
+                    calls = [p for p, c, loc in r.refs
+                             if (local and loc == troutine) or ("." in c and c.split(".")[-1] == troutine
+                                                                 and c.split(".")[-2] in tnames)]
+                    if not calls:
+                        continue
+                    if view is None:
+                        view = _Pkg(body, {x.name for x in body.routines})
+                        checks = view.covering(_looks_auth)
+                    gp = [p for p, c, loc in r.refs if _looks_auth(c) or (loc is not None and loc in checks and loc != r.name)]
+                    if gp:
+                        left = _unguarded(r, gp, calls)
+                        if (min(gp) < min(calls)) if left is None else not left:
+                            continue                     # checked before every call: not an open way in
+                    seen.add((body.name.lower(), r.name))
+                    out.append((body.name.lower(), r.name, hop))
+                    nxt.append((body.name.lower(), r.name, {body.name.lower()} | _aliases(body.name, syns)))
+        frontier = nxt
+        if not frontier:
+            break
+    return out
+
+
+def apex_context(found: list, sites: list, sec: dict, bodies: list = (), syns: dict | None = None) -> None:
     """Add to each APX024 finding what the scanned APEX export(s) say about the routine's callers: the components
-    (page processes, region sources, AJAX callbacks / application processes, dynamic action server code, …) that
-    call PACKAGE.ROUTINE and whether an authorization scheme protects each (component, page or application scheme;
-    MUST_NOT_BE_PUBLIC_USER and negated schemes do not count).
+    (page processes, region sources, AJAX callbacks / application processes, dynamic action server code, Invoke
+    API processes …) that call PACKAGE.ROUTINE and whether an authorization scheme protects each (component,
+    inherited, page or application scheme; MUST_NOT_BE_PUBLIC_USER and negated schemes do not count).
+
+    A call site is `pkg.routine`, `owner.pkg.routine`, `syn.routine` for a synonym of the package created in the
+    scanned SQL (1.5.0), or a constant `execute immediate 'begin pkg.routine; end;'`; comments and other strings are
+    not. Since 1.5.0 a component that calls another package routine of the scan which calls PACKAGE.ROUTINE (up to
+    3 hops, through callers that do not check authorization first) is a call site too, labelled "indirectly via
+    PKG.CALLER". A component in both the .sql and the YAML export of one application counts once (the YAML
+    export's application id from the nearest f<id>.yaml; unknown, it matches only a scan of one .sql application).
+    A process that runs When Button Pressed is not protected by the button's scheme (a crafted submit
+    with that REQUEST runs it): the message names the button and its scheme and says to put it on the component.
 
     Every call site protected: the finding stays as it is, and says that the protection covers only those callers.
     Some call site unprotected (public page, component without a scheme, application process without one): the
     finding names it and its severity becomes high. No call site in the scan: unchanged.
-    sites: [(rel, apex_export.Block, application id)]; sec: application id -> {app_scheme, schemes, pages}."""
-    from .apex_export import call_site_protection, call_sites
+    sites: [(rel, apex_export.Block, application id[, "sql" | "yaml"])]; sec: application id -> {app_scheme,
+    schemes, pages}; bodies: the package bodies of the scan (plsql_authz.collect); syns: synonyms()."""
+    from .apex_export import call_site_protection, call_sites, scheme_name
     if not found or not sites:
         return
+    syns = syns or {}
+    sites = [(x + ("sql",))[:4] for x in sites]
+    sql_labels = {(app, b.label) for _r, b, app, fmt in sites if fmt == "sql"}
+    sql_apps = {app for _r, _b, app, fmt in sites if fmt == "sql"}
+    only = next(iter(sql_apps)) if len(sql_apps) == 1 else None      # a YAML export of unknown application
+    sites = [x for x in sites if x[3] != "yaml" or (x[2] if x[2] is not None else only, x[1].label) not in sql_labels]
     for f in found:
         pkg, routine = str(f.extra.get("package") or ""), str(f.extra.get("routine") or "")
         if not pkg or not routine:
             continue
+        targets = [(pkg, routine, "")]
+        targets += [(p, r, f"{p}.{r}".upper()) for p, r, _hop in _callers(pkg, routine, bodies, syns)]
         calls = []
-        for rel, b, app in sites:
-            if b.kind not in _CODE_KINDS or routine.lower() not in b.code.lower():
-                continue
-            lines = call_sites(b, pkg, routine)
-            if not lines:
-                continue
-            prot, what = call_site_protection(b, sec.get(app, {}))
-            for ln in lines:
-                calls.append({"component": b.label, "file": rel, "line": ln, "protected": prot,
-                              ("scheme" if prot else "reason"): what})
+        for tpkg, troutine, via in targets:
+            aliases = _aliases(tpkg, syns)
+            for rel, b, app, _fmt in sites:
+                if b.kind not in _CODE_KINDS or troutine.lower() not in b.code.lower():
+                    continue
+                lines = call_sites(b, tpkg, troutine, aliases)
+                if not lines:
+                    continue
+                prot, what = call_site_protection(b, sec.get(app, {}))
+                label = f"{b.label} (بشكل غير مباشر عبر {via})" if via else b.label
+                for ln in lines:
+                    c = {"component": label, "file": rel, "line": ln, "protected": prot,
+                         ("scheme" if prot else "reason"): what}
+                    if via:
+                        c["via"] = via
+                    if b.button and not prot:
+                        c["button"], c["button_scheme"] = b.button[0], scheme_name(b.button[1], sec.get(app, {}).get("schemes", {}))
+                    calls.append(c)
         if not calls:
             continue
         calls.sort(key=lambda c: (c["file"], c["line"]))
@@ -990,6 +1318,15 @@ def apex_context(found: list, sites: list, sec: dict) -> None:
             f.advice += (f" ويُستدعى {rname} في تطبيق APEX المفحوص من مكوّن غير محمي: «{u['component']}» في السطر "
                          f"{u['line']} من {u['file']} ({u['reason']})؛ المواضع غير المحمية {len(open_)} من {n}. فيمكن لأي "
                          f"مستخدم يصل إلى هذا المكوّن تشغيل الروتين دون تحقق، ولذلك رُفعت الخطورة إلى «عالية».")
+            btn = next((c for c in open_ if c.get("button")), None)
+            if btn is not None:
+                # a When Button Pressed compares the submitted REQUEST with the button's name: hiding the button
+                # (its authorization scheme) does not stop a crafted submit with that request
+                f.extra["apex_button_not_protection"] = {"component": btn["component"], "button": btn["button"],
+                                                         "scheme": btn["button_scheme"]}
+                f.advice += (f" ويعمل «{btn['component']}» عند الضغط على الزر {btn['button']} الذي يحميه المخطط "
+                             f"{btn['button_scheme']}، لكن إخفاء الزر لا يمنع إرسال الصفحة بطلب (REQUEST) يحمل اسمه؛ "
+                             f"أسند {btn['button_scheme']} إلى المكوّن نفسه لحمايته.")
         else:
             names = []
             for c in calls:

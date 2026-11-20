@@ -41,6 +41,7 @@ import time
 
 from . import flow as _flow
 from . import php_include as _php_include
+from . import php_semantics as _php
 from .i18n.cat_dynamic import sink_label_ar as _sink_label_ar
 from .model import Finding
 
@@ -879,6 +880,63 @@ _SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "cmd", "cmd.exe", "powers
 _SHELL_FLAGS = {"-c", "-lc", "-ec", "-xc", "/c", "/C", "/k", "/K", "-Command", "-command"}
 
 
+# Node modules that expose the `fs` API under their own name (drop-in replacements and promise flavours).
+_JS_FS_MODULES = ("fs-extra", "graceful-fs", "original-fs", "fs/promises", "node:fs/promises", "node:fs", "mz/fs",
+                  "fs.promises")
+
+
+def _js_alt_names(canon: str, imported: bool) -> list:
+    """Other model names a JavaScript call also answers to: `fse.rmSync` on `require('fs-extra')` (or graceful-fs,
+    fs/promises, ...) is fs.rmSync, and bluebird's promisifyAll adds an `...Async` twin of every method of a module
+    (`cpAsync.execAsync(cmd)` runs child_process.exec; only for a receiver that resolves to an imported module)."""
+    out = []
+    for m in sorted(_JS_FS_MODULES, key=len, reverse=True):
+        if canon.startswith(m + ".") and canon != "fs." + canon[len(m) + 1:]:
+            out.append("fs." + canon[len(m) + 1:])
+            break
+    for c in [canon] + out if imported else ():
+        head, _, last = c.rpartition(".")
+        if head and last.endswith("Async") and len(last) > 5:
+            out.append(f"{head}.{last[:-5]}")
+    return out
+
+
+def _fn_parents(fn) -> dict:
+    """id(node) -> parent node, for every node of a function body."""
+    out = {}
+    for parent in ast.walk(fn):
+        for child in ast.iter_child_nodes(parent):
+            out[id(child)] = parent
+    return out
+
+
+def _stmt_of(parents, node):
+    """The statement that directly holds `node` (itself when it is one); `parents` from _fn_parents."""
+    while node is not None and not isinstance(node, ast.stmt):
+        node = parents.get(id(node))
+    return node
+
+
+def _blocks_before(parents, fn, node):
+    """Statements that run before `node` on every path through the function: those ahead of it in its own block
+    and in each enclosing block (None when the node is not in the function)."""
+    out = set()
+    cur = _stmt_of(parents, node)
+    while cur is not None and cur is not fn:
+        parent = parents.get(id(cur))
+        if parent is None:
+            return None
+        for field in ("body", "orelse", "finalbody"):
+            block = getattr(parent, field, None)
+            if isinstance(block, list) and any(st is cur for st in block):
+                for st in block:
+                    if st is cur:
+                        break
+                    out.add(st)
+        cur = parent if isinstance(parent, ast.stmt) else _stmt_of(parents, parent)
+    return out
+
+
 def _shell_launcher(elts) -> bool:
     """["sh", "-c", script] / ["cmd", "/c", line]: the third element is a whole command line, not one argument."""
     if len(elts) < 3 or not all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in elts[:2]):
@@ -927,6 +985,8 @@ _LOCAL_SOURCE_NAMES = frozenset({
     "process.argv", "process.env", "System.getenv", "System.getProperty", "os.Args", "Environment.GetCommandLineArgs",
     "Environment.GetEnvironmentVariable", "CommandLine.arguments", "ProcessInfo.processInfo.arguments",
     "ProcessInfo.processInfo.environment", "ARGV", "ENV", "STDIN", "$argv", "argv", "environ", "std.cin", "cin"})
+# PHP: what a shell command printed (shell_exec / backticks, system's and exec's last line, exec's lines): local
+_PHP_SHELL_OUTPUT = frozenset({"shell_exec", "system", "exec"})
 
 
 # What a context-specific sanitizer neutralizes, recognised by naming conventions shared across languages.
@@ -949,12 +1009,13 @@ _SANITIZER_CONTEXTS = [
     (re.compile(r"(?i)(^|[._])(url|uri)|url_?(en|de)code|encodeuri|urlescape|^quote$|\.quote$|percent|http_build_query"),
      ("CWE-113", "CWE-93") + _XSS),
     (re.compile(r"(?i)basename|secure_filename|getname$|filepath\.base|path\.base|^base$|lastpathcomponent|"
-                r"(^|\.)filename$|(^|\.)stem$"), ("CWE-22", "CWE-23", "CWE-36", "CWE-73")),
+                r"(^|\.)filename$|(^|\.)stem$|(^|\.)extname$"), ("CWE-22", "CWE-23", "CWE-36", "CWE-73")),
     (re.compile(r"(?i)html|xml|escape|sanitize|purify|bleach|strip_tags|markup|he\.encode|forhtml|encode_text|"
                 r"encode_safe|askama"), _XSS),
 ]
 
 
+_XSS_CWES = frozenset(_XSS)
 _JS_CTX = ("CWE-94", "CWE-95") + _XSS
 _REGEX_CTX = ("CWE-625", "CWE-730", "CWE-1333")
 # Exact names whose meaning the naming conventions would get wrong. "none" = not a sanitizer at all.
@@ -1059,6 +1120,8 @@ class Project:
                     modpart, _, name = full.rpartition(".")
                     file["aliases"][local] = ("from", modpart, name) if modpart else ("mod", full)
 
+        js = self.m.get("language") == "javascript"
+
         def visit(node, cls_qual, parent_func=None):
             for child in ast.iter_child_nodes(node):
                 if isinstance(child, ast.ClassDef):
@@ -1079,6 +1142,11 @@ class Project:
                         self.simple_methods.setdefault(child.name, []).append(q)
                     else:
                         q = f"{mod}::{child.name}"
+                        if js and q in self.gfuncs:
+                            # JavaScript: a second function of the same name in the file (`function run` nested in two
+                            # handlers, or declared twice) is a different function; each one is analysed, and calls
+                            # find the one in scope (_js_scope_funcs). The bare name keeps meaning the last one.
+                            q = f"{q}@{child.lineno}.{getattr(child, 'col_offset', 0)}"
                         file["funcs"][child.name] = q
                         self.simple_funcs.setdefault(child.name, []).append(q)
                         self._by_mod.setdefault((id(self.simple_funcs), child.name, mod), []).append(q)
@@ -1134,7 +1202,48 @@ class Project:
         if tgt:
             base = tgt[1] if tgt[0] == "mod" else (f"{tgt[1]}.{tgt[2]}" if tgt[1] else tgt[2])
             return f"{base}.{rest}" if rest else base
+        if self.m.get("language") == "javascript":
+            local = self._js_local_aliases(mod).get(first)
+            if local is not None:
+                base = self._canon(mod, local)
+                if base and base != _dotted(local):
+                    return f"{base}.{rest}" if rest else base
         return name
+
+    def _js_local_aliases(self, mod: str) -> dict:
+        """JavaScript names that every binding in the whole file, each inside a function, sets to the same member of
+        an imported module (`const run = cp.exec` / `const execP = util.promisify(cp.exec)`, lowered to `cp.exec`,
+        in one handler or in several): the name can only ever mean that library function (top-level bindings are
+        import aliases already)."""
+        cache = self.__dict__.setdefault("_js_local_alias_cache", {})
+        hit = cache.get(mod)
+        if hit is not None:
+            return hit
+        out: dict = {}
+        tree = (self.files.get(mod) or {}).get("tree")
+        aliases = (self.files.get(mod) or {}).get("aliases", {})
+        stores: dict = {}            # name -> number of bindings of any kind
+        assigns: dict = {}           # name -> {id(assignment): value} for `name = <imported member>` inside functions
+        for n in ast.walk(tree) if tree is not None else ():
+            if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                stores[n.id] = stores.get(n.id, 0) + 1
+            elif isinstance(n, ast.arg):
+                stores[n.arg] = stores.get(n.arg, 0) + 1000
+            elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                stores[n.name] = stores.get(n.name, 0) + 1000
+            elif isinstance(n, ast.alias):
+                local = n.asname or n.name
+                stores[local] = stores.get(local, 0) + 1000
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for st in ast.walk(n):
+                    if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name) \
+                            and isinstance(st.value, (ast.Name, ast.Attribute)) and _dotted(st.value).split(".")[0] in aliases:
+                        assigns.setdefault(st.targets[0].id, {})[id(st)] = st.value
+        for local, vals in assigns.items():
+            if local not in aliases and stores.get(local) == len(vals) and len({_dotted(v) for v in vals.values()}) == 1:
+                out[local] = next(iter(vals.values()))
+        cache[mod] = out
+        return out
 
     def _match(self, index: dict, name: str, modhint: str, caller: str | None = None) -> str | None:
         cands = index.get(name)
@@ -1749,7 +1858,7 @@ class Project:
             if inner in ("os.environ", "process.env", "ENV"):
                 return True
         canon = self._canon(mod, cur.func if isinstance(cur, ast.Call) else cur) if isinstance(cur, (ast.Name, ast.Attribute, ast.Call)) else ""
-        if canon in _LOCAL_SOURCE_NAMES:
+        if canon in _LOCAL_SOURCE_NAMES or (canon in _PHP_SHELL_OUTPUT and self.m.get("language") == "php"):
             return True
         if canon.endswith((".parse_args", ".parse_known_args")) and isinstance(cur, ast.Call):
             # argparse only: Flask-RESTful reqparse.RequestParser().parse_args() reads the HTTP request
@@ -1790,6 +1899,16 @@ class Project:
             return hit[1]
         # `getattr(logger, level)(msg, *args)` calls what getattr RETURNED: the outer call is not getattr itself
         canon = "" if isinstance(call.func, ast.Call) else self._canon(mod, call.func)
+        res = None
+        alts = _js_alt_names(canon, canon != _dotted(call.func)) if canon and self.m.get("language") == "javascript" else []
+        for canon in [canon] + alts:
+            res = self._sink_lookup(mod, call, canon)
+            if res is not None:
+                break
+        self._sink_cache[key] = (call, res)
+        return res
+
+    def _sink_lookup(self, mod: str, call: ast.Call, canon: str):
         res = None
         if canon:
             # sinks constrained by a receiver pattern are more specific than bare method names: try them first
@@ -1832,7 +1951,6 @@ class Project:
                         continue                        # yaml.load(x, Loader=SafeLoader): the safe variant of the API
                     res = entry[:9] + entry[10:11]      # drop the name list, keep the named-argument set at index 9
                     break
-        self._sink_cache[key] = (call, res)
         return res
 
     def _receiver_bound(self, mod: str, recv, rx) -> bool:
@@ -1960,9 +2078,42 @@ class Project:
             # obj[name](...): the caller picks which method runs. The extra field names the table, so a key checked
             # against that same table (`t[k] ? k : 'home'`, see _key_guard) is safe here and only here.
             return DYNAMIC_DISPATCH + ((), "DF026@" + table) if table else DYNAMIC_DISPATCH
+        if si and si[0] == "DF003" and self.m.get("language") == "javascript":
+            shell = self._js_shell_spawn(mod, call, env)
+            if shell is not None:
+                return shell
         if si and si[0] == "DF003" and not si[8] and self._subprocess_elem_only(mod, cls, call, env):
             return ARG_INJECTION
         return si
+
+    _JS_SPAWNS = frozenset({"spawn", "spawnSync", "execFile", "execFileSync", "cross-spawn", "cross-spawn.sync"})
+
+    def _js_shell_spawn(self, mod, call, env):
+        """Node's spawn / execFile run the program with an argument array, unless a shell is involved: with the
+        `shell` option set (anything but false) the program and its arguments are joined into one command line, and
+        a shell program given `-c` / `/c` runs the next argument as a command line. Either way the argument array is
+        a shell command: the DF002 sink over both the program and its arguments."""
+        canon = self._canon(mod, call.func)
+        if canon.split(".")[-1] not in self._JS_SPAWNS and canon not in self._JS_SPAWNS:
+            return None
+        shell = False
+        for a in call.args[1:]:
+            if isinstance(a, ast.Dict):
+                for k, v in zip(a.keys, a.values):
+                    if isinstance(k, ast.Constant) and k.value == "shell" and not (
+                            isinstance(v, ast.Constant) and v.value in (False, None, 0, "")):
+                        shell = True
+        if not shell and len(call.args) > 1 and isinstance(call.args[1], (ast.List, ast.Tuple)) and call.args[1].elts:
+            prog = self._str_const_of(mod, call.args[0], env)
+            flag = self._str_const_of(mod, call.args[1].elts[0], env)
+            shell = prog is not None and flag in _SHELL_FLAGS and \
+                prog.replace("\\", "/").rsplit("/", 1)[-1] in _SHELLS
+        if not shell:
+            return None
+        base = next((e for e in self.m["sinks"] if e[0] == "DF002" and e[8]), None)
+        if base is None:
+            return None
+        return base[:7] + ([0, 1], True) + base[10:11]
 
     # ---------------------------------------------------------------- taint
     def _map_args(self, call: ast.Call, qual: str) -> dict:
@@ -2298,13 +2449,45 @@ class Project:
                 and isinstance(node.func.value, ast.Constant) and isinstance(node.func.value.value, str) \
                 and len(node.args) == 1 and not node.keywords and isinstance(node.args[0], (ast.List, ast.Tuple)) \
                 and not any(isinstance(e, ast.Starred) for e in node.args[0].elts):
-            out = []
-            for i, e in enumerate(node.args[0].elts):
-                if i and node.func.value.value:
-                    out.append(("lit", node.func.value.value))
-                out.extend(Project._str_pieces(e) or [("val", e)])
-            return out
+            return Project._joined_pieces(node.args[0].elts, node.func.value.value)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "join" \
+                and isinstance(node.func.value, ast.List) and not node.keywords and len(node.args) <= 1 \
+                and (not node.args or (isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str))) \
+                and not any(isinstance(e, ast.Starred) for e in node.func.value.elts):
+            # JavaScript: ['index.html?section=', x].join('') (the separator defaults to ",")
+            return Project._joined_pieces(node.func.value.elts, node.args[0].value if node.args else ",")
         return None
+
+    @staticmethod
+    def _joined_pieces(elts, sep):
+        out = []
+        for i, e in enumerate(elts):
+            if i and sep:
+                out.append(("lit", sep))
+            out.extend(Project._str_pieces(e) or [("val", e)])
+        return out
+
+    def _after_query_delimiter(self, mod, cls, node, env) -> bool:
+        """Where a built URL leads is fixed by its known start: every tainted piece comes after a literal "?" or "#"
+        (it can only change the query string or the fragment), or the URL starts with a literal path ("/account/"
+        + x: same site; "//" + x or "/" + x could name another host) or with a scheme and host ("https://app/" + x)."""
+        pieces = self._str_pieces(node)
+        if not pieces or len(pieces) < 2:
+            return False
+        if pieces[0][0] == "lit" and re.match(r"(?i)^(/[^/\\\s\x00-\x1f]|[a-z][a-z0-9+.-]*://[^/?#@\\\s]+[/?#])", pieces[0][1]):
+            return any(k == "val" and self._taint(mod, cls, e, env) is not None for k, e in pieces)
+        seen = tainted = False
+        for kind, e in pieces:
+            if kind == "lit":
+                seen = seen or "?" in e or "#" in e
+            elif self._taint(mod, cls, e, env) is not None:
+                if not seen:
+                    return False
+                tainted = True
+            else:
+                text = self._str_const_of(mod, e, env)
+                seen = seen or (text is not None and ("?" in text or "#" in text))
+        return tainted
 
     def _built_safe_cwes(self, mod, cls, node, env) -> frozenset:
         """The sinks a built string (f-string, `+`, `"".join([...])) is safe for because of where EVERY tainted piece
@@ -2383,6 +2566,10 @@ class Project:
     def _taints(self, mod, cls, node, env) -> list:
         """All taint origins of an expression: a + b carries both a's and b's origins, so a parameter
         concatenated with a field still reaches the sink summary as a parameter flow."""
+        if self.m.get("language") == "php":
+            hit = self._php_taints(mod, cls, node, env)
+            if hit is not None:
+                return hit
         if isinstance(node, ast.BinOp):
             return self._taints(mod, cls, node.left, env) + self._taints(mod, cls, node.right, env)
         if isinstance(node, ast.BoolOp):
@@ -2428,6 +2615,102 @@ class Project:
             return out
         o = self._taint_one(mod, cls, node, env)
         return [o] if o else []
+
+    def _php_taints(self, mod, cls, node, env):
+        """PHP: arithmetic yields a number; a string built by `.` / interpolation / sprintf keeps each piece's
+        origins, with what a PHP escaper guarantees (php_semantics markers) re-judged where the piece sits: inside
+        a quoted literal or bare, and, for an echo, at its place in the page. A shell command's output carries the
+        command's own taint besides the local source. None: the generic rules apply."""
+        if isinstance(node, ast.BinOp) and getattr(node, "php_numeric", False):
+            return []
+        busy = self.__dict__.setdefault("_php_busy", set())
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and id(node) not in busy:
+            fname = node.func.id.lower()
+            if fname in ("file_get_contents", "fopen", "file", "readfile", "stream_get_contents") and node.args \
+                    and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str) \
+                    and node.args[0].value.lower().startswith(("php://input", "php://stdin")):
+                return [("source", "php://input", ())]          # the raw request body
+            if fname in _PHP_SHELL_OUTPUT and node.args:
+                busy.add(id(node))
+                try:
+                    own = self._taints(mod, cls, node, env)     # the local source: what the command printed
+                finally:
+                    busy.discard(id(node))
+                # … and whatever the command line itself carries (`echo` of a request value prints it back)
+                return own + [(o[0], o[1], _trail(o), frozenset(c for c in _safe_for(o) if c.startswith("php:")))
+                              + tuple(o[4:]) for o in self._taints(mod, cls, node.args[0], env)]
+        html = getattr(node, "php_html", None)
+        if html is not None and id(node) in busy:
+            html = None
+        ps = _php.pieces(node) if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call)) else None
+        if html is None and (ps is None or (len(ps) < 2 and not isinstance(node, ast.Call))):
+            return None
+        if ps is None:
+            ps = [("val", node)]
+        per = []
+        for k, e in ps:
+            if k != "val":
+                per.append([])
+            elif e is node:
+                busy.add(id(node))
+                try:
+                    per.append(self._taints(mod, cls, node, env))
+                finally:
+                    busy.discard(id(node))
+            else:
+                per.append(self._taints(mod, cls, e, env))
+        if not any(per):
+            return []
+        single = sum(1 for p in per if p) == 1
+
+        def known(i):
+            k, e = ps[i]
+            if k == "lit":
+                return e
+            if per[i]:
+                return None
+            if isinstance(e, ast.Name) and not e.id.startswith("$") and e.id not in self._php_stored_names(mod):
+                return ""                    # a variable the file never assigns is undefined: null prints as ""
+            return self._str_const_of(mod, e, env)
+
+        def ends(i):
+            got = {_php.end_state(_safe_for(o)) for o in per[i]}
+            return got.pop() if len(got) == 1 else "?"
+        built = len(ps) > 1
+        states = _php.quote_states(ps, known, ends) if built else [None, None]
+        qend = frozenset({_php.QEND + (states[-1] or "N")}) if built and states[-1] != "?" else frozenset()
+        hstate = html
+        out = []
+        for i, origins in enumerate(per):
+            if not origins:
+                if hstate is not None:
+                    text = known(i)
+                    hstate = _php.html_advance(hstate, text) if text is not None else _php._after_value(hstate, ps[i][1])
+                continue
+            before = "".join(known(j) or "" for j in range(i)) if all(known(j) is not None for j in range(i)) else None
+            for o in origins:
+                sf = _safe_for(o)
+                nsf = _php.adjust(sf, states[i], single, before) if _php.is_marked(sf) and built else sf
+                if hstate is not None:
+                    ok = _php.html_safe(hstate, sf, single)
+                    if ok is True:
+                        nsf = nsf | _XSS_CWES
+                    elif ok is False:
+                        nsf = nsf - _XSS_CWES
+                if built:
+                    nsf = frozenset(c for c in nsf if not c.startswith(_php.QEND)) | qend
+                out.append(o if nsf == sf else (o[0], o[1], _trail(o), nsf) + tuple(o[4:]))
+            if hstate is not None:
+                hstate = _php._after_value(hstate, ps[i][1])
+        return out
+
+    def _php_stored_names(self, mod) -> frozenset:
+        cache = self.__dict__.setdefault("_php_stored", {})
+        if mod not in cache:
+            tree = (self.files.get(mod) or {}).get("tree")
+            cache[mod] = frozenset(x.id for x in ast.walk(tree) if isinstance(x, ast.Name) and not isinstance(x.ctx, ast.Load)) \
+                | frozenset(a.arg for a in ast.walk(tree) if isinstance(a, ast.arg)) if tree is not None else frozenset()
+        return cache[mod]
 
     def _comprehension_taints(self, mod, cls, node, env) -> list:
         """`[dict(r) for r in rows]` / `{k: v for k, v in pairs}`: the element expression, with each loop variable
@@ -2553,6 +2836,10 @@ class Project:
         if isinstance(node, ast.Call):
             canon = self._canon(mod, node.func)
             skind = self._sanitizer_kind(canon)
+            if self.m.get("language") == "php":
+                skind = _php.call_kind(node, canon, skind, lambda e: self._module_const(mod, e.id))
+                if skind == "none":
+                    skind = None
             if skind == "all":
                 return None
             if skind:
@@ -2623,6 +2910,8 @@ class Project:
                             arg = ast.Name(id=pname, ctx=ast.Load())    # captured by the closure: the caller's variable
                         if arg is not None:
                             o = self._taint(mod, cls, arg, env)
+                            if o and summ.get("ret_safe", {}).get(pname):
+                                o = (o[0], o[1], _trail(o), _safe_for(o) | summ["ret_safe"][pname]) + tuple(o[4:])
                             if o:
                                 return _with_step(o, _step(self.gfuncs[q]["path"], summ["ret_line"],
                                                            f"يمرّ عبر {self.gfuncs[q]['name']}() ويُعاد"))
@@ -3035,7 +3324,45 @@ class Project:
             hit = cache[id(fn)] = (fn, found)
         return hit[1]
 
-    def _sink_arg_ok(self, fn, si, arg, env=None, mod=None, cls=None) -> bool:
+    def _attr_value_ok(self, mod, cls, si, value, env) -> bool:
+        """`location.href = "/help?topic=" + t`: the value assigned to a location attribute leads to a fixed place."""
+        return not (si[5] == "CWE-601" and self.m.get("language") == "javascript"
+                    and self._after_query_delimiter(mod, cls, value, env))
+
+    def _express_send_confined(self, mod, cls, call, arg, env) -> bool:
+        """Express's res.sendFile / res.download serve through the `send` module, which answers 403 to any path with
+        a ".." segment and, given the `root` option, to any path that leaves root; without root the path must be
+        absolute. So the request can choose which file only when it supplies the whole path and no root is set:
+        `res.sendFile(dir + "/data/" + name)` and `res.sendFile(name, {root: dir})` stay inside the directory (a root
+        or prefix the request controls, or "/", confines nothing; a known prefix must end with a separator).
+        (The deprecated lowercase res.sendfile is not covered.)"""
+        f = call.func
+        if not (isinstance(f, ast.Attribute) and f.attr in ("sendFile", "download")
+                and re.match(r"^(res|response|resp)$", _receiver_text(f.value) or "")):
+            return False
+        if not call.args or arg is not call.args[0]:
+            return False
+        for a in call.args[1:]:
+            if isinstance(a, ast.Dict):
+                for k, v in zip(a.keys, a.values):
+                    if isinstance(k, ast.Constant) and k.value == "root" and v is not None \
+                            and self._taint(mod, cls, v, env) is None:
+                        text = self._str_const_of(mod, v, env)
+                        if text is None or text.strip("/\\"):
+                            return True          # an untainted root other than "/" or ""
+        pieces = self._str_pieces(arg)
+        if not pieces or len(pieces) < 2:
+            return False
+        known = None                             # known text right before the current piece (None: unknown)
+        for kind, e in pieces:
+            if kind == "val" and self._taint(mod, cls, e, env) is not None:
+                # "/srv/files/" + name stays under /srv/files; "/" + name or "/static" + name ("-backup/x") does not
+                return known is not None and bool(known.strip("/\\")) and known[-1:] in ("/", "\\")
+            text = e if kind == "lit" else self._str_const_of(mod, e, env)
+            known = None if text is None else (known or "") + text    # text after an unknown value starts afresh
+        return False
+
+    def _sink_arg_ok(self, fn, si, arg, env=None, mod=None, cls=None, call=None) -> bool:
         """JavaScript XSS sinks (res.send / res.write / reply.send): an object or array argument is serialised as
         JSON, and a handler that set a non-HTML Content-Type (JSON, event stream, plain text) writes no HTML."""
         if si[5] == "CWE-611" and self._xml_hardened(fn):
@@ -3044,6 +3371,10 @@ class Project:
             return False                     # Python parsers resolve no external entity unless told to
         if env is not None and getattr(env, "facts", None) and _guard_facts_protect(si, arg, env.facts):
             return False                     # a guard on the path to this sink proved the value harmless for it
+        if env is not None and mod is not None and self.m.get("language") == "php" and _php.pieces(arg) is None:
+            o = self._taint(mod, cls, arg, env)
+            if o and _php.is_marked(_safe_for(o)) and _php.whole_value_safe(si[5], _safe_for(o)):
+                return False                 # what the PHP escaper left of the value is inert for this sink
         if env is not None and mod is not None and (si[5] in _PATH_CWES or si[5] == "CWE-643") \
                 and self.m.get("language") == "python":
             if isinstance(arg, ast.Name) and "safe:" + si[5] in (getattr(env, "facts", None) or {}).get(arg.id, ()):
@@ -3052,6 +3383,10 @@ class Project:
                 return False                 # the built string written at the sink
         if self.m.get("language") != "javascript":
             return True
+        if si[5] == "CWE-601" and self._after_query_delimiter(mod, cls, arg, env):
+            return False                     # res.redirect("/search?q=" + q): only the query string is chosen
+        if si[5] in _PATH_CWES and call is not None and self._express_send_confined(mod, cls, call, arg, env):
+            return False
         if si[0] == "DF016" and isinstance(arg, (ast.Dict, ast.List)):
             return False                     # structured logging (pino / bunyan objects) is serialised as JSON
         if si[0] == "DF004" and isinstance(arg, ast.Dict):
@@ -3069,18 +3404,51 @@ class Project:
         cache = self.__dict__.setdefault("_non_html_fns", {})
         hit = cache.get(id(fn))
         if hit is None or hit[0] is not fn:
-            found = False
+            setters = []                         # (call, True when it sets a fixed non-HTML type)
             for n in _scope_nodes(fn):
-                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and \
-                        n.func.attr in ("setHeader", "set", "type", "header", "writeHead", "contentType", "json"):
-                    if n.func.attr == "json":
-                        continue
-                    for a in n.args:
-                        for c in ast.walk(a):
-                            if isinstance(c, ast.Constant) and isinstance(c.value, str) and self._NON_HTML_TYPE.search(c.value):
-                                found = True
-            hit = cache[id(fn)] = (fn, found)
-        return not hit[1]
+                kind = self._content_type_set(n)
+                if kind is not None:
+                    setters.append((n, kind))
+            hit = cache[id(fn)] = (fn, setters, _fn_parents(fn) if setters else {})
+        if not any(k for _n, k in hit[1]):
+            return True
+        if call is None:
+            return False
+        # only a Content-Type set on every path to the sink counts: by a statement before it in the same block or in
+        # a block around it (`if (json) { res.type('json'); res.send(a) } else { res.send(b) }`: b may be HTML), and
+        # no later setting before the sink may make it HTML or let the request choose (`res.type(req.query.t)`)
+        before = _blocks_before(hit[2], fn, call)
+        if before is None:
+            return False
+        order = {id(n): i for i, n in enumerate(_scope_nodes(fn))}      # source order (lines may be shared)
+        fixed = [n for n, k in hit[1] if k and _stmt_of(hit[2], n) in before]
+        if not fixed or id(call) not in order:
+            return not fixed
+        last = max(order[id(n)] for n in fixed)
+        return any(not k and last < order[id(n)] < order[id(call)] for n, k in hit[1])
+
+    _CT_SETTERS = frozenset({"setHeader", "set", "header", "writeHead", "type", "contentType"})
+
+    def _content_type_set(self, n):
+        """For a response call that sets the Content-Type: True when it sets a fixed non-HTML type, False for any
+        other type (HTML, or a value from elsewhere); None when the call sets no Content-Type
+        (`res.set("Accept", "application/json")` does not)."""
+        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in self._CT_SETTERS):
+            return None
+        vals = []
+        if n.func.attr in ("type", "contentType"):
+            vals = n.args[:1]
+        for i, a in enumerate(n.args):
+            if isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.lower() == "content-type" \
+                    and i + 1 < len(n.args):
+                vals.append(n.args[i + 1])
+            if isinstance(a, ast.Dict):
+                vals += [v for k, v in zip(a.keys, a.values)
+                         if isinstance(k, ast.Constant) and isinstance(k.value, str) and k.value.lower() == "content-type"]
+        if not vals:
+            return None
+        return all(isinstance(v, ast.Constant) and isinstance(v.value, str) and bool(self._NON_HTML_TYPE.search(v.value))
+                   for v in vals)
 
     def _html_return(self, mod, fn, v) -> bool:
         """Can `return v` from this entry point be an HTML response body? Not for a task / CLI / message handler
@@ -3237,8 +3605,45 @@ class Project:
         return names[0]
 
     # --------------------------------------------------------- environment
+    def _js_dup_funcs(self, mod) -> list:
+        """(qual, info) of the functions of a JavaScript module that share a name with another one of the module."""
+        cache = self.__dict__.setdefault("_js_dup_cache", {})
+        hit = cache.get(mod)
+        if hit is None or hit[0] != len(self.gfuncs):
+            prefix = f"{mod}::"
+            dups = [(q, i) for q, i in self.gfuncs.items() if q.startswith(prefix) and "@" in q[len(prefix):]]
+            hit = cache[mod] = (len(self.gfuncs), dups)
+        return hit[1]
+
+    def _js_scope_funcs(self, fn) -> dict:
+        """JavaScript: name -> qual of the functions declared in `fn` and in the functions around it (the nearest
+        declaration wins), so `run(x)` calls the `run` of its own handler, not one of the same name elsewhere."""
+        cache = self.__dict__.setdefault("_js_scope_funcs_cache", {})
+        hit = cache.get(id(fn))
+        if hit is not None and hit[0] is fn:
+            return hit[1]
+        idx = self.__dict__.get("_fn_qual")
+        if idx is None or len(idx) != len(self.gfuncs):
+            idx = self.__dict__["_fn_qual"] = {id(i["node"]): q for q, i in self.gfuncs.items()}
+        out: dict = {}
+        q = idx.get(id(fn))
+        chain = [fn] + [self.gfuncs[e]["node"] for e in (self.gfuncs[q]["enclosing"] if q in self.gfuncs else ())
+                        if e in self.gfuncs]
+        for scope in chain:
+            mine: dict = {}
+            for n in _scope_nodes(scope):
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and id(n) in idx:
+                    mine[n.name] = idx[id(n)]       # a later declaration in the same scope wins (hoisting)
+            for name, fq in mine.items():
+                out.setdefault(name, fq)
+        cache[id(fn)] = (fn, out)
+        return out
+
     def _env(self, mod, cls, fn, path, seed_params: bool, entry: bool = False) -> _Env:
         env = _Env()
+        if self.m.get("language") == "javascript" and isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and any(i["mod"] == mod and "@" in q for q, i in self._js_dup_funcs(mod)):
+            env.funcs.update(self._js_scope_funcs(fn))
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             entry_params = set(self._entry_params(mod, cls, fn)) if entry else set()
             gated = self._gated_language()
@@ -3528,6 +3933,21 @@ class Project:
         self._parents_cache[key] = parents
         return parents
 
+    def _fixed_operand(self, mod, e) -> bool:
+        """The side of a comparison that is not the checked data: a literal, or a bare module-level name bound once
+        to a literal (`const VALID_REDIRECT = "https://…"`). Never an attribute chain (`req.body.URL` is request
+        data whatever its case)."""
+        if isinstance(e, ast.Constant):
+            return e.value is not None
+        if isinstance(e, ast.Name):
+            v = self._module_const(mod, e.id)
+            return isinstance(v, ast.Constant) and v.value is not None
+        return False
+
+    def _constant_table(self, mod, e) -> bool:
+        """A bare module-level name bound once to an object literal (`const COLS = {name: 1}`): an allow-list."""
+        return isinstance(e, ast.Name) and isinstance(self._module_const(mod, e.id), ast.Dict)
+
     def _validated(self, mod, test, positive: bool, cwe: str | None = None) -> set:
         """Names a condition validates on the path where it is `positive` (True) or not.
 
@@ -3559,6 +3979,8 @@ class Project:
                     return {_chain(test.left)} if _chain(test.left) else set()   # x not in ALLOWED -> exit
                 if isinstance(op, ast.NotEq) and _chain(test.left) and isinstance(test.comparators[0], ast.Constant):
                     return {_chain(test.left)}
+                if isinstance(op, ast.NotEq) and _chain(test.comparators[0]) and self._fixed_operand(mod, test.left):
+                    return {_chain(test.comparators[0])}         # `if (EXPECTED !== x) return`
                 if path_sink and isinstance(op, (ast.Gt, ast.GtE, ast.NotEq)) and isinstance(test.left, ast.Call) \
                         and isinstance(test.left.func, ast.Attribute) and test.left.func.attr in ("find", "index", "count", "indexOf") \
                         and test.left.args and isinstance(test.left.args[0], ast.Constant) and ".." in str(test.left.args[0].value):
@@ -3578,6 +4000,9 @@ class Project:
             out = set()
             if _chain(test.left) and any(isinstance(op, (ast.In, ast.Eq)) for op in test.ops):
                 out.add(_chain(test.left))
+            if len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq) and _chain(test.comparators[0]) \
+                    and self._fixed_operand(mod, test.left):
+                out.add(_chain(test.comparators[0]))         # `ALLOWED_URL === target` (constant written first)
             return out
         if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and test.func.attr in _CONFINEMENT \
                 and cwe in _PATH_CWES:
@@ -3601,6 +4026,19 @@ class Project:
             return _paths(test.func.value)                      # x.isalnum() / x.isdigit() …
         if isinstance(test, ast.Call):
             fname = self._canon(mod, test.func).split(".")[-1]
+            if fname.lower() in ("startswith", "starts_with") and cwe in ("CWE-601", "CWE-918") \
+                    and isinstance(test.func, ast.Attribute) and _chain(test.func.value) and test.args \
+                    and isinstance(test.args[0], ast.Constant) and isinstance(test.args[0].value, str) \
+                    and re.match(r"(?i)^[a-z][a-z0-9+.-]*://[^/?#@\\]+/", test.args[0].value):
+                return {_chain(test.func.value)}  # url.startsWith("https://app.example/"): scheme and host are fixed
+            if fname in ("hasOwnProperty", "hasOwn"):
+                # COLS.hasOwnProperty(k) / Object.hasOwn(COLS, k): an allow-list only when the table is a constant
+                # object literal of the module, never request data or another runtime value
+                table, keys = (test.args[0], test.args[1:2]) if fname == "hasOwn" and test.args else \
+                    (test.func.value if isinstance(test.func, ast.Attribute) else None, test.args[:1])
+                if table is None or not keys or not self._constant_table(mod, table):
+                    return set()
+                return _paths(keys[0])
             if fname.lower().rstrip("?") in _NOT_VALIDATION:
                 return set()                 # prefix / suffix / existence / emptiness checks confine nothing
             if not test.args and isinstance(test.func, ast.Attribute) and (fname in ("is_valid", "validate_on_submit") or (
@@ -3609,6 +4047,8 @@ class Project:
             # access paths, not base names: allowed_file(file.filename) validates the name, not file.stream
             arg_names = set().union(*[_paths(a) for a in list(test.args) + [k.value for k in test.keywords]]) \
                 if (test.args or test.keywords) else set()
+            if self.m.get("language") == "php" and fname.lower() in ("preg_match", "filter_var", "in_array", "array_search"):
+                return self._php_validated(mod, test, fname.lower(), cwe)
             if fname.lower() in _MEMBERSHIP:
                 return arg_names             # ALLOWED.contains(x) / in_array(x, $allowed): the looked-up value
             names = set(arg_names)
@@ -3630,6 +4070,83 @@ class Project:
             if fname in self.m["validators"] or any(v in fname for v in ("valid", "safe", "allowed", "check", "verify")):
                 return names
         return set()
+
+    def _php_resolve(self, mod, e):
+        """A literal, or the literal a top-level PHP variable is bound to once."""
+        if isinstance(e, ast.Name):
+            v = self._module_const(mod, e.id)
+            return v if v is not None else e
+        return e
+
+    def _php_validated(self, mod, test: ast.Call, fname: str, cwe) -> set:
+        """PHP checks whose meaning depends on their arguments:
+
+        * preg_match(P, $x): only a pattern anchored at both ends (no `m` flag) whose character classes let through
+          nothing the sink cares about (`$` also accepts one trailing newline unless the `D` flag is set);
+        * filter_var($x, FILTER_VALIDATE_INT / FLOAT / BOOLEAN / IP / MAC): the value is that kind of thing;
+          FILTER_VALIDATE_EMAIL / URL accept quotes, `<`, `javascript:` …: no validation;
+        * in_array($x, T) / array_search: an allow-list, except a loose (non-strict) comparison with a table holding
+          numbers or booleans, which PHP 7 lets "1 OR 1=1" pass (and `true` matches any non-empty text)."""
+        args = test.args
+        if fname == "preg_match":
+            if len(args) < 2:
+                return set()
+            pat = self._php_resolve(mod, args[0])
+            sp = _php._split_regex(pat.value) if isinstance(pat, ast.Constant) and isinstance(pat.value, str) else None
+            if sp is None or "m" in sp[1] or "x" in sp[1]:
+                return set()
+            body, flags = sp
+            body = re.sub(r"^\\A", "^", re.sub(r"\\[zZ]$", "$", body))
+            chars = _regex_chars(body)
+            if chars is None:
+                return set()
+            if "i" in flags:
+                chars = frozenset(chars | {c.swapcase() for c in chars if c.isalpha()})
+            if "D" not in flags and not body.endswith("\\z") and cwe in _CRLF_CWES:
+                chars = chars | {"\n"}               # `$` also matches before a final newline
+            ok = _php.piece_safe(cwe, None, _php.only(chars), True) if cwe else None
+            if ok is None:
+                ok = _chars_safe_for(chars, cwe) if cwe else chars <= _PLSQL_ID_CHARS
+            return _paths(args[1]) if ok else set()
+        if fname == "filter_var":
+            kind = _php._FILTERS.get(args[1].id) if len(args) > 1 and isinstance(args[1], ast.Name) else None
+            if kind is None or (kind != "all" and not (cwe and _php.piece_safe(cwe, None, kind, True))):
+                return set()
+            return _paths(args[0])
+        if not args:
+            return set()
+        table = self._php_resolve(mod, args[1]) if len(args) > 1 else None
+        strict = len(args) > 2 and isinstance(args[2], ast.Constant) and args[2].value is True
+        if isinstance(table, (ast.List, ast.Tuple, ast.Dict)) and not strict:
+            vals = table.values if isinstance(table, ast.Dict) else table.elts
+            if any(not (isinstance(v, ast.Constant) and isinstance(v.value, str)) for v in vals):
+                return set()
+        return _paths(args[0])
+
+    def _php_branch_leaves_safe(self, mod, body, test, positive: bool, name: str, si) -> bool:
+        """Where `body` (the branch on which `test` is `positive`) ends, `name` holds a value the test validated,
+        a constant, or an entry of a constant table."""
+        cwe = si[5] if si else None
+        last = None
+        for st in body:
+            if not any(isinstance(x, ast.Name) and x.id == name and isinstance(x.ctx, ast.Store) for x in ast.walk(st)):
+                continue
+            if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name):
+                last = st.value
+            else:
+                return False                 # rebound in a way this does not read (a loop, a nested if, a call …)
+        validated = self._validated(mod, test, positive, cwe)
+        if last is None or (isinstance(last, ast.Name) and last.id == name):
+            return name in validated
+        if isinstance(last, ast.Name) and last.id in validated:
+            return True
+        if isinstance(last, ast.Constant):
+            return True
+        if isinstance(last, ast.Subscript) and isinstance(last.slice, ast.Constant):
+            table = self._php_resolve(mod, last.value)
+            vals = table.values if isinstance(table, ast.Dict) else getattr(table, "elts", None)
+            return vals is not None and all(isinstance(v, ast.Constant) for v in vals)
+        return False
 
     def _guarded(self, mod, fn, call, names: set, si=None, depth: int = 0) -> bool:
         """True when every tainted name feeding the sink was validated on the path to it."""
@@ -3659,6 +4176,12 @@ class Project:
                             if path_sink:
                                 by_any |= self._validated(mod, prev.test, positive=False)
                                 not_abs |= _isabs_rejected(prev.test)
+                        elif isinstance(prev, ast.If) and prev.orelse and self.m.get("language") == "php":
+                            # `if (in_array($x, $ok, true)) { … } else { $x = $ok[0]; }`: past it the value was
+                            # validated on one branch and replaced by a constant on the other
+                            got = {n for n in names if "." not in n
+                                   and self._php_branch_leaves_safe(mod, prev.body, prev.test, True, n, si)
+                                   and self._php_branch_leaves_safe(mod, prev.orelse, prev.test, False, n, si)}
                         elif isinstance(prev, ast.If) and not prev.orelse:
                             # `if not is_safe(url): url = "/"`: past it the value was either validated or replaced
                             neg = self._validated(mod, prev.test, positive=False, cwe=si[5] if si else None)
@@ -3684,13 +4207,14 @@ class Project:
     def _derived_from_guarded(self, mod, fn, call, name: str, si, depth: int) -> bool:
         """`nt = translate(next_url, code)` assigned once, before the sink, from values that were all validated at
         that assignment: `nt` is derived from validated data, as `next_url + "?x"` written at the sink would be."""
-        if depth >= 3 or "." in name or not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        script = isinstance(fn, ast.Module) and self.m.get("language") == "php"    # a PHP script's top-level code
+        if depth >= 3 or "." in name or not (isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or script):
             return False
         line = getattr(call, "lineno", 0)
         stores = [x for x in ast.walk(fn) if isinstance(x, ast.Name) and x.id == name and not isinstance(x.ctx, ast.Load)]
         assigns = [st for st in ast.walk(fn) if isinstance(st, ast.Assign) and len(st.targets) == 1
                    and isinstance(st.targets[0], ast.Name) and st.targets[0].id == name]
-        if len(stores) != 1 or len(assigns) != 1 or name in {a.arg for a in fn.args.args + fn.args.kwonlyargs}:
+        if len(stores) != 1 or len(assigns) != 1 or (not script and name in {a.arg for a in fn.args.args + fn.args.kwonlyargs}):
             return False                          # rebound elsewhere (loop target, augmented, a parameter): unknown
         st = assigns[0]
         if not (0 < st.lineno < line):
@@ -3698,6 +4222,10 @@ class Project:
         funcs = {id(c.func) for c in ast.walk(st.value) if isinstance(c, ast.Call)}
         used = {x.id for x in ast.walk(st.value) if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Load)
                 and id(x) not in funcs}
+        if script:
+            # a PHP variable the script never assigns is undefined (null): it carries no data to validate
+            stored = {x.id for x in ast.walk(fn) if isinstance(x, ast.Name) and not isinstance(x.ctx, ast.Load)}
+            used = {u for u in used if u in stored or u.startswith("$_")}
         return bool(used) and self._guarded(mod, fn, st, used, si, depth + 1)
 
     def _rebinds_safely(self, mod, body, name, si) -> bool:
@@ -3859,6 +4387,8 @@ class Project:
                "sink_fields": {k: list(v) for k, v in summ["sink_fields"].items()},
                "ret_fields": set(summ["ret_fields"]), "ret_type": summ["ret_type"], "ret_line": summ["ret_line"],
                "cb_calls": list(summ["cb_calls"])}
+        if "ret_safe" in summ:
+            new["ret_safe"] = dict(summ["ret_safe"])
         rt = self._resolve_class(mod, _annotation_name(getattr(fn, "returns", None)) or "")
         if rt:
             new["ret_type"] = rt
@@ -3873,6 +4403,12 @@ class Project:
                     # (a guarded return gives back a validated value: `if (!SAFE.matcher(s).matches()) return null;`)
                     new["ret_params"].update(_origin_params(o))
                     new["ret_line"] = new["ret_line"] or node.lineno
+                    if self.m.get("language") == "php":
+                        # `return mysql_real_escape_string($in);`: what the wrapper escaped the parameter for (the
+                        # intersection over its returns) travels back to the caller with the argument's taint
+                        rs = new.setdefault("ret_safe", {})
+                        for p in _origin_params(o):
+                            rs[p] = _safe_for(o) if p not in rs else rs[p] & _safe_for(o)
                 elif o and o[0] == "field":
                     new["ret_fields"].add(o[1])
                 if new["ret_type"] is None:
@@ -3934,7 +4470,7 @@ class Project:
             if hit:
                 si, value = hit
                 aenv = self._flow_at(mod, cls, fn, env, node)
-                for o in (self._taints(mod, cls, value, aenv) if aenv is not None else []):
+                for o in (self._taints(mod, cls, value, aenv) if aenv is not None and self._attr_value_ok(mod, cls, si, value, aenv) else []):
                     if not _unsafe_for(o, si):
                         continue
                     if o[0] in {"param", "field"} and not self._suppressed(path, node.lineno):
@@ -3971,7 +4507,7 @@ class Project:
         at_path, at_line = getattr(call, "vulnscan_at", None) or (path, call.lineno)
         if si and not self._suppressed(at_path, at_line):
             for arg in self._sink_args(si, call):
-                if not self._sink_arg_ok(fn, si, arg, env, mod, cls):
+                if not self._sink_arg_ok(fn, si, arg, env, mod, cls, call):
                     continue
                 origins = [o for o in self._taints(mod, cls, arg, env) if _unsafe_for(o, si)]
                 if origins and not self._guarded(mod, fn, call, self._tainted_names_in(arg, env), si):
@@ -4105,7 +4641,7 @@ class Project:
                 si = self._sink(mod, cls, call, env)
                 if si:
                     for arg in self._sink_args(si, call):
-                        if not self._sink_arg_ok(fn, si, arg, env, mod, cls):
+                        if not self._sink_arg_ok(fn, si, arg, env, mod, cls, call):
                             continue
                         o = self._sink_taint(mod, cls, arg, env, si)
                         if o and o[0] in {"source", "retsource"} \
@@ -4166,7 +4702,7 @@ class Project:
                 if hit:
                     si, value = hit
                     env = self._flow_at(mod, cls, fn, fenv, node)
-                    o = self._sink_taint(mod, cls, value, env, si) if env is not None else None
+                    o = self._sink_taint(mod, cls, value, env, si) if env is not None and self._attr_value_ok(mod, cls, si, value, env) else None
                     if o and o[0] in {"source", "retsource"} and not self._guarded(mod, fn, node, self._tainted_names_in(value, env), si):
                         self._emit(si, path, node.lineno, o, None, None)
             # server-side templates: render_template("t.html", var=tainted) where t.html prints {{ var|safe }}
@@ -5230,6 +5766,24 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
     apex_sites: list = []        # APX024 context: (rel, block, application id) of every APEX component with code
     apex_sec: dict = {}          # application id -> merged protection facts (app scheme, schemes, pages)
     script_ranges: list = []     # Supporting Objects scripts: (rel, first line, last line, label)
+    synonyms: dict = {}          # APX024 call sites: synonym (lower case) -> what it names (`create synonym s for o.pkg`)
+    export_of: dict = {}         # APEX export file -> (application id, "sql" | "yaml"): one application in both forms
+    # the YAML export: its application id is in the application file f<id>.yaml of the nearest folder above the page
+    # (readable/application/f141.yaml, app/yaml/f347.yaml …)
+    yaml_apps: dict = {}
+    for rel, text in files.items():
+        if rel.lower().endswith((".yaml", ".yml")) and re.fullmatch(r"f\d+\.ya?ml", rel.replace("\\", "/").rsplit("/", 1)[-1].lower()):
+            aid = apex_export.yaml_application_id(text)
+            if aid:
+                yaml_apps[rel.replace("\\", "/").rsplit("/", 1)[0] if "/" in rel.replace("\\", "/") else ""] = aid
+
+    def yaml_app(rel):
+        parts = rel.replace("\\", "/").split("/")[:-1]
+        for k in range(len(parts), -1, -1):
+            aid = yaml_apps.get("/".join(parts[:k]))
+            if aid:
+                return aid
+        return None
 
     def add_blocks(rel, blocks, diag):
         """Extracted code blocks (APEX export / readable YAML / ORDS handlers) -> units at their real lines."""
@@ -5267,6 +5821,7 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
         diag["lines"].extend((ln + delta, msg) for ln, msg in d["lines"])
         findings.extend(apex_export.password_findings(text, rel, 1 + delta))   # custom authentication in packages
         specs, bodies = plsql_authz.collect(text, rel, delta)
+        synonyms.update(plsql_authz.synonyms(text))
         for name, routines in specs.items():
             authz_specs.setdefault(name, set()).update(routines)
         authz_bodies.extend(bodies)
@@ -5289,9 +5844,16 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             if not apex_export.is_apex_yaml(text, rel):
                 continue
             diag["language"] = "apex-yaml"
-            blocks, afind, _ = apex_export.extract_yaml(text, rel)
+            blocks, afind, _, yinfo = apex_export.extract_yaml_full(text, rel)
             findings.extend(afind)
             add_blocks(rel, blocks, diag)
+            app_id = yinfo["app"] or yaml_app(rel)
+            export_of[rel] = (app_id, "yaml")
+            sec = apex_sec.setdefault(app_id, {"app_scheme": "", "schemes": {}, "pages": {}})
+            sec["app_scheme"] = sec["app_scheme"] or yinfo["app_scheme"]
+            for pg, pinfo in yinfo["pages"].items():
+                sec["pages"].setdefault(pg, pinfo)
+            apex_sites.extend((rel, b, app_id, "yaml") for b in blocks if b.comp)
         elif low.endswith(".xml"):
             diag["language"] = "xml"
             for start, script in apex_export.xml_scripts(text):
@@ -5315,7 +5877,8 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             sec["app_scheme"] = sec["app_scheme"] or ainfo["app_scheme"]
             sec["schemes"].update(ainfo["schemes"])
             sec["pages"].update(ainfo["pages"])
-            apex_sites.extend((rel, b, ainfo["app"]) for b in blocks if b.comp)
+            apex_sites.extend((rel, b, ainfo["app"], "sql") for b in blocks if b.comp)
+            export_of[rel] = (ainfo["app"], "sql")
             # Supporting Objects: packages / procedures in installation scripts, analysed as plain PL/SQL at their
             # export lines (data flow, APX024, password checks)
             for sline, script, label in ainfo["scripts"]:
@@ -5356,9 +5919,61 @@ def _analyze_plsql(files: dict[str, str], models_dirs) -> tuple[list, list]:
             _mark_unused_components(findings, app["defs"], app["refs"], shared_lines)
     authz = plsql_authz.findings(authz_specs, authz_bodies, shared_lines)
     _label_findings(authz, script_ranges)
-    plsql_authz.apex_context(authz, apex_sites, apex_sec)
+    plsql_authz.apex_context(authz, apex_sites, apex_sec, authz_bodies, synonyms)
     findings.extend(authz)
-    return projects, findings
+    return projects, _dedupe_export_forms(findings, export_of, shared_lines)
+
+
+def _dedupe_export_forms(findings: list, export_of: dict, lines: dict | None = None) -> list:
+    """One application scanned as both a .sql export and a YAML export (APEX 23.2+ writes both): a finding of the
+    YAML form is dropped when the .sql form of the same application has one of the same rule, in the same component
+    (the labels are built alike), on the same code (the reported line, unquoted and normalised; for the
+    configuration checks APX006-APX023, whose line is the attribute and differs between the forms, the component
+    is enough). The YAML export's
+    application id comes from the nearest f<id>.yaml above it; when the scan does not hold it, the YAML export
+    matches only if the scan holds exactly one .sql application. Everything else of both forms is kept."""
+    sql_apps = {a for a, fmt in export_of.values() if fmt == "sql"}
+    if not sql_apps or not any(fmt == "yaml" for _a, fmt in export_of.values()):
+        return findings
+    seen = set()
+    for f in findings:
+        app, fmt = export_of.get(f.file, (None, ""))
+        label = f.extra.get("apex_component")
+        if fmt == "sql" and label:
+            seen.add((app, label, f.rule_id, _sink_key(f, lines)))
+    out = []
+    for f in findings:
+        app, fmt = export_of.get(f.file, (None, ""))
+        label = f.extra.get("apex_component")
+        if fmt == "yaml" and label:
+            if app is None and len(sql_apps) == 1:
+                app = next(iter(sql_apps))
+            if app is not None and (app, label, f.rule_id, _sink_key(f, lines)) in seen:
+                continue
+        out.append(f)
+    return out
+
+
+_CONFIG_RULES_DEDUPE = {f"APX0{n:02d}" for n in range(6, 24)}
+
+
+def _sink_key(f, lines) -> str:
+    """The code a finding of an APEX export reports: its line in the file, normalised (_sink_text)."""
+    if f.rule_id in _CONFIG_RULES_DEDUPE:
+        return ""
+    rows = (lines or {}).get(f.file) or []
+    text = rows[f.line - 1] if 0 < f.line <= len(rows) else str(f.snippet or "")
+    return _sink_text(text)
+
+
+def _sink_text(snippet) -> str:
+    """`[label] '  execute immediate ''x'' || :P1;',` (a .sql export line) and `[label] execute immediate 'x' ||
+    :P1;` (a YAML line) -> the same text: label, string quoting of the export, doubled quotes and spacing removed."""
+    s = re.sub(r"^\[[^\]]*\]\s*", "", str(snippet or "")).strip()
+    s = re.sub(r"[,)\s]+$", "", s) if s.startswith("'") else s
+    if len(s) >= 2 and s[0] == "'" and s[-1] == "'":
+        s = s[1:-1].replace("''", "'")
+    return " ".join(s.split()).lower()
 
 
 def _mark_unused_components(findings: list, plugin_defs: dict, plugin_refs: set, lines: dict) -> None:

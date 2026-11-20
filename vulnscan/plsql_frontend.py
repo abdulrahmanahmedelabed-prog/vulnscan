@@ -698,7 +698,10 @@ class Parser:
         if self.opt("compound"):
             self.eat("trigger")
             body = []
-            while self.t.kind != "eof" and not (self.at("end") and self.peek().kind == "id" and self.peek().val == name):
+            # the trigger ends at `end [name];` (the name is optional: `END;` closes a compound trigger too)
+            while self.t.kind != "eof" and not (self.at("end") and (
+                    (self.peek().kind == "id" and self.peek().val == name) or self.peek().kind != "id")):
+                start = self.i
                 if self.at("before", "after", "instead"):
                     while not self.at("is") and self.t.kind != "eof":
                         self.i += 1
@@ -706,6 +709,8 @@ class Parser:
                     body.extend(self.decls_and_body(name))
                     continue
                 body.extend(self.parse_decls({"before", "after", "instead", "end"}))
+                if self.i == start:                      # a stray `end …`: never loop on it
+                    self.i += 1
             self.skip_to_semicolon()
         else:
             body = self.parse_anonymous()

@@ -223,18 +223,38 @@ class PointsTo:
             self._stmts(info["node"].body, info["mod"], info["cls"], chain, info["path"], q)
             self.instances[q] = {()}   # entry/uncalled functions are analysed in the empty context
         # function definitions are function values in their enclosing scope (context-free globals)
-        for q, info in self.p.gfuncs.items():
-            if info["cls"] is None:
-                enc = self._enclosing(q)
-                scope = enc[0] if enc else info["mod"]
-                self._add(("g", scope, info["name"]), self._fobj(q))
+        for (scope, name), q in self._declared_funcs().items():
+            self._add(("g", scope, name), self._fobj(q))
 
     def _emit(self, c):
         self.templates[self._cur_scope].append(c)
 
+    def _declared_funcs(self) -> dict:
+        """(scope, name) -> the function a declaration binds there. Two JavaScript declarations of one name in one
+        scope: the later one wins (hoisting), as in the engine's own name table."""
+        hit = self.__dict__.get("_declared")
+        if hit is None:
+            hit = {}
+            pos = {}
+            for q, info in self.p.gfuncs.items():
+                if info["cls"] is None:
+                    enc = self._enclosing(q)
+                    key = (enc[0] if enc else info["mod"], info["name"])
+                    at = (getattr(info["node"], "lineno", 0), getattr(info["node"], "col_offset", 0))
+                    if key not in hit or at >= pos[key]:
+                        hit[key], pos[key] = q, at
+            self.__dict__["_declared"] = hit
+        return hit
+
     def _nested_qual(self, mod, cls, node):
         if cls:
             return f"{cls}.{node.name}"
+        by_node = self.__dict__.get("_qual_by_node")
+        if by_node is None or len(by_node) != len(self.p.gfuncs):
+            by_node = self.__dict__["_qual_by_node"] = {id(i["node"]): q for q, i in self.p.gfuncs.items()}
+        q = by_node.get(id(node))
+        if q is not None and self.p.gfuncs[q]["node"] is node:
+            return q              # a JavaScript function sharing its name with another one has its own qual
         return f"{mod}::{node.name}"
 
     def _stmts(self, body, mod, cls, chain, path, qual):
@@ -331,7 +351,8 @@ class PointsTo:
                     ev(child)
         elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
             q = self._nested_qual(mod, cls, n)
-            if q in self.p.gfuncs and n.name in self.locals.get(scope, ()):
+            if q in self.p.gfuncs and n.name in self.locals.get(scope, ()) \
+                    and (cls or self._declared_funcs().get((scope, n.name), q) == q):
                 self._emit(("alloc", ("func", None, None, q), self._write(chain, n.name)))
         elif isinstance(n, ast.ClassDef):
             pass   # classes are resolved statically by the engine
