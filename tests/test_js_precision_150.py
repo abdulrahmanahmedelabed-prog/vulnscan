@@ -204,3 +204,68 @@ def test_content_type_must_be_set_on_the_path_to_the_sink():
     h = hits(src)
     assert "CWE-79" not in cwes(h, 6) and "CWE-79" in cwes(h, 8)
     assert "CWE-79" not in cwes(h, 14)
+
+
+# ---------------------------------------------------------------- review probes: near misses that stay reported
+HEAD = ("const express = require('express'); const app = express(); const path = require('path'); "
+        "const cp = require('child_process'); const fs = require('fs'); const db = require('./db');\n")
+
+
+def _cwes_all(src: str) -> set:
+    return {c for cs in hits(src).values() for _r, c in cs}
+
+
+def test_hasownproperty_on_request_data_is_no_allow_list():
+    k03 = HEAD + ("app.post('/a', (req, res) => { const col = req.query.col; "
+                  "if (req.body.hasOwnProperty(col)) { db.query('SELECT ' + col + ' FROM t'); } res.end(); });\n")
+    k06 = HEAD + ("app.post('/a', (req, res) => { const col = req.query.col; const allowed = req.body.allowed; "
+                  "if (allowed.hasOwnProperty(col)) { db.query('SELECT ' + col + ' FROM t'); } res.end(); });\n")
+    k07 = HEAD + ("app.post('/a', (req, res) => { const k = req.query.k; "
+                  "if (Object.hasOwn(req.query, k)) { cp.exec('run ' + k); } res.end(); });\n")
+    k05 = HEAD + ("const COLS = {name: 1, age: 1};\n"
+                  "app.post('/a', (req, res) => { const col = req.query.col; "
+                  "if (COLS.hasOwnProperty(col)) { db.query('SELECT ' + col + ' FROM t'); } res.end(); });\n")
+    assert "CWE-89" in _cwes_all(k03) and "CWE-89" in _cwes_all(k06) and "CWE-78" in _cwes_all(k07)
+    assert "CWE-89" not in _cwes_all(k05)                       # a constant table of the module
+
+
+def test_comparison_with_request_data_is_no_allow_list():
+    u01 = HEAD + "app.post('/a', (req, res) => { const t = req.query.u; if (req.body.URL === t) { res.redirect(t); } });\n"
+    u02 = HEAD + ("app.post('/a', (req, res) => { const c = req.query.c; "
+                  "if (req.body.CMD !== c) { return res.end(); } cp.exec(c); });\n")
+    assert "CWE-601" in _cwes_all(u01) and "CWE-78" in _cwes_all(u02)
+
+
+def test_sendfile_root_or_prefix_that_confines_nothing():
+    j11 = HEAD + "app.get('/a', (req, res) => { res.sendFile(req.query.f, {root: req.query.r}); });\n"
+    j12 = HEAD + "app.get('/a', (req, res) => { res.sendFile(req.query.f, {root: '/'}); });\n"
+    k01 = HEAD + "const BASE = '/';\napp.get('/a', (req, res) => { res.sendFile(BASE + req.query.f); });\n"
+    j14 = HEAD + "app.get('/a', (req, res) => { res.sendFile('/static' + req.query.f); });\n"
+    for src in (j11, j12, k01, j14):
+        assert "CWE-22" in _cwes_all(src), src
+
+
+def test_later_function_declaration_wins():
+    m12 = (HEAD + "function run(x) { cp.exec(x); }\nfunction run2(y) { run(y); }\n"
+           "app.get('/a', (req, res) => { run2(req.query.c); });\nfunction run(x) { return 0; }\n")
+    assert "CWE-78" not in _cwes_all(m12)
+    m12v = (HEAD + "function run(x) { return 0; }\nfunction run2(y) { run(y); }\n"
+            "app.get('/a', (req, res) => { run2(req.query.c); });\nfunction run(x) { cp.exec(x); }\n")
+    assert "CWE-78" in _cwes_all(m12v)
+
+
+def test_redirect_prefix_with_whitespace_after_slash():
+    # browsers drop tabs and newlines from URLs: "/\t/" + host is "//host"
+    j06 = HEAD + "app.get('/a', (req, res) => { res.redirect('/\\t/' + req.query.u); });\n"
+    assert "CWE-601" in _cwes_all(j06)
+
+
+def test_content_type_changed_or_chosen_later_or_not_content_type():
+    m14 = HEAD + "app.get('/a', (req, res) => { res.type('json'); res.type(req.query.t); res.send(req.query.x); });\n"
+    m15 = HEAD + ("app.get('/a', (req, res) => { res.type('json'); res.set('Content-Type', 'text/html'); "
+                  "res.send(req.query.x); });\n")
+    m16 = HEAD + "app.get('/a', (req, res) => { res.set('Accept', 'application/json'); res.send(req.query.x); });\n"
+    safe = HEAD + "app.get('/a', (req, res) => { res.set('Content-Type', 'application/json'); res.send(req.query.x); });\n"
+    for src in (m14, m15, m16):
+        assert "CWE-79" in _cwes_all(src), src
+    assert "CWE-79" not in _cwes_all(safe)

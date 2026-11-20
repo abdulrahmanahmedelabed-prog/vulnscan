@@ -636,7 +636,7 @@ _NOT_VALIDATION = {"startswith", "endswith", "starts_with", "ends_with", "str_st
                    "fileexists", "file_exists", "isset", "empty", "isempty", "isnullorempty", "isnullorwhitespace", "is_dir",
                    "is_file", "strpos", "str_contains", "isascii", "isblank", "notempty", "notnull", "isnotempty"}
 _MEMBERSHIP = {"contains", "includes", "containskey", "containsvalue", "has", "haskey", "in_array", "array_key_exists",
-               "array_search", "key?", "include?", "member?", "issubset", "hasownproperty", "hasown"}
+               "array_search", "key?", "include?", "member?", "issubset"}
 _SHAPE_CHECKS = {"isalnum", "isalpha", "isdigit", "isdecimal", "isnumeric", "isidentifier", "fullmatch", "matches"}
 
 
@@ -2474,7 +2474,7 @@ class Project:
         pieces = self._str_pieces(node)
         if not pieces or len(pieces) < 2:
             return False
-        if pieces[0][0] == "lit" and re.match(r"(?i)^(/[^/\\]|[a-z][a-z0-9+.-]*://[^/?#@\\]+[/?#])", pieces[0][1]):
+        if pieces[0][0] == "lit" and re.match(r"(?i)^(/[^/\\\s\x00-\x1f]|[a-z][a-z0-9+.-]*://[^/?#@\\\s]+[/?#])", pieces[0][1]):
             return any(k == "val" and self._taint(mod, cls, e, env) is not None for k, e in pieces)
         seen = tainted = False
         for kind, e in pieces:
@@ -3305,7 +3305,8 @@ class Project:
         """Express's res.sendFile / res.download serve through the `send` module, which answers 403 to any path with
         a ".." segment and, given the `root` option, to any path that leaves root; without root the path must be
         absolute. So the request can choose which file only when it supplies the whole path and no root is set:
-        `res.sendFile(dir + "/data/" + name)` and `res.sendFile(name, {root: dir})` stay inside the directory.
+        `res.sendFile(dir + "/data/" + name)` and `res.sendFile(name, {root: dir})` stay inside the directory (a root
+        or prefix the request controls, or "/", confines nothing; a known prefix must end with a separator).
         (The deprecated lowercase res.sendfile is not covered.)"""
         f = call.func
         if not (isinstance(f, ast.Attribute) and f.attr in ("sendFile", "download")
@@ -3314,18 +3315,23 @@ class Project:
         if not call.args or arg is not call.args[0]:
             return False
         for a in call.args[1:]:
-            if isinstance(a, ast.Dict) and any(isinstance(k, ast.Constant) and k.value == "root" for k in a.keys):
-                return True
+            if isinstance(a, ast.Dict):
+                for k, v in zip(a.keys, a.values):
+                    if isinstance(k, ast.Constant) and k.value == "root" and v is not None \
+                            and self._taint(mod, cls, v, env) is None:
+                        text = self._str_const_of(mod, v, env)
+                        if text is None or text.strip("/\\"):
+                            return True          # an untainted root other than "/" or ""
         pieces = self._str_pieces(arg)
         if not pieces or len(pieces) < 2:
             return False
-        known = ""
+        known = None                             # known text right before the current piece (None: unknown)
         for kind, e in pieces:
             if kind == "val" and self._taint(mod, cls, e, env) is not None:
-                return bool(known.strip("/\\"))   # "/" + name is any absolute path; "/srv/files/" + name is not
-            if kind == "val":
-                return True                     # dir + "/" + name: an untainted directory value comes first
-            known += e
+                # "/srv/files/" + name stays under /srv/files; "/" + name or "/static" + name ("-backup/x") does not
+                return known is not None and bool(known.strip("/\\")) and known[-1:] in ("/", "\\")
+            text = e if kind == "lit" else self._str_const_of(mod, e, env)
+            known = None if text is None else (known or "") + text    # text after an unknown value starts afresh
         return False
 
     def _sink_arg_ok(self, fn, si, arg, env=None, mod=None, cls=None, call=None) -> bool:
@@ -3370,25 +3376,51 @@ class Project:
         cache = self.__dict__.setdefault("_non_html_fns", {})
         hit = cache.get(id(fn))
         if hit is None or hit[0] is not fn:
-            found = []
+            setters = []                         # (call, True when it sets a fixed non-HTML type)
             for n in _scope_nodes(fn):
-                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and \
-                        n.func.attr in ("setHeader", "set", "type", "header", "writeHead", "contentType", "json"):
-                    if n.func.attr == "json":
-                        continue
-                    for a in n.args:
-                        for c in ast.walk(a):
-                            if isinstance(c, ast.Constant) and isinstance(c.value, str) and self._NON_HTML_TYPE.search(c.value):
-                                found.append(n)
-            hit = cache[id(fn)] = (fn, found, _fn_parents(fn) if found else {})
-        if not hit[1]:
+                kind = self._content_type_set(n)
+                if kind is not None:
+                    setters.append((n, kind))
+            hit = cache[id(fn)] = (fn, setters, _fn_parents(fn) if setters else {})
+        if not any(k for _n, k in hit[1]):
             return True
         if call is None:
             return False
         # only a Content-Type set on every path to the sink counts: by a statement before it in the same block or in
-        # a block around it (`if (json) { res.type('json'); res.send(a) } else { res.send(b) }`: b may be HTML)
+        # a block around it (`if (json) { res.type('json'); res.send(a) } else { res.send(b) }`: b may be HTML), and
+        # no later setting before the sink may make it HTML or let the request choose (`res.type(req.query.t)`)
         before = _blocks_before(hit[2], fn, call)
-        return before is not None and not any(_stmt_of(hit[2], n) in before for n in hit[1])
+        if before is None:
+            return False
+        order = {id(n): i for i, n in enumerate(_scope_nodes(fn))}      # source order (lines may be shared)
+        fixed = [n for n, k in hit[1] if k and _stmt_of(hit[2], n) in before]
+        if not fixed or id(call) not in order:
+            return not fixed
+        last = max(order[id(n)] for n in fixed)
+        return any(not k and last < order[id(n)] < order[id(call)] for n, k in hit[1])
+
+    _CT_SETTERS = frozenset({"setHeader", "set", "header", "writeHead", "type", "contentType"})
+
+    def _content_type_set(self, n):
+        """For a response call that sets the Content-Type: True when it sets a fixed non-HTML type, False for any
+        other type (HTML, or a value from elsewhere); None when the call sets no Content-Type
+        (`res.set("Accept", "application/json")` does not)."""
+        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in self._CT_SETTERS):
+            return None
+        vals = []
+        if n.func.attr in ("type", "contentType"):
+            vals = n.args[:1]
+        for i, a in enumerate(n.args):
+            if isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.lower() == "content-type" \
+                    and i + 1 < len(n.args):
+                vals.append(n.args[i + 1])
+            if isinstance(a, ast.Dict):
+                vals += [v for k, v in zip(a.keys, a.values)
+                         if isinstance(k, ast.Constant) and isinstance(k.value, str) and k.value.lower() == "content-type"]
+        if not vals:
+            return None
+        return all(isinstance(v, ast.Constant) and isinstance(v.value, str) and bool(self._NON_HTML_TYPE.search(v.value))
+                   for v in vals)
 
     def _html_return(self, mod, fn, v) -> bool:
         """Can `return v` from this entry point be an HTML response body? Not for a task / CLI / message handler
@@ -3570,9 +3602,12 @@ class Project:
         chain = [fn] + [self.gfuncs[e]["node"] for e in (self.gfuncs[q]["enclosing"] if q in self.gfuncs else ())
                         if e in self.gfuncs]
         for scope in chain:
+            mine: dict = {}
             for n in _scope_nodes(scope):
                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and id(n) in idx:
-                    out.setdefault(n.name, idx[id(n)])
+                    mine[n.name] = idx[id(n)]       # a later declaration in the same scope wins (hoisting)
+            for name, fq in mine.items():
+                out.setdefault(name, fq)
         cache[id(fn)] = (fn, out)
         return out
 
@@ -3870,11 +3905,20 @@ class Project:
         self._parents_cache[key] = parents
         return parents
 
-    @staticmethod
-    def _fixed_operand(e) -> bool:
-        """A literal, or a CONSTANT-named value: the side of a comparison that is not the checked data."""
-        return (isinstance(e, ast.Constant) and e.value is not None) or \
-            (isinstance(e, (ast.Name, ast.Attribute)) and bool(re.match(r"^[A-Z][A-Z0-9_]*$", (_chain(e) or "").split(".")[-1])))
+    def _fixed_operand(self, mod, e) -> bool:
+        """The side of a comparison that is not the checked data: a literal, or a bare module-level name bound once
+        to a literal (`const VALID_REDIRECT = "https://…"`). Never an attribute chain (`req.body.URL` is request
+        data whatever its case)."""
+        if isinstance(e, ast.Constant):
+            return e.value is not None
+        if isinstance(e, ast.Name):
+            v = self._module_const(mod, e.id)
+            return isinstance(v, ast.Constant) and v.value is not None
+        return False
+
+    def _constant_table(self, mod, e) -> bool:
+        """A bare module-level name bound once to an object literal (`const COLS = {name: 1}`): an allow-list."""
+        return isinstance(e, ast.Name) and isinstance(self._module_const(mod, e.id), ast.Dict)
 
     def _validated(self, mod, test, positive: bool, cwe: str | None = None) -> set:
         """Names a condition validates on the path where it is `positive` (True) or not.
@@ -3907,7 +3951,7 @@ class Project:
                     return {_chain(test.left)} if _chain(test.left) else set()   # x not in ALLOWED -> exit
                 if isinstance(op, ast.NotEq) and _chain(test.left) and isinstance(test.comparators[0], ast.Constant):
                     return {_chain(test.left)}
-                if isinstance(op, ast.NotEq) and _chain(test.comparators[0]) and self._fixed_operand(test.left):
+                if isinstance(op, ast.NotEq) and _chain(test.comparators[0]) and self._fixed_operand(mod, test.left):
                     return {_chain(test.comparators[0])}         # `if (EXPECTED !== x) return`
                 if path_sink and isinstance(op, (ast.Gt, ast.GtE, ast.NotEq)) and isinstance(test.left, ast.Call) \
                         and isinstance(test.left.func, ast.Attribute) and test.left.func.attr in ("find", "index", "count", "indexOf") \
@@ -3929,7 +3973,7 @@ class Project:
             if _chain(test.left) and any(isinstance(op, (ast.In, ast.Eq)) for op in test.ops):
                 out.add(_chain(test.left))
             if len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq) and _chain(test.comparators[0]) \
-                    and self._fixed_operand(test.left):
+                    and self._fixed_operand(mod, test.left):
                 out.add(_chain(test.comparators[0]))         # `ALLOWED_URL === target` (constant written first)
             return out
         if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute) and test.func.attr in _CONFINEMENT \
@@ -3959,6 +4003,14 @@ class Project:
                     and isinstance(test.args[0], ast.Constant) and isinstance(test.args[0].value, str) \
                     and re.match(r"(?i)^[a-z][a-z0-9+.-]*://[^/?#@\\]+/", test.args[0].value):
                 return {_chain(test.func.value)}  # url.startsWith("https://app.example/"): scheme and host are fixed
+            if fname in ("hasOwnProperty", "hasOwn"):
+                # COLS.hasOwnProperty(k) / Object.hasOwn(COLS, k): an allow-list only when the table is a constant
+                # object literal of the module, never request data or another runtime value
+                table, keys = (test.args[0], test.args[1:2]) if fname == "hasOwn" and test.args else \
+                    (test.func.value if isinstance(test.func, ast.Attribute) else None, test.args[:1])
+                if table is None or not keys or not self._constant_table(mod, table):
+                    return set()
+                return _paths(keys[0])
             if fname.lower().rstrip("?") in _NOT_VALIDATION:
                 return set()                 # prefix / suffix / existence / emptiness checks confine nothing
             if not test.args and isinstance(test.func, ast.Attribute) and (fname in ("is_valid", "validate_on_submit") or (
