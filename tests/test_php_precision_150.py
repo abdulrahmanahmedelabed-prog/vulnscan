@@ -10,6 +10,8 @@ from __future__ import annotations
 import pickle
 import textwrap
 
+import pytest
+
 from vulnscan import php_semantics as php
 from vulnscan.cfamily_frontend import parse_cfamily
 from vulnscan.scanner import scan_path
@@ -360,4 +362,61 @@ def test_semantics_units():
                                                                 ("lit", "0"), ("lit", " "), ("lit", "%")]
     st = php.html_advance(php.TEXT, "<div title='")
     assert st.mode == "attr" and st.aq == "'" and php.html_required(st) == frozenset("'")
-    assert php.quote_states([("lit", "a='"), ("val", 1), ("lit", "'")], lambda i: None) == [None, "'", "?"]
+    assert php.quote_states([("lit", "a='"), ("val", 1), ("lit", "'")], lambda i: None) == [None, "'", "?", "?"]
+    assert php.quote_states([("lit", "a='%\\"), ("val", 1)], lambda i: None) == [None, "?", "?"]
+
+
+# ------------------------------------------------------------------------- 9. review probes (all vulnerable)
+_PROBES = {
+    # SQLite3::escapeString only doubles single quotes: not safe inside a double-quoted literal
+    'q01': ('DF004', 4, '<?php\n$db = new SQLite3(\'x.db\');\n$n = SQLite3::escapeString($_GET[\'n\']);\n$db->query("SELECT * FROM users WHERE name = \\"" . $n . "\\"");\n'),
+    # pg_escape_string inside a double-quoted identifier
+    'q02': ('DF004', 4, '<?php\n$c = pg_connect("dbname=x");\n$col = pg_escape_string($_GET[\'col\']);\npg_query($c, "SELECT \\"" . $col . "\\" FROM users");\n'),
+    # preg_match(...) !== false is no test (false only on error)
+    'q03': ('DF004', 4, '<?php\n$x = $_GET[\'x\'];\nif (preg_match(\'/^[a-z0-9]+$/\', $x) !== false) {\n    mysqli_query($conn, "SELECT * FROM t WHERE id = " . $x);\n}\n'),
+    # preg_match(...) === false then die: no validation
+    'q04': ('DF004', 4, '<?php\n$x = $_GET[\'x\'];\nif (preg_match(\'/^[a-z0-9]+$/\', $x) === false) { die(\'bad\'); }\nmysqli_query($conn, "SELECT * FROM t WHERE id = " . $x);\n'),
+    # tainted host in a Location URL
+    'q06': ('DF008', 3, '<?php\n$d = preg_replace(\'/[^a-z0-9.-]/i\', \'\', $_GET[\'tenant\']);\nheader("Location: https://" . $d . "/welcome");\n'),
+    # protocol-relative script src
+    'q07': ('DF013', 4, '<?php\n$lib = preg_replace(\'/[^a-zA-Z0-9\\/._-]/\', \'\', $_GET[\'lib\']);\n?>\n<html><head><script src="<?= $lib ?>"></script></head></html>\n'),
+    # srcdoc is HTML: entities decode
+    'q10': ('DF013', 4, '<?php\n$h = str_replace(\'"\', \'&quot;\', $_GET[\'html\']);\n?>\n<iframe srcdoc="<?= $h ?>"></iframe>\n'),
+    # state carried across <?php ?> blocks
+    'q12': ('DF013', 5, '<?php\n$u = str_replace(array(\'<\', \'>\'), \'\', $_GET[\'u\']);\necho \'<a href="\';\n?>\n<?php echo $u; ?>">link</a>\n'),
+    # a literal ending in a backslash inside quotes
+    'q13': ('DF004', 3, '<?php\n$q = addslashes($_GET[\'q\']);\nmysqli_query($conn, "SELECT * FROM t WHERE a LIKE \'%\\\\" . $q . "%\'");\n'),
+    # ENT_HTML5 alone escapes no quote
+    'r01': ('DF013', 3, '<?php\n$v = htmlspecialchars($_GET[\'v\'], ENT_HTML5);\necho "<input value=\\"" . $v . "\\">";\n'),
+    # one escaped value used quoted and bare
+    'r03': ('DF004', 3, '<?php\n$a = addslashes($_GET[\'a\']);\nmysqli_query($conn, "SELECT * FROM t WHERE a = \'" . $a . "\' AND b = " . $a);\n'),
+    # .= appends a bare piece
+    'r04': ('DF004', 5, '<?php\n$a = addslashes($_GET[\'a\']);\n$sql = "SELECT * FROM t WHERE a = \'" . $a . "\'";\n$sql .= " ORDER BY " . $a;\nmysqli_query($conn, $sql);\n'),
+    # eval of the request body
+    'r11': ('DF001', 2, "<?php\neval(file_get_contents('php://input'));\n"),
+    # shell output carries the command line taint
+    'r13': ('DF013', 3, "<?php\n$out = shell_exec('cat /tmp/' . basename($_GET['f']));\necho $out;\n"),
+    # echo of a command echoing a request value
+    's04': ('DF013', 2, "<?php\necho shell_exec('echo ' . escapeshellarg($_GET['m']));\n"),
+    # exec() output lines carry the command line taint
+    's05': ('DF013', 3, '<?php\nexec(\'grep -i \' . escapeshellarg($_GET[\'q\']) . \' /var/data/names.txt\', $lines);\nforeach ($lines as $l) { echo "<li>" . $l . "</li>"; }\n'),
+    # unserialize of the request body
+    's11': ('DF006', 2, "<?php\n$data = unserialize(file_get_contents('php://input'));\n"),
+    # assert of the request body
+    's12': ('DF001', 2, "<?php\nassert(file_get_contents('php://input'));\n"),
+    # include of the request body
+    's14': ('DF012', 2, "<?php\ninclude(file_get_contents('php://input'));\n"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_PROBES))
+def test_review_probe_stays_reported(name):
+    rule, line, code = _PROBES[name]
+    assert line in {f.line for f in analyze("a.php", code) if f.rule_id == rule}
+
+
+def test_audit_hits_kept_when_input_is_read(tmp_path):
+    (tmp_path / "a.php").write_text("<?php\neval(file_get_contents('php://input'));\n$d = unserialize(file_get_contents('php://input'));\n", encoding="utf-8")
+    findings, _ = scan_path(tmp_path)
+    rules = {(f.rule_id, f.line) for f in findings}
+    assert ("EXE003", 2) in rules and ("DES004", 3) in rules

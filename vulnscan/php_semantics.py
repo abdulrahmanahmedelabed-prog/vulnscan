@@ -27,6 +27,9 @@ import string
 MARK = "php:no:"           # php:no:<c> -- the value holds no <c>
 ESC = "php:esc"            # ' " and \ are backslash-escaped (addslashes, mysql_real_escape_string, pg_escape_string)
 SHQ = "php:shq"            # one single-quoted shell word (escapeshellarg)
+DBLQ = "php:dblq"          # ' is doubled ('' ), nothing else: safe only inside a '…' SQL literal (pg_escape_string,
+                           # SQLite3::escapeString, sqlite_escape_string)
+QEND = "php:qend:"         # php:qend:<s> -- a built string whose text ends at quote state <s> ("N": outside quotes)
 BSESC = "php:bsesc"        # a backslash only starts an escape the sanitizer wrote (LDAP \2a style)
 
 # the characters whose presence decides whether a value can change the meaning of what it is put into
@@ -58,7 +61,16 @@ def only(chars) -> frozenset:
 
 
 def is_marked(safe) -> bool:
-    return any(isinstance(m, str) and m.startswith("php:") for m in safe)
+    return any(isinstance(m, str) and m.startswith("php:") and not m.startswith(QEND) for m in safe)
+
+
+def end_state(safe):
+    """The quote state a built string ends in, recorded when it was built (None when not recorded)."""
+    got = {m[len(QEND):] for m in safe if isinstance(m, str) and m.startswith(QEND)}
+    if len(got) != 1:
+        return "?"
+    v = got.pop()
+    return None if v == "N" else v
 
 
 def _absent(safe) -> frozenset:
@@ -68,7 +80,8 @@ def _absent(safe) -> frozenset:
 # ---------------------------------------------------------------------------------------------- escaper calls
 _HTML_ESCAPERS = {"htmlspecialchars", "htmlentities"}
 _SQL_ESCAPERS = {"addslashes", "mysql_real_escape_string", "mysqli_real_escape_string", "real_escape_string",
-                 "mysql_escape_string", "pg_escape_string", "sqlite_escape_string", "escapestring"}
+                 "mysql_escape_string"}
+_SQL_DOUBLERS = {"pg_escape_string", "sqlite_escape_string", "escapestring"}   # double ' only
 _EMAIL_CHARS = frozenset(string.ascii_letters + string.digits + "!#$%&'*+-=?^_`{|}~@.[]")
 _FILTERS = {   # filter_var() filter -> what is left of the value ("all": a number or a boolean)
     "FILTER_VALIDATE_INT": "all", "FILTER_VALIDATE_FLOAT": "all", "FILTER_VALIDATE_BOOLEAN": "all",
@@ -116,13 +129,13 @@ def call_kind(call: ast.Call, name: str, base, resolve=None):
     n = name.split(".")[-1].split("::")[-1].lower()
     args = call.args
     if n in _HTML_ESCAPERS:
-        flags = _flag_names(args[1]) if len(args) > 1 else set()
+        flags = _flag_names(args[1]) if len(args) > 1 else {"ENT_COMPAT"}
         if "ENT_QUOTES" in flags:
             quotes = "\"'"
-        elif "ENT_NOQUOTES" in flags:
-            quotes = ""
+        elif "ENT_COMPAT" in flags:
+            quotes = '"'                   # (no flags: ENT_COMPAT, the default before PHP 8.1: single quotes stay)
         else:
-            quotes = '"'                   # ENT_COMPAT, the default before PHP 8.1: single quotes stay
+            quotes = ""                    # ENT_NOQUOTES, or ENT_HTML5 / ENT_SUBSTITUTE alone: no quote is escaped
         return _XSS | no("<>" + quotes)
     if n in ("filter_var",):
         if len(args) < 2:
@@ -133,6 +146,8 @@ def call_kind(call: ast.Call, name: str, base, resolve=None):
         return k
     if n in _SQL_ESCAPERS:
         return _SQL | {ESC}
+    if n in _SQL_DOUBLERS:
+        return _SQL | {DBLQ}
     if n == "escapeshellarg":
         return _SHELL | {SHQ}
     if n == "escapeshellcmd":
@@ -317,10 +332,11 @@ def sprintf_pieces(fmt: str, args: list):
 
 
 # ---------------------------------------------------------------------------------------- built-string quoting
-def quote_states(pieces, known):
+def quote_states(pieces, known, ends=None):
     """For each piece of a built string, the quote state before it: None (outside any quote), "'" or '"' (inside
     that literal) or "?" (unknown: an earlier piece of unknown text). `known(i)` is the constant text of piece i
-    or None."""
+    or None; `ends(i)` the quote state a piece of unknown text is known to end in (a string built earlier), or "?".
+    The last entry is the state after the whole string."""
     out = []
     st = None
     for i, (kind, e) in enumerate(pieces):
@@ -329,7 +345,8 @@ def quote_states(pieces, known):
             continue
         text = e if kind == "lit" else known(i)
         if text is None:
-            st = "?"
+            nxt = ends(i) if ends is not None and st is None else "?"
+            st = nxt
             continue
         j = 0
         while j < len(text):
@@ -337,23 +354,31 @@ def quote_states(pieces, known):
             if st is None and c in "'\"":
                 st = c
             elif st in ("'", '"') and c == "\\":
+                if j + 1 >= len(text):
+                    st = "?"               # `'%\\` . $x: the backslash escapes whatever the next piece starts with
+                    break
                 j += 1
             elif st == c:
                 st = None
             j += 1
+    out.append(st)
     return out
 
 
-def piece_safe(cwe: str, state, safe: frozenset, single: bool):
+def piece_safe(cwe: str, state, safe: frozenset, single: bool, before=""):
     """Is a tainted piece whose value carries `safe` harmless for a sink of kind `cwe` at quote `state`?
     None when this module has no rule for the CWE."""
     a = _absent(safe)
 
     def ok(chars):
         return set(chars) <= a
+    if state == "?":                       # where the piece lands is unknown: it must be inert everywhere
+        if cwe in _SQL | _XPATH | _SHELL | _CODE:
+            return ok(_BARE_DASH)
+        state = None
     if cwe in _SQL:
         if state in ("'", '"'):
-            return ESC in safe or (ok(state) and (single or ok("\\")))
+            return ESC in safe or (state == "'" and DBLQ in safe) or (ok(state) and (single or ok("\\")))
         return state is None and ok(_BARE_DASH)
     if cwe in _XPATH:
         if state in ("'", '"'):
@@ -376,7 +401,17 @@ def piece_safe(cwe: str, state, safe: frozenset, single: bool):
     if cwe in _LDAP:
         return ok("*()\0") and (ok("\\") or BSESC in safe)
     if cwe in _REDIRECT:
-        return ok("/\\:")                  # no scheme, no //host: a relative location on this site
+        if before is None:
+            return False                   # text of unknown content before it: it may be in the host
+        p = re.sub(r"(?is)^[\s'\"]*location\s*:\s*", "", before)
+        if p == "":
+            return ok("/\\:")              # the whole location: no scheme, no //host
+        if p in ("/", "\\"):
+            return ok("/\\")               # "/" . $x must not become "//host"
+        if p.startswith("/") and not p.startswith(("//", "/\\")):
+            return True                    # after a fixed path on this site
+        return bool(re.match(r"(?i)[a-z][a-z0-9+.-]*://[^/\\?#]+[/?#]", p))   # after a fixed scheme://host/
+    return None
     return None
 
 
@@ -385,12 +420,10 @@ def whole_value_safe(cwe: str, safe: frozenset):
     return piece_safe(cwe, None, safe, True)
 
 
-def adjust(safe: frozenset, state, single: bool) -> frozenset:
+def adjust(safe: frozenset, state, single: bool, before="") -> frozenset:
     """The CWEs a marked piece is safe for at quote `state`: the context decides every CWE it has a rule for."""
-    if state == "?":
-        return safe
     keep = frozenset(c for c in safe if c not in ADJUSTED)
-    return keep | frozenset(c for c in ADJUSTED if piece_safe(c, state, safe, single))
+    return keep | frozenset(c for c in ADJUSTED if piece_safe(c, state, safe, single, before))
 
 
 # ---------------------------------------------------------------------------------------------- HTML contexts
@@ -533,6 +566,8 @@ def html_advance(st: HtmlState, text: str) -> HtmlState:
 def html_required(st: HtmlState):
     """Characters a value must not hold to be inert where `st` puts it (None: no rule, keep the default)."""
     mode = st.mode
+    if mode == "unknown":
+        return _BARE
     if mode in ("text", "rcdata"):
         return frozenset("<")
     if mode == "comment":
@@ -550,8 +585,11 @@ def html_required(st: HtmlState):
         if st.attr.startswith("on") or st.attr == "style":
             # the browser decodes entities in the attribute before running it: &#39; is a quote again
             return frozenset(st.jq + q + "&") if st.jq else _BARE
+        if st.attr == "srcdoc":
+            return frozenset(q + "<&")     # srcdoc is a whole HTML document: entities and tags are decoded
         if st.attr in _URL_ATTRS and st.fresh:
-            return frozenset(q + ":")      # no javascript: / data: scheme at the start of the URL
+            # no javascript: / data: scheme, no //host or /\\host at the start of the URL
+            return frozenset(q + ":/\\")
         return frozenset(q)
     return None
 
@@ -573,38 +611,57 @@ def html_safe(st: HtmlState, safe: frozenset, single: bool):
     if not (_XSS & safe):
         return False
     return st.mode in ("text", "rcdata") or (st.mode == "attr" and bool(st.aq) and not st.attr.startswith("on")
-                                              and st.attr != "style" and not (st.attr in _URL_ATTRS and st.fresh))
+                                              and st.attr not in ("style", "srcdoc")
+                                              and not (st.attr in _URL_ATTRS and st.fresh))
+
+
+UNKNOWN = HtmlState("unknown")      # where earlier output left the page is not known: only inert values are safe
 
 
 def html_blocks(src: str) -> list:
-    """[(first line, last line, HtmlState at the block's start)] for each <?php … ?> block of a PHP file; the HTML
-    between blocks moves the state, PHP blocks are taken to leave it where it was."""
+    """[(first line, last line, inline HTML before the block)] for each <?php … ?> block of a PHP file."""
     out = []
-    st = TEXT
     line = 1
     keep = False
     start = None
+    html = []
     for part in re.split(r"(<\?(?:php|=)?|\?>)", src):
         if part in ("<?php", "<?", "<?="):
             keep, start = True, line
             continue
         if part == "?>":
             if keep:
-                out.append((start, line, st))
+                out.append((start, line, "".join(html)))
+                html = []
             keep = False
             continue
         if not keep:
-            st = html_advance(st, part)
+            html.append(part)
         line += part.count("\n")
     if keep:
-        out.append((start, line, st))
+        out.append((start, line, "".join(html)))
     return out
+
+
+_INERT_PRINTERS = frozenset({"htmlspecialchars", "htmlentities", "intval", "floatval", "urlencode", "rawurlencode",
+                             "number_format", "count", "strlen", "esc_attr", "esc_html", "esc_url", "json_encode"})
+
+
+def _after_value(st: HtmlState, e=None) -> HtmlState:
+    """The state after printing a value of unknown text: unchanged where an inert value cannot move it (text, a
+    quoted attribute value, a comment, a string inside a script); unknown anywhere else (a tag, an unquoted value,
+    script or style code)."""
+    inert = isinstance(e, ast.Call) and isinstance(e.func, ast.Name) and e.func.id.lower() in _INERT_PRINTERS
+    if inert or st.mode in ("text", "rcdata", "comment") or (st.mode == "attr" and st.aq) \
+            or (st.mode in ("script", "style") and st.jq):
+        return HtmlState(*st[:5], False) if st.mode == "attr" else st
+    return UNKNOWN
 
 
 def annotate_echoes(tree: ast.Module, src: str) -> None:
     """Mark the argument of each top-level `echo` / `print` with the HTML state it writes into (attribute
-    `php_html`). A block's first echo starts at the block's state; a later echo of the same block continues from
-    the earlier echoes' constant text (and is left unmarked when that text is unknown)."""
+    `php_html`). The state runs through the file: the inline HTML between blocks and the constant text each echo
+    prints move it, a printed value keeps it only where an inert value cannot change it (_after_value)."""
     blocks = html_blocks(src)
     if not blocks:
         return
@@ -618,20 +675,20 @@ def annotate_echoes(tree: ast.Module, src: str) -> None:
             calls.append(n)
         stack.extend(ast.iter_child_nodes(n))
     calls.sort(key=lambda c: (c.lineno, getattr(c, "col_offset", 0)))
-    state_of: dict = {}
-    for c in calls:
-        b = next((b for b in blocks if b[0] <= c.lineno <= b[1]), None)
-        if b is None:
-            continue
-        st = state_of.get(b, b[2])
-        for a in c.args:
-            a.php_html = st
-            # the constant text moves the state; a value printed in between is taken to be text that does not
-            # (an unescaped one is reported where it is printed anyway)
-            for k, e in pieces(a) or [("val", a)]:
-                if k == "lit":
-                    st = html_advance(st, e)
-        state_of[b] = st
+    st = TEXT
+    k = 0
+    for start, end, html in blocks:
+        st = html_advance(st, html) if st != UNKNOWN else UNKNOWN
+        while k < len(calls) and calls[k].lineno <= end:
+            if calls[k].lineno >= start:
+                for a in calls[k].args:
+                    a.php_html = st
+                    for kind, e in pieces(a) or [("val", a)]:
+                        if kind == "lit":
+                            st = html_advance(st, e) if st != UNKNOWN else UNKNOWN
+                        else:
+                            st = _after_value(st, e) if st != UNKNOWN else UNKNOWN
+            k += 1
 
 
 def pieces(node):

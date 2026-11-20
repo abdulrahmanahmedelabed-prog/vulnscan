@@ -417,7 +417,7 @@ Measured on the [PHP Vulnerability Test Suite](https://github.com/stivalet/PHP-V
 Delaitre, NIST SARD test suite 103; commit `6ebd7e0`), with labels taken from the suite's own manifests. Every test
 case of the eight data-flow categories is scored, 41,712 of the suite's 42,212 (left out: 480 missing-authorization
 cases, CWE-862, and 20 crypto / error-message cases). Same scoring as above, by `bench/score_php.py`.
-**PHP: 44.6%** (6.0% before 1.5.0).
+**PHP: 45.4%** (6.0% before 1.5.0).
 
 | Category | TPR % | FPR % | score (1.4) | score (1.5) |
 |---|---:|---:|---:|---:|
@@ -425,11 +425,11 @@ cases, CWE-862, and 20 crypto / error-message cases). Same scoring as above, by 
 | codeinj (CWE-95, eval) | 53.6 | 3.6 | 9.6 | 49.9 |
 | fileinc (CWE-98, include) | 62.5 | 19.7 | 9.6 | 42.8 |
 | ldapi (CWE-90) | 76.7 | 41.7 | 1.3 | 35.0 |
-| redirect (CWE-601) | 62.8 | 0.0 | 9.9 | 62.8 |
+| redirect (CWE-601) | 68.6 | 0.0 | 9.9 | 68.6 |
 | sqli (CWE-89) | 64.1 | 1.0 | 16.6 | 63.1 |
 | xpathi (CWE-91 in the suite: XPath) | 51.0 | 16.0 | 5.9 | 35.0 |
 | xss (CWE-79) | 44.4 | 8.1 | -5.3 | 36.3 |
-| **Overall** | | | **6.0** | **44.6** |
+| **Overall** | | | **6.0** | **45.4** |
 
 ```bash
 git clone --depth 1 https://github.com/stivalet/PHP-Vulnerability-test-suite && python bench/score_php.py PHP-Vulnerability-test-suite
@@ -1330,7 +1330,7 @@ python bench/score_js.py codeql
 
 قسنا Kashif أيضًا على [PHP Vulnerability Test Suite](https://github.com/stivalet/PHP-Vulnerability-test-suite)
 (مجموعة SARD رقم 103، الإيداع `6ebd7e0`) بتصنيفات ملفات manifest الخاصة بها، وبالطريقة نفسها (`bench/score_php.py`):
-**PHP ‏44.6%** (كانت 6.0% قبل 1.5.0) على كل حالات فئات تدفق البيانات الثماني، أي 41,712 من 42,212 حالة (استُبعدت 480
+**PHP ‏45.4%** (كانت 6.0% قبل 1.5.0) على كل حالات فئات تدفق البيانات الثماني، أي 41,712 من 42,212 حالة (استُبعدت 480
 حالة تخويل CWE-862 و20 حالة تشفير ورسائل خطأ). تقيس المجموعة قواعد كل دالة تعقيم وكل سياق إخراج HTML في سكربتات مولَّدة
 صغيرة، لا تحليل تطبيق كامل؛ وكثير من تصنيفاتها يخالف سلوك PHP الفعلي (مثل `addslashes` أو `escapeshellarg` داخل
 وسيط shell بين علامتي اقتباس مفردتين، و`htmlspecialchars` داخل معالج `onclick`)، وKashif يتبع سلوك PHP. لا يُعدّ

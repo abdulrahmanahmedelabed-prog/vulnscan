@@ -984,9 +984,9 @@ _LOCAL_SOURCE_NAMES = frozenset({
     "sys.stdin.readline", "getpass.getpass", "click.prompt", "argparse.ArgumentParser.parse_args",
     "process.argv", "process.env", "System.getenv", "System.getProperty", "os.Args", "Environment.GetCommandLineArgs",
     "Environment.GetEnvironmentVariable", "CommandLine.arguments", "ProcessInfo.processInfo.arguments",
-    "ProcessInfo.processInfo.environment", "ARGV", "ENV", "STDIN", "$argv", "argv", "environ", "std.cin", "cin",
-    # PHP: what a shell command printed (shell_exec / backticks, system's and exec's last line, exec's lines)
-    "shell_exec", "system", "exec"})
+    "ProcessInfo.processInfo.environment", "ARGV", "ENV", "STDIN", "$argv", "argv", "environ", "std.cin", "cin"})
+# PHP: what a shell command printed (shell_exec / backticks, system's and exec's last line, exec's lines): local
+_PHP_SHELL_OUTPUT = frozenset({"shell_exec", "system", "exec"})
 
 
 # What a context-specific sanitizer neutralizes, recognised by naming conventions shared across languages.
@@ -1858,7 +1858,7 @@ class Project:
             if inner in ("os.environ", "process.env", "ENV"):
                 return True
         canon = self._canon(mod, cur.func if isinstance(cur, ast.Call) else cur) if isinstance(cur, (ast.Name, ast.Attribute, ast.Call)) else ""
-        if canon in _LOCAL_SOURCE_NAMES:
+        if canon in _LOCAL_SOURCE_NAMES or (canon in _PHP_SHELL_OUTPUT and self.m.get("language") == "php"):
             return True
         if canon.endswith((".parse_args", ".parse_known_args")) and isinstance(cur, ast.Call):
             # argparse only: Flask-RESTful reqparse.RequestParser().parse_args() reads the HTTP request
@@ -2619,11 +2619,27 @@ class Project:
     def _php_taints(self, mod, cls, node, env):
         """PHP: arithmetic yields a number; a string built by `.` / interpolation / sprintf keeps each piece's
         origins, with what a PHP escaper guarantees (php_semantics markers) re-judged where the piece sits: inside
-        a quoted literal or bare, and, for an echo, at its place in the page. None: the generic rules apply."""
+        a quoted literal or bare, and, for an echo, at its place in the page. A shell command's output carries the
+        command's own taint besides the local source. None: the generic rules apply."""
         if isinstance(node, ast.BinOp) and getattr(node, "php_numeric", False):
             return []
-        html = getattr(node, "php_html", None)
         busy = self.__dict__.setdefault("_php_busy", set())
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and id(node) not in busy:
+            fname = node.func.id.lower()
+            if fname in ("file_get_contents", "fopen", "file", "readfile", "stream_get_contents") and node.args \
+                    and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str) \
+                    and node.args[0].value.lower().startswith(("php://input", "php://stdin")):
+                return [("source", "php://input", ())]          # the raw request body
+            if fname in _PHP_SHELL_OUTPUT and node.args:
+                busy.add(id(node))
+                try:
+                    own = self._taints(mod, cls, node, env)     # the local source: what the command printed
+                finally:
+                    busy.discard(id(node))
+                # … and whatever the command line itself carries (`echo` of a request value prints it back)
+                return own + [(o[0], o[1], _trail(o), frozenset(c for c in _safe_for(o) if c.startswith("php:")))
+                              + tuple(o[4:]) for o in self._taints(mod, cls, node.args[0], env)]
+        html = getattr(node, "php_html", None)
         if html is not None and id(node) in busy:
             html = None
         ps = _php.pieces(node) if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call)) else None
@@ -2656,24 +2672,36 @@ class Project:
             if isinstance(e, ast.Name) and not e.id.startswith("$") and e.id not in self._php_stored_names(mod):
                 return ""                    # a variable the file never assigns is undefined: null prints as ""
             return self._str_const_of(mod, e, env)
-        states = _php.quote_states(ps, known) if len(ps) > 1 else [None]
+
+        def ends(i):
+            got = {_php.end_state(_safe_for(o)) for o in per[i]}
+            return got.pop() if len(got) == 1 else "?"
+        built = len(ps) > 1
+        states = _php.quote_states(ps, known, ends) if built else [None, None]
+        qend = frozenset({_php.QEND + (states[-1] or "N")}) if built and states[-1] != "?" else frozenset()
         hstate = html
         out = []
         for i, origins in enumerate(per):
-            if hstate is not None and not origins:
-                text = known(i)
-                hstate = _php.html_advance(hstate, text) if text is not None else None
+            if not origins:
+                if hstate is not None:
+                    text = known(i)
+                    hstate = _php.html_advance(hstate, text) if text is not None else _php._after_value(hstate, ps[i][1])
                 continue
+            before = "".join(known(j) or "" for j in range(i)) if all(known(j) is not None for j in range(i)) else None
             for o in origins:
                 sf = _safe_for(o)
-                nsf = _php.adjust(sf, states[i], single) if _php.is_marked(sf) and len(ps) > 1 else sf
+                nsf = _php.adjust(sf, states[i], single, before) if _php.is_marked(sf) and built else sf
                 if hstate is not None:
                     ok = _php.html_safe(hstate, sf, single)
                     if ok is True:
                         nsf = nsf | _XSS_CWES
                     elif ok is False:
                         nsf = nsf - _XSS_CWES
+                if built:
+                    nsf = frozenset(c for c in nsf if not c.startswith(_php.QEND)) | qend
                 out.append(o if nsf == sf else (o[0], o[1], _trail(o), nsf) + tuple(o[4:]))
+            if hstate is not None:
+                hstate = _php._after_value(hstate, ps[i][1])
         return out
 
     def _php_stored_names(self, mod) -> frozenset:
