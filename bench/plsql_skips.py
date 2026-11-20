@@ -33,7 +33,7 @@ _KIND = re.compile(r"^\{([^}]*)\}\s*")
 _LABEL = re.compile(r"^\[[^\]]*\]\s*")
 
 
-def file_diag(rel: str, text: str) -> dict:
+def file_diag(rel: str, text: str, scripts: bool = False) -> dict:
     """The frontend's diagnostics for one file, routed like taint._analyze_plsql."""
     d = {"statements": 0, "skipped": 0, "lines": []}
 
@@ -65,7 +65,11 @@ def file_diag(rel: str, text: str) -> dict:
     elif low.endswith(".json"):
         blocks(apex_export.extract_json_ords(text, rel))
     elif apex_export.is_apex_export(text):
-        blocks(apex_export.extract(text, rel)[0] + apex_export.extract_ords(text, rel))
+        bs, _f, _files, info = apex_export.extract_full(text, rel)
+        blocks(bs + apex_export.extract_ords(text, rel))
+        if scripts:                      # Supporting Objects scripts, as taint._analyze_plsql reads them (1.5.0)
+            for sline, script, _label in info["scripts"]:
+                plain(script, sline - 1)
     else:
         plain(text)
     return d
@@ -106,6 +110,7 @@ def main(argv=None) -> int:
     ap.add_argument("--top", type=int, default=40)
     ap.add_argument("--json", help="write totals and the histogram here")
     ap.add_argument("--per-repo", action="store_true", help="totals per top-level folder")
+    ap.add_argument("--scripts", action="store_true", help="also the Supporting Objects scripts (as the scanner reads them)")
     a = ap.parse_args(argv)
     root = pathlib.Path(a.corpus)
     tot = collections.Counter()
@@ -113,7 +118,7 @@ def main(argv=None) -> int:
     hist: collections.Counter = collections.Counter()
     example: dict = {}
     for rel, text in oracle_files(root):
-        d = file_diag(rel, text)
+        d = file_diag(rel, text, a.scripts)
         repo = rel.split("/", 1)[0]
         for c in (tot, repos[repo]):
             c["files"] += 1

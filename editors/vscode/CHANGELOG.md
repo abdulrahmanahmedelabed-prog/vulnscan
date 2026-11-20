@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0
+
+- Released with Kashif 1.5.0 (the extension follows the Kashif version). The extension itself is unchanged; Kashif 1.5.0
+  measures and improves JavaScript/TypeScript and PHP accuracy and closes the Oracle APEX limits of 1.4, so editor
+  diagnostics follow.
+
 ## 1.4.0
 
 - Released with Kashif 1.4.0 (the extension follows the Kashif version). The extension itself is unchanged; Kashif 1.4.0

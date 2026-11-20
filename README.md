@@ -34,8 +34,8 @@ from a **local web UI** in English and Arabic.
   context-sensitive (k=2) points-to analysis; context-specific sanitizers (`html.escape` protects HTML only,
   not SQL or a shell); second-order (stored) injection through database tables.
 - **Rules and models** — 153 pattern rules, 48 dataflow and APEX rules and 19 built-in VQL queries (VQL is
-  Kashif's declarative query language over the program database), over 6,384 modelled library APIs
-  (1,044 sources, 4,559 sinks, 781 sanitizers).
+  Kashif's declarative query language over the program database), over 6,447 modelled library APIs
+  (1,047 sources, 4,618 sinks, 782 sanitizers).
 - **Fewer false positives on real code** — test, documentation and example code is recognised by its path: fixture
   noise there is dropped and the rest is lowered to info; vendored bundles are skipped. On the 35 open-source projects
   (of 38) that 0.9 could finish, findings went from 17,228 to 2,607 (critical and high: 4,345 to 783); half of 0.9's
@@ -65,24 +65,30 @@ from a **local web UI** in English and Arabic.
   GitHub Code Scanning and the VS Code SARIF viewer), with stable fingerprints; plus DefectDojo, SonarQube,
   GitLab SAST, Code Climate, JUnit XML, CSV, Jira, GitHub Issues, AWS Security Hub (ASFF) and OCSF.
 
-## What's new in 1.4
+## What's new in 1.5
 
-- **Oracle APEX depth** — packages in an APEX export's Supporting Objects scripts are analysed (dataflow and APX024),
-  with findings at their line in the export file. APX024 (a package routine that skips the authorization check its
-  sibling routines use) now follows the paths inside the routine: a check in one branch, in a loop, in an exception
-  handler, after the data access, under `$if`, or whose answer is never tested is reported with the line it leaves
-  open. It also lists the APEX components that call the routine and the authorization scheme protecting each one, and
-  raises the finding to high when one of them is unprotected (a public page, or an application process without a scheme).
-- **PL/SQL parser coverage** — on a 1.6-million-line public corpus (Logger, utPLSQL, Alexandria, pljson, OOS-Utils,
-  Oracle samples and the APEX 24.2 sample apps), skipped statements fell from 0.78% to 0.08%, and to zero in the APEX
-  exports (`bench/plsql_skips.py`). Conditional compilation, `json_object('k' : v)`, `is of (type)`, `multiset`,
-  `at time zone` and more now parse, with data flow kept through them.
-- **Python precision** — OWASP Benchmark for Python 90.2% → 93.1% (XXE 65% → 95%, path traversal 57% → 64%): file
-  existence checks are path sinks, a `..`-only check before `os.path.join` is no longer taken as safe, and XXE is
-  decided by dataflow (new rule DF027).
+- **JavaScript and TypeScript, measured** — on CodeQL's labelled security tests (1,238 vulnerable and 267 safe cases,
+  `bench/score_js.py`) the pooled true-positive rate rose from 48.6% to 59.1% and the false-positive rate fell from
+  23.2% to 20.2%. Path traversal went from 59.7% to 85.0% found, command injection from 30.0% to 54.2%, SQL/NoSQL
+  injection from 31.1% to 43.9%. Kashif now follows promisified and `fs`-compatible modules (`fs-extra`,
+  `fs/promises`, `util.promisify`), `spawn` with a shell, and objects filled field by field, and understands checks
+  against a constant (`ALLOWED === x`, `hasOwnProperty` on a constant table) and `res.sendFile` confined by `root`. The
+  per-category table and its limits are under Accuracy.
+- **PHP, measured** — on the NIST SARD PHP Vulnerability Test Suite (41,712 cases, `bench/score_php.py`) the
+  OWASP-style score rose from 6.0% to 45.4%. Kashif now judges which escaper is enough where the value lands (quoted
+  or bare in SQL, shell, XPath, LDAP and `eval`; the HTML context around each `<?php` block), reads the pattern of
+  `preg_match` and the filter of `filter_var`, treats backticks and `exec()` output as commands and sources, and
+  reports redirects whose host comes from the user.
+- **Oracle APEX** — APX024 finds the APEX components that call a package routine through synonyms,
+  `owner.pkg.routine`, constant `execute immediate`, Invoke API processes and other package routines (up to three
+  hops), and takes the authorization scheme of parent regions and of the dynamic-action event. A button's scheme is not
+  counted as protecting the process it submits (a request can name the button even when it is not shown). Readable
+  YAML exports carry schemes too, and an application scanned in both forms is reported once. Deinstall and upgrade
+  scripts, APEX 4 sources built with `s := s || …` and the APEX 5.0 and 24.1 script formats are now read.
 - **Earlier in 1.x** — 1.1 rebuilt the passive web scanner from scratch; 1.2 raised the Python
-  Benchmark from 74.0% to 90.2%; 1.3 added APX024 and a measured comparison with Bandit and Semgrep; 1.3.1 parsed
-  `json_object` key/value syntax. Every release is described in `CHANGELOG.md`.
+  Benchmark from 74.0% to 90.2%; 1.3 added APX024 and a measured comparison with Bandit and Semgrep; 1.4 followed the
+  paths inside APX024 routines, read Supporting Objects packages, cut skipped PL/SQL statements tenfold and raised the
+  Python Benchmark to 93.1%. Every release is described in `CHANGELOG.md`.
 
 ## Install
 
@@ -270,7 +276,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.4.0`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.5.0`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `kashif . --diff-base origin/main` reports only what the branch introduces
@@ -353,6 +359,97 @@ reported). Caveats: the Benchmark is a synthetic suite, so the score is not a me
 same audit found engine limitations that show on real code and do not affect this score), and 38 Java XSS false
 positives remain (FPR 18.2%) because HTML escaping is not credited when the escaped value is the format string of
 `format`/`printf`.
+
+### JavaScript and TypeScript: CodeQL's labelled security tests
+
+There is no OWASP Benchmark for JavaScript, so JavaScript/TypeScript is measured on the security query tests of
+[GitHub CodeQL](https://github.com/github/codeql) (`javascript/ql/test/query-tests/Security`, commit `12a0e51`,
+MIT licence): small Express, Koa, Next.js, Node and browser programs that the CodeQL team labels line by line as
+vulnerable (`// $ Alert`, including `MISSING: Alert`, which CodeQL itself misses) or safe (`// OK …` comments and
+`SPURIOUS: Alert`, which CodeQL wrongly reports). Kashif's own scorer `bench/score_js.py` scans the whole directory as
+one project with the default profile and counts a case as found when a finding of the category's CWE is on the
+labelled line. It covers the 21 CodeQL queries whose CWE Kashif reports for JavaScript: **1,238 vulnerable and 267
+safe cases**. **All cases pooled: TPR 48.6% → 59.1%, FPR 23.2% → 20.2%** from 1.4 to 1.5. The OWASP-style mean of
+TPR − FPR over the 21 categories is **23.2%**, as in 1.4 (see the limits below).
+
+| Category | Vulnerable / safe cases | TPR % (1.4 → 1.5) | FPR % (1.4 → 1.5) | Score (1.4 → 1.5) |
+|---|---:|---:|---:|---:|
+| cmdi (command injection) | 120 / 1 | 30.0 → 54.2 | 0.0 → 100.0 | 30.0 → -45.8 |
+| codeinj (code and template injection) | 94 / 5 | 59.6 → 60.6 | 20.0 → 20.0 | 39.6 → 40.6 |
+| crypto (weak cipher) | 3 / 18 | 0.0 → 0.0 | 0.0 → 0.0 | 0.0 → 0.0 |
+| deserialization | 8 / 0 | 75.0 → 75.0 | — | 75.0 → 75.0 |
+| hash (password hashing) | 3 / 0 | 0.0 → 0.0 | — | 0.0 → 0.0 |
+| httponlycookie (cookie without HttpOnly) | 20 / 20 | 20.0 → 20.0 | 0.0 → 0.0 | 20.0 → 20.0 |
+| loginj (log injection) | 23 / 1 | 60.9 → 60.9 | 0.0 → 0.0 | 60.9 → 60.9 |
+| pathtraver (path traversal) | 253 / 38 | 59.7 → 85.0 | 55.3 → 50.0 | 4.4 → 35.0 |
+| redirect-client (open redirect, browser) | 70 / 9 | 48.6 → 48.6 | 55.6 → 44.4 | -7.0 → 4.1 |
+| redirect-server (open redirect, server) | 30 / 57 | 76.7 → 76.7 | 22.8 → 10.5 | 53.9 → 66.1 |
+| securecookie (cookie without Secure) | 16 / 5 | 18.8 → 18.8 | 0.0 → 0.0 | 18.8 → 18.8 |
+| sqli-nosqli (SQL, NoSQL and LDAP injection) | 164 / 36 | 31.1 → 43.9 | 8.3 → 8.3 | 22.8 → 35.6 |
+| ssrf (server-side request forgery) | 43 / 4 | 32.6 → 34.9 | 25.0 → 25.0 | 7.6 → 9.9 |
+| weakrand (weak randomness) | 24 / 3 | 54.2 → 54.2 | 33.3 → 33.3 | 20.8 → 20.8 |
+| xpathi (XPath injection) | 7 / 6 | 71.4 → 71.4 | 0.0 → 0.0 | 71.4 → 71.4 |
+| xss-dom (DOM XSS) | 243 / 15 | 61.3 → 64.2 | 73.3 → 80.0 | -12.0 → -15.8 |
+| xss-exception (XSS through exception messages) | 19 / 4 | 0.0 → 0.0 | 0.0 → 0.0 | 0.0 → 0.0 |
+| xss-reflected (reflected XSS) | 75 / 28 | 52.0 → 61.3 | 21.4 → 21.4 | 30.6 → 39.9 |
+| xss-stored (stored XSS) | 5 / 0 | 0.0 → 0.0 | — | 0.0 → 0.0 |
+| xxe (XML external entities) | 8 / 17 | 50.0 → 50.0 | 0.0 → 0.0 | 50.0 → 50.0 |
+| zipslip (archive path traversal) | 10 / 0 | 0.0 → 0.0 | — | 0.0 → 0.0 |
+| **All cases pooled** | **1,238 / 267** | **48.6 → 59.1** | **23.2 → 20.2** | |
+| **Mean over categories** | | | | **23.2 → 23.2** |
+
+```bash
+git clone --filter=blob:none --sparse https://github.com/github/codeql
+git -C codeql sparse-checkout set javascript/ql/test/query-tests/Security
+python bench/score_js.py codeql
+```
+
+What it measures and its limits: these are CodeQL's unit tests, written to exercise CodeQL's own models, so they
+favour what CodeQL models (many npm packages, framework conventions, CodeQL's location rules) and the labels are
+CodeQL's opinion, not ground truth (one `SPURIOUS: Alert` line in cmdi says it "should be fine to flag it"; it is the
+category's only safe case, so that one finding is an FPR of 100% for the category). Safe cases are few (267) and
+unevenly spread: cmdi has 1, xss-dom 15, ssrf 4, so the per-category mean moves a lot with single findings; the
+pooled rates are the steadier number. Some categories test things Kashif does not model: exception messages that
+carry their argument (xss-exception), sensitive-data flows into weak ciphers and hashes (crypto, hash; Kashif reports
+the weak algorithm where the cipher is created, CodeQL where data is written into it), cookies whose secure or
+HttpOnly flag is missing rather than set to false, archive entry names as sources (zipslip), and data read from files
+(xss-stored). Lines with no label are not counted (CodeQL asserts no alert there, but most are not sinks); the scorer
+prints how many findings land on them (159). The suite is not real code: read the numbers as how the engine reasons
+about common JavaScript constructs, not as its accuracy on your project.
+
+### PHP: NIST SARD PHP Vulnerability Test Suite
+
+Measured on the [PHP Vulnerability Test Suite](https://github.com/stivalet/PHP-Vulnerability-test-suite) (Stivalet &
+Delaitre, NIST SARD test suite 103; commit `6ebd7e0`), with labels taken from the suite's own manifests. Every test
+case of the eight data-flow categories is scored, 41,712 of the suite's 42,212 (left out: 480 missing-authorization
+cases, CWE-862, and 20 crypto / error-message cases). Same scoring as above, by `bench/score_php.py`.
+**PHP: 45.4%** (6.0% before 1.5.0).
+
+| Category | TPR % | FPR % | score (1.4) | score (1.5) |
+|---|---:|---:|---:|---:|
+| cmdi (CWE-78) | 48.1 | 16.0 | 0.0 | 32.1 |
+| codeinj (CWE-95, eval) | 53.6 | 3.6 | 9.6 | 49.9 |
+| fileinc (CWE-98, include) | 62.5 | 19.7 | 9.6 | 42.8 |
+| ldapi (CWE-90) | 76.7 | 41.7 | 1.3 | 35.0 |
+| redirect (CWE-601) | 68.6 | 0.0 | 9.9 | 68.6 |
+| sqli (CWE-89) | 64.1 | 1.0 | 16.6 | 63.1 |
+| xpathi (CWE-91 in the suite: XPath) | 51.0 | 16.0 | 5.9 | 35.0 |
+| xss (CWE-79) | 44.4 | 8.1 | -5.3 | 36.3 |
+| **Overall** | | | **6.0** | **45.4** |
+
+```bash
+git clone --depth 1 https://github.com/stivalet/PHP-Vulnerability-test-suite && python bench/score_php.py PHP-Vulnerability-test-suite
+```
+
+What it measures: one source, one sanitizer and one sink per generated script, over 16 kinds of input and 21 HTML
+output contexts, so it tests the per-function and per-context rules (which escaper is enough where), not
+whole-application reasoning. Read it with its limits: the code is synthetic, and many of its labels disagree with
+how PHP behaves, where Kashif follows PHP (for example `addslashes` or `escapeshellarg` inside a single-quoted shell
+argument are labelled safe and are injectable; `htmlspecialchars` inside a quoted `onclick` handler is labelled safe
+and is not, because the browser decodes `&#039;` before running it; an XPath literal has no backslash escape; a few
+cases do not parse or read an undefined variable). `$_SESSION` is not treated as user input (one input kind of 16),
+and the output of shell commands is a local source, not reported for XSS or redirects. No file names, paths or
+generator-specific helper names are encoded in the engine.
 
 ## Languages and targets
 
@@ -523,24 +620,26 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
 تشفير ضعيف وتعطيل TLS، إعدادات خطرة (debug، CORS، 0.0.0.0)، أمان الموبايل، أمان الحاويات و CI،
 سلامة الذاكرة في C، تسجيل بيانات حساسة، وملفات لا يجوز شحنها (.env، مفاتيح SSH، قواعد بيانات).
 
-### الجديد في 1.4
+### الجديد في 1.5
 
-- **عمق أكبر في Oracle APEX:** تُحلَّل الحزم في سكربتات كائنات الدعم (Supporting Objects) داخل ملف التصدير بتدفق
-  البيانات وبالقاعدة APX024، وتشير النتائج إلى سطرها في الملف. وصارت APX024 (روتين في حزمة لا يتحقق من الصلاحية بينما
-  تتحقق منها الروتينات الشقيقة) تتتبّع المسارات داخل الروتين: يُبلَّغ عن تحقق في فرع واحد، أو داخل حلقة، أو في معالج
-  استثناء، أو بعد الوصول إلى البيانات، أو تحت `$if`، أو دالة تحقق لا يُختبر جوابها، مع السطر الذي يبقى مكشوفًا. وتذكر
-  مكوّنات APEX التي تستدعي الروتين ومخطط التفويض الذي يحمي كلًّا منها، وترفع الخطورة إلى «عالية» إن كان أحدها غير محمي
-  (صفحة عامة، أو عملية تطبيق بلا مخطط).
-- **تغطية محلّل PL/SQL:** على مدوّنة عامة من 1.6 مليون سطر (Logger وutPLSQL وAlexandria وpljson وOOS-Utils وأمثلة
-  Oracle وتطبيقات APEX 24.2 النموذجية) انخفضت العبارات المتخطّاة من 0.78% إلى 0.08%، وإلى صفر في تصديرات APEX
-  (`bench/plsql_skips.py`). صارت تُحلَّل الترجمة الشرطية و`json_object('k' : v)` و`is of (type)` و`multiset` و`at time zone`
-  وغيرها، مع بقاء تدفق البيانات عبرها.
-- **دقة Python:** ارتفعت نتيجة OWASP Benchmark لـ Python من 90.2% إلى 93.1% (XXE من 65% إلى 95%، واجتياز المسار من 57%
-  إلى 64%): فحص وجود الملف نقطة خطر، ورفض «..» وحده قبل `os.path.join` لم يعد يُعدّ حماية، وXXE يُحسم بتدفق البيانات
-  (قاعدة جديدة DF027).
+- **JavaScript وTypeScript بأرقام مقيسة:** على اختبارات CodeQL المُعلَّمة (1,238 حالة ثغرة و267 حالة آمنة،
+  `bench/score_js.py`) ارتفعت نسبة الثغرات المكتشفة في المجموع من 48.6% إلى 59.1%، وانخفضت نسبة الإنذارات الخاطئة من
+  23.2% إلى 20.2%. ارتفع اكتشاف اجتياز المسار من 59.7% إلى 85.0%، وحقن الأوامر من 30.0% إلى 54.2%، وحقن SQL/NoSQL من
+  31.1% إلى 43.9%. صار Kashif يتتبّع الوحدات المحوّلة إلى وعود والمتوافقة مع `fs` (`fs-extra` و`fs/promises`
+  و`util.promisify`)، و`spawn` مع الصدفة، والكائنات التي تُملأ حقلًا حقلًا، ويفهم المقارنة بقيمة ثابتة (`ALLOWED === x`
+  و`hasOwnProperty` على جدول ثابت) و`res.sendFile` المقيّدة بـ `root`. والجدول لكل فئة مع حدوده في قسم الدقة.
+- **PHP بأرقام مقيسة:** على مجموعة NIST SARD لثغرات PHP (41,712 حالة، `bench/score_php.py`) ارتفعت النتيجة بطريقة
+  OWASP من 6.0% إلى 45.4%. صار Kashif يحكم أي دالة هروب تكفي حيث تقع القيمة (بين علامتي اقتباس أو دونهما في SQL
+  والصدفة وXPath وLDAP و`eval`، وسياق HTML حول كل كتلة `<?php`)، ويقرأ نمط `preg_match` ومرشّح `filter_var`، ويعامل
+  علامات `` ` `` ومخرجات `exec()` أوامرَ ومصادرَ للبيانات، ويُبلغ عن إعادة التوجيه إلى مضيف يحدده المستخدم.
+- **Oracle APEX:** تجد APX024 مكوّنات APEX التي تستدعي روتين الحزمة عبر المرادفات و`owner.pkg.routine` و`execute
+  immediate` بنص ثابت وعمليات Invoke API وروتينات الحزم الأخرى (حتى ثلاث خطوات)، وتأخذ مخطط التفويض من المناطق الأم ومن
+  حدث الإجراء الديناميكي. ولا يُعدّ مخطط الزر حمايةً للعملية التي يرسلها (يمكن إرسال طلب يحمل اسم الزر ولو لم يُعرض).
+  وتُقرأ المخططات من التصدير المقروء (YAML) أيضًا، والتطبيق المفحوص بصيغتيه يُبلَّغ عنه مرة واحدة. وصارت تُقرأ سكربتات
+  إزالة التثبيت والترقية، ومصادر APEX 4 المبنية بـ `s := s || …`، وصيغ السكربتات في APEX 5.0 و24.1.
 - **قبل ذلك في 1.x:** أعاد 1.1 بناء فاحص المواقع السلبي من جديد، ورفع 1.2 نتيجة Python في Benchmark من 74.0%
-  إلى 90.2%، وأضاف 1.3 القاعدة APX024 ومقارنة مقيسة مع Bandit وSemgrep، وفهم 1.3.1 صيغة المفتاح والقيمة في
-  `json_object`. تفاصيل كل إصدار في `CHANGELOG.md`.
+  إلى 90.2%، وأضاف 1.3 القاعدة APX024 ومقارنة مقيسة مع Bandit وSemgrep، وتتبّع 1.4 المسارات داخل روتينات APX024 وقرأ
+  حزم كائنات الدعم وقلّل عبارات PL/SQL المتخطّاة عشر مرات ورفع نتيجة Python إلى 93.1%. تفاصيل كل إصدار في `CHANGELOG.md`.
 
 ### ما أضافه 1.0
 
@@ -559,7 +658,7 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
   من 17,228 إلى 2,607 (الحرجة والعالية من 4,345 إلى 783)، وكان نصف نتائج 0.9 في كود الاختبارات والتوثيق والأمثلة.
 - **أسرع:** `--jobs N` لتوزيع الفحص على المعالجات، و`--cache DIR` لإعادة فحص مشروع لم يتغير بالنتائج نفسها: Django كاملًا
   (6,973 ملفًا) في 311–411 ثانية أول مرة على 4 معالجات افتراضية (كان 594 ثانية في 0.9)، و3.5 ثوانٍ عند الإعادة.
-- النماذج **6,384** واجهة مكتبة (مصادر 1,044، ونقاط خطر 4,559، ومعقّمات 781). التفاصيل في `CHANGELOG.md`.
+- النماذج **6,447** واجهة مكتبة (مصادر 1,047، ونقاط خطر 4,618، ومعقّمات 782). التفاصيل في `CHANGELOG.md`.
 
 ### فحص المواقع السلبي
 
@@ -737,8 +836,8 @@ kashif ./my-apex-app        # f100.sql أو application/pages/*.sql، وملفا
 | ما يُحلَّل | كيف |
 |---|---|
 | **PL/SQL** (`.sql` `.pkb` `.pks` `.pls` `.prc` `.fnc` `.trg` …) | الحزم والإجراءات والدوال والمشغّلات والكتل المجهولة، بتحليل تدفق البيانات نفسه عبر الحزم والملفات، مع الوسائط المسمّاة `p_x => v`. |
-| **ملف تصدير APEX** (تطبيق كامل أو صفحة أو إضافة) | يُستخرج كل كود من داخل استدعاءات `wwv_flow_imp_page.create_…`: العمليات، ومناطق PL/SQL، و"دالة تُعيد استعلام SQL"، والتحققات والحسابات والشروط، والإجراءات الديناميكية، ورمز الإضافات، وملفات JavaScript المضمّنة بالترميز الست عشري. كل نتيجة تشير إلى سطرها في ملف التصدير وإلى مكوّنها: «صفحة 10 › عملية: Save». وسكربتات التثبيت والترقية في كائنات الدعم (Supporting Objects، `create_install_script`) تُستخرج كذلك (صيغة `wwv_flow_string.join` والصيغ الأقدم: نص واحد بهروب `''`، و`unistr('\000a')`، و`s := s || …`)، فتُحلَّل الحزم والإجراءات التي فيها بتحليل تدفق البيانات و`APX024` كأي ملف `.pkb`، وتشير نتائجها إلى سطرها في ملف التصدير: «سكربت كائنات الدعم: hr_pkg». |
-| **تصدير APEX المقروء (YAML)** | مجلد `readable/` (APEX 23.2+): تُقرأ الخصائص النصية (`pl/sql-code`، `sql-query`، `pl/sql-function-body-returning-sql-query`، كود JavaScript، تعليمات الذكاء الاصطناعي) من سطرها، وتُنسب إلى المكوّن من عناوين `# ====== Region: …`، ويُكشف `escape-special-characters: false`. |
+| **ملف تصدير APEX** (تطبيق كامل أو صفحة أو إضافة) | يُستخرج كل كود من داخل استدعاءات `wwv_flow_imp_page.create_…`: العمليات، ومناطق PL/SQL، و"دالة تُعيد استعلام SQL"، والتحققات والحسابات والشروط، والإجراءات الديناميكية، ورمز الإضافات، وملفات JavaScript المضمّنة بالترميز الست عشري. كل نتيجة تشير إلى سطرها في ملف التصدير وإلى مكوّنها: «صفحة 10 › عملية: Save». وسكربتات التثبيت والترقية وإزالة التثبيت في كائنات الدعم (Supporting Objects، `create_install_script` و`p_deinstall_script_clob`) تُستخرج كذلك (صيغة `wwv_flow_string.join` و`wwv_flow_utilities.join` في APEX 5.0 و`varchar2_to_clob` في APEX 24.1+، والصيغ الأقدم: نص واحد بهروب `''`، و`unistr('\000a')`، و`s := s || …`، وهذه الأخيرة تُقرأ أيضًا لمصادر المناطق والعمليات في تصديرات APEX 4)، فتُحلَّل الحزم والإجراءات التي فيها بتحليل تدفق البيانات و`APX024` كأي ملف `.pkb`، وتشير نتائجها إلى سطرها في ملف التصدير: «سكربت كائنات الدعم: hr_pkg». |
+| **تصدير APEX المقروء (YAML)** | مجلد `readable/` (APEX 23.2+): تُقرأ الخصائص النصية (`pl/sql-code`، `sql-query`، `pl/sql-function-body-returning-sql-query`، كود JavaScript، تعليمات الذكاء الاصطناعي) من سطرها، وتُنسب إلى المكوّن من عناوين `# ====== Region: …`، ويُكشف `escape-special-characters: false`. وتُقرأ منه مخططات التفويض (الصفحة والمكوّن والمنطقة الأم والتطبيق، ويُذكر زر `when-button-pressed` ومخططه دون أن يُعدّ حماية) لسياق APX024؛ وإن فُحص التطبيق نفسه بصيغتيه (`.sql` و`readable/`) لا تتكرر النتائج ولا مواضع الاستدعاء (المطابقة برقم التطبيق، ويُؤخذ لملف YAML من أقرب ملف `f<id>.yaml` فوقه في أي مجلد، وبالمكوّن والقاعدة وسطر الكود المُبلَّغ عنه؛ وإن لم يُعرف رقم التطبيق فلا مطابقة إلا إن كان في الفحص تطبيق `.sql` واحد). |
 | **معالجات ORDS** | `ORDS.DEFINE_HANDLER` / `DEFINE_SERVICE` حيثما وُجدت: في `.sql`، وداخل سجلات Liquibase/SQLcl بصيغة XML (`runOracleScript` و CDATA)، وفي تعريفات REST بصيغة JSON. معالجات PL/SQL تُحلَّل ككود، ومعالجات الاستعلام كـ SQL، ومتغيرات الربط (`:id` و`:body_text`…) مصادر، و`:forward_location` نقطة تحويل. |
 | **دوال داخل SQL الثابت** | الاستعلامات الثابتة في التقارير وقوائم القيم ومعالجات ORDS، وجمل `SELECT/INSERT/UPDATE/DELETE/MERGE` والمؤشرات داخل PL/SQL: متغير الربط آمن لـ SQL، لكن الدالة التي تستقبله تُتتبَّع، فإن بنت به SQL ديناميكيًا يُبلَّغ عنه. |
 | **Java داخل قاعدة البيانات** | كتل `create … java source` تُحلَّل بواجهة Java، و«call spec» (`as language java name '…'`) يُربط بالدالة، فيُكشف التدفق من عنصر الصفحة عبر PL/SQL إلى `Runtime.exec` في Java. |
@@ -779,7 +878,7 @@ kashif ./my-apex-app        # f100.sql أو application/pages/*.sql، وملفا
 | `APX021` | الاستبدال دون النقطة الختامية |
 | `APX022` | وحدة PL/SQL ملفوفة (wrapped): تُذكر مرة واحدة ولا يُفحص نصّها (معلوماتية) |
 | `APX023` | إضافة (Plug-in) معرَّفة لا يستخدمها أي مكوّن في التطبيق؛ وتُخفَّض خطورة ما يوجد داخلها درجة واحدة |
-| `APX024` | روتين عام في حزمة PL/SQL يصل إلى البيانات دون تحقق من الصلاحية بينما تتحقق منها معظم الروتينات الشقيقة بالاستدعاء نفسه (CWE-862، ثقة محتملة). يتتبّع المسارات داخل الروتين: يُبلَّغ أيضًا عن تحقق لا يسبق كل مسار إلى البيانات (في فرع واحد من IF/CASE أو من `$if` للترجمة الشرطية، أو داخل حلقة، أو في معالج استثناء، أو بعد الوصول، أو دالة تحقق لا يُختبر جوابها)، أما `if not can_view(…) then raise_application_error(…); end if;` قبل الوصول فيكفي. ويُعدّ الحارس كما في 1.3 (استدعاؤه قبل أول وصول إلى البيانات في النص)، وتذكر الرسالة كم من الروتينات الشقيقة يغطي كل المسارات؛ يعمل على ملفات `.pkb`/`.pks`/`.sql` وعلى الحزم في كائنات الدعم داخل ملف التصدير. وإن كان في الفحص تصدير APEX يستدعي الروتين (عملية صفحة، مصدر منطقة، عملية AJAX أو عملية تطبيق، كود خادم لإجراء ديناميكي…) تذكر النتيجة مواضع الاستدعاء ومخططات التفويض (على المكوّن أو الصفحة أو التطبيق؛ لا يُحسب `MUST_NOT_BE_PUBLIC_USER` ولا المخطط المنفي `!`): إن كانت كلها محمية تبقى النتيجة بخطورتها وتذكر أن الحماية لا تشمل أي مستدعٍ آخر للحزمة (صفحة أو تطبيق آخر أو صلاحية EXECUTE مباشرة)، وإن كان أحدها غير محمي (صفحة عامة، أو مكوّن أو عملية تطبيق بلا مخطط) تسمّيه بسطره وتُرفع الخطورة إلى عالية |
+| `APX024` | روتين عام في حزمة PL/SQL يصل إلى البيانات دون تحقق من الصلاحية بينما تتحقق منها معظم الروتينات الشقيقة بالاستدعاء نفسه (CWE-862، ثقة محتملة). يتتبّع المسارات داخل الروتين: يُبلَّغ أيضًا عن تحقق لا يسبق كل مسار إلى البيانات (في فرع واحد من IF/CASE أو من `$if` للترجمة الشرطية، أو داخل حلقة، أو في معالج استثناء، أو بعد الوصول، أو دالة تحقق لا يُختبر جوابها)، أما `if not can_view(…) then raise_application_error(…); end if;` قبل الوصول فيكفي، وكذلك `= false` و`!= true` و`not (…)` و`nvl(…, false) = false` و`case when not …`، وفي المقارنة بعدد: `> 0` و`>= 1` و`= 1` تعني النجاح، و`<= 0` و`= 0` و`< 1` تعني الفشل، أما `>= 0` و`< 0` و`> 1` و`<= 1` فلا تقول شيئًا؛ بينما `not can_view(…) and x` لا يكفي، ولا يُحتسب إلا استدعاء التحقق نفسه أو متغير يحمل جوابه أو `nvl` لأحدهما بقيمة فشل (FALSE أو 0 أو 'N')، فلا يكفي `nvl(…, 'Y')` ولا `greatest(…)` ولا الحساب ولا `decode(…)`. ولا يُعدّ روتين في الحزمة تحققًا (حتى إن دلّ اسمه على ذلك) إلا إن مرّت كل مساراته إلى نهايته الناجحة بالتحقق. ويُعدّ الحارس كما في 1.3 (استدعاؤه قبل أول وصول إلى البيانات في النص)، وتذكر الرسالة كم من الروتينات الشقيقة يغطي كل المسارات؛ يعمل على ملفات `.pkb`/`.pks`/`.sql` وعلى الحزم في كائنات الدعم داخل ملف التصدير. وإن كان في الفحص تصدير APEX يستدعي الروتين (عملية صفحة، مصدر منطقة، عملية AJAX أو عملية تطبيق، كود خادم لإجراء ديناميكي…) تذكر النتيجة مواضع الاستدعاء (بالاسم `pkg.routine` أو باسم المخطط قبله أو عبر مرادف SYNONYM معرَّف في الكود المفحوص، أو في `execute immediate` بنص ثابت، أو عملية Invoke API، أو بشكل غير مباشر عبر روتين حزمة آخر يستدعيه دون تحقق؛ التعليقات والنصوص الأخرى ليست استدعاءً) ومخططات التفويض (على المكوّن، أو الموروثة من المنطقة الأم وما فوقها لما يُعرض داخلها فقط: العناصر والأعمدة والأزرار والمناطق الفرعية، لا عمليات الصفحة ولا التحققات ولا التفرعات لأنها تعمل عند الإرسال أيًّا كان ما عُرض، ومن حدث الإجراء الديناميكي؛ أو على الصفحة أو التطبيق؛ لا تُقيَّم شروط الخادم، ولا يُعدّ مخطط الزر حمايةً للعملية التي تعمل عند الضغط عليه، لأن إرسال الصفحة بطلب يحمل اسم الزر ممكن ولو لم يُعرض، فتذكر الرسالة الزر ومخططه؛ لا يُحسب `MUST_NOT_BE_PUBLIC_USER` ولا المخطط المنفي `!`): إن كانت كلها محمية تبقى النتيجة بخطورتها وتذكر أن الحماية لا تشمل أي مستدعٍ آخر للحزمة (صفحة أو تطبيق آخر أو صلاحية EXECUTE مباشرة)، وإن كان أحدها غير محمي (صفحة عامة، أو مكوّن أو عملية تطبيق بلا مخطط) تسمّيه بسطره وتُرفع الخطورة إلى عالية |
 
 أسماء الخصائص ومعانيها مأخوذة من ملفات تصدير أوراكل الرسمية نفسها، وقد جُرّبت الفحوص عليها.
 
@@ -1205,6 +1304,49 @@ Kashif — ./my-project  (156 ملفًا مفحوصًا، 37 نتيجة)
 
 ```bash
 git clone --depth 1 https://github.com/OWASP-Benchmark/BenchmarkJava && python bench/score_owasp.py BenchmarkJava
+```
+
+### JavaScript وTypeScript: اختبارات CodeQL المُعلَّمة
+
+لا توجد نسخة JavaScript من OWASP Benchmark، فنقيس JavaScript/TypeScript على اختبارات استعلامات الأمان في
+[GitHub CodeQL](https://github.com/github/codeql) (المجلد `javascript/ql/test/query-tests/Security`، الإيداع `12a0e51`،
+برخصة MIT): برامج صغيرة بـ Express وKoa وNext.js وNode والمتصفح، يُعلِّم فريق CodeQL كل سطر فيها بأنه ثغرة
+(`// $ Alert`، ومنها `MISSING: Alert` التي يفوّتها CodeQL نفسه) أو آمن (تعليقات `// OK …` و`SPURIOUS: Alert` التي يبلّغ
+عنها CodeQL خطأً). تفحص أداة التقييم `bench/score_js.py` المجلد كاملًا كمشروع واحد بالملف الافتراضي، وتَعُدّ الحالة مكتشفة
+إذا وقعت على سطرها نتيجة من CWE فئتها. تشمل 21 استعلامًا من CodeQL يبلّغ Kashif عن CWE كلٍّ منها في JavaScript:
+**1,238 حالة ثغرة و267 حالة آمنة**. **على كل الحالات مجتمعة: ارتفع معدّل الإيجابيات الصحيحة من 48.6% إلى 59.1% وانخفض
+معدّل الإيجابيات الكاذبة من 23.2% إلى 20.2%** بين 1.4 و1.5. ومتوسط (TPR − FPR) على الفئات الـ 21 بطريقة OWASP
+**23.2%** كما في 1.4 (انظر الحدود أدناه). الجدول لكل فئة في القسم الإنجليزي أعلاه.
+
+ما يقيسه وحدوده: هذه اختبارات وحدة كتبها فريق CodeQL لنماذجه، فهي تميل إلى ما يُنمذجه CodeQL (حزم npm كثيرة وأعراف الأطر
+وقواعد الموضع عنده)، وتصنيفها رأي CodeQL لا حقيقة مطلقة (سطر `SPURIOUS: Alert` الوحيد الآمن في فئة cmdi يقول إن الإبلاغ عنه
+«لا بأس به»، فنتيجة واحدة عليه تجعل FPR الفئة 100%). والحالات الآمنة قليلة (267) وموزعة بتفاوت (واحدة في cmdi و15 في
+xss-dom و4 في ssrf)، فيتحرك متوسط الفئات كثيرًا بنتيجة واحدة، والمعدّلات المجمّعة أثبت. وبعض الفئات تختبر ما لا يُنمذجه
+Kashif: رسائل الاستثناءات التي تحمل وسائطها (xss-exception)، وتدفّق البيانات الحساسة إلى تشفير أو تجزئة ضعيفة (crypto
+وhash: يبلّغ Kashif عن الخوارزمية الضعيفة حيث يُنشأ المُشفِّر، وCodeQL حيث تُكتب البيانات فيه)، والكوكيز التي تغيب عنها
+خاصية secure أو HttpOnly لا التي تُعطَّل صراحة، وأسماء ملفات الأرشيف كمصدر (zipslip)، والبيانات المقروءة من الملفات
+(xss-stored). والأسطر غير المُعلَّمة لا تُحسب (يؤكد CodeQL ألا تنبيه عليها لكن أغلبها ليس نقطة خطر)، وتطبع الأداة عدد
+النتائج الواقعة عليها (159). وهذه المجموعة ليست كودًا حقيقيًا: اقرأ الأرقام دليلًا على طريقة استدلال المحرّك في بنى
+JavaScript الشائعة، لا دقةً على الكود في مشروعك.
+
+```bash
+git clone --filter=blob:none --sparse https://github.com/github/codeql
+git -C codeql sparse-checkout set javascript/ql/test/query-tests/Security
+python bench/score_js.py codeql
+
+### PHP: مجموعة NIST SARD لثغرات PHP
+
+قسنا Kashif أيضًا على [PHP Vulnerability Test Suite](https://github.com/stivalet/PHP-Vulnerability-test-suite)
+(مجموعة SARD رقم 103، الإيداع `6ebd7e0`) بتصنيفات ملفات manifest الخاصة بها، وبالطريقة نفسها (`bench/score_php.py`):
+**PHP ‏45.4%** (كانت 6.0% قبل 1.5.0) على كل حالات فئات تدفق البيانات الثماني، أي 41,712 من 42,212 حالة (استُبعدت 480
+حالة تخويل CWE-862 و20 حالة تشفير ورسائل خطأ). تقيس المجموعة قواعد كل دالة تعقيم وكل سياق إخراج HTML في سكربتات مولَّدة
+صغيرة، لا تحليل تطبيق كامل؛ وكثير من تصنيفاتها يخالف سلوك PHP الفعلي (مثل `addslashes` أو `escapeshellarg` داخل
+وسيط shell بين علامتي اقتباس مفردتين، و`htmlspecialchars` داخل معالج `onclick`)، وKashif يتبع سلوك PHP. لا يُعدّ
+`$_SESSION` مدخلًا من المستخدم، ومخرجات أوامر shell مصدر محلي لا يُبلَّغ عنه في XSS وإعادة التوجيه. الجدول لكل فئة في
+القسم الإنجليزي أعلاه، ويعيد إنتاج النتيجة أمر واحد:
+
+```bash
+git clone --depth 1 https://github.com/stivalet/PHP-Vulnerability-test-suite && python bench/score_php.py PHP-Vulnerability-test-suite
 ```
 
 ## مقارنة مع الأدوات العالمية
