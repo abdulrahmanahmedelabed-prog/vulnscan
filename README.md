@@ -65,24 +65,30 @@ from a **local web UI** in English and Arabic.
   GitHub Code Scanning and the VS Code SARIF viewer), with stable fingerprints; plus DefectDojo, SonarQube,
   GitLab SAST, Code Climate, JUnit XML, CSV, Jira, GitHub Issues, AWS Security Hub (ASFF) and OCSF.
 
-## What's new in 1.4
+## What's new in 1.5
 
-- **Oracle APEX depth** — packages in an APEX export's Supporting Objects scripts are analysed (dataflow and APX024),
-  with findings at their line in the export file. APX024 (a package routine that skips the authorization check its
-  sibling routines use) now follows the paths inside the routine: a check in one branch, in a loop, in an exception
-  handler, after the data access, under `$if`, or whose answer is never tested is reported with the line it leaves
-  open. It also lists the APEX components that call the routine and the authorization scheme protecting each one, and
-  raises the finding to high when one of them is unprotected (a public page, or an application process without a scheme).
-- **PL/SQL parser coverage** — on a 1.6-million-line public corpus (Logger, utPLSQL, Alexandria, pljson, OOS-Utils,
-  Oracle samples and the APEX 24.2 sample apps), skipped statements fell from 0.78% to 0.08%, and to zero in the APEX
-  exports (`bench/plsql_skips.py`). Conditional compilation, `json_object('k' : v)`, `is of (type)`, `multiset`,
-  `at time zone` and more now parse, with data flow kept through them.
-- **Python precision** — OWASP Benchmark for Python 90.2% → 93.1% (XXE 65% → 95%, path traversal 57% → 64%): file
-  existence checks are path sinks, a `..`-only check before `os.path.join` is no longer taken as safe, and XXE is
-  decided by dataflow (new rule DF027).
+- **JavaScript and TypeScript, measured** — on CodeQL's labelled security tests (1,238 vulnerable and 267 safe cases,
+  `bench/score_js.py`) the pooled true-positive rate rose from 48.6% to 59.1% and the false-positive rate fell from
+  23.2% to 20.2%. Path traversal went from 59.7% to 85.0% found, command injection from 30.0% to 54.2%, SQL/NoSQL
+  injection from 31.1% to 43.9%. Kashif now follows promisified and `fs`-compatible modules (`fs-extra`,
+  `fs/promises`, `util.promisify`), `spawn` with a shell, and objects filled field by field, and understands checks
+  against a constant (`ALLOWED === x`, `hasOwnProperty` on a constant table) and `res.sendFile` confined by `root`. The
+  per-category table and its limits are under Accuracy.
+- **PHP, measured** — on the NIST SARD PHP Vulnerability Test Suite (41,712 cases, `bench/score_php.py`) the
+  OWASP-style score rose from 6.0% to 45.4%. Kashif now judges which escaper is enough where the value lands (quoted
+  or bare in SQL, shell, XPath, LDAP and `eval`; the HTML context around each `<?php` block), reads the pattern of
+  `preg_match` and the filter of `filter_var`, treats backticks and `exec()` output as commands and sources, and
+  reports redirects whose host comes from the user.
+- **Oracle APEX** — APX024 finds the APEX components that call a package routine through synonyms,
+  `owner.pkg.routine`, constant `execute immediate`, Invoke API processes and other package routines (up to three
+  hops), and takes the authorization scheme of parent regions and of the dynamic-action event. A button's scheme is not
+  counted as protecting the process it submits (a request can name the button even when it is not shown). Readable
+  YAML exports carry schemes too, and an application scanned in both forms is reported once. Deinstall and upgrade
+  scripts, APEX 4 sources built with `s := s || …` and the APEX 5.0 and 24.1 script formats are now read.
 - **Earlier in 1.x** — 1.1 rebuilt the passive web scanner from scratch; 1.2 raised the Python
-  Benchmark from 74.0% to 90.2%; 1.3 added APX024 and a measured comparison with Bandit and Semgrep; 1.3.1 parsed
-  `json_object` key/value syntax. Every release is described in `CHANGELOG.md`.
+  Benchmark from 74.0% to 90.2%; 1.3 added APX024 and a measured comparison with Bandit and Semgrep; 1.4 followed the
+  paths inside APX024 routines, read Supporting Objects packages, cut skipped PL/SQL statements tenfold and raised the
+  Python Benchmark to 93.1%. Every release is described in `CHANGELOG.md`.
 
 ## Install
 
@@ -270,7 +276,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.4.0`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.5.0`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `kashif . --diff-base origin/main` reports only what the branch introduces
@@ -614,24 +620,26 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
 تشفير ضعيف وتعطيل TLS، إعدادات خطرة (debug، CORS، 0.0.0.0)، أمان الموبايل، أمان الحاويات و CI،
 سلامة الذاكرة في C، تسجيل بيانات حساسة، وملفات لا يجوز شحنها (.env، مفاتيح SSH، قواعد بيانات).
 
-### الجديد في 1.4
+### الجديد في 1.5
 
-- **عمق أكبر في Oracle APEX:** تُحلَّل الحزم في سكربتات كائنات الدعم (Supporting Objects) داخل ملف التصدير بتدفق
-  البيانات وبالقاعدة APX024، وتشير النتائج إلى سطرها في الملف. وصارت APX024 (روتين في حزمة لا يتحقق من الصلاحية بينما
-  تتحقق منها الروتينات الشقيقة) تتتبّع المسارات داخل الروتين: يُبلَّغ عن تحقق في فرع واحد، أو داخل حلقة، أو في معالج
-  استثناء، أو بعد الوصول إلى البيانات، أو تحت `$if`، أو دالة تحقق لا يُختبر جوابها، مع السطر الذي يبقى مكشوفًا. وتذكر
-  مكوّنات APEX التي تستدعي الروتين ومخطط التفويض الذي يحمي كلًّا منها، وترفع الخطورة إلى «عالية» إن كان أحدها غير محمي
-  (صفحة عامة، أو عملية تطبيق بلا مخطط).
-- **تغطية محلّل PL/SQL:** على مدوّنة عامة من 1.6 مليون سطر (Logger وutPLSQL وAlexandria وpljson وOOS-Utils وأمثلة
-  Oracle وتطبيقات APEX 24.2 النموذجية) انخفضت العبارات المتخطّاة من 0.78% إلى 0.08%، وإلى صفر في تصديرات APEX
-  (`bench/plsql_skips.py`). صارت تُحلَّل الترجمة الشرطية و`json_object('k' : v)` و`is of (type)` و`multiset` و`at time zone`
-  وغيرها، مع بقاء تدفق البيانات عبرها.
-- **دقة Python:** ارتفعت نتيجة OWASP Benchmark لـ Python من 90.2% إلى 93.1% (XXE من 65% إلى 95%، واجتياز المسار من 57%
-  إلى 64%): فحص وجود الملف نقطة خطر، ورفض «..» وحده قبل `os.path.join` لم يعد يُعدّ حماية، وXXE يُحسم بتدفق البيانات
-  (قاعدة جديدة DF027).
+- **JavaScript وTypeScript بأرقام مقيسة:** على اختبارات CodeQL المُعلَّمة (1,238 حالة ثغرة و267 حالة آمنة،
+  `bench/score_js.py`) ارتفعت نسبة الثغرات المكتشفة في المجموع من 48.6% إلى 59.1%، وانخفضت نسبة الإنذارات الخاطئة من
+  23.2% إلى 20.2%. ارتفع اكتشاف اجتياز المسار من 59.7% إلى 85.0%، وحقن الأوامر من 30.0% إلى 54.2%، وحقن SQL/NoSQL من
+  31.1% إلى 43.9%. صار Kashif يتتبّع الوحدات المحوّلة إلى وعود والمتوافقة مع `fs` (`fs-extra` و`fs/promises`
+  و`util.promisify`)، و`spawn` مع الصدفة، والكائنات التي تُملأ حقلًا حقلًا، ويفهم المقارنة بقيمة ثابتة (`ALLOWED === x`
+  و`hasOwnProperty` على جدول ثابت) و`res.sendFile` المقيّدة بـ `root`. والجدول لكل فئة مع حدوده في قسم الدقة.
+- **PHP بأرقام مقيسة:** على مجموعة NIST SARD لثغرات PHP (41,712 حالة، `bench/score_php.py`) ارتفعت النتيجة بطريقة
+  OWASP من 6.0% إلى 45.4%. صار Kashif يحكم أي دالة هروب تكفي حيث تقع القيمة (بين علامتي اقتباس أو دونهما في SQL
+  والصدفة وXPath وLDAP و`eval`، وسياق HTML حول كل كتلة `<?php`)، ويقرأ نمط `preg_match` ومرشّح `filter_var`، ويعامل
+  علامات `` ` `` ومخرجات `exec()` أوامرَ ومصادرَ للبيانات، ويُبلغ عن إعادة التوجيه إلى مضيف يحدده المستخدم.
+- **Oracle APEX:** تجد APX024 مكوّنات APEX التي تستدعي روتين الحزمة عبر المرادفات و`owner.pkg.routine` و`execute
+  immediate` بنص ثابت وعمليات Invoke API وروتينات الحزم الأخرى (حتى ثلاث خطوات)، وتأخذ مخطط التفويض من المناطق الأم ومن
+  حدث الإجراء الديناميكي. ولا يُعدّ مخطط الزر حمايةً للعملية التي يرسلها (يمكن إرسال طلب يحمل اسم الزر ولو لم يُعرض).
+  وتُقرأ المخططات من التصدير المقروء (YAML) أيضًا، والتطبيق المفحوص بصيغتيه يُبلَّغ عنه مرة واحدة. وصارت تُقرأ سكربتات
+  إزالة التثبيت والترقية، ومصادر APEX 4 المبنية بـ `s := s || …`، وصيغ السكربتات في APEX 5.0 و24.1.
 - **قبل ذلك في 1.x:** أعاد 1.1 بناء فاحص المواقع السلبي من جديد، ورفع 1.2 نتيجة Python في Benchmark من 74.0%
-  إلى 90.2%، وأضاف 1.3 القاعدة APX024 ومقارنة مقيسة مع Bandit وSemgrep، وفهم 1.3.1 صيغة المفتاح والقيمة في
-  `json_object`. تفاصيل كل إصدار في `CHANGELOG.md`.
+  إلى 90.2%، وأضاف 1.3 القاعدة APX024 ومقارنة مقيسة مع Bandit وSemgrep، وتتبّع 1.4 المسارات داخل روتينات APX024 وقرأ
+  حزم كائنات الدعم وقلّل عبارات PL/SQL المتخطّاة عشر مرات ورفع نتيجة Python إلى 93.1%. تفاصيل كل إصدار في `CHANGELOG.md`.
 
 ### ما أضافه 1.0
 
