@@ -28,7 +28,8 @@ The rule is about inconsistency, not a guess that every routine needs a check, a
    and x`, `can_view(…) or x` and a comparison with another expression guard nothing; only the call itself, a
    variable holding its answer, or NVL / COALESCE of one with a failing default (FALSE / 0 / 'N') carries the
    answer, not NVL(…, 'Y'), GREATEST, arithmetic or DECODE; of the orderings only > 0 / >= 1 pass and <= 0 / < 1
-   fail); an answer
+   fail; a string compares case and all, and only 'Y' / 'YES' / 'TRUE' / 'T' / '1' and 'N' / 'NO' / 'FALSE' / 'F' /
+   '0' say which way it went, 1.5.1); an answer
    nobody acts on covers nothing. RETURN / RAISE / raise_application_error end their path. A read
    counts where what was read can leave the routine (each RETURN of a non-constant after it, the end of a
    procedure), so querying the row's owner before the check is fine. Pure computation is never flagged.
@@ -36,6 +37,9 @@ The rule is about inconsistency, not a guess that every routine needs a check, a
    that calls an authorization check on some of its paths only does not count either) only when every path to its
    normal exit (the end of a procedure, a RETURN of anything but FALSE / NULL / 0 / 'N') passes the guard (1.5.0,
    _Pkg.covering); a helper that calls it on some paths only covers nothing, and the message says so.
+   A failed check raises; a handler that catches it without re-raising (WHEN OTHERS, or since 1.5.1 a handler
+   naming an exception the scanned code raises, binds to -20000..-20999, or of another package) lets that path
+   go on unchecked.
 
 The analysis reads tokens of plain PL/SQL (.pkb/.pks/.sql files, scripts inside XML changelogs and the Supporting
 Objects installation, upgrade and deinstallation scripts of APEX exports, at their export lines) and follows the
@@ -91,6 +95,8 @@ class Routine:
     end: int = 0
     lines: dict = field(default_factory=dict)       # token index of each fact above (and of `end`) -> absolute line
     flow: tuple | None = None   # statement tree of the body for the path check (see _flow); None: lexical answer only
+    guard_excs: frozenset = frozenset()   # exceptions a failed check may raise here (see _raisable): a handler that
+    #                                       names one catches the failure, as WHEN OTHERS does (1.5.1)
 
 
 @dataclass
@@ -347,8 +353,9 @@ def _analyse_body(toks, b, e, r: Routine, local_names: set, pkg: str):
 #                                raises CASE_NOT_FOUND when no WHEN matches, so it does not fall through); a `$if`
 #                                of conditional compilation is an IF whose condition is unknown (plsql_frontend)
 #   ("loop", head, body)         LOOP / WHILE / FOR: the body may run zero times (or leave early)
-#   ("blk", body, [(others, handler)])   BEGIN … EXCEPTION: a handler starts from any statement of the body that
-#                                raises; a guard that fails raises too, but only WHEN OTHERS catches that
+#   ("blk", body, [(others, names, handler)])   BEGIN … EXCEPTION: a handler starts from any statement of the body
+#                                that raises; a guard that fails raises too, caught by WHEN OTHERS and, since 1.5.1,
+#                                by a handler naming an exception the check may raise (Routine.guard_excs)
 class _Bad(Exception):
     pass
 
@@ -429,6 +436,8 @@ def _simple(toks, lo, hi, leaves=False, decl=False):
 _CMP_OPS = {"=", "!=", "<>", "^=", "~=", "<", ">", "<=", ">="}
 _TRUTHY = {"true", "y", "yes", "t", "1"}
 _FALSY = {"false", "n", "no", "f", "0"}
+_TRUE_STR = {"Y", "YES", "TRUE", "T", "1"}           # string answers of a check, exactly as written
+_FALSE_STR = {"N", "NO", "FALSE", "F", "0"}
 
 
 def _cond(toks, lo, hi):
@@ -557,9 +566,11 @@ def _literal(node, toks):
         return "T" if t.val == "true" else "F"
     if t.kind == "num" and t.val.strip() in ("0", "1"):
         return t.val.strip()                         # "0" / "1": a number of the check (see polarity)
-    if t.kind in ("num", "str"):
-        v = t.val.strip().lower()
-        return "T" if v in _TRUTHY else "F" if v in _FALSY else "X"
+    if t.kind == "str":
+        # compared as Oracle compares strings, case and all (1.5.1): 'Y' is a yes, 'y' or 'GUEST' says nothing
+        return "T" if t.val in _TRUE_STR else "F" if t.val in _FALSE_STR else "X"
+    if t.kind == "num":
+        return "X"
     return None
 
 
@@ -607,8 +618,17 @@ def _block(toks, j, e, nested):
         while _is(toks[j], "when"):
             k = _until(toks, j + 1, e, "then")
             others = any(_is(toks[x], "others") for x in range(j + 1, k))
+            names, x = [], j + 1
+            while x < k:                                 # when a [or pkg.b …] then: the exception names
+                if toks[x].kind == "id" and toks[x].val != "or":
+                    nm = toks[x].val
+                    while x + 2 < k and toks[x + 1].kind == "punct" and toks[x + 1].val == "." and toks[x + 2].kind == "id":
+                        nm += "." + toks[x + 2].val
+                        x += 2
+                    names.append(nm)
+                x += 1
             h, j = _stmts(toks, k + 1, e, nested)
-            handlers.append((others, h))
+            handlers.append((others, tuple(names), h))
     if not _is(toks[j], "end"):
         raise _Bad
     return ("blk", body, handlers), j
@@ -766,10 +786,10 @@ def _unguarded(r: Routine, guards, accesses):
             op = {"<": ">", ">": "<", "<=": ">=", ">=": "<="}.get(op, op)      # `0 < can_x(…)`
         else:
             return False, False
-        if lit is None:
-            return False, False                         # compared with another expression: not known
+        if lit is None or lit == "X":
+            return False, False                         # another expression, or a value that is no yes / no
         if op in ("=", "!=", "<>", "^=", "~="):
-            same = (op == "=") != (lit in ("F", "0"))   # = TRUE / 'Y' / 'ADMIN' / 1, != FALSE / 'N' / 0
+            same = (op == "=") != (lit in ("F", "0"))   # = TRUE / 'Y' / 1, != FALSE / 'N' / 0
             return base if same else (base[1], base[0])
         # an ordering compares a count / level: > 0 and >= 1 pass, <= 0 and < 1 fail; anything else (>= 0, < 0,
         # > 1, <= 1, an ordering of TRUE / 'Y') says nothing
@@ -848,7 +868,8 @@ def _unguarded(r: Routine, guards, accesses):
                 outs = [run(node[1], free)]
             finally:
                 raising.pop()
-            outs.extend(run(h, flags[0] if others else flags[1]) for others, h in node[2])
+            outs.extend(run(h, flags[0] if others or any(_catches_check(nm, r.guard_excs) for nm in names) else flags[1])
+                        for others, names, h in node[2])
             return any(outs)
         raise _Bad
 
@@ -861,6 +882,45 @@ def _unguarded(r: Routine, guards, accesses):
     if end_free:
         hits.extend(p for p in accesses if p >= main_end)
     return sorted(set(hits))
+
+
+# predefined exceptions an authorization check does not raise to say no (a handler for them is about something else)
+_PREDEFINED = {"no_data_found", "too_many_rows", "dup_val_on_index", "value_error", "zero_divide", "invalid_number",
+               "cursor_already_open", "invalid_cursor", "case_not_found", "collection_is_null", "subscript_beyond_count",
+               "subscript_outside_limit", "rowtype_mismatch", "storage_error", "program_error", "timeout_on_resource",
+               "sys_invalid_rowid", "self_is_null", "access_into_null", "login_denied", "not_logged_on"}
+
+
+def _raisable(toks) -> frozenset:
+    """Exception names a failed check of this text may raise: those a `raise <name>` statement raises, and those
+    bound by `pragma exception_init(<name>, -20000 … -20999)` (the codes raise_application_error uses)."""
+    out = set()
+    for k, t in enumerate(toks):
+        if t.kind != "id":
+            continue
+        if t.val == "raise" and toks[k + 1].kind == "id":
+            nm, x = toks[k + 1].val, k + 1
+            while toks[x + 1].kind == "punct" and toks[x + 1].val == "." and toks[x + 2].kind == "id":
+                nm += "." + toks[x + 2].val
+                x += 2
+            out.add(nm)
+        elif t.val == "exception_init" and toks[k + 1].val == "(" and toks[k + 2].kind == "id":
+            nm, x = toks[k + 2].val, k + 2
+            while toks[x + 1].kind == "punct" and toks[x + 1].val == "." and toks[x + 2].kind == "id":
+                nm += "." + toks[x + 2].val
+                x += 2
+            code = "".join(tt.val for tt in toks[x + 2:x + 4] if tt.kind in ("num", "punct") and tt.val != ",")
+            if re.fullmatch(r"-20\d{3}", code):
+                out.add(nm)
+    return frozenset(out)
+
+
+def _catches_check(name: str, raisable: frozenset) -> bool:
+    """A handler naming this exception may catch a failed check: it is one the scanned text raises or binds to an
+    application error code, or another package's exception (`sec.e_denied`: not known, so assumed)."""
+    if name in raisable or name.rsplit(".", 1)[-1] in {x.rsplit(".", 1)[-1] for x in raisable}:
+        return True
+    return "." in name and name.rsplit(".", 1)[-1] not in _PREDEFINED and not name.startswith("standard.")
 
 
 def _parse_body(toks, j, pkg: str, rel: str, line: int, delta: int) -> tuple[Package, int]:
@@ -910,6 +970,7 @@ def collect(text: str, rel: str, delta: int = 0) -> tuple[dict, list]:
         if wrapped_units(src):
             src = blank_wrapped(src)
         toks = tokenize(src, cc_branches=True)
+        raisable = None
         i = 0
         while toks[i].kind != "eof":
             t = toks[i]
@@ -939,6 +1000,10 @@ def collect(text: str, rel: str, delta: int = 0) -> tuple[dict, list]:
                 continue
             if is_body:
                 pkg, i = _parse_body(toks, j + 1, name, rel, t.line, delta)
+                if raisable is None:
+                    raisable = _raisable(toks)
+                for r in pkg.routines:
+                    r.guard_excs = raisable
                 bodies.append(pkg)
             else:
                 names, i = _parse_spec(toks, j + 1)
