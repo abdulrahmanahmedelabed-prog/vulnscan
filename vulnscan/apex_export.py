@@ -768,8 +768,9 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
      "pages": {page: {"public": bool, "scheme": raw}}, "scripts": [(export line, script text, label)]}.
 
     The scheme of each block (Block.scheme) is the first that restricts users along what APEX itself enforces before
-    the code runs (1.5.0): the component's own scheme; the region it belongs to (columns, items, buttons, processes
-    and sub-regions of a region), and that region's parent regions, recursively; the event of a dynamic action. The
+    the code runs (1.5.0): the component's own scheme; for what is rendered inside a region (its items, columns,
+    buttons and sub-regions) the region's scheme and its parent regions', recursively (not for page processes,
+    validations or branches, which run on submit whatever the region showed); the event of a dynamic action. The
     page's scheme and the application's are added by call_site_protection. A When Button Pressed
     (p_process_when_button_id, p_when_button_pressed, p_branch_when_button_id) is NOT protection: it compares the
     submitted REQUEST with the button's name, and a user who can reach the page can submit that request although
@@ -864,7 +865,9 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
         # authorization: the component's own scheme, and what it belongs to (resolved below)
         own = _component_scheme(decoded)
         region = da = button = ""
-        if fname not in ("create_page", "create_flow", "create_flow_process"):
+        if fname in _REGION_SCOPED or "column" in fname:
+            # what is rendered inside a region: not page processes, validations or branches, which run on submit
+            # whatever the region showed (p_region_id there only says which region's data they handle)
             region = _id_key(next((raw(p) for p in ("p_region_id", "p_plug_id", "p_item_plug_id", "p_button_plug_id",
                                                     "p_parent_plug_id") if raw(p)), ""))
         if fname == "create_page_da_event":
@@ -961,6 +964,8 @@ def extract_full(text: str, rel: str) -> tuple[list[Block], list[Finding], list[
 
 
 _SCRIPT_PARAMS = {"p_script_clob", "p_deinstall_script_clob", "p_sql"}
+_REGION_SCOPED = {"create_page_item", "create_page_button", "create_page_plug", "create_report_columns",
+                  "create_worksheet_column", "create_region_column", "create_ig_column"}
 
 
 def _stmt_close(toks: list, j: int) -> int:
