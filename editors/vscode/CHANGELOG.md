@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1
+
+- Released with Kashif 1.5.1 (the extension follows the Kashif version). The extension itself is unchanged.
+
 ## 1.5.0
 
 - Released with Kashif 1.5.0 (the extension follows the Kashif version). The extension itself is unchanged; Kashif 1.5.0
