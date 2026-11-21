@@ -85,6 +85,9 @@ from a **local web UI** in English and Arabic.
   counted as protecting the process it submits (a request can name the button even when it is not shown). Readable
   YAML exports carry schemes too, and an application scanned in both forms is reported once. Deinstall and upgrade
   scripts, APEX 4 sources built with `s := s || …` and the APEX 5.0 and 24.1 script formats are now read.
+- **1.5.1** — APX024 no longer counts a helper that catches the check's own exception by name and swallows it, and
+  compares a check's string answer exactly as Oracle does ('Y'/'N', 'TRUE'/'FALSE', '1'/'0'); any other string, such as
+  a role name, is not taken as the check's answer.
 - **Earlier in 1.x** — 1.1 rebuilt the passive web scanner from scratch; 1.2 raised the Python
   Benchmark from 74.0% to 90.2%; 1.3 added APX024 and a measured comparison with Bandit and Semgrep; 1.4 followed the
   paths inside APX024 routines, read Supporting Objects packages, cut skipped PL/SQL statements tenfold and raised the
@@ -276,7 +279,7 @@ path. Fingerprints are stable across line shifts and reformatting, so alerts are
 
 ### Pull-request review comments, GitLab, pre-commit
 
-- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.5.0`): scans the pull request, uploads SARIF and
+- **GitHub Action** (`uses: abdulrahmanahmedelabed-prog/vulnscan@v1.5.1`): scans the pull request, uploads SARIF and
   posts one review with inline comments on the changed lines only (rule, severity, remediation, data-flow path),
   plus a summary comment that is updated, not duplicated, on every push.
 - **Diff-aware scanning** anywhere: `kashif . --diff-base origin/main` reports only what the branch introduces
@@ -637,6 +640,8 @@ Shell، Dockerfile، docker-compose، GitHub Actions، AndroidManifest، iOS pli
   حدث الإجراء الديناميكي. ولا يُعدّ مخطط الزر حمايةً للعملية التي يرسلها (يمكن إرسال طلب يحمل اسم الزر ولو لم يُعرض).
   وتُقرأ المخططات من التصدير المقروء (YAML) أيضًا، والتطبيق المفحوص بصيغتيه يُبلَّغ عنه مرة واحدة. وصارت تُقرأ سكربتات
   إزالة التثبيت والترقية، ومصادر APEX 4 المبنية بـ `s := s || …`، وصيغ السكربتات في APEX 5.0 و24.1.
+- **1.5.1:** لم تعد APX024 تعدّ تحققًا روتينًا مساعدًا يمسك استثناء التحقق باسمه ويبتلعه، وصارت تقارن جواب التحقق النصي
+  كما يقارنه Oracle (`'Y'`/`'N'` و`'TRUE'`/`'FALSE'` و`'1'`/`'0'`)؛ أي نص آخر، مثل اسم دور، لا يُعدّ جوابًا للتحقق.
 - **قبل ذلك في 1.x:** أعاد 1.1 بناء فاحص المواقع السلبي من جديد، ورفع 1.2 نتيجة Python في Benchmark من 74.0%
   إلى 90.2%، وأضاف 1.3 القاعدة APX024 ومقارنة مقيسة مع Bandit وSemgrep، وتتبّع 1.4 المسارات داخل روتينات APX024 وقرأ
   حزم كائنات الدعم وقلّل عبارات PL/SQL المتخطّاة عشر مرات ورفع نتيجة Python إلى 93.1%. تفاصيل كل إصدار في `CHANGELOG.md`.
